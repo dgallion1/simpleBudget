@@ -223,16 +223,17 @@ func TestRollbackDecryptionWithRecipientReportsUnrestorableFiles(t *testing.T) {
 		t.Fatalf("WriteFile already.csv failed: %v", err)
 	}
 
-	// unreadable.csv: plaintext, but permissions make it unreadable, so the
-	// helper cannot even confirm its state, let alone re-encrypt it.
+	// unreadable.csv: a dangling symlink, not a chmod-0000 file. The helper's
+	// first move on each path is os.ReadFile, and a symlink whose target does
+	// not exist fails that call at the open step (ENOENT) regardless of who
+	// is running the test -- there are no permission bits involved for root's
+	// CAP_DAC_OVERRIDE to bypass, unlike the chmod 0000 fixture this replaced,
+	// which root reads straight through. Either way the helper "cannot even
+	// confirm its state, let alone re-encrypt it."
 	unreadableFile := filepath.Join(dir, "unreadable.csv")
-	if err := os.WriteFile(unreadableFile, []byte("p,q\n5,6\n"), 0644); err != nil {
-		t.Fatalf("WriteFile unreadable.csv failed: %v", err)
+	if err := os.Symlink(filepath.Join(dir, "unreadable.csv.missing-target"), unreadableFile); err != nil {
+		t.Fatalf("Symlink failed: %v", err)
 	}
-	if err := os.Chmod(unreadableFile, 0000); err != nil {
-		t.Fatalf("Chmod failed: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(unreadableFile, 0644) })
 
 	failed := s.rollbackDecryptionWithRecipient([]string{goodFile, alreadyFile, unreadableFile}, recipient)
 
@@ -303,17 +304,15 @@ func TestRollbackDecryptionReportsFullPaths(t *testing.T) {
 	}
 
 	// A file whose current state cannot even be read is reported as
-	// unrestored, which is the branch that produces a path in the list.
+	// unrestored, which is the branch that produces a path in the list. A
+	// dangling symlink forces os.ReadFile to fail at open (ENOENT), and it
+	// does so for every uid including root: chmod 0000 does not, because
+	// root's CAP_DAC_OVERRIDE reads straight through the permission bits --
+	// which is exactly why this test used to skip itself under root instead
+	// of exercising this branch there.
 	unreadable := filepath.Join(dir, "exposed.csv")
-	if err := os.WriteFile(unreadable, []byte("account,balance\nchecking,9.99\n"), 0644); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	if err := os.Chmod(unreadable, 0000); err != nil {
-		t.Fatalf("chmod: %v", err)
-	}
-	defer func() { _ = os.Chmod(unreadable, 0644) }()
-	if _, err := os.ReadFile(unreadable); err == nil {
-		t.Skip("running with privileges that ignore permission bits; cannot force a read failure")
+	if err := os.Symlink(filepath.Join(dir, "exposed.csv.missing-target"), unreadable); err != nil {
+		t.Fatalf("symlink: %v", err)
 	}
 
 	failed := s.rollbackDecryptionWithRecipient([]string{unreadable}, recipient)

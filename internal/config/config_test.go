@@ -195,8 +195,8 @@ func TestEnsureDirectoriesCreates(t *testing.T) {
 	tmp := t.TempDir()
 
 	cfg := &Config{
-		DataDirectory:    filepath.Join(tmp, "data"),
-		UploadsDirectory: filepath.Join(tmp, "data", "uploads"),
+		DataDirectory:     filepath.Join(tmp, "data"),
+		UploadsDirectory:  filepath.Join(tmp, "data", "uploads"),
 		SettingsDirectory: filepath.Join(tmp, "data", "settings"),
 	}
 
@@ -216,8 +216,8 @@ func TestEnsureDirectoriesInvalidPath(t *testing.T) {
 	// Use a path under /dev/null which can't contain subdirectories.
 	// This exercises the error log branch. It should not panic.
 	cfg := &Config{
-		DataDirectory:    "/dev/null/impossible",
-		UploadsDirectory: "/dev/null/impossible/uploads",
+		DataDirectory:     "/dev/null/impossible",
+		UploadsDirectory:  "/dev/null/impossible/uploads",
 		SettingsDirectory: "/dev/null/impossible/settings",
 	}
 
@@ -275,22 +275,39 @@ func TestLoadUserSettingsInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestLoadUserSettingsPermissionError(t *testing.T) {
+// TestLoadUserSettingsReadError (renamed from …PermissionError; see
+// reasoning below) defends LoadUserSettings' os.ReadFile branch: any read
+// error OTHER than os.IsNotExist is returned to the caller (an empty map is
+// only for a genuinely missing file). Root-proof: chmod(0000) is a
+// permission check, and CAP_DAC_OVERRIDE lets root read straight through a
+// 0000 regular file, so under root the old fixture made LoadUserSettings
+// succeed and the test failed outright.
+//
+// Rename reasoning: the branch this test defends is error-kind-agnostic --
+// config.go tests only `os.IsNotExist(err)`, nothing that keys on
+// permission specifically. So any non-ENOENT read failure exercises the
+// exact same line, and "PermissionError" no longer describes what is
+// injected. A directory-in-place at the settings path is used instead:
+// os.ReadFile on a path that is a directory fails with EISDIR, a path-type
+// mismatch the kernel enforces unconditionally (no uid, permission bit, or
+// capability bypasses it) -- and, like a permission error, it is not
+// os.IsNotExist, so it still lands in and proves the same "return nil, err"
+// branch the original test targeted.
+func TestLoadUserSettingsReadError(t *testing.T) {
 	tmp := t.TempDir()
 	settingsFile := filepath.Join(tmp, "settings.json")
-	os.WriteFile(settingsFile, []byte("{}"), 0644)
-	// Remove read permission
-	os.Chmod(settingsFile, 0000)
-	t.Cleanup(func() { os.Chmod(settingsFile, 0644) })
+	if err := os.Mkdir(settingsFile, 0755); err != nil {
+		t.Fatalf("seed directory-in-place at settings.json: %v", err)
+	}
 
 	cfg := &Config{UserSettingsFile: settingsFile}
 	_, err := cfg.LoadUserSettings()
 	if err == nil {
-		t.Fatal("expected permission error")
+		t.Fatal("expected a read error")
 	}
 	// This should NOT be os.IsNotExist, so it should return the error, not an empty map
 	if os.IsNotExist(err) {
-		t.Fatal("expected permission error, not IsNotExist")
+		t.Fatal("expected a read error, not IsNotExist")
 	}
 }
 

@@ -1,0 +1,277 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T3
+ATTEMPT: 2
+---
+Repo: /home/user/simplebudget, HEAD 00abacd027c9c33a6864721e5429b617500bdaf9,
+branch claude/t3-root-proof-fixtures. `git status --porcelain`: thirteen
+*_test.go files modified (matches ledger/report), .swarm/ledger.tsv and
+.swarm/tier3/T3/report.md are the lead's, four .swarm/manifests|verdicts
+entries from attempt 1 untracked, plus this task's T3.2.files/verdict. All
+test/build/mutant runs below ran in my own `cp -a` copies under
+/tmp/claude-0/.../scratchpad/t3check2/ and /tmp/t3check2-nobody/ (the latter
+needed because /tmp/claude-0 itself is root-only 0700 and blocks a `nobody`
+uid from traversing into it) — the only write to /home/user/simplebudget is
+this file.
+
+============================================================
+ATTACK 1 — bind-mount mechanism (majorexpenses, makeDirWriteBlocked): NO
+DEFECT FOUND on the vacuous-pass question; a real (lesser) portability gap
+noted.
+============================================================
+(a) Capability dependence. This container's root has full caps including
+CAP_SYS_ADMIN (`capsh --decode` on /proc/self/status CapEff = ...
+cap_sys_admin ... confirmed). Simulated a default-Docker-style root without
+CAP_SYS_ADMIN with `capsh --drop=cap_sys_admin -- ... go test -run
+TestHandleAdd_SaveFails`: CapEff bit 21 confirmed dropped
+(000001fffedfffff vs 000001fffeffffff), and the test FAILS LOUDLY and
+correctly:
+  coverage_test.go:483: bind mount .../001 onto itself: operation not
+  permitted
+  --- FAIL: TestHandleAdd_SaveFails
+This is the acceptable branch per the brief ("fail the test with a CLEAR
+fixture error") — NOT a silent skip, NOT a vacuous pass. So the attempt-1
+defect (silent bypass masquerading as PASS) is NOT reborn here. Genuine
+residual concern, recorded as an OBSERVATION not a refutation: in an actual
+CAP_SYS_ADMIN-less root CI, this whole test would hard-fail rather than
+verify anything, which is a real robustness/portability regression relative
+to the plain-chmod behavior for non-root — but it fails visibly, so a CI
+operator would notice and it does not silently defeat the mutation defense.
+(b) Cleanup on a failing path. Injected a forced `t.Errorf` inside
+TestHandleAdd_SaveFails (my copy only) after the mount succeeds: `mount |
+grep -c TestHandle` = 0 before, 0 after, confirming `t.Cleanup`'s
+`syscall.Unmount(dir, MNT_DETACH)` runs even when the test body reports a
+non-fatal failure. (Cleanups run LIFO; the unmount is registered after
+t.TempDir()'s own removal cleanup, so it unmounts before TempDir tries to
+rm -rf, avoiding EBUSY.) Reverted this instrumentation before continuing
+(confirmed via `diff` against the main tree's coverage_test.go).
+(c) Parallel/namespace pollution: `grep -n t.Parallel` across the file and
+its siblings returns nothing; every helper call site uses a fresh, uniquely
+named t.TempDir(), so no path collision is possible even though mount
+namespaces are process/kernel-global, not per-goroutine.
+
+============================================================
+ATTACK 2 — WRONG-REASON re-audit of makeSaveFail / corruptSettingsDirToFile:
+CONFIRMED, REPRODUCIBLE REFUTATION. THIS IS WHY THE VERDICT IS FAIL.
+============================================================
+Traced the production source (internal/services/retirement/settings.go):
+BOTH `loadInternalContext` (line 582) AND `saveInternal` (line 782) call
+`sm.store.MkdirAll(sm.settingsDir, 0755)` as their first disk operation, and
+`loadInternal()` — the uncached, always-hits-disk path every CRUD method
+(AddIncomeSource, RemoveIncomeSource, ... CreateScenario, etc.) calls before
+ever reaching saveInternal — has NO cache short-circuit. makeSaveFail /
+corruptSettingsDirToFile replace settingsDir itself with a plain FILE. That
+means the very first thing almost every handler under test does
+(`sm.loadInternal()`) already fails with ENOTDIR, before the save path the
+test is named for is ever reached — exactly the "earlier LOAD fails first"
+scenario the brief told me to hunt for.
+
+Constructed the discriminating mutant: in a scratch copy, changed
+saveInternal (settings.go:782,793) to swallow BOTH its own MkdirAll error
+and its WriteFile error (`_ = sm.store.MkdirAll(...)`, `_ =
+sm.store.WriteFile(...)`) — i.e. completely defeated real save-error
+propagation, which is precisely the regression these tests claim to guard
+against. Ran the affected suites with this mutant in place:
+
+  internal/services/retirement (mutant applied):
+    --- PASS: TestCRUD_SaveErrors            (16 sub-assertions, all silent)
+    --- PASS: TestPurgeRemovedIncomeSource_SaveFailure
+    --- PASS: TestPurgeRemovedExpenseSource_SaveFailure
+    --- PASS: TestPurgeRemovedBigTicketItem_SaveFailure
+    --- PASS: TestUpdateSettings_SaveError
+  All five "survive" the mutant — a total defeat of saveInternal's error
+  return goes completely undetected by any of them, because they all get
+  their `err != nil` from loadInternal's independent, earlier MkdirAll
+  failure, not from the save write path they name.
+
+  internal/handlers/whatif (same mutant, retirement is a dependency so the
+  binary picks it up): ran the FULL package (513 test results). Only 10 of
+  the ~31 makeSaveFail-based tests correctly caught the mutant (FAIL, as
+  they should — these are the ones where the handler under test uses the
+  cache-populated `Load()` path via `primeLoadCache`, so the actual disk
+  write funnels only through the neutered saveInternal and its removal is
+  observable):
+    TestHandleWhatIfRothConversion_SaveError, ...SocialSecurity_SaveError,
+    ...GlidePath_SaveError, ...Guardrails_SaveError, ...AddPhase_SaveError,
+    ...ResetPhases_SaveError, ...Sync_SaveError, ...UpdateChain_SaveError,
+    ...DeleteChainLink_SaveError, ...DeletePhase_SaveError
+  The remaining ~21 makeSaveFail-based tests SURVIVED the mutant (still
+  PASS) despite it completely destroying the save-error branch they exist
+  to defend, confirmed by name, including but not limited to:
+    TestHandleCreateScenario_NonTypedError, TestHandleDeleteScenario_
+    NonTypedError, TestHandleRenameScenario_NonTypedError,
+    TestHandleSwitchScenario_GenericError, TestHandleSwitchScenario_
+    NonTypedError, TestHandleWhatIfDeleteIncome_SaveError, ...RestoreIncome_
+    SaveError, ...AddIncome_SaveError, ...UpdateIncome_SaveError, and the
+    parallel Delete/Restore/Add/Update_SaveError tests for Expense,
+    BigTicket, and Healthcare, plus ...SpendingPhases_SaveError and
+    ...WhatIfSettings_SaveError.
+  (These specific CRUD-style handlers call `sm.loadInternal()` directly,
+  bypassing the cache primeLoadCache populated, so their `err != nil` also
+  comes from the earlier, independent load-side MkdirAll failure — the same
+  mechanism as the five retirement-package survivors above.)
+
+Control check (to rule out "my mutant just breaks everything"): the three
+retirement tests that inject failures at a DIFFERENT call site —
+TestDeleteScenario_RemoveError (os.Remove ENOTEMPTY on the scenario file,
+via sm.store.Remove, not saveInternal), TestRenameScenario_WriteError
+(NAME_MAX overflow on sm.store.WriteFile inside RenameScenario, which calls
+store.WriteFile directly, not through saveInternal), and
+TestLoadScenarioSettings_ReadError (EISDIR on a specific scenario file, via
+LoadScenarioSettings, a read-only method that never calls saveInternal) —
+all three correctly and immediately FAIL as designed against the very same
+saveInternal-neutering mutant is NOT applied to their call sites, confirming
+the mutant is surgical and my methodology is sound; when I additionally
+constructed a second, independent discriminating mutant swallowing ONLY
+RenameScenario's own store.WriteFile call (settings.go:1962-1964, leaving
+its earlier ReadFile intact), TestRenameScenario_WriteError correctly FAILED
+("expected error when the staged rename write overflows NAME_MAX") —
+demonstrating that a properly-scoped fixture (this one) DOES discriminate,
+which sharpens the contrast with the ~26 vacuous ones above.
+
+Reverted the mutant in both spots (diffed the restored settings.go against
+/home/user/simplebudget's copy — identical) and reran `go build ./...`
+clean before continuing. No production file in the main tree was ever
+touched (confirmed: `git diff --stat` on settings.go and
+majorexpenses/coverage_test.go from the main tree shows only the tracked
+attempt-2 test-file diff, nothing from my mutants).
+
+This is the exact defect class flagged in my brief: roughly 26 of the ~49
+reworked tests (5 in retirement, ~21 in whatif) pass today, and would
+continue to silently pass under a real regression that swallows the save
+error entirely — because their fixture corrupts the shared settingsDir path
+both loadInternal and saveInternal touch, so the test's observed error comes
+from the load side every time, never from the save side its name and
+in-file comment claim to defend. This is worse than a merely-incomplete
+fixture: it is an active false sense of security, framed by this attempt's
+own commentary as proof the branch is defended ("Each method should return
+an error from saveInternal" / "the exact branch this test defends") when it
+demonstrably is not.
+
+============================================================
+ATTACK 3 — additional fresh mutants, different sites (per brief, at least
+three; two are reported above — the saveInternal double-swallow and the
+RenameScenario single-call swallow). A third, at a different package:
+============================================================
+Examined internal/services/dataloader/major_expenses.go's ArchiveMajorExpense
+(the production code majorexpenses/coverage_test.go's makeDirWriteBlocked
+tests exercise): it performs load-modify-save chains too, but
+makeDirWriteBlocked blocks ONLY writes (chmod 0o500 / read-only bind mount)
+while leaving existing files fully readable — unlike the retirement
+settingsDir-as-file trick, which breaks reads and writes at the exact same
+MkdirAll call. Confirmed via source read that this design choice (documented
+in the file's own doc comment) is what avoids the wrong-reason failure here:
+the earlier Load* calls in these handlers succeed because they only read;
+only the eventual Save* call touches the write-blocked directory, so
+whichever save the handler performs is what actually fails. I did not find a
+survivor mutant here in the time available; no defect found in this package
+specifically. (I did not exhaustively construct a majorexpenses-specific
+mutant beyond this source-level trace, given ATTACK 2 already supplies
+multiple confirmed refutations and the brief's "at least three, across
+different sites" is satisfied by the two settings.go sites plus this traced,
+non-surviving third site.)
+
+============================================================
+ATTACK 4 — environment fragility
+============================================================
+NAME_MAX=255 confirmed via `getconf NAME_MAX /tmp` = 255 in this container
+(ext4-backed /tmp); the explorer and retirement ENAMETOOLONG fixtures'
+251+".csv" / "whatif"+244+".json" arithmetic (255 bytes total) leaves
+headroom under the StagingSuffix + random-suffix overflow used by
+production `createExclusive`/`atomicWrite`, matching attempt-1's already
+solid empirical confirmation (unchanged in this attempt's diff for those two
+sites). Did not re-run `-race -count=3` myself this attempt given time
+budget and that ATTACK 2 already supplies a decisive, mechanically confirmed
+refutation independent of flake — noting this as a gap in my own coverage
+rather than a clean bill of health on this specific point.
+
+============================================================
+ATTACK 5 — full-module cross-uid
+============================================================
+Ran `go test ./... -count=1` on a clean scratch copy of the full
+attempt-2 working tree:
+  - as root (uid 0, this container, full caps): 0 `--- FAIL` lines, every
+    package `ok`. Log: /tmp/claude-0/.../scratchpad/t3check2/root2-full.log
+    (49 lines, all `ok`/`?` — no FAIL anywhere, including all six
+    previously-uninventoried packages: cmd/enrich-amazon, internal/config,
+    handlers/backup, handlers/majorexpenses, handlers/whatif,
+    services/retirement).
+  - as uid 65534 (`nobody`, isolated HOME/GOCACHE/GOPATH/GOMODCACHE, copy
+    relocated to /tmp/t3check2-nobody because /tmp/claude-0 itself is
+    root-only 0700 and blocked nobody's traversal): 0 `--- FAIL` lines,
+    every package `ok`, including `internal/handlers/accounts` (attempt 1's
+    PATH artifact did not recur — `ok 2.112s`). Log:
+    /tmp/t3check2-nobody/nobody-full.log.
+So on the LITERAL "full module go test ./... green at uid 0 and ordinary
+uid" bar, attempt 2 does pass — all 49 previously-failing tests are green
+both ways, count confirmed against attempt 1's inventory. This mechanical
+bar being met is exactly why ATTACK 2's finding matters: the module being
+green does not mean the reworked tests are doing their job, and ~26 of them
+demonstrably are not.
+
+============================================================
+ATTACK 6 — scope/weakening
+============================================================
+Full `git diff` of all thirteen *_test.go files read in full (968 lines).
+No assertion was loosened anywhere I could find; the config rename
+(TestLoadUserSettingsPermissionError -> TestLoadUserSettingsReadError) is
+licensed by LoadUserSettings' source, confirmed error-kind-agnostic (only
+`os.IsNotExist(err)` is checked, nothing permission-specific). Grepped the
+thirteen files for `t.Skip`/`os.Geteuid`: found only (a) the intentional,
+non-vacuous `os.Geteuid() != 0` capability branch inside
+`makeDirWriteBlocked` itself (ATTACK 1, not a test-level skip), (b) two
+pre-existing, unrelated skips in majorexpenses/coverage_test.go and
+config_test.go outside any diff hunk (fixture-empty / no-home-dir guards),
+and (c) a genuinely new find, OUT OF SCOPE for this task: internal/handlers/
+backup/handlers_test.go:3794-3795 `TestHandleRestore_ReportsPruneFailures`
+still has `if os.Geteuid() == 0 { t.Skip("directory write permissions do
+not block root") }` — but this is OUTSIDE this diff's hunks (the diff only
+touches TestHandleRestoreWriteError in that file, confirmed by line-range
+comparison against the git diff), pre-dates this branch, and was not one of
+the 49 inventoried failures (it self-skips rather than failing, so it never
+appeared as a `--- FAIL` in attempt 1's log or this attempt's root run).
+Recording as an OBSERVATION (a sixth root-skipping test this task's scope
+never claimed to touch), not a refutation of this attempt's claim. No
+t.Skip was newly ADDED by this diff anywhere; the one pre-existing root
+t.Skip inside the reworked tests (explorer's FailedWriteKeepsSource) was
+REMOVED, consistent with attempt 1's finding.
+
+============================================================
+Distinguishing refutation from observation:
+============================================================
+REFUTATION (drives the FAIL): ATTACK 2. Roughly 26 of the ~49 reworked
+tests (5 in internal/services/retirement, ~21 in internal/handlers/whatif)
+do not exercise the save-error branch their names and doc comments claim to
+defend; a mutant that completely defeats saveInternal's error propagation
+is caught by NONE of them, because the shared makeSaveFail /
+corruptSettingsDirToFile fixture corrupts settingsDir itself, which fails
+loadInternal's own, earlier MkdirAll call first, on every affected call
+path. This is a wrong-reason defect of the exact shape flagged in the task
+brief, reproduced mechanically with named surviving tests and a working
+counter-mutant, and it means "nothing lost defensive power" is false for
+this attempt: these tests provide materially less defense than a mutation-
+testing standard requires, for a defect class the ledger says attempt 2 was
+specifically dispatched to fix ("The 30 whatif and 8 retirement failures are
+expected to share fixture helpers — fix helpers, not call sites, where
+possible" — RULING 2026-08-26a). The shared-helper fix path chosen
+(makeSaveFail / corruptSettingsDirToFile corrupting settingsDir wholesale)
+is exactly what introduced this cross-cutting wrong-reason regression across
+both packages that share it.
+
+OBSERVATIONS (not refutations, no defect found or out of scope):
+ATTACK 1 (bind mount capability/cleanup/parallelism — clean, with one noted
+portside portability caveat that fails loudly rather than vacuously),
+ATTACK 3's majorexpenses third site (clean by design, traced not
+mutant-proven), ATTACK 4 (NAME_MAX environment confirmed, race re-run not
+repeated this attempt), ATTACK 5 (full module IS green both uids — the
+literal criterion's mechanical bar is met), ATTACK 6 (no weakening, one
+pre-existing out-of-scope root skip noted for the record).
+
+Net: the literal "full module go test ./... green AS ROOT and as uid≠0"
+bar attempt 1 failed on is now met. But the broader claim under
+verification this attempt — "ALL of them are reworked with kernel-enforced
+injections... nothing lost defensive power" — is false for a demonstrated,
+reproducible ~26-test subset. Per my brief, I default to FAIL on this
+finding since it is not ambiguous: I have working counter-mutants and named
+survivors, not a hunch.

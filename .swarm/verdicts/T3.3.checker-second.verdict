@@ -1,0 +1,176 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T3
+ATTEMPT: 3
+---
+Repo: /home/user/simplebudget, HEAD 00abacd027c9c33a6864721e5429b617500bdaf9,
+branch claude/t3-root-proof-fixtures. `git status --porcelain` before/after my
+work is identical (md5 checked): fifteen tracked files modified (matches the
+worker's five-file claim for T3.3 plus the ten already-accepted attempt-1/2
+files, ledger, report), plus prior untracked verdicts/manifests. All
+test/build/mutant runs below ran in isolated `cp -a` copies under
+/tmp/claude-0/.../scratchpad/t3check3/ and /tmp/t3check3-nobody/ (the latter
+needed because /tmp/claude-0 is root-only 0700). The ONLY write to
+/home/user/simplebudget is this file — confirmed by diffing every mutated
+source file back against the main tree after each attack (`diff ... &&
+echo IDENTICAL`), every time.
+
+============================================================
+ATTACK 1 — re-run my own attempt-2 refutation exactly (saveInternal full
+error-swallow mutant, both uids): NO DEFECT — claim reproduced exactly.
+============================================================
+Patched settings.go's saveInternal to swallow BOTH its MkdirAll and WriteFile
+errors (`_ = sm.store.MkdirAll(...)`, `_ = sm.store.WriteFile(...)`) — the
+identical mutant from my attempt-2 FAIL.
+- internal/services/retirement, root (uid 0): exactly 5 FAIL / 3 PASS among
+  the 8 save-fixture tests — TestPurgeRemovedIncomeSource_SaveFailure,
+  ...ExpenseSource_SaveFailure, ...BigTicketItem_SaveFailure,
+  TestUpdateSettings_SaveError, TestCRUD_SaveErrors now correctly FAIL
+  (killed); TestDeleteScenario_RemoveError, TestRenameScenario_WriteError,
+  TestLoadScenarioSettings_ReadError correctly still PASS (survive, as
+  expected).
+- Same package as uid 65534 (`nobody`, isolated HOME/GOCACHE/GOPATH/
+  GOMODCACHE): byte-identical 5 FAIL / 3 PASS result.
+- internal/handlers/whatif, root: 27 `--- FAIL` lines (grep -c), all of the
+  makeSaveFail-based *_SaveError tests plus CreateScenario_NonTypedError.
+- Same package as nobody: `diff` of the two FAIL-name lists (sorted, status
+  suffix stripped) is EMPTY — identical 27-test kill set at both uids.
+- Traced the 3 whatif + 3 retirement survivors against production source,
+  not test names, exactly as instructed: DeleteScenario (whatif and
+  retirement) calls `sm.store.Remove`/`os.Remove` directly, never
+  saveInternal; RenameScenario calls `sm.store.WriteFile` directly inside
+  RenameScenario, bypassing saveInternal entirely; SwitchScenario only Stats
+  + swaps `sm.filename` in memory (doc comment states this, confirmed no
+  write call anywhere in its body); LoadScenarioSettings is a read-only
+  method that never reaches saveInternal. All six are genuinely structurally
+  unrelated to the mutant — "survive" here is correct, not a regression.
+Numbers match the claim precisely: 27/30 whatif, 5/8 retirement, same
+survivor sets, both uids.
+
+============================================================
+ATTACK 2 — three NEW mutants, per the brief.
+============================================================
+(a) Swallow ONLY saveInternal's MkdirAll error, keep WriteFile propagating:
+    all 5 retirement + all 27 whatif kills UNCHANGED (still FAIL/killed).
+    Expected and non-alarming: MkdirAll is a no-op success against an
+    already-existing directory in every one of these fixtures (the
+    bind-mount/chmod mechanism keeps settingsDir real), so the tests were
+    never depending on MkdirAll's error path — WriteFile is where the actual
+    failure lives, confirmed by (b) below. No survivors introduced.
+(b) Patched storage.go's atomicWrite so a CreateTemp failure that is EROFS
+    specifically is silently swallowed (`if errors.Is(err, syscall.EROFS) {
+    return nil }`) — a deeper-layer mutant than (a), attacking the actual
+    write mechanism the fixtures rely on. Verified with an instrumented debug
+    build that CreateTemp really does fail EROFS under the bind-mount and
+    that my swallow branch really fires. Result: retirement package
+    unchanged (same 5 kills), whatif package produced 28 kills — one MORE
+    than baseline: TestHandleRenameScenario_NonTypedError, previously a
+    (correctly) structurally-unrelated survivor of the saveInternal-only
+    mutant, is caught by this deeper mutant because RenameScenario's direct
+    store.WriteFile call goes through the same atomicWrite path. No
+    survivors reduced anywhere; confirmed with a full `-race -count=1` run
+    of whatif/retirement/majorexpenses afterward (clean, on the reverted
+    tree) — see ATTACK 5.
+(c) In handleSwitchScenario (handlers_scenarios.go), swallowed the
+    generic-error (500) branch entirely so a non-typed SwitchScenario error
+    falls through to success instead of rendering 500. Result:
+    TestHandleSwitchScenario_GenericError correctly FAILS (killed) — the
+    renamed NAME_MAX-basename injection genuinely exercises and defends this
+    branch, as the diff's doc comment claims. TestHandleSwitchScenario_
+    NonTypedError still passes (it tolerates 200 OR 500 by its own written
+    design — a pre-existing, out-of-scope weak assertion, not something this
+    attempt claims to fix).
+All three new mutants: NO REFUTATION.
+
+============================================================
+ATTACK 3 — bind-mount helper as reused in whatif/retirement.
+============================================================
+Confirmed the whatif/retirement helpers (makeSaveFail, corruptSettingsDir
+ToFile) are BYTE-IDENTICAL in logic to majorexpenses' makeDirWriteBlocked
+(diffed side-by-side: same Geteuid branch, same bind-mount/remount-RDONLY
+call sequence, same t.Fatalf-on-mount-error, same t.Cleanup(Unmount)) — my
+attempt-2 capability/cleanup/parallelism audit of that exact mechanism
+therefore transfers directly; I re-verified rather than merely assuming:
+- Cleanup-on-panic (not just t.Errorf, per the brief): injected a bare
+  `panic(...)` inside TestUpdateSettings_SaveError's body (retirement,
+  bind-mount branch, root) after makeSaveFail/corruptSettingsDirToFile ran.
+  `mount | grep -c TestUpdateSettings` = 0 after the panicking run, and no
+  leftover directory under /tmp — t.Cleanup's unmount ran even through a
+  panic, exactly as Go's testing framework guarantees via tRunner's defer
+  chain. Reverted (git diff clean afterward).
+- t.Parallel: grepped all five changed files plus majorexpenses/
+  coverage_test.go — zero hits. No cross-test mount/chmod path collision is
+  possible.
+No defect.
+
+============================================================
+ATTACK 4 — chmod-parent vs. sub-paths; syscall really fires for nobody.
+============================================================
+Traced scenarioPath() (settings.go:1691): every scenario file is joined
+directly under sm.settingsDir with `filepath.Join(sm.settingsDir, filename)`
+— a flat layout, no per-scenario subdirectories exist anywhere in this
+manager. So the "does chmod on the parent block writes in existing
+sub-paths" concern does not apply to this codebase; a parent-directory
+chmod/read-only-mount correctly gates every write, rename, and remove of the
+files living directly inside it.
+Empirically confirmed the syscall actually fires for a non-root uid that
+OWNS the directory (matching t.TempDir()'s real ownership, not a root-owned
+directory a non-owner can't even chmod): as `nobody`, created a directory
+`nobody` itself owned, chmod 0500 it, attempted `touch` inside — "Permission
+denied", rc=1. Then ran the real TestHandleWhatIfRothConversion_SaveError as
+nobody with -v: PASS, i.e. the handler's Save genuinely failed and returned
+500 as the test expects — not a silent, unenforced no-op.
+
+============================================================
+ATTACK 5 — full module, both uids, unmutated attempt-3 tree; -race.
+============================================================
+Fresh clean copies, `go test ./... -count=1`:
+- root (uid 0): 48 `ok` package lines, 0 `--- FAIL`, 0 `FAIL` package lines.
+- nobody (uid 65534, isolated HOME/GOCACHE/GOPATH/GOMODCACHE): 48 `ok`, 0
+  FAIL. Full module green both uids, matching the claim exactly.
+`-race -count=1` on internal/handlers/whatif, internal/services/retirement
+(+ subpackages), internal/handlers/majorexpenses: all `ok`, no DATA RACE
+warnings, confirming no port/namespace pollution across `go test`'s
+concurrently-scheduled packages.
+Post-run: `mount | grep -c ...` on the host = 0 — no leftover mounts from any
+of my runs.
+
+============================================================
+ATTACK 6 — diff review: weakening, renames, new skips.
+============================================================
+Read `git diff` of all five T3.3 files in full (this response quotes the
+load-bearing hunks). No assertion was loosened — every t.Fatalf/t.Error
+check that existed before is unchanged or strengthened (e.g.
+TestDeleteScenario_RemoveError's message was clarified, not its check).
+The only test whose SETUP mechanism changed beyond a straight chmod→
+helper swap is TestHandleSwitchScenario_GenericError (chmod 0o000 on
+settingsDir → an overlong scenario basename), and this is documented in the
+diff's own comment with a source-level justification (SwitchScenario never
+calls saveInternal, so it needs its own injection) — matches ATTACK 2(c)'s
+independent confirmation that this rework genuinely defends the branch.
+`grep -n "Geteuid\|t.Skip"` across all five files: the only Geteuid hits are
+the two expected uid-conditional branches INSIDE the two write-block helpers
+themselves (not test-level skips); the only t.Skip hits are five pre-existing,
+untouched-by-this-diff skips (`git diff | grep -n Skip` on the same files
+returns nothing) — one dangling-chain guard in handlers_test.go, four
+calculation-baseline guards in coverage_gaps_test.go — none uid-conditioned,
+none newly added.
+
+============================================================
+Net result
+============================================================
+Every specific, falsifiable claim in the dispatch was independently
+reproduced from scratch, not merely re-read: 27/30 whatif and 5/8 retirement
+kills with the identical survivor set at both uids on the original mutant;
+three fresh mutants at different sites (MkdirAll-only, atomicWrite-EROFS,
+SwitchScenario-generic-branch) produced zero new survivors and one
+additional kill; the bind-mount mechanism's capability handling, panic-safe
+cleanup, and absence of t.Parallel were reconfirmed against the actual
+call sites now using it, not assumed from majorexpenses' prior audit; the
+chmod-vs-subdirectory concern does not apply to this codebase's flat file
+layout, and the underlying syscall was shown to genuinely fire for an
+unprivileged, directory-owning uid; the full module is green at both uids,
+including under -race; and the diff contains no weakened assertion, no
+undocumented rename, and no new skip. I tried hard, across every angle in
+the brief plus my own mutants, and could not break this. PASS.

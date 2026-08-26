@@ -1,0 +1,232 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T3
+ATTEMPT: 1
+---
+Repo state at verification: HEAD 00abacd027c9c33a6864721e5429b617500bdaf9,
+branch claude/t3-root-proof-fixtures, work uncommitted.
+`git status --porcelain` before any of my commands:
+  M  .swarm/ledger.tsv          (lead)
+  A  .swarm/tier3/T3/report.md  (lead)
+   M internal/handlers/explorer/handlers_test.go
+   M internal/services/mcpsvc/curate/delete_test.go
+   M internal/services/mcpsvc/curate/upsert_test.go
+   M internal/services/storage/migration_decrypt_rollback_test.go
+  ?? .swarm/manifests/T3.1.files
+Container identity for every "root" run below: `id` -> uid=0(root).
+Toolchain: `go env GOVERSION` -> go1.26.6 (go.mod's pinned toolchain).
+All test/build/mutant runs were executed in my own copies under
+/tmp/claude-0/.../scratchpad (cp -a of the tree); the only write I made to
+/home/user/simplebudget is this verdict file.
+
+--------------------------------------------------------------------
+CRITERION 1 -- TEST-ONLY change, matches the manifest. PASS
+--------------------------------------------------------------------
+Command: `git diff --stat HEAD`
+  .swarm/ledger.tsv                                  |  1 +
+  .swarm/tier3/T3/report.md                          | 24 +++++++
+  internal/handlers/explorer/handlers_test.go        | 79 ++++++++++-------
+  internal/services/mcpsvc/curate/delete_test.go     | 33 +++++++--
+  internal/services/mcpsvc/curate/upsert_test.go     | 29 ++++++--
+  .../storage/migration_decrypt_rollback_test.go     | 35 +++++-----
+  6 files changed, 148 insertions(+), 53 deletions(-)
+Command: `git diff internal/ | grep '^+++'` -> exactly four lines, all *_test.go:
+  +++ b/internal/handlers/explorer/handlers_test.go
+  +++ b/internal/services/mcpsvc/curate/delete_test.go
+  +++ b/internal/services/mcpsvc/curate/upsert_test.go
+  +++ b/internal/services/storage/migration_decrypt_rollback_test.go
+No non-test .go file appears in the diff; no production file under internal/
+was touched. `git diff --cached --name-only` -> only .swarm/ledger.tsv and
+.swarm/tier3/T3/report.md (the lead's artifacts, as stated in the brief).
+The four paths are byte-identical to the four lines of
+.swarm/manifests/T3.1.files.
+
+--------------------------------------------------------------------
+CRITERION 2 -- THE HEADLINE: green as ROOT, seven tests PASS, no uid skips. PASS
+--------------------------------------------------------------------
+(a) Command (as root, uid 0):
+  go test -count=1 ./internal/services/storage/ ./internal/services/mcpsvc/curate/ ./internal/handlers/explorer/
+Output:
+  ok  	budget2/internal/services/storage	117.406s
+  ok  	budget2/internal/services/mcpsvc/curate	0.268s
+  ok  	budget2/internal/handlers/explorer	0.612s
+  RC=0
+
+(b) The seven targeted tests, `-v`, as root (three commands, one per package,
+    each with an anchored -run regex). Every `--- ` line produced:
+  --- PASS: TestRollbackDecryptionWithRecipientReportsUnrestorableFiles (3.19s)
+  --- PASS: TestRollbackDecryptionReportsFullPaths (0.89s)
+  --- PASS: TestDeleteAbortsWhenAnExistingFileCannotBeBackedUp (0.01s)
+  --- PASS: TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken (0.01s)
+  --- PASS: TestHandleFileUpload_WriteError (0.00s)
+  --- PASS: TestHandleFileDelete_RemoveError (0.00s)
+  --- PASS: TestHandleImport_FailedWriteKeepsSource (0.00s)
+  ok budget2/internal/services/storage 4.115s / curate 0.022s / explorer 0.011s
+Seven `--- PASS`, zero `--- SKIP`, zero `--- FAIL`. (I grepped `^--- ` so a
+SKIP could not have been hidden.)
+
+(c) Command: grep 'Geteuid|Getuid|t\.Skip' over the four manifest files.
+  delete_test.go, upsert_test.go: (none) -- no matches at all.
+  migration_decrypt_rollback_test.go:405 `t.Skip("NAME_MAX arithmetic ...
+    windows path-length semantics differ")`, guarded by `runtime.GOOS ==
+    "windows"` (line 404) inside TestRollbackDecryptionReportsPathOnAtomic-
+    WriteFailure -- a platform guard, not a uid guard; the only "Geteuid"
+    occurrence in the file is the word inside that test's prose comment
+    (line 389) describing the defect that was removed.
+  handlers_test.go:2545 and :2929 `t.Skipf("symlinks unsupported here: %v")`
+    -- pre-existing, in TestHandleImport_SymlinkNotFollowedTargetSurvives and
+    TestHandleImport_SymlinkedImportDirectoryStillImports, neither of which
+    is a reworked test; both fell in the "ok" runs above without skipping.
+No uid-conditioned skip remains anywhere in the four files. The diff confirms
+the direction of travel -- `git diff internal/ | grep -E '^[-+].*(Skip|Geteuid)'`
+returns three lines, ALL deletions, none added:
+  -	if os.Geteuid() == 0 {
+  -		t.Skip("running as root: an unwritable directory does not block writes")
+  -		t.Skip("running with privileges that ignore permission bits; cannot force a read failure")
+
+--------------------------------------------------------------------
+CRITERION 3 -- still green as UNPRIVILEGED uid 65534. PASS
+--------------------------------------------------------------------
+Setup per NEXT.md "Environment facts #1": second `cp -a` of the tree,
+`chmod -R a+rwX`, nobody-owned HOME/GOCACHE/GOPATH/GOMODCACHE under /tmp
+(root's /root/go/pkg/mod copied in so the pinned toolchain resolves offline).
+Command: `su nobody -s /bin/bash -c '... go test -count=1 <three pkgs>'`
+Output:
+  uid=65534(nobody) gid=65534(nogroup) groups=65534(nogroup)
+  go version go1.26.6 linux/amd64
+  ok  	budget2/internal/services/storage	120.763s
+  ok  	budget2/internal/services/mcpsvc/curate	0.354s
+  ok  	budget2/internal/handlers/explorer	0.746s
+  RC=0
+Additionally, the seven targeted tests `-v` as nobody: seven `--- PASS`, zero
+`--- SKIP` (same anchored regexes as 2b). Root-green was not bought with
+nobody-red.
+
+--------------------------------------------------------------------
+CRITERION 4 -- MUTANT KILLS as root. PASS (all SIX reproduced, not four)
+--------------------------------------------------------------------
+Each mutant was applied to its own throwaway `cp -a` copy under
+/tmp/claude-0/...; the real tree was never mutated.
+
+(1) internal/services/storage/migration.go -- all four occurrences of
+    `failed = append(failed, path)` -> `failed = append(failed, filepath.Base(path))`
+    (grep of the mutated file confirms lines 455/472/487/489 rewritten).
+    `go test -run '^(TestRollbackDecryptionWithRecipientReportsUnrestorableFiles|TestRollbackDecryptionReportsFullPaths)$' ./internal/services/storage/`
+      --- FAIL: TestRollbackDecryptionWithRecipientReportsUnrestorableFiles (2.44s)
+        migration_decrypt_rollback_test.go:246: expected failed=[/tmp/.../unreadable.csv], got [unreadable.csv]
+      --- FAIL: TestRollbackDecryptionReportsFullPaths (0.75s)
+        migration_decrypt_rollback_test.go:323: report names "exposed.csv", which does not say where the file is; want a path under "/tmp/..."
+    Both storage tests fail, and they fail precisely on basename-vs-full-path.
+
+(2) internal/services/mcpsvc/curate/delete.go -- the Ensure tolerance widened
+    from `errors.Is(err, fs.ErrNotExist)` to `errors.Is(err, fs.ErrNotExist) || err != nil`
+    (i.e. every backup failure tolerated instead of aborting):
+      --- FAIL: TestDeleteAbortsWhenAnExistingFileCannotBeBackedUp (0.01s)
+        delete_test.go:173: expected an explicit refusal naming major_expenses.json, got: read /tmp/.../major_expenses.json: is a directory
+    The failure text also proves the injected errno reaching the code is EISDIR.
+
+(3) internal/services/mcpsvc/curate/upsert.go -- pin-skip guard neutered
+    (`if snapErr != nil && !errors.Is(snapErr, fs.ErrNotExist) && false`):
+      --- FAIL: TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken (0.01s)
+        upsert_test.go:191: expected a note explaining the pin was skipped
+
+(4) internal/handlers/explorer/handlers.go handleFileDelete -- the
+    `if err := store.Remove(filePath); err != nil { http.Error(...500); return }`
+    block replaced by `_ = store.Remove(filePath)`:
+      --- FAIL: TestHandleFileDelete_RemoveError (0.00s)
+        handlers_test.go:1942: expected 500 for remove error, got 200
+
+(5) internal/handlers/explorer/handlers.go upload path -- the non-ErrExist
+    return (`return uploadOutcome{... "rejected", "error saving file"}`)
+    deleted so a failed CreateExclusive falls through to "saved":
+      --- FAIL: TestHandleFileUpload_WriteError (0.00s)
+        handlers_test.go:1901: expected status rejected, got {Name:test.csv Status:saved Reason:}
+
+(6) internal/handlers/explorer/handlers.go import path -- source deleted on a
+    failed write (`if deleteSource { _ = deps.removeSrc(srcPath) }` inserted
+    in the write-error branch):
+      --- FAIL: TestHandleImport_FailedWriteKeepsSource (0.00s)
+        handlers_test.go:2595: a failed write must leave the source in place: expected /tmp/.../ddd...ddd.csv to exist, got lstat ...: no such file or directory
+
+Bonus (the brief's own accept wording asks for kills at BOTH uids): mutants
+(1), (5) and (2) were re-run as uid 65534 on nobody-owned copies and failed
+identically -- migration_decrypt_rollback_test.go:246 / :323,
+handlers_test.go:1901, delete_test.go:173.
+
+--------------------------------------------------------------------
+CRITERION 5 -- injection precision (EISDIR is NOT tolerated as ErrNotExist). PASS
+--------------------------------------------------------------------
+Branch logic, internal/services/mcpsvc/curate/delete.go:118-124:
+  p, err := deps.Snapshots.Ensure(f, now)
+  if err != nil {
+      if errors.Is(err, fs.ErrNotExist) { continue }          // tolerated
+      return nil, deleteOutput{}, fmt.Errorf("refusing to write: could not back up %s: %w", f, err)   // abort
+  }
+and the mirror in upsert.go:180 (`if snapErr != nil && !errors.Is(snapErr,
+fs.ErrNotExist) { ...skip the pin... }`). So the injection must produce an
+error that is NOT fs.ErrNotExist, or the test would silently exercise the
+tolerated branch instead of the one it names.
+I did not take this on inspection. Command: a standalone Go probe
+(`go run` in a scratch module) classifying each injection's real errno:
+  directory-swap     err=read .../asdir: is a directory        | errors.Is(fs.ErrNotExist)=false | EISDIR=true
+  dangling-symlink   err=open .../dangling: no such file...    | errors.Is(fs.ErrNotExist)=true  | EISDIR=false
+  file-as-datadir    err=open .../f/child: not a directory     | errors.Is(fs.ErrNotExist)=false | ENOTDIR=true
+  chmod-0000         bytes="secret" err=<nil>  (uid=0)
+Three things follow, all mechanically demonstrated:
+ - the curate directory-swap yields EISDIR, which is false for
+   errors.Is(fs.ErrNotExist), so it lands in delete.go's abort branch /
+   upsert.go's pin-skip branch -- the branches the two tests defend. Mutant
+   (2) above independently confirms the code reaches that branch with the
+   message "...is a directory".
+ - a dangling symlink WOULD have been swallowed by the fs.ErrNotExist
+   tolerance, so it is correctly NOT used in curate.
+ - ENOENT via dangling symlink is nevertheless the right choice in
+   internal/services/storage: rollbackDecryptionWithRecipient
+   (migration.go:450-457) has no ErrNotExist tolerance at all -- ANY
+   os.ReadFile error goes straight to `failed = append(failed, path)`.
+   Mutant (1) proves the tests reach exactly that append.
+ - the last probe line is the defect this task exists to fix: at uid 0 a
+   chmod-0000 file is read straight through, err=<nil>. The old fixtures
+   could not have failed as root.
+
+--------------------------------------------------------------------
+CRITERION 6 -- stability under -race, three runs. PASS
+--------------------------------------------------------------------
+Command (as root):
+  go test -race -count=3 -v -run '^(TestRollbackDecryptionWithRecipientReportsUnrestorableFiles|TestRollbackDecryptionReportsFullPaths|TestHandleFileDelete_RemoveError|TestHandleFileUpload_WriteError|TestHandleImport_FailedWriteKeepsSource)$' ./internal/services/storage/ ./internal/handlers/explorer/
+Result lines, counted (`sort | uniq -c`):
+  3 --- PASS: TestHandleFileDelete_RemoveError
+  3 --- PASS: TestHandleFileUpload_WriteError
+  3 --- PASS: TestHandleImport_FailedWriteKeepsSource
+  3 --- PASS: TestRollbackDecryptionReportsFullPaths (2x 5.46s, 1x 5.62s)
+  3 --- PASS: TestRollbackDecryptionWithRecipientReportsUnrestorableFiles (21.92/22.04/27.14s)
+  ok  budget2/internal/handlers/explorer 1.025s
+  ok  budget2/internal/services/storage  88.740s
+15 PASS, zero FAIL, zero `WARNING: DATA RACE` (the grep included ^WARNING).
+Deterministic across all three iterations.
+
+--------------------------------------------------------------------
+CRITERION 7 -- gofmt / vet / build. PASS
+--------------------------------------------------------------------
+  gofmt -l <the four files>              -> no output, rc 0 (nothing unformatted)
+  go vet ./internal/services/storage/ ./internal/services/mcpsvc/curate/ ./internal/handlers/explorer/
+                                         -> no output, vet_rc=0
+  go build ./...                         -> no output, build_rc=0
+
+--------------------------------------------------------------------
+SCOPE
+--------------------------------------------------------------------
+Manifest .swarm/manifests/T3.1.files lists exactly the four *_test.go files
+that `git diff` shows modified -- no more, no less. One of them,
+internal/services/storage/migration_decrypt_rollback_test.go, matches
+.swarm/critical.globs pattern `internal/services/storage/**`; the ledger row
+`T3  3  tests,second  building  1  worker-coder  ruling-2026-08-25a-single-arm-test-only`
+carries Tier 3, which permits it. No production code, no docs, no config, no
+web asset was touched by the worker.
+Observation for the lead, not a criterion: .swarm/tier3/T3/report.md contains
+no `RESOLUTION:` line (grep -c RESOLUTION -> 0), which gate.sh check requires
+at Tier 3. That is the lead's artifact, outside this task's manifest, and is
+not counted against the worker here.
+I modified nothing in /home/user/simplebudget except this verdict file; every
+build, test and mutation ran in copies under /tmp/claude-0/.

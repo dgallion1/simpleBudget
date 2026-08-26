@@ -30,7 +30,11 @@ forever — do NOT "fix" it). Recent history:
 
 ## Environment facts — read before running anything
 
-1. **Verification containers may run as root (uid 0).** Three pre-existing
+1. **RESOLVED by T3 (2026-08-26): the full module now passes under root.**
+   The inventory below is historical; the recipe remains useful only if a
+   future test reintroduces a DAC-based fixture (don't — use the T3
+   patterns).
+   Original note: **Verification containers may run as root (uid 0).** Three pre-existing
    tests rely on `chmod`-denial fixtures that root bypasses
    (`CAP_DAC_OVERRIDE`), so they FAIL (or a mutation goes undetected) under
    root while being green at any normal uid:
@@ -134,7 +138,21 @@ finding cluster.
 recounted list on the File Manager page; no visual regression on the other
 pages' shared components.
 
-### T3 — make the root-broken fixtures root-proof (four known). Tier 2, checks
+### T3 — DONE (accepted 2026-08-26, attempt 3, tier 3 under rulings
+2026-08-25a/26a/26b). The real inventory was 56 tests (attempt 2's
+adversarial lane found 49 beyond the first seven); all now use
+kernel-enforced injections (ENOENT/EISDIR/ENOTEMPTY/ENOTDIR/ENAMETOOLONG,
+plus a uid-conditional write-block: chmod for non-root, bind-mount+RDONLY
+for root, t.Fatalf if mount setup fails). Attempt 2 taught the class's
+sharpest lesson: an injection that breaks the LOAD makes save tests green
+but defenseless — attempt 3 restored exact mutant-kill parity with the
+chmod baseline (27/30 whatif, 5/8 retirement, survivors source-verified as
+never reaching saveInternal). The FULL module is now green under root and
+under ordinary uids; the Environment facts #1 recipe is no longer needed
+for suite runs (kept for reference). Evidence: .swarm/verdicts/T3.{1,2,3}.*,
+.swarm/tier3/T3/report.md.
+
+### T3 (original brief, retained for context) — make the root-broken fixtures root-proof (four known). Tier 2, checks
 `tests,second`. The tests in "Environment facts #1" fail under root.
 Options per test: a root-proof injection (the ENAMETOOLONG pattern, or
 rename-onto-directory), or an explicit documented `t.Skip` under uid 0 —

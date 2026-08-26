@@ -1,0 +1,332 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T3
+ATTEMPT: 2
+---
+Repo state at verification:
+  `git rev-parse HEAD` -> 00abacd027c9c33a6864721e5429b617500bdaf9
+  `git branch --show-current` -> claude/t3-root-proof-fixtures
+  `git status --porcelain`:
+     M .swarm/ledger.tsv
+    A  .swarm/tier3/T3/report.md
+     M cmd/enrich-amazon/main_test.go
+     M internal/config/config_test.go
+     M internal/handlers/backup/handlers_test.go
+     M internal/handlers/explorer/handlers_test.go
+     M internal/handlers/majorexpenses/coverage_test.go
+     M internal/handlers/whatif/coverage_gaps_test.go
+     M internal/handlers/whatif/handlers_test.go
+     M internal/services/mcpsvc/curate/delete_test.go
+     M internal/services/mcpsvc/curate/upsert_test.go
+     M internal/services/retirement/coverage_gaps4_test.go
+     M internal/services/retirement/coverage_gaps_test.go
+     M internal/services/retirement/settings_crud_test.go
+     M internal/services/storage/migration_decrypt_rollback_test.go
+    ?? .swarm/manifests/T3.1.files
+    ?? .swarm/manifests/T3.2.files
+    ?? .swarm/verdicts/T3.1.checker-second.verdict
+    ?? .swarm/verdicts/T3.1.checker-tests.verdict
+  `id` -> uid=0(root) gid=0(root)   `go version` -> go1.26.6 linux/amd64
+All runs were made in my own copies (cp -a) under
+/tmp/claude-0/.../scratchpad/t3c2 and /tmp/t3c2n (the unprivileged tree had
+to sit outside /tmp/claude-0, which is mode 0700 root-owned and therefore
+not traversable by uid 65534 -- `namei -l` confirmed
+`drwx------ root root claude-0`). The only write to /home/user/simplebudget
+is this verdict file.
+
+====================================================================
+CRITERION 1 -- TEST-ONLY, matches the manifests, engine untouched.  PASS
+====================================================================
+Command: `git diff --name-only -- '*.go'` -> exactly 13 paths, every one a
+*_test.go:
+  cmd/enrich-amazon/main_test.go
+  internal/config/config_test.go
+  internal/handlers/backup/handlers_test.go
+  internal/handlers/explorer/handlers_test.go
+  internal/handlers/majorexpenses/coverage_test.go
+  internal/handlers/whatif/coverage_gaps_test.go
+  internal/handlers/whatif/handlers_test.go
+  internal/services/mcpsvc/curate/delete_test.go
+  internal/services/mcpsvc/curate/upsert_test.go
+  internal/services/retirement/coverage_gaps4_test.go
+  internal/services/retirement/coverage_gaps_test.go
+  internal/services/retirement/settings_crud_test.go
+  internal/services/storage/migration_decrypt_rollback_test.go
+These are exactly the union of .swarm/manifests/T3.1.files (4) and
+.swarm/manifests/T3.2.files (9).
+Command: `git diff --name-only -- '*.go' | grep -v '_test\.go$'` -> no output
+(printed my "NONE (good)" fallback), i.e. zero production .go files.
+Command: `git diff --name-only -- 'internal/services/retirement/engine/'`
+  -> empty. engine/** untouched.
+Command: `git diff --cached --name-only` -> .swarm/tier3/T3/report.md only
+(the lead's artifact).
+
+====================================================================
+CRITERION 2 -- THE CRITERION: full module `go test -count=1 ./...` as ROOT. PASS
+====================================================================
+Command (uid 0, in /tmp/.../t3c2/root-tree, whole module, not scoped):
+  go test -count=1 ./...
+Tail of the package summary (all 50 lines were captured; the slow ones
+named in the brief are included):
+  ok  	budget2/internal/handlers/backup	53.896s
+  ok  	budget2/internal/handlers/whatif	151.848s
+  ok  	budget2/internal/services/retirement	185.080s
+  ok  	budget2/internal/services/retirement/analysis	151.627s
+  ok  	budget2/internal/services/storage	143.418s
+  ok  	budget2/internal/services/transfers	0.010s
+  ok  	budget2/internal/templates	1.046s
+  ok  	budget2/internal/testutil	0.007s
+  ok  	budget2/internal/version	0.008s
+  ?   	budget2/web	[no test files]
+  RC=0
+Counts from that log:
+  `grep -c "^--- FAIL"` -> 0
+  `grep -c "^FAIL"`     -> 0
+  `grep -c "^ok"`       -> 48   (+1 "no test files" = 49 packages)
+The 49 root failures checker-second found at attempt 1 are gone.
+
+====================================================================
+CRITERION 3 -- full module as UNPRIVILEGED uid 65534.  PASS
+====================================================================
+Command (nobody's own HOME/GOCACHE/GOPATH/GOMODCACHE/GOTMPDIR under
+/tmp/t3c2n/home, tree copy chmod -R a+rwX):
+  su nobody -s /bin/bash -c '... cd /tmp/t3c2n/tree && go test -count=1 ./...'
+  In-run identity echo: `uid=65534(nobody) gid=65534(nogroup)`;
+  `go env GOVERSION` -> go1.26.6 (pinned toolchain, auto-downloaded).
+Tail:
+  ok  	budget2/internal/handlers/backup	57.418s
+  ok  	budget2/internal/handlers/whatif	249.260s
+  ok  	budget2/internal/services/retirement	378.481s
+  ok  	budget2/internal/services/retirement/analysis	268.599s
+  ok  	budget2/internal/services/storage	276.201s
+  ok  	budget2/internal/version	0.042s
+  ?   	budget2/web	[no test files]
+  RC=0
+Counts: `grep -c "^--- FAIL"` -> 0; `grep -c "^FAIL"` -> 0; `^ok` -> 48.
+
+====================================================================
+CRITERION 4 -- NO NEW SKIPS among the 56 reworked tests.  PASS
+====================================================================
+The 56 = attempt-1's seven (TestRollbackDecryptionWithRecipientReports-
+UnrestorableFiles, TestRollbackDecryptionReportsFullPaths, TestDeleteAborts-
+WhenAnExistingFileCannotBeBackedUp, TestUpsertSkipsThePinWhenItsSnapshot-
+CannotBeTaken, TestHandleFileUpload_WriteError, TestHandleFileDelete_Remove-
+Error, TestHandleImport_FailedWriteKeepsSource) + attempt-2's 49, taken
+verbatim from `grep '^--- FAIL' /tmp/.../t3check/root-full.log` (the
+attempt-1 root log), with TestLoadUserSettingsPermissionError mapped to its
+new name TestLoadUserSettingsReadError. Each name was resolved to its
+package by grepping its `func` definition; all 56 resolved
+(1 enrich-amazon, 1 config, 1 handlers/backup, 3 explorer, 8 majorexpenses,
+30 whatif, 2 curate, 8 retirement, 2 storage).
+Command (as root, one anchored -run per package, 9 commands):
+  go test -count=1 -v -run "^(<that package's names>)$" <pkg>
+Result over all nine:
+  `grep -c "^--- PASS"`             -> 56
+  `grep -E "^--- (SKIP|FAIL)"`      -> no output
+No SKIP and no FAIL among the 56 at uid 0.
+
+Pre-existing skips, named so they are distinguished (all OUT of the 56, none
+added by this diff):
+  `git diff -- '*.go' | grep -E '^[-+].*(t\.Skip|Geteuid|Getuid)'` returns
+  four lines: three DELETIONS (the two uid-0 skips and their guard) and one
+  ADDITION, `+ if os.Geteuid() != 0 {` in majorexpenses (the uid branch of
+  makeDirWriteBlocked, not a skip).
+  Module-wide `grep -rn "Geteuid() == 0" --include=*_test.go .` -> 20 hits
+  (19 real guards + 1 prose comment at storage/migration_decrypt_rollback_
+  test.go:389). All are pre-existing and untouched, in:
+  internal/services/backup/coverage_test.go (11),
+  internal/handlers/backup/coverage_gaps_test.go (3),
+  internal/handlers/backup/handlers_test.go (1 --
+  TestHandleRestore_ReportsPruneFailures:3793-3795, verified skipping:
+  `go test -v -run '^TestHandleRestore_ReportsPruneFailures$'` ->
+  `--- SKIP: TestHandleRestore_ReportsPruneFailures (0.00s)`),
+  internal/services/mcpsvc/ledger/anchor_load_failure_test.go (1),
+  internal/services/restore/restore_test.go (1),
+  internal/services/restore/archive_test.go (1),
+  internal/services/accounts/mutate_warnings_test.go (1),
+  internal/handlers/accounts/load_failure_test.go (1).
+  Also platform/environment skips: ssh-keygen, YubiKey, mkfifo, symlink and
+  "no home dir" guards. FYI for the lead: part of criterion 2's green-under-
+  root comes from those 19 pre-existing uid-0 self-skips, i.e. the defect
+  class is broader than the 56. Out of this brief's scope; not scored here.
+
+====================================================================
+CRITERION 5 -- MUTANT KILLS (five required).  FAIL -- (b) SURVIVES
+====================================================================
+All mutations applied to scratch copies of the tree, run as root unless
+noted. Each mutation is a one-site production-code swallow.
+
+(a) whatif, the makeSaveFail-covered path.  KILLED.
+    Mutation, internal/handlers/whatif/handlers.go, saveAndRecalc (the
+    closure recalcAndRender invokes as mutate()):
+      revision, err := retirementMgr.SaveWithRevision(settings)
+      if err != nil { return nil, 0, err }        <- deleted
+    -> `revision, _ := retirementMgr.SaveWithRevision(settings)`.
+    Command: go test -v -run "^(<the 30 whatif names>)$" ./internal/handlers/whatif/
+    Nine failing lines:
+      --- FAIL: TestHandleWhatIfRothConversion_SaveError (0.02s)
+      --- FAIL: TestHandleWhatIfSocialSecurity_SaveError (0.02s)
+      --- FAIL: TestHandleWhatIfGlidePath_SaveError (0.02s)
+      --- FAIL: TestHandleWhatIfGuardrails_SaveError (0.02s)
+      --- FAIL: TestHandleWhatIfAddPhase_SaveError (0.02s)
+      --- FAIL: TestHandleWhatIfResetPhases_SaveError (0.03s)
+      --- FAIL: TestHandleWhatIfSync_SaveError (0.03s)
+      --- FAIL: TestHandleWhatIfDeletePhase_SaveError (0.02s)
+      FAIL	budget2/internal/handlers/whatif	0.206s
+
+(c) majorexpenses save-swallow -- proves the BIND-MOUNT injection enforces
+    under root.  KILLED.
+    Mutation, internal/services/dataloader/major_expenses.go,
+    saveMajorExpensesLocked: `return tx.WriteFile(dl.majorExpensesPath(),
+    data, 0644)` -> `_ = tx.WriteFile(...); return nil`.
+    Command (as ROOT, so makeDirWriteBlocked takes the
+    syscall.Mount MS_BIND|MS_REMOUNT|MS_RDONLY branch):
+      go test -v -run "^(<the 8 _SaveFails names>)$" ./internal/handlers/majorexpenses/
+    Failing lines:
+      --- FAIL: TestHandleAdd_SaveFails (0.00s)
+      --- FAIL: TestHandleUpdate_SaveFails (0.00s)
+      FAIL	budget2/internal/handlers/majorexpenses	0.015s
+    Parity check against the old fixture: the ORIGINAL (HEAD) coverage_test.go
+    with the same mutation, run as uid 65534, kills exactly the same two and
+    no others (--- FAIL: TestHandleAdd_SaveFails / TestHandleUpdate_SaveFails,
+    six PASS). No loss of mutation detection here; the read-only bind mount
+    is a faithful root-proof replacement for chmod 0500.
+
+(d) config ReadFile swallow.  KILLED.
+    Mutation, internal/config/config.go LoadUserSettings: the non-IsNotExist
+    `return nil, err` replaced by `return make(map[string]interface{}), nil`.
+    Command: go test -v -run '^TestLoadUserSettingsReadError$' ./internal/config/
+      config_test.go:306: expected a read error
+      --- FAIL: TestLoadUserSettingsReadError (0.00s)
+      FAIL	budget2/internal/config	0.003s
+
+(e) enrich-amazon SaveAmazonEnrichment swallow.  KILLED.
+    Mutation, internal/services/dataloader/amazon_enrichment.go: `return
+    tx.WriteFile(dl.amazonEnrichmentPath(), data, 0644)` -> `_ =
+    tx.WriteFile(...); return nil`.
+    Command: go test -v -run '^TestRun_SaveEnrichmentError$' ./cmd/enrich-amazon/
+      main_test.go:317: expected 'save enrichment' error, got <nil>
+      --- FAIL: TestRun_SaveEnrichmentError (0.00s)
+      FAIL	budget2/cmd/enrich-amazon	0.005s
+
+(b) retirement, the corruptSettingsDirToFile path.  *** MUTANT SURVIVES ***
+    Mutation, internal/services/retirement/settings.go, saveInternal -- the
+    two error returns on the write path swallowed:
+      if err := sm.store.MkdirAll(sm.settingsDir, 0755); err != nil { return err }
+        -> _ = sm.store.MkdirAll(sm.settingsDir, 0755)
+      if err := sm.store.WriteFile(sm.filepath(), data, 0644); err != nil { return err }
+        -> _ = sm.store.WriteFile(sm.filepath(), data, 0644)
+    This is the save-failure branch every corruptSettingsDirToFile /
+    writeProtectedSM test is named for.
+
+    As ROOT, reworked tests:
+      go test -v -run "^(<the 8 retirement names>)$" ./internal/services/retirement/
+        --- PASS: TestPurgeRemovedIncomeSource_SaveFailure (0.00s)
+        --- PASS: TestPurgeRemovedExpenseSource_SaveFailure (0.00s)
+        --- PASS: TestPurgeRemovedBigTicketItem_SaveFailure (0.00s)
+        --- PASS: TestLoadScenarioSettings_ReadError (0.00s)
+        --- PASS: TestUpdateSettings_SaveError (0.00s)
+        --- PASS: TestDeleteScenario_RemoveError (0.00s)
+        --- PASS: TestRenameScenario_WriteError (0.00s)
+        --- PASS: TestCRUD_SaveErrors (0.00s)
+        ok  	budget2/internal/services/retirement	0.012s
+    As uid 65534, reworked tests, same mutation: 8/8 PASS, `ok`.
+    So ZERO of the eight kill it, at either uid.
+
+    That the mutant is real -- and that the OLD fixture killed it -- is shown
+    by restoring only the three retirement *_test.go files to HEAD in the
+    same mutated tree (`git checkout HEAD -- internal/services/retirement/
+    coverage_gaps4_test.go coverage_gaps_test.go settings_crud_test.go`;
+    `git diff --stat -- internal/services/retirement/settings.go` confirms
+    the mutation is still in place) and running as uid 65534:
+        --- FAIL: TestPurgeRemovedIncomeSource_SaveFailure (0.00s)
+        --- FAIL: TestPurgeRemovedExpenseSource_SaveFailure (0.00s)
+        --- FAIL: TestPurgeRemovedBigTicketItem_SaveFailure (0.00s)
+        --- FAIL: TestUpdateSettings_SaveError (0.00s)
+        --- FAIL: TestCRUD_SaveErrors (0.01s)
+        FAIL	budget2/internal/services/retirement	0.014s
+    Five tests killed it before, none kill it now.
+
+    Root cause: corruptSettingsDirToFile deletes the settings directory's
+    contents and replaces the directory with a plain file, so
+    loadInternal's own store.MkdirAll(settingsDir) fails ENOTDIR FIRST.
+    Every one of these tests now returns an error from the LOAD, never
+    reaching the save it is named for. The old chmod 0500 kept the directory
+    readable and its file readable, so the load succeeded and only the write
+    failed -- which is what made the tests save-path tests. This is exactly
+    the trap the worker documented in makeSaveFail's own comment ("the test
+    would be proving 'load breaks' not 'save fails,' and a mutation to the
+    save path alone would go undetected") and then did not avoid in
+    corruptSettingsDirToFile.
+
+    The same regression hits whatif's makeSaveFail (identical body). Against
+    mutation (b):
+      REWORKED whatif 30, as root:  11 --- FAIL
+      REWORKED whatif 30, as nobody: 10 --- FAIL
+      ORIGINAL (HEAD) whatif 30 test files in the same mutated tree, as
+      nobody: 27 --- FAIL (every _SaveError except SwitchScenario_Generic-
+      Error, DeleteScenario_NonTypedError, RenameScenario_NonTypedError).
+    So ~16 whatif tests plus 5 retirement tests -- about 21 of the 56 --
+    have lost the save-path mutation detection they had at uid != 0.
+    Four of the five required kills reproduce; (b) does not. Criterion 5,
+    and NEXT.md's "each reworked test still kills its original mutation at
+    both uids", are not met.
+
+====================================================================
+CRITERION 6 -- the config test rename is licensed by the production code. PASS
+====================================================================
+Read internal/config/config.go:151-166. The whole non-IsNotExist branch is:
+    data, err := os.ReadFile(c.UserSettingsFile)
+    if err != nil {
+        if os.IsNotExist(err) { return make(map[string]interface{}), nil }
+        return nil, err
+    }
+One `return nil, err` for every read error; nothing keys on the error kind.
+Command: `grep -rn "IsPermission\|ErrPermission\|EACCES\|EPERM\|fs.ErrPermission"
+internal/config/` -> no matches.
+Command: `grep -n "IsNotExist\|errors.Is\|errors.As" internal/config/config.go`
+-> a single line, 154: `if os.IsNotExist(err) {`.
+The production code does not distinguish permission errors anywhere in the
+package, so PermissionError -> ReadError is an honest rename, and the EISDIR
+injection lands in the identical branch. Mutant (d) above confirms the
+renamed test still defends that branch.
+
+====================================================================
+CRITERION 7 -- hygiene.  PASS
+====================================================================
+`gofmt -l $(cat .swarm/manifests/T3.1.files .swarm/manifests/T3.2.files)`
+  -> no output over all 13 files (rc 0).
+`go vet ./...`   -> no output, rc=0.
+`go build ./...` -> no output, rc=0.
+After the full-module ROOT run (which exercises the majorexpenses bind-mount
+injection eight times):
+  `mount | grep -i budget`        -> no matches
+  `mount | grep -E "/tmp|TestHandle"` -> no matches
+  `mount | wc -l`                 -> 24 (unchanged baseline)
+No leftover bind mounts; the MNT_DETACH cleanup does unwind.
+
+====================================================================
+SCOPE
+====================================================================
+Change is test-only and confined to the 13 manifest files (criterion 1).
+Nothing outside them was modified. internal/services/storage/** is the one
+critical glob touched, permitted at Tier 3, and only in
+migration_decrypt_rollback_test.go.
+My own writes: this verdict file only. All runs in copies under
+/tmp/claude-0/.../scratchpad/t3c2 and /tmp/t3c2n.
+
+====================================================================
+WHAT MUST CHANGE FOR A PASS
+====================================================================
+corruptSettingsDirToFile (internal/services/retirement/coverage_gaps4_test.go)
+and makeSaveFail (internal/handlers/whatif/handlers_test.go) must fail the
+SAVE while leaving the LOAD working, as chmod 0500 did. Replacing the
+settings directory with a file breaks both. A root-proof injection that
+preserves the asymmetry is already in this same changeset: the read-only
+bind mount used by makeDirWriteBlocked in
+internal/handlers/majorexpenses/coverage_test.go, which mutant (c) proves
+still kills a save-swallow under root -- or the NAME_MAX/ENAMETOOLONG
+pattern already used in TestRenameScenario_WriteError. Re-verification must
+re-run mutation (b) and require the five retirement tests and the ~16 whatif
+tests to fail with it at both uids.

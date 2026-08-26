@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -5503,16 +5504,19 @@ func TestHandleWhatIfSocialSecurity_PopulatesPortfolio(t *testing.T) {
 	}
 }
 
-// ── Save() failure tests via chmod-readonly settingsDir ─────────────────────
+// ── Save() failure tests via a write-blocked settingsDir ────────────────────
 //
 // The helpers below set up an environment where retirementMgr.Save will fail
-// because the settings directory is read-only. They prime the load cache
-// (so Load() succeeds via cache) and then chmod the dir before calling the
-// handler so the subsequent Save fails. t.Cleanup restores 0o755 so that
-// t.TempDir's cleanup can remove the dir.
+// because the settings directory rejects writes while staying fully
+// readable. They prime the load cache (so Load() succeeds via cache; the
+// CRUD-style handlers that instead call loadInternal() directly also
+// succeed, because the directory and its files are untouched and still
+// readable) and then write-block the dir before calling the handler so only
+// the subsequent Save fails. t.Cleanup lifts the write-block so t.TempDir's
+// cleanup can remove the dir.
 
 // setupTestEnvWithDir is like setupTestEnv but also returns the underlying
-// settingsDir so tests can chmod it to provoke Save failures.
+// settingsDir so tests can write-block it to provoke Save failures.
 func setupTestEnvWithDir(t *testing.T) (*retirement.SettingsManager, string, func()) {
 	t.Helper()
 
@@ -5544,17 +5548,49 @@ func setupTestEnvWithDir(t *testing.T) (*retirement.SettingsManager, string, fun
 	return rm, settingsDir, cleanup
 }
 
-// makeSaveFail chmod's settingsDir to 0o500 (read+execute, no write) so the
-// next Save() call fails. Registers a Cleanup to restore 0o755 so t.TempDir
-// can purge the directory.
+// makeSaveFail used to chmod settingsDir to 0o500 (read+execute, no write) so
+// the next persistence attempt failed. root's CAP_DAC_OVERRIDE ignores
+// permission bits entirely, so that chmod is a no-op failure injection under
+// root (any root CI, this verification container included) -- the intended
+// SaveError/NonTypedError/GenericError branch never fires there, and any
+// mutation of that branch goes undetected.
+//
+// A later revision replaced settingsDir with a plain FILE at the same path
+// (ENOTDIR), which is root-proof but wrong-reasoned: SettingsManager's
+// loadInternal ALSO opens with store.MkdirAll(sm.settingsDir, 0755) as its
+// very first step, so that ENOTDIR failed the LOAD before saveInternal --
+// the branch these tests are named for -- ever ran, and a mutation that
+// swallows saveInternal's own error went undetected in every caller whose
+// handler loads via loadInternal directly (bypassing primeLoadCache's cache).
+//
+// This is the same asymmetry majorexpenses/coverage_test.go's
+// makeDirWriteBlocked solves (see that function's doc comment for the full
+// rationale): leave settingsDir a real, readable directory -- so loads of
+// data already on disk keep succeeding -- and block only WRITES beneath it.
+// chmod 0o500 (r-x, no w) does that for an ordinary uid; root's
+// CAP_DAC_OVERRIDE bypasses a chmod, so for root the directory is instead
+// bind-mounted onto itself and that bind remounted read-only, which EROFS
+// enforces at the VFS mount layer -- nothing DAC-related can bypass it.
+// Existing files stay readable either way; only new writes (creating the
+// staging file storage.atomicWrite needs for its rename-based replace, or a
+// scenario-file create/remove) are refused.
 func makeSaveFail(t *testing.T, settingsDir string) {
 	t.Helper()
-	if err := os.Chmod(settingsDir, 0o500); err != nil {
-		t.Fatalf("chmod 0o500 %s: %v", settingsDir, err)
+	if os.Geteuid() != 0 {
+		if err := os.Chmod(settingsDir, 0o500); err != nil {
+			t.Fatalf("chmod 0500 %s: %v", settingsDir, err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(settingsDir, 0o755) })
+		return
 	}
-	t.Cleanup(func() {
-		_ = os.Chmod(settingsDir, 0o755)
-	})
+	if err := syscall.Mount(settingsDir, settingsDir, "", syscall.MS_BIND, ""); err != nil {
+		t.Fatalf("bind mount %s onto itself: %v", settingsDir, err)
+	}
+	if err := syscall.Mount("", settingsDir, "", syscall.MS_BIND|syscall.MS_REMOUNT|syscall.MS_RDONLY, ""); err != nil {
+		_ = syscall.Unmount(settingsDir, syscall.MNT_DETACH)
+		t.Fatalf("remount %s read-only: %v", settingsDir, err)
+	}
+	t.Cleanup(func() { _ = syscall.Unmount(settingsDir, syscall.MNT_DETACH) })
 }
 
 // primeLoadCache loads settings once so that subsequent Load() calls hit
@@ -7683,11 +7719,10 @@ func TestHandleCreateScenario_NonTypedError(t *testing.T) {
 	defer cleanup()
 	primeLoadCache(t, rm)
 
-	// chmod the dir so the saveInternal inside CreateScenario fails.
-	if err := os.Chmod(dir, 0o500); err != nil {
-		t.Fatalf("chmod: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	// Root-proof the saveInternal-inside-CreateScenario failure: see
+	// makeSaveFail (write-blocked settingsDir, not a bare chmod 0o500 which
+	// root's CAP_DAC_OVERRIDE would bypass).
+	makeSaveFail(t, dir)
 
 	form := url.Values{"name": {"FailMe"}}
 	w := httptest.NewRecorder()
@@ -7728,11 +7763,11 @@ func TestHandleDeleteScenario_NonTypedError(t *testing.T) {
 		_ = settings
 	}
 
-	// chmod the dir so os.Remove fails.
-	if err := os.Chmod(dir, 0o500); err != nil {
-		t.Fatalf("chmod: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	// Root-proof the os.Remove failure: see makeSaveFail (write-blocked
+	// settingsDir, not a bare chmod 0o500 which root's CAP_DAC_OVERRIDE
+	// would bypass). The scenario file itself stays on disk; removing its
+	// directory entry is what the write-block refuses.
+	makeSaveFail(t, dir)
 
 	w := httptest.NewRecorder()
 	req := chiRequest("DELETE", "/whatif/scenarios/"+targetFile, nil, map[string]string{"filename": targetFile})
@@ -7760,11 +7795,11 @@ func TestHandleRenameScenario_NonTypedError(t *testing.T) {
 		}
 	}
 
-	// chmod the dir so the WriteFile inside RenameScenario fails.
-	if err := os.Chmod(dir, 0o500); err != nil {
-		t.Fatalf("chmod: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	// Root-proof the WriteFile-inside-RenameScenario failure: see
+	// makeSaveFail (write-blocked settingsDir, not a bare chmod 0o500 which
+	// root's CAP_DAC_OVERRIDE would bypass). RenameScenario's own ReadFile
+	// of the scenario file still succeeds; only its WriteFile is refused.
+	makeSaveFail(t, dir)
 
 	form := url.Values{"name": {"NewName"}}
 	w := httptest.NewRecorder()

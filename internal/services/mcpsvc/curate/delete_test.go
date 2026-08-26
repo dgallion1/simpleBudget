@@ -122,7 +122,7 @@ func TestDeleteRequiresAnID(t *testing.T) {
 // going through delete_major_expense first: the Snapshotter remembers a
 // successful backup for the life of the session and short-circuits on a
 // later Ensure of the same name without touching the file again, so routing
-// the seed through the tool would let the chmod below go unnoticed --
+// the seed through the tool would let the injection below go unnoticed --
 // restore would hit the CACHED snapshot path from the first call rather
 // than genuinely re-reading the now-unreadable file.
 func TestDeleteAbortsWhenAnExistingFileCannotBeBackedUp(t *testing.T) {
@@ -137,13 +137,36 @@ func TestDeleteAbortsWhenAnExistingFileCannotBeBackedUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read major_expenses.json before: %v", err)
 	}
-	if err := os.Chmod(majorExpensesPath, 0o000); err != nil {
-		t.Fatalf("chmod: %v", err)
+
+	// Swap the file for an empty directory of the same name instead of
+	// chmod 0o000. Ensure's first move is os.ReadFile(src); a directory
+	// there fails that call with EISDIR at any uid, including root -- unlike
+	// chmod 0000, which root's CAP_DAC_OVERRIDE lets it read straight
+	// through. EISDIR is also deliberately NOT a fs.ErrNotExist error (see
+	// delete.go's errors.Is(err, fs.ErrNotExist) check just above its
+	// Ensure loop): a dangling-symlink (ENOENT) injection would satisfy
+	// that check and be *tolerated* as "the file does not exist yet"
+	// rather than aborting the operation, which is exactly the branch this
+	// test is NOT about. The file genuinely exists on disk the whole time
+	// (as a directory standing in for it, then restored below to its real
+	// content) -- what's being tested is that an existing-but-unbackuppable
+	// file aborts the write, and this injection reaches that branch where a
+	// missing-file injection would not.
+	if err := os.Remove(majorExpensesPath); err != nil {
+		t.Fatalf("remove major_expenses.json: %v", err)
+	}
+	if err := os.Mkdir(majorExpensesPath, 0o755); err != nil {
+		t.Fatalf("mkdir major_expenses.json placeholder: %v", err)
 	}
 
 	res := call(t, cs, "delete_major_expense", map[string]any{"id": "me-mortgage", "restore": true})
-	if err := os.Chmod(majorExpensesPath, 0o644); err != nil {
-		t.Fatalf("chmod restore: %v", err)
+
+	// Put the real file back before reading it again below.
+	if err := os.Remove(majorExpensesPath); err != nil {
+		t.Fatalf("remove major_expenses.json placeholder: %v", err)
+	}
+	if err := os.WriteFile(majorExpensesPath, before, 0o644); err != nil {
+		t.Fatalf("restore major_expenses.json: %v", err)
 	}
 	msg := toolErrorText(t, res)
 	if !strings.Contains(msg, "refusing to write") || !strings.Contains(msg, majorExpensesFile) {

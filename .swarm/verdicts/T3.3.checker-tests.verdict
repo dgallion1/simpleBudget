@@ -1,0 +1,258 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T3
+ATTEMPT: 3
+---
+REPO STATE AT VERIFICATION
+  `git rev-parse HEAD`      -> 00abacd027c9c33a6864721e5429b617500bdaf9
+  `git branch --show-current` -> claude/t3-root-proof-fixtures
+  `git status --porcelain`  -> 13 modified *_test.go (identical set to the one
+    recorded in the T3.2 verdicts -- no new source file appeared at attempt 3),
+    plus ` M .swarm/ledger.tsv`, `AM .swarm/tier3/T3/report.md`, and untracked
+    .swarm/manifests/T3.{1,2,3}.files and .swarm/verdicts/T3.{1,2}.* .
+  `id` -> uid=0(root) gid=0(root);  `go version` -> go1.26.6 linux/amd64
+  `git diff --stat` on the five T3.3 manifest files:
+    whatif/coverage_gaps_test.go 33+-, whatif/handlers_test.go 93+-,
+    retirement/coverage_gaps4_test.go 69+-, retirement/coverage_gaps_test.go
+    75+-, retirement/settings_crud_test.go 12+-  (203 ins, 79 del).
+  All runs made in my own `cp -a` copies: /tmp/claude-0/-home-user-agents2/
+  ad3ab7ea-.../scratchpad/t3v3/{root-tree,head-tree,mut-root,mut-switch,
+  mut-sites,mut-lss,mnt-tree} (root) and /tmp/t3v3n/{tree,mut-tree,head-lss}
+  (uid 65534 -- /tmp/claude-0 is 0700 root and not traversable by nobody).
+  The ONLY write to /home/user/simplebudget is this verdict file.
+
+TEST-SET DERIVATION (so the counts below are not taken on the worker's word)
+  I re-derived the attempt-1/2 root-failure inventory mechanically rather than
+  copying it. In a scratch copy I ran `git checkout HEAD -- internal/handlers/
+  whatif internal/services/retirement` and then, as root,
+  `go test -count=1 -v ./internal/handlers/whatif/ ./internal/services/retirement/`
+  -> `grep -c '^--- FAIL'` = 38, which split by `func <name>(` grep into
+  exactly 30 whatif + 8 retirement. Same procedure over the other seven
+  packages restored to HEAD gave 16 more `--- FAIL` names; adding the two
+  tests that self-SKIP at uid 0 (TestRollbackDecryptionReportsFullPaths,
+  TestHandleImport_FailedWriteKeepsSource) and mapping
+  TestLoadUserSettingsPermissionError -> TestLoadUserSettingsReadError yields
+  the 56. Package breakdown of the 56 (`cut -d'|' -f1 map56.txt | uniq -c`):
+    1 cmd/enrich-amazon, 1 internal/config, 1 handlers/backup, 3 explorer,
+    8 majorexpenses, 30 whatif, 2 curate, 8 retirement, 2 storage.
+  This reproduces the T3.2 verdict's breakdown exactly.
+
+====================================================================
+CRITERION 1 -- THE MANDATORY MUTANT KILL.  PASS
+====================================================================
+Mutant (verbatim the one T3.2 showed surviving), applied to scratch copies of
+internal/services/retirement/settings.go, saveInternal:
+    if err := sm.store.MkdirAll(sm.settingsDir, 0755); err != nil { return err }
+      -> _ = sm.store.MkdirAll(sm.settingsDir, 0755)
+    if err := sm.store.WriteFile(sm.filepath(), data, 0644); err != nil { return err }
+      -> _ = sm.store.WriteFile(sm.filepath(), data, 0644)
+`git diff --stat -- internal/services/retirement/settings.go` -> "1 file
+changed, 2 insertions(+), 6 deletions(-)"; `go build ./...` -> BUILD_OK.
+
+(a) AS ROOT (uid=0, bind-mount branch of both helpers), in .../t3v3/mut-root:
+  `go test -count=1 -v -run "^(<the 8 retirement names>)$" ./internal/services/retirement/`
+    --- FAIL: TestPurgeRemovedIncomeSource_SaveFailure (0.00s)
+    --- FAIL: TestPurgeRemovedExpenseSource_SaveFailure (0.00s)
+    --- FAIL: TestPurgeRemovedBigTicketItem_SaveFailure (0.00s)
+    --- PASS: TestLoadScenarioSettings_ReadError (0.00s)
+    --- FAIL: TestUpdateSettings_SaveError (0.00s)
+    --- PASS: TestDeleteScenario_RemoveError (0.00s)
+    --- PASS: TestRenameScenario_WriteError (0.00s)
+    --- FAIL: TestCRUD_SaveErrors (0.01s)
+    FAIL  budget2/internal/services/retirement  0.020s
+    => 5 killed / 8.  Required >= 5/8.  MET.
+  `go test -count=1 -v -run "^(<the 30 whatif names>)$" ./internal/handlers/whatif/`
+    27 `--- FAIL` lines; the only three `--- PASS` are
+    TestHandleSwitchScenario_GenericError, TestHandleDeleteScenario_NonTypedError,
+    TestHandleRenameScenario_NonTypedError.
+    FAIL  budget2/internal/handlers/whatif  8.547s
+    => 27 killed / 30.  Required >= 27/30.  MET.
+    (Attempt 2's figures on the same mutant were 5 whatif-package survivors...
+    precisely, 11 kills whatif / 0 kills retirement. Attempt 3 restores the
+    HEAD baseline exactly.)
+
+(b) AS uid 65534 (chmod 0o500 branch), copy at /tmp/t3v3n/mut-tree, run via
+    `su nobody -s /bin/bash -c /tmp/t3v3n/run-mut.sh`; in-run identity echo
+    `uid=65534(nobody) gid=65534(nogroup)`:
+      retirement: 5 `--- FAIL`, same three PASS (LoadScenarioSettings_ReadError,
+        DeleteScenario_RemoveError, RenameScenario_WriteError)
+      whatif:     27 `--- FAIL`, same three PASS (SwitchScenario_GenericError,
+        DeleteScenario_NonTypedError, RenameScenario_NonTypedError)
+    Identical to the root run. Both uids meet the baseline.
+
+(c) SURVIVOR AUDIT -- do the survivors reach saveInternal?  NO, verified from
+    source (internal/services/retirement/settings.go, full function bodies read):
+      SwitchScenario (line 1778-1800): scenarioPath -> sm.store.Stat -> sets
+        sm.filename/sm.cache -> bumpLocked -> return nil. No saveInternal.
+      DeleteScenario (1887-1946): scenariosReferencingFile (0 saveInternal
+        occurrences by `awk '/func .*scenariosReferencingFile/,/^}/' | grep -c`)
+        -> sm.store.Remove -> bumpLocked. No saveInternal.
+      RenameScenario (1924-...): store.ReadFile -> json -> store.WriteFile
+        (direct) -> bumpLocked. No saveInternal.
+      LoadScenarioSettings (624-650): RLock, Stat, ReadFile, decodeSettings;
+        the doc comment states it is "intentionally read-only". No saveInternal.
+      bumpLocked is `sm.revision++` only.
+    And the three whatif handlers each call exactly one of those methods and
+    nothing else that persists (`awk '/^func handleSwitchScenario\(/,/^}/' ...
+    | grep -E "retirementMgr\.|Save|Load"` -> a single line per handler:
+    retirementMgr.SwitchScenario / .DeleteScenario / .RenameScenario).
+    So every survivor is a test that provably never reaches saveInternal.
+
+(d) SURVIVORS ARE NOT VACUOUS -- own-site discriminating mutants (scratch copy
+    .../t3v3/mut-sites: DeleteScenario's `sm.store.Remove` error swallowed and
+    RenameScenario's `sm.store.WriteFile` error swallowed):
+      --- FAIL: TestHandleDeleteScenario_NonTypedError (0.00s)
+      --- FAIL: TestHandleRenameScenario_NonTypedError (0.00s)
+      --- FAIL: TestDeleteScenario_RemoveError (0.00s)
+      --- FAIL: TestRenameScenario_WriteError (0.00s)
+    So all four survivors of the saveInternal mutant still kill mutants at the
+    call site they actually name.
+
+(e) FACTUAL DIVERGENCE FROM THE BRIEF'S EXPECTED SURVIVOR NAMES -- recorded,
+    not scored as a failure. The brief attributes to the T3.3 worker the claim
+    that the whatif survivors are "the three _NonTypedError whatif tests"
+    (Create, Delete, Rename). Measured, at BOTH uids, the whatif survivors are
+    TestHandleSwitchScenario_GenericError, TestHandleDeleteScenario_NonTypedError
+    and TestHandleRenameScenario_NonTypedError; TestHandleCreateScenario_
+    NonTypedError is KILLED (`--- FAIL`, both uids), which is correct because
+    CreateScenario does call saveInternal (settings.go:615-619). The measured
+    set is exactly the HEAD-baseline survivor set named in the T3.2
+    checker-second verdict, i.e. attempt 3 achieves full parity with HEAD, not
+    a substitution. Count 27/30 unaffected; every measured survivor passes the
+    "never calls saveInternal" test in (c).
+
+====================================================================
+CRITERION 2 -- FULL MODULE `go test -count=1 ./...`, BOTH UIDS.  PASS
+====================================================================
+ROOT, .../t3v3/root-tree, log .../t3v3/root-full.log:
+  `grep -c '^--- FAIL'` -> 0 ; `grep -c '^FAIL'` -> 0 ; `grep -c '^ok'` -> 48
+  `grep -E '^(FAIL|--- FAIL)'` -> no output.  Trailing "RC=0".
+  Tail: ok budget2/internal/services/retirement 398.422s / .../analysis 286.407s
+        / .../storage 342.875s / internal/templates 1.952s / internal/version
+        0.002s / ? budget2/web [no test files]
+  48 `ok` + 1 `[no test files]` = 49 packages.
+UID 65534, /tmp/t3v3n/tree, log /tmp/t3v3n/nobody-full.log (own HOME/GOCACHE/
+GOPATH/GOMODCACHE/GOTMPDIR under /tmp/t3v3n/home; in-run `id` ->
+uid=65534(nobody) gid=65534(nogroup); `go version` -> go1.26.6):
+  `grep -c '^--- FAIL'` -> 0 ; `grep -c '^FAIL'` -> 0 ; `grep -c '^ok'` -> 48
+  Trailing "RC=0".  Tail: ok .../storage 217.006s, ok internal/templates
+  2.060s, ok internal/version 0.005s, ? budget2/web [no test files].
+
+====================================================================
+CRITERION 3 -- NO SKIPS AMONG THE 56 REWORKED TESTS, BOTH UIDS.  PASS
+====================================================================
+Nine anchored `go test -count=1 -v -run "^(<that package's names>)$" <pkg>`
+invocations, one per package, over the 56 derived above.
+  AS ROOT   (log .../t3v3/skip-root.log):
+    `grep -c '^--- PASS'` -> 56 ; `grep -c '^--- SKIP'` -> 0 ;
+    `grep -c '^--- FAIL'` -> 0 ; `grep -E '^--- (SKIP|FAIL)'` -> no output.
+  AS UID 65534 (log /tmp/t3v3n/skip-nobody.log, in-run id uid=65534(nobody)):
+    `--- PASS` 56 ; `--- SKIP` 0 ; `--- FAIL` 0 ; no SKIP/FAIL lines.
+Pre-existing, unrelated skips, noted apart (none of them in the 56, none
+introduced by this diff):
+  TestFindReturnThreshold_SafetyLevels -- `go test -v -run '^TestFindReturn
+  Threshold_SafetyLevels$' ./internal/services/retirement/` ->
+    "coverage_gaps_test.go:1244: need surviving baseline"
+    "--- SKIP: TestFindReturnThreshold_SafetyLevels (0.00s)"  "ok".
+  It lives in coverage_gaps_test.go (one of the five files) but OUTSIDE every
+  diff hunk: `git diff -U0` on that file shows hunks only at lines 9, 1418,
+  1428, 1430, 1514, 2268, 2273, 2292, 2311, 2325, 2329, 2331, and the skip is
+  at HEAD line ~1243 (`git show HEAD:...| sed -n '1240,1248p'` shows the same
+  `t.Skip("need surviving baseline")`).
+  Other pre-existing skips observed in the HEAD-restored inventory run: the
+  ssh/YubiKey tooling guards (TestHandleEnableSSHEncryption*, TestHandleYubiKey*)
+  and TestHandleBackupPlaintext_*/TestHandleOpenBackupDir_MkdirFails/
+  TestHandleRestore_ReportsPruneFailures uid-0 guards.
+Skip audit of the diff itself: `git diff -- $(cat .swarm/manifests/T3.3.files)
+| grep -nE '^[-+].*(t\.Skip|Geteuid|Getuid)'` -> exactly two lines, both
+ADDITIONS of `+  if os.Geteuid() != 0 {` (the uid branch of makeSaveFail and of
+corruptSettingsDirToFile). No t.Skip added or removed.
+
+====================================================================
+CRITERION 4 -- MOUNT HYGIENE.  PASS
+====================================================================
+`mount | wc -l` before the root full-module run: 24.
+`mount | wc -l` immediately after it: 24.  Re-checked after the 56-test root
+sweep: 24.  `mount | grep -iE 'budget|TestHandle|Test[A-Z]'` -> none.
+FORCED-FAILURE cleanup check (scratch copy .../t3v3/mnt-tree): injected
+`t.Errorf("FORCED FAILURE for cleanup check")` immediately after
+makeSaveFail(t, dir) in TestHandleWhatIfRothConversion_SaveError and after
+corruptSettingsDirToFile(t, settingsDir) inside writeProtectedSM, i.e. on the
+path where the bind mount is already established.
+  MOUNTS BEFORE: 24
+    handlers_test.go:5610: FORCED FAILURE for cleanup check
+    --- FAIL: TestHandleWhatIfRothConversion_SaveError (0.00s)
+    coverage_gaps4_test.go:155: FORCED FAILURE for cleanup check
+    --- FAIL: TestPurgeRemovedIncomeSource_SaveFailure (0.00s)
+  MOUNTS AFTER: 24 ; `mount | grep -iE 'TestHandle|TestPurge|budget|/tmp/go-build'`
+  -> none.
+t.Cleanup's `syscall.Unmount(dir, MNT_DETACH)` unwinds on the failing path.
+
+====================================================================
+CRITERION 5 -- TestHandleSwitchScenario_GenericError SUBSTITUTION.  PASS
+====================================================================
+Production source, internal/services/retirement/settings.go:1778-1800:
+    path, err := sm.scenarioPath(filename); if err != nil { return err }
+    if _, err := sm.store.Stat(path); err != nil {
+        if os.IsNotExist(err) { return &ScenarioNotFoundError{...} }
+        return fmt.Errorf("checking scenario file: %w", err)   <-- generic branch
+    }
+The new injection is a 261-byte basename ("whatif" + 250*"x" + ".json") that
+satisfies scenarioPath's string-shape validation but overruns NAME_MAX (255),
+so store.Stat fails ENAMETOOLONG -- not os.IsNotExist -- and control reaches
+exactly the `return fmt.Errorf("checking scenario file: %w", err)` line, i.e.
+the non-typed/generic error the test name defends. Empirical proof it is not
+vacuous: scratch copy .../t3v3/mut-switch replaces that generic branch with
+`_ = err` (fall through to success):
+    coverage_gaps_test.go:814: status = 200, want 500. body:
+    --- FAIL: TestHandleSwitchScenario_GenericError (0.00s)
+  So the test kills a mutant of precisely that branch.
+NO ASSERTION WEAKENED: diffing the test body against HEAD, the three
+assertions are byte-identical --
+    w.Code != http.StatusInternalServerError -> t.Fatalf
+    !strings.Contains(body, "Failed to switch scenario") -> t.Errorf
+    w.Header().Get("HX-Retarget") != "" -> t.Errorf
+Only the injection (chmod 0o000 on settingsDir -> overlong filename) and the
+setup binding (`_, settingsDir, cleanup` -> `_, _, cleanup`) changed.
+
+Related no-weakening checks on the other four files: TestCRUD_SaveErrors and
+writeProtectedSM keep every assertion (only the chmod call is replaced by
+corruptSettingsDirToFile); TestLoadScenarioSettings_ReadError keeps its
+identical `if err == nil { t.Error("expected error for unreadable file") }`.
+OBSERVATION (not a criterion, no regression): a mutant swallowing
+LoadScenarioSettings' own ReadFile error survives that test -- but it survives
+the HEAD fixture too. Verified by running the same mutant against the
+HEAD-restored test file as uid 65534 (/tmp/t3v3n/head-lss):
+"--- PASS: TestLoadScenarioSettings_ReadError". Parity, pre-existing.
+
+====================================================================
+CRITERION 6 -- SCOPE / HYGIENE.  PASS
+====================================================================
+`git diff --name-only -- '*.go' | grep -v '_test\.go$'`  -> EMPTY (no
+  production .go file modified). The 13 changed paths are all *_test.go and are
+  the same 13 recorded in both T3.2 verdicts; the five in
+  .swarm/manifests/T3.3.files are the subset this attempt reworked.
+`gofmt -l $(cat .swarm/manifests/T3.3.files)` -> no output, rc 0.
+`go vet ./...`   -> no output, rc 0.
+`go build ./...` -> no output, rc 0.
+.swarm/critical.globs contents: internal/services/storage/**,
+internal/services/dataloader/**, internal/services/retirement/engine/**,
+internal/services/transfers/**, internal/services/accounts/accounts.go,
+internal/services/mcpsvc/confirm/**. The only critical-glob path touched by
+the changeset is internal/services/storage/migration_decrypt_rollback_test.go
+(from attempt 1, test-only, permitted at Tier 3); none of the five attempt-3
+files is under a critical glob. internal/services/retirement/engine/** is
+untouched.
+
+====================================================================
+SCOPE
+====================================================================
+Change is test-only, confined to the 13 *_test.go files, five of them this
+attempt's. No production code, no engine, no dataloader. My own writes to
+/home/user/simplebudget: this verdict file only -- every build, test and
+mutant ran in copies under /tmp/claude-0/.../scratchpad/t3v3 and /tmp/t3v3n.
+The defect that caused the attempt-2 FAIL (loads failing before saves) is
+fixed and the previously-surviving saveInternal mutant is killed by 27/30
+whatif and 5/8 retirement tests at uid 0 and uid 65534 alike, with every
+survivor proven from source not to reach saveInternal.

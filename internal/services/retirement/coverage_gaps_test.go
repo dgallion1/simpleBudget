@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"budget2/internal/models"
@@ -1414,13 +1415,19 @@ func TestLoadScenarioSettings_ReadError(t *testing.T) {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 
-	// Create a file then make it unreadable
+	// Root-proof: a DIRECTORY standing in for the file, not chmod 0000. Stat
+	// on a directory succeeds (it exists), so LoadScenarioSettings's
+	// os.IsNotExist check just above does not fire and control reaches the
+	// actual read; os.ReadFile on a directory then fails with EISDIR at any
+	// uid, including root -- unlike chmod 0000, which root's
+	// CAP_DAC_OVERRIDE reads straight through. This lands in the exact
+	// branch this test's name defends ("reading scenario %s: %w"), not the
+	// "scenario file not found" branch a missing-file injection would hit
+	// instead.
 	fpath := filepath.Join(settingsDir, "whatif_unreadable.json")
-	if err := store.WriteFile(fpath, []byte("{}"), 0644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+	if err := os.Mkdir(fpath, 0o755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
 	}
-	os.Chmod(fpath, 0000)
-	defer os.Chmod(fpath, 0644)
 
 	_, err = sm.LoadScenarioSettings("whatif_unreadable.json")
 	if err == nil {
@@ -1504,9 +1511,13 @@ func TestUpdateSettings_SaveError(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	// Make dir read-only
-	os.Chmod(settingsDir, 0555)
-	defer os.Chmod(settingsDir, 0755)
+	// Root-proof: settingsDir stays a real, readable directory but rejects
+	// writes (see corruptSettingsDirToFile in coverage_gaps4_test.go), not a
+	// bare chmod 0555 (root's CAP_DAC_OVERRIDE reads/writes through
+	// permission bits regardless). UpdateSettings's loadInternal succeeds
+	// (its MkdirAll is a no-op against the already-existing directory), and
+	// its saveInternal write is what fails.
+	corruptSettingsDirToFile(t, settingsDir)
 
 	_, _, err = sm.UpdateSettings(map[string]interface{}{
 		"portfolio_value": float64(500000),
@@ -2254,17 +2265,31 @@ func TestDeleteScenario_RemoveError(t *testing.T) {
 
 	// Create a scenario file
 	data, _ := json.MarshalIndent(models.DefaultWhatIfSettings(), "", "  ")
-	if err := store.WriteFile(filepath.Join(settingsDir, "whatif_test.json"), data, 0644); err != nil {
+	scenarioPath := filepath.Join(settingsDir, "whatif_test.json")
+	if err := store.WriteFile(scenarioPath, data, 0644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	// Make directory read-only to prevent deletion
-	os.Chmod(settingsDir, 0555)
-	defer os.Chmod(settingsDir, 0755)
+	// Root-proof: replace the scenario file with a non-empty directory of
+	// the same name, not chmod 0555 on the parent (root's CAP_DAC_OVERRIDE
+	// writes/removes through a 0555 directory regardless). DeleteScenario's
+	// store.Remove is a plain os.Remove, which fails ENOTEMPTY on a
+	// non-empty directory at any uid, including root -- landing in exactly
+	// the Remove-call branch this test's name defends, rather than merely
+	// making the containing directory generally unwritable.
+	if err := os.Remove(scenarioPath); err != nil {
+		t.Fatalf("remove scenario file: %v", err)
+	}
+	if err := os.Mkdir(scenarioPath, 0o755); err != nil {
+		t.Fatalf("mkdir scenario placeholder: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(scenarioPath, "keepme"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("seed non-empty placeholder directory: %v", err)
+	}
 
 	err = sm.DeleteScenario("whatif_test.json")
 	if err == nil {
-		t.Error("expected error when directory is read-only")
+		t.Error("expected error when the scenario file cannot be removed")
 	}
 }
 
@@ -2283,19 +2308,27 @@ func TestRenameScenario_WriteError(t *testing.T) {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 
-	// Write a valid scenario
+	// Root-proof: a 255-byte (NAME_MAX) scenario basename, not chmod 0555 on
+	// the directory (root's CAP_DAC_OVERRIDE writes through that
+	// regardless). RenameScenario reads the file first (must succeed, so
+	// the seed below is written directly via os.WriteFile, bypassing
+	// store.WriteFile's own staging step) and only then calls
+	// store.WriteFile(path, ...) to persist the rename -- and that call
+	// stages via os.CreateTemp(dir, <basename>+".tmp-"+random). At exactly
+	// NAME_MAX the plain basename is valid and readable, but the staged
+	// name overflows and CreateTemp fails ENAMETOOLONG at any uid,
+	// including root, unlike a permission bit root can simply ignore. See
+	// TestRollbackDecryptionReportsPathOnAtomicWriteFailure (internal/services/storage)
+	// for the same pattern.
+	longName := "whatif" + strings.Repeat("x", 244) + ".json" // 255 bytes, valid alone
 	data, _ := json.MarshalIndent(models.DefaultWhatIfSettings(), "", "  ")
-	if err := store.WriteFile(filepath.Join(settingsDir, "whatif_test.json"), data, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(settingsDir, longName), data, 0644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	// Make directory read-only to prevent writing
-	os.Chmod(settingsDir, 0555)
-	defer os.Chmod(settingsDir, 0755)
-
-	err = sm.RenameScenario("whatif_test.json", "New Name")
+	err = sm.RenameScenario(longName, "New Name")
 	if err == nil {
-		t.Error("expected error when directory is read-only")
+		t.Error("expected error when the staged rename write overflows NAME_MAX")
 	}
 }
 

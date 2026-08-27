@@ -67,6 +67,19 @@ jobs:
       # that gates.
       - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.0 ./...
 
+  # The committed tailwind.css is a build artifact, so it can go stale: a class
+  # added to a template without `make css` renders wrong for everyone with no
+  # build failure. The Go canary test only checks fixed selectors; this is the
+  # byte-for-byte check. Its own job because it needs no Go toolchain — just
+  # curl (for the pinned standalone Tailwind CLI) and make.
+  css-verify:
+    name: css freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: make css-verify
+
   # Split out because it is an order of magnitude slower than the plain suite
   # (~2 min vs ~20), and a fast red on a compile error or a broken test should
   # not wait behind it. The Makefile draws the same line: `check` excludes the

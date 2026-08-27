@@ -1,19 +1,29 @@
 // Tailwind config for the vendored, committed static build (T7).
 //
-// Regeneration recipe (pinned, reproducible — run from repo root):
-//   npx --yes tailwindcss@3.4.17 -c tailwind.config.js \
-//     -i web/static/css/tailwind.src.css \
-//     -o web/static/css/tailwind.css --minify
+// Regenerate with `make css` from the repo root (see the Tailwind section of
+// the Makefile). That target pins the same 3.4.17 the CDN was serving and uses
+// the standalone CLI, which is one binary in the gitignored tmp/ rather than an
+// npm install — so there is no node_modules or package.json left in the repo
+// root to clean up. `make css-verify` fails if the committed CSS is stale.
+//
+// The npm equivalent, if you ever need it, is
+// `npx --yes tailwindcss@3.4.17 -c tailwind.config.js -i
+// web/static/css/tailwind.src.css -o web/static/css/tailwind.css --minify`.
+// Note it does NOT produce byte-identical output: the two front-ends bundle
+// different cssnano versions, which order declarations within a rule
+// differently. The rules and declarations themselves are identical (verified
+// by normalising both and by a pixel diff across every page in both themes),
+// but a build made that way will show as stale to `make css-verify`.
 //
 // This replaces the runtime `<script src="https://cdn.tailwindcss.com">` JIT
 // (previously in web/templates/layouts/base.html) with a static build so the
 // app renders styled while fully offline. `darkMode`/`theme` below match the
 // inline `tailwind.config = {...}` that used to sit next to the CDN script.
 //
-// After running the command above, delete any node_modules/package.json/
-// package-lock.json that npx creates in the repo root — only this config,
-// web/static/css/tailwind.src.css, and the generated web/static/css/tailwind.css
-// are committed deliverables.
+// Only this config, web/static/css/tailwind.src.css, and the generated
+// web/static/css/tailwind.css are committed deliverables. (If you use the npm
+// fallback above, delete the node_modules/package.json/package-lock.json that
+// npx leaves in the repo root; `make css` creates none of them.)
 module.exports = {
   darkMode: 'class',
   content: [

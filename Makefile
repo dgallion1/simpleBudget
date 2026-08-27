@@ -74,7 +74,7 @@ endif
 
 all: build
 
-check: vet static vuln test ## Run quality pipeline (pre-commit; race excluded — opt in via `make check-full` or `make race`)
+check: vet static vuln css-verify test ## Run quality pipeline (pre-commit; race excluded — opt in via `make check-full` or `make race`)
 	@echo "✓ all checks passed"
 
 check-full: check race ## Run full quality pipeline including race detector (CI / pre-PR)

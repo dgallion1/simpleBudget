@@ -1,25 +1,33 @@
 package storage
 
-// The durability barriers in stageDurable and syncDir are the dominant cost of
-// a write, so the price is recorded here rather than left to be rediscovered.
-//
-// Measured on a Linux SSD, 4KB payloads: ~2.5ms/op with the two fsyncs against
-// ~50us/op without them, i.e. roughly 2.4ms added per write. That is invisible
-// at the rate a person saves a budget, and it is the only reason a save that
-// the UI reported as done is still there after a crash.
-//
-// It does scale with the bulk paths: a migration or a restore pays it once per
-// file. A real data directory here holds a couple of dozen files, so a full
-// pass costs well under a second. If that ever changes -- tens of thousands of
-// files -- the fix is to batch the directory fsync across a bulk run rather
-// than to drop the barriers.
-
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+// The durability barriers — fileSync on the staging file, syncDir on the
+// destination directory — are the dominant cost of a write, so the price is
+// recorded here rather than left to be rediscovered by someone wondering why
+// saves got slower.
+//
+// Measured on a Linux SSD with 4KB payloads: roughly 2.5ms/op with the two
+// fsyncs against ~50us/op without them, i.e. about 2.4ms added per write.
+// That is invisible at the rate a person saves a budget, and it is the only
+// reason a save the UI reported as done is still there after a crash.
+//
+// It does scale with the bulk paths, which pay it once per file: a migration,
+// a restore, or an encrypt/decrypt pass over the whole data directory. A real
+// data directory here holds a couple of dozen files, so a full pass costs well
+// under a second. If that ever changes — tens of thousands of files — the fix
+// is to batch the directory fsync across a bulk run rather than to drop the
+// barriers.
+//
+// To see the difference yourself, override the seams the durability tests use:
+//
+//	overrideFileSync(t, func(*os.File) error { return nil })
+//	overrideSyncDir(t, func(string) error { return nil })
 
 func BenchmarkWriteFile(b *testing.B) {
 	dir := b.TempDir()

@@ -1,0 +1,77 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T14
+ATTEMPT: 2
+---
+Scope: manifest .swarm/manifests/T14.2.files lists only
+web/templates/components/whatif/tax-optimizer.html and
+internal/handlers/whatif/tax_optimizer_render_test.go. `git status --porcelain`
+before and after my probes is identical (verified below) — no other in-flight
+files (classifier/*, dataloader/*, transaction.go, ledger.tsv) were touched by
+me or attributed to T14.
+
+Checks that PASSED (no defect found):
+1. `go build ./...` — clean, no output/errors.
+2. `go test ./...` — all packages pass, including
+   internal/handlers/whatif and internal/templates.
+3. Zero-rendering contract (tax_optimizer.go ~214-218: "the UI renders '—' for
+   zero") is honored in all four places I checked: headline peak-marginal,
+   headline Roth-converted, body Peak Rate cell, body Roth Conv cell — all use
+   `eq $x 0.0` guards to emit `&mdash;` instead of "0%"/"$0.00".
+4. Colspan: template hard-codes 9 (MC) / 7 (non-MC) at line 112, matching the
+   actual <th> count; TestWhatIfTaxOptimizer_ColspanMatchesColumnCount asserts
+   colspan against the *parsed* <th> count in both modes and passes.
+5. Nested-tbody handling: the shared fixture's Top[0] ("best") candidate has
+   PerYearConversions set, so every test in this file that calls
+   renderTaxOptimizer/theadOf/tbodyOf DOES exercise a real nested
+   <thead>/<tbody> inside the outer <tbody>. The tbodyOf LastIndex("</tbody>")
+   claim is therefore not merely theoretical — I confirmed via the mutation
+   below that content in the outer tbody after the nested table (the zero
+   candidate's row) is included in what tbodyOf returns.
+6. Roth Conv tooltip text (checked directly): "in nominal (not
+   inflation-adjusted) dollars" — does not contain the phrase "today's
+   dollars"; matches the claim.
+7. Mutation "unconditional dash for Peak Rate cell" (replaced the
+   eq-guarded body expression with bare `&mdash;`): caught —
+   TestWhatIfTaxOptimizer_RendersPeakRateAndRothConverted fails as expected
+   (tbody no longer contains "40%"). File restored, sha256 verified back to
+   eda62ab087e9b2094dea9db51bf2c453c697db2f1304c4ddad81a681feae07a0 both before
+   and after.
+
+Checks that FAILED (real defect found):
+8. Column-swap mutation: swapped the inner expressions of the "Peak Rate" <td>
+   (line 99) and "Roth Conv" <td> (line 100) only — headers, colspan, and
+   everything else untouched, so the values now render under the WRONG
+   column headers (PeakMarginalBracket's "40%" appears under the "Roth Conv"
+   header; TotalRothConverted's "$123,456.00" appears under the "Peak Rate"
+   header). Ran `go test ./internal/handlers/whatif/... -run TaxOptimizer -v`:
+   ALL FOUR tests still PASS. Restored the file afterward and reverified
+   sha256sum matches the pre-mutation hash
+   (eda62ab087e9b2094dea9db51bf2c453c697db2f1304c4ddad81a681feae07a0).
+
+   Root cause: every assertion in
+   TestWhatIfTaxOptimizer_RendersPeakRateAndRothConverted and
+   TestWhatIfTaxOptimizer_ZeroRendersAsDash checks only that a value/token is
+   *present somewhere* in the scoped tbody/row (strings.Contains), never that
+   it appears inside the specific <td> that sits under the "Peak Rate" or
+   "Roth Conv" <th>. The task description's claim that the tests verify these
+   two new columns "as two table columns after Lifetime Tax" overstates what
+   is actually asserted: presence in the tbody is checked, but
+   column-identity/position is not. A real regression that swaps which field
+   renders in which column — including one that would visibly mislead a user
+   about their peak tax bracket vs. their Roth conversion total — would ship
+   silently through this test suite.
+
+This is a genuine, reproducible test-coverage gap, not a nitpick: it directly
+undermines the accepted claim that the new render test "isolates the zero
+candidate's own row" and "counts real <th>s against the parsed colspan" to
+guard column integrity — column *identity* (which value lands under which
+header) is exactly the kind of regression a reviewer would expect this test
+file to catch, and it does not.
+
+git status --porcelain identical before/after my session (confirmed):
+same file list as manifest baseline, no stash/reset/checkout/restore/clean/
+add/commit/worktree commands were run — only cp (backup/restore) and Read/
+python3 in-place edits on the single template file, restored and
+sha256-verified twice.

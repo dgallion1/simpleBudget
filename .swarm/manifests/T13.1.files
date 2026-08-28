@@ -1,0 +1,5 @@
+internal/models/transaction.go
+internal/services/dataloader/loader.go
+internal/services/dataloader/loader_test.go
+internal/services/dataloader/near_duplicates.go
+internal/services/dataloader/near_duplicates_test.go

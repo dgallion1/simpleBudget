@@ -60,3 +60,6 @@ T8	3	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-durability-seams
 T9	1	a11y	accepted	1	worker-coder	gate-ok-attempt-1-a11y-residue
 T10	1	tests	accepted	1	worker-coder	gate-ok-attempt-1-dead-code-removed
 T11	1	tests	accepted	1	worker-coder	gate-ok-attempt-1-doc-only-asymmetry
+T12	2	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-transfer-category-typing
+T13	3	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-oracle-pass-dual-lane
+T14	2	tests,second	accepted	2	worker-coder	gate-ok-attempt-2-judges-overrule-3-0-swap-gap-followup

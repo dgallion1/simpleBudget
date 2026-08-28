@@ -1,0 +1,54 @@
+== build ==
+== named oracle tests ==
+== invariants preserved ==
+== every consumer: full suite ==
+ok  	budget2/cmd/enrich-amazon	6.997s
+ok  	budget2/cmd/server	9.624s
+ok  	budget2/cmd/validate	0.014s
+ok  	budget2/internal/config	0.005s
+ok  	budget2/internal/handlers/accounts	1.497s
+ok  	budget2/internal/handlers/approval	0.006s
+ok  	budget2/internal/handlers/backup	37.004s
+ok  	budget2/internal/handlers/dashboard	0.786s
+ok  	budget2/internal/handlers/duplicates	0.032s
+ok  	budget2/internal/handlers/explorer	0.916s
+ok  	budget2/internal/handlers/insights	0.338s
+ok  	budget2/internal/handlers/majorexpenses	0.539s
+ok  	budget2/internal/handlers/transfers	0.432s
+ok  	budget2/internal/handlers/whatif	30.372s
+ok  	budget2/internal/http	0.006s
+ok  	budget2/internal/models	0.007s
+ok  	budget2/internal/services/accounts	0.030s
+ok  	budget2/internal/services/amazon	0.005s
+ok  	budget2/internal/services/anomalies	0.014s
+ok  	budget2/internal/services/backup	0.561s
+ok  	budget2/internal/services/classifier	0.006s
+ok  	budget2/internal/services/dataloader	1.807s
+ok  	budget2/internal/services/insights	0.010s
+ok  	budget2/internal/services/majorexpenses	0.007s
+ok  	budget2/internal/services/mcpsvc	0.053s
+ok  	budget2/internal/services/mcpsvc/admin	4.605s
+ok  	budget2/internal/services/mcpsvc/confirm	0.048s
+ok  	budget2/internal/services/mcpsvc/curate	0.629s
+ok  	budget2/internal/services/mcpsvc/ledger	0.586s
+ok  	budget2/internal/services/mcpsvc/plan	3.281s
+ok  	budget2/internal/services/mcpsvc/snapshot	0.005s
+ok  	budget2/internal/services/mcpsvc/spend	1.104s
+ok  	budget2/internal/services/merchants	0.005s
+ok  	budget2/internal/services/metrics	0.007s
+ok  	budget2/internal/services/pricecreep	0.007s
+ok  	budget2/internal/services/restore	1.130s
+ok  	budget2/internal/services/retirement	35.541s
+ok  	budget2/internal/services/retirement/analysis	27.416s
+ok  	budget2/internal/services/retirement/completeness	0.006s
+ok  	budget2/internal/services/retirement/engine	0.016s
+ok  	budget2/internal/services/retirement/history	0.005s
+ok  	budget2/internal/services/retirement/overrides	0.005s
+ok  	budget2/internal/services/retirement/prepare	0.008s
+ok  	budget2/internal/services/storage	77.966s
+ok  	budget2/internal/services/transfers	0.006s
+ok  	budget2/internal/templates	0.564s
+ok  	budget2/internal/testutil	0.005s
+ok  	budget2/internal/version	0.002s
+ok  	budget2/web	0.010s
+ORACLE PASS

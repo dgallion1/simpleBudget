@@ -1,0 +1,122 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T14
+ATTEMPT: 1
+---
+Scope check (PASS): `git status --porcelain` before and after my probing is
+identical — the only T14-relevant changes are the two manifest files
+(web/templates/components/whatif/tax-optimizer.html modified,
+internal/handlers/whatif/tax_optimizer_render_test.go new). All other dirty
+files (internal/models/transaction.go, internal/services/classifier/*,
+internal/services/dataloader/*, .swarm/ledger.tsv) are pre-existing in-flight
+edits from other tasks (T12/T13/import-dedup), confirmed by
+`git stash show --stat` on those files' unrelated content (Original
+Description CSV column, transfer classifier keywords) — not T14's.
+
+Build/tests (PASS): `go build ./...` succeeds. `go test
+./internal/handlers/whatif/... ./internal/templates/...
+./internal/services/retirement/...` all pass.
+
+Colspan integrity (PASS): counted header <th> and body <td> for both MC and
+non-MC branches by hand — non-MC: Strategy/SS/End Portfolio/Lifetime
+Tax/Peak Rate/Roth Conv/Δ = 7 columns, matches new colspan="7". MC adds MC
+Median + MC Surv% = 9, matches colspan="9". Old stale 5/7 values are gone.
+
+Test vacuity check (PASS, not vacuous): reverted only
+web/templates/components/whatif/tax-optimizer.html to HEAD (`git show
+HEAD:... > ...`) while keeping the new (untracked) render test file in
+place, then ran `go test ./internal/handlers/whatif/... -run
+TestWhatIfTaxOptimizer -v`. Result: both new tests fail against the
+unmodified template (colspan mismatch, missing "Peak Rate" header, etc.).
+Restored the T14 template afterward and re-ran the same tests: both pass.
+So the tests do exercise the real template, not a canned string. (File
+restored from a scratch copy; `git diff` byte-for-byte matches the
+pre-probe diff, confirmed via diff-line-count and hash comparison; working
+tree is back to its original modified/untracked set.)
+
+Semantic-honesty check on labels/tooltips (PASS): "Peak Rate" tooltip and
+glossary explicitly say "measured, not looked up in a bracket table" and
+"Reporting only — not part of the ranking metric"; "Roth Conv" tooltip and
+glossary explicitly say "nominal (not inflation-adjusted) — unlike the
+other dollar columns here" and "Reflects what the engine realized, not what
+was planned." No misleading claims found in either channel; unit callouts
+are present at both the point of use and in the glossary.
+
+Unit check (PASS): confirmed models.TaxOptimizerCandidate.PeakMarginalBracket
+is populated from ProjectionYearSummary.MarginalRate as raw percent units
+(e.g. 22, 32, not 0.22/0.32) in
+internal/services/retirement/analysis/tax_optimizer.go and its tests
+(tax_optimizer_reporting_test.go asserts `cand.PeakMarginalBracket != 32`
+for a 32-percent input). Template's `{{printf "%.0f" ...}}%` is therefore
+correct; no fraction/percent confusion.
+
+=== FAIL: zero-value rendering contradicts the codebase's own documented
+contract for these exact two fields ===
+
+Two pre-existing, already-committed files (not part of T14's diff, so not
+something the worker could claim was "someone else's problem to fix")
+explicitly document the required UI treatment of a zero value in these
+fields:
+
+  internal/services/retirement/analysis/tax_optimizer.go:224-226
+    "Both are reporting-only columns; neither participates in ranking. They
+    stay zero for a projection that never converts or never records a
+    rate, and the UI renders "—" for zero."
+
+  internal/services/retirement/analysis/tax_optimizer_reporting_test.go:77-78
+    "A candidate that never converts must report zero, not a stale or
+    planned figure — the UI renders "—" for zero."
+
+This is stated twice, unambiguously, as the intended contract for exactly
+the two fields T14 was dispatched to render. The actual template does the
+opposite:
+
+  web/templates/components/whatif/tax-optimizer.html
+    <td ...>{{printf "%.0f" $c.PeakMarginalBracket}}%</td>
+    <td ...>{{formatMoney $c.TotalRothConverted}}</td>
+
+`formatMoney` has no zero special-case (internal/templates/render.go:422-449
+— `formatMoney(0)` returns literal `"$0.00"`), and `printf "%.0f"` on 0
+renders `"0%"`. Neither the headline nor the table body nor the glossary
+has any dash/em-dash handling.
+
+Worse, this isn't an oversight the worker was unaware of — T14's own new
+test explicitly asserts the reversed behavior and calls out that it is
+deliberate:
+
+  internal/handlers/whatif/tax_optimizer_render_test.go:93-96
+    "// Zero-value candidate must render $0.00, not blank.
+    if !strings.Contains(out, "$0.00") {
+        t.Errorf("expected zero TotalRothConverted to render as $0.00; ..."
+
+So the worker built a fixture specifically to cover the zero case (a
+"No conversions" candidate, TotalRothConverted: 0), noticed the zero case
+mattered, and encoded the opposite of the documented contract as a passing
+assertion — with no comment reconciling the two, no note that the earlier
+contract was being revised, and nothing in the T14 task description
+(as given to me) that authorizes overriding it.
+
+This is not a corner case: a "no conversion" candidate is a normal, likely
+common row in the Top-5 table (the fixture itself models it as the
+baseline), so real users will regularly see "$0.00" / "0%" in cells that
+the codebase's own design intent says should read "—". A user glancing at
+"$0.00" next to "Roth converted" next to a strategy that in fact skips
+conversion may reasonably read it as "the engine computed $0" rather than
+"not applicable," which is exactly the ambiguity the original comment was
+written to avoid ("not a stale or planned figure").
+
+Given `.swarm/critical.globs`-style reasoning aside, this is a genuine,
+concrete contradiction between what the codebase already says the feature
+must do and what was shipped, discovered by comparing files outside the
+two the manifest claims to touch — the kind of cross-file contract check a
+same-file diff review would miss. Per FAIL-on-ambiguity: this is not
+ambiguous, it's a direct textual contradiction, so FAIL stands.
+
+Recommendation: either implement the "—" rendering for zero (guard both
+the `%.0f` and `formatMoney` calls, headline included) and update the test
+to assert the dash, or — if the dollar/percent zero display is now the
+intended design — update the two contract comments in tax_optimizer.go and
+tax_optimizer_reporting_test.go to match and record that decision, so a
+future reader isn't misled by stale documentation. Either resolution is
+outside what T14 as claimed currently does.

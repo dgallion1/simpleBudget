@@ -1,0 +1,162 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T14
+ATTEMPT: 1
+---
+SUMMARY: The production template (criteria 1-4, 6) is correct and I proved it by
+rendering it. Criterion 5 FAILS: two of the four assertions the brief requires of
+the new test are vacuous -- I deleted the two new <th> headers, and separately the
+two new <td> body cells, and the test suite still reported `ok` both times.
+
+--- CRITERION 1: go build ./... passes -- PASS
+Command: `go build ./...` -> BUILD_EXIT=0 (no output). Re-run after all probes
+were reverted: BUILD_EXIT=0.
+
+--- CRITERION 2: go test ./... passes (full suite) -- PASS
+Command: `go test ./...` -> FULLTEST_EXIT=0. Background run of the same command
+logged "Go test: 4636 passed in 49 packages"; `grep -c "^FAIL" full_test.log` -> 0.
+`go vet ./...` -> VET_EXIT=0 (not required by the brief; run for completeness).
+`gofmt -l internal/handlers/whatif/tax_optimizer_render_test.go` -> empty.
+
+--- CRITERION 3: both fields render in headline AND as two new columns after
+    "Lifetime Tax"; taxopt-th-tooltip headers; glossary entries; conventional
+    formatting; correct semantics -- PASS
+Not verified by reading alone. I rendered the real template through the real
+renderer (scratch probe test, since removed) and parsed the output:
+
+  HEADLINE: "SS 67, Fill 24% bracket, 67->72 - Ending: $900,000.00 real
+             . peak marginal: 40% . Roth converted: $123,456.00 nominal"
+  thead labels (non-MC), in order:
+    ['Strategy','SS (P/S)','End Portfolio','Lifetime Tax','Peak Rate','Roth Conv',
+     'Delta vs Baseline']
+    -> Peak Rate and Roth Conv are immediately after Lifetime Tax, as required.
+  tbody row0 cells:
+    [strategy, '67', '$900,000.00', '$150,000.00', '40%', '$123,456.00',
+     '+$50,000.00']
+    -> rate and money render in the table body in the correct positions.
+  glossary <dt>s: ['Strategy','SS (P/S)','End Portfolio','Lifetime Tax',
+                   'Peak Rate','Roth Conv','Delta vs Baseline']
+
+Headers use the partial: template lines 65-70 both call
+{{template "taxopt-th-tooltip" (dict "Label" "Peak Rate"/"Roth Conv" ...)}}.
+Formatting follows convention: `{{printf "%.0f" ...}}%` for the rate (lines 28, 99)
+and `{{formatMoney ...}}` for dollars (lines 29, 100).
+Semantics conveyed: line 66/167 state the rate is "measured, not looked up in a
+bracket table" and "can push it above every statutory bracket ... Reporting only --
+not part of the ranking metric"; line 69/169 state "actually converted ... nominal
+(not inflation-adjusted) dollars ... Reflects what the engine realized, not what was
+planned."
+OBSERVATION (not a failure): the Roth Conv header tooltip reads "in today's nominal
+(not inflation-adjusted) dollars", while everywhere else in this file "today's
+dollars" denotes REAL. The parenthetical disambiguates, and the glossary entry
+(line 169) drops "today's" and is clean, so the semantics are conveyed; flagging only
+as a wording tension.
+
+--- CRITERION 4: details-row colspan updated to 9 MC / 7 non-MC; no other
+    column-count dependency missed -- PASS
+`grep -n colspan web/templates/components/whatif/tax-optimizer.html` -> exactly one
+occurrence, line 112:
+  <td colspan="{{if gt $to.MonteCarloRuns 0}}9{{else}}7{{end}}" ...>
+`grep -rn colspan web/templates/components/whatif/` -> that same single line is the
+only colspan in the whatif component tree.
+`grep -rn whatif-tax-optimizer-results --include=*.html --include=*.go .` -> the
+template is rendered only from web/templates/pages/whatif.html:210 and
+internal/handlers/whatif/handlers_rates.go:502; no other consumer carries a column
+count.
+Rendered-output proof that colspan matches the ACTUAL column count:
+  non-MC: <th> count = 7, data-row <td> count = 7, details-row colspan = 7
+  MC:     <th> count = 9, data-row <td> count = 9, details-row colspan = 9
+
+--- CRITERION 5: render test asserts rate+money in headline AND table body,
+    asserts the new header labels, asserts colspan matches column count in both
+    modes -- FAIL
+The two tests pass (`go test ./internal/handlers/whatif/ -run TestWhatIfTaxOptimizer
+-v` -> both --- PASS), and the fixture does use distinctive values
+(PeakMarginalBracket 40.5 -> "40", TotalRothConverted 123456 -> "$123,456.00").
+But passing is not the question; whether the assertions bind is. I mutated the
+template one change at a time, ran the tests, then restored from a byte-exact backup
+and re-verified with `sha256sum -c` after every probe.
+
+  MUTATION A -- deleted both new body <td> cells (template lines 99-100), leaving
+    only the headline references (verified by grep: only lines 28-29 still mention
+    PeakMarginalBracket/TotalRothConverted).
+    RESULT: `ok  budget2/internal/handlers/whatif  0.046s` -- TESTS PASSED.
+    => The block commented "// Table body: Best candidate's formatted peak rate and
+       converted amount" does NOT assert table-body rendering. Its probes
+       strings.Contains(flat,"40%") and strings.Contains(out,"$123,456.00") are
+       already satisfied by the headline, which is in the same `out` string.
+    => The "$0.00" probe (test lines 94-96, commented "Zero-value candidate must
+       render $0.00, not blank") is likewise not bound to the Roth Conv column: it
+       still passed with that column deleted, because the Delta-vs-Baseline cell
+       renders $0.00 for the candidate whose ending portfolio equals the baseline.
+
+  MUTATION B -- deleted both new <th> headers (template lines 65-70), leaving only
+    the glossary <dt>s (verified by grep: "Peak Rate"/"Roth Conv" remain only at
+    lines 160 and 162).
+    RESULT: `ok  budget2/internal/handlers/whatif  0.038s` -- TESTS PASSED.
+    => The loop at test lines 79-83 ("New header labels") does NOT assert the header
+       labels. Bare strings.Contains(out,"Peak Rate") is satisfied by the glossary
+       entry the same test separately asserts at lines 99-106.
+
+  MUTATION C -- reverted colspan to the stale 7/5.
+    RESULT: `--- FAIL: TestWhatIfTaxOptimizer_ColspanMatchesColumnCount` -- caught.
+
+  MUTATION D -- deleted the two headline lines (28-29).
+    RESULT: `--- FAIL: TestWhatIfTaxOptimizer_RendersPeakRateAndRothConverted`
+      tax_optimizer_render_test.go:72: expected headline peak marginal rate
+      tax_optimizer_render_test.go:75: expected headline Roth converted amount
+    -- caught.
+
+WHAT IS MISSING, precisely (internal/handlers/whatif/tax_optimizer_render_test.go):
+ (a) Table-body assertion. Lines 85-91 must scope the search to the <tbody> (or to a
+     single data row) rather than to the whole rendered document, so that deleting
+     the <td> cells fails the test.
+ (b) Header-label assertion. Lines 79-83 must scope to the <thead> / assert the
+     <th> markup, so that deleting the <th> cells fails the test. As written it
+     cannot distinguish a header from the glossary.
+ (c) TestWhatIfTaxOptimizer_ColspanMatchesColumnCount does not match colspan against
+     a column count -- it compares against the hard-coded literals 7 and 9. Both
+     mutation A and mutation B break the real header/body column agreement (A leaves
+     7 headers vs 5 body cells in non-MC; B leaves 5 headers vs 7 body cells) and
+     BOTH passed. To assert what its name claims the test must count the rendered
+     <th> in <thead> and compare that number to the colspan attribute, in each mode.
+ (d) Suggested, given (a): the zero-value probe at lines 94-96 should assert the
+     Roth Conv cell specifically, since $0.00 also arises from the delta column.
+
+--- CRITERION 6: diff confined to the two manifest files; Go analysis/model code
+    untouched -- PASS (with an environmental finding below that is NOT T14's)
+.swarm/manifests/T14.1.files contains exactly:
+    web/templates/components/whatif/tax-optimizer.html
+    internal/handlers/whatif/tax_optimizer_render_test.go
+`git status --porcelain` attributes to T14 exactly those two: the template as
+modified (M) and the test file as new/untracked (??). Nothing else in the tree is
+attributable to T14.
+Go code untouched, proved by
+`git status --porcelain internal/services/retirement/analysis/tax_optimizer.go
+ internal/models/whatif.go internal/handlers/whatif/handlers_rates.go` -> empty
+output (all three clean vs HEAD).
+.swarm/critical.globs covers storage/**, dataloader/**, retirement/engine/**,
+transfers/**, accounts.go, mcpsvc/confirm/** -- T14 touches none of them.
+
+ENVIRONMENTAL FINDING (outside T14; for the lead, not counted against this task):
+A `git reset --hard HEAD` ran in the repo at 2026-08-28 13:59:13 -0400, DURING this
+verification. Evidence: `git reflog --date=iso` top entry
+"37e8e08 HEAD@{2026-08-28 13:59:13 -0400}: reset: moving to HEAD", and every one of
+the discarded files carries that exact mtime (13:59:13.911...). It destroyed the 8
+unrelated in-flight modifications the brief told me to expect:
+  internal/services/classifier/classifier.go, classifier_test.go
+  internal/services/dataloader/loader.go, loader_test.go, near_duplicates.go,
+    near_duplicates_test.go        <-- dataloader/** IS in .swarm/critical.globs
+  internal/models/transaction.go
+  .swarm/ledger.tsv                <-- the T14 ledger row is gone; `grep -P "^T14\t"
+                                       .swarm/ledger.tsv` now returns nothing
+`git stash list` is empty and no branch holds them; they appear unrecoverable from
+git. I did not cause this -- I ran no git write command; my only writes were to the
+template (mutation probes) and one scratch test file, both reverted. T14's template
+survived only because I had taken a byte-exact backup at 13:58:36, 37 seconds before
+the reset, and restored it afterwards; sha256 f2e2f2e528f20eda5dd3bc40452b3bde13c20e
+d239b6c48ef572350d9e1fda9b matches the worker's pre-reset content, so what is on disk
+for T14 is exactly what the worker produced. The scratch probe test
+(internal/handlers/whatif/zz_checker_probe_test.go) was deleted; final
+`git status --porcelain` shows the template as the only modified tracked file.

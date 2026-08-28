@@ -1,0 +1,79 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T12
+ATTEMPT: 1
+---
+Attacks attempted (all failed to refute the claim):
+
+1. Category exact-match trim/lowercase.
+   Probe (scratch _test.go, deleted after): Category " Transfer " (padded, mixed),
+   "TRANSFER" (all caps), "Balance Transfer Fee" (substring), "Transfers" (plural).
+   `go test ./internal/services/classifier/... -run TestAdversarial_CategoryTrimLower -v -count=1`
+   -> all 6 subtests PASS with the spec's expected true/false values. Category
+   comparison correctly lowercases+trims and is exact-match only; substring/plural
+   do not leak. Source: classifier.go line 156,
+   `if catLower == "credit card payment" || catLower == "transfer" {`, fed by
+   `catLower := strings.ToLower(strings.TrimSpace(t.Category))` at line 142.
+
+2. Does "usaa transfer" pattern swallow real income?
+   Probe: Description "USAA TRANSFER IN FROM SAVINGS", Category "Category Pending",
+   Amount +500 -> want false (income-keyword escape). Result: PASS (false),
+   rescued via `containsAny(descLower, IncomeKeywords)` matching "transfer in"
+   at classifier.go line 148.
+   Also confirmed via the worker's own added test
+   `{"transfer in from savings income keyword", "transfer in from savings", "", 500, false}`
+   in classifier_test.go — PASS.
+
+3. Substring leak of "usaa transfer" inside a longer negative-amount merchant
+   string ("PAYMENT TO USAA TRANSFER SERVICES LLC", -75) -> classified true.
+   This matches the spec's own acknowledged risk profile ("narrow enough that a
+   real merchant payment is unlikely to match") — not a defect, same tradeoff
+   already accepted for every other pattern in InternalTransferPatterns (e.g.
+   "schwab moneylink", "interactive brokers").
+
+4. Diff-attribution / RTK output trap: the harness's Bash tool output (piped
+   through the user's rtk git wrapper) initially rendered the hunk header as
+   `@@ ... var NeverIncomeKeywords = []string{` immediately before the
+   `+"usaa transfer"` line, which looked like the new pattern had been added to
+   the wrong list. Re-ran with `command git diff -U10` (bypassing rtk) and
+   confirmed the real hunk header is `var InternalTransferPatterns = []string{`
+   — "usaa transfer" is correctly appended there, not to NeverIncomeKeywords.
+   This was a false lead from tooling, not a defect in the work; noting it so
+   the primary verifier doesn't get burned by the same rtk rewrite (known issue,
+   see MEMORY.md "rtk rewrites git output").
+
+5. Preserved behavior: ClassifyTransactions still skips rows already typed
+   Transfer — code at classifier.go lines 87-90 unchanged by this diff
+   (`if transactions[i].TransactionType == models.Transfer { continue }`).
+   Confirmed via `command git diff` that this block has zero changes.
+
+6. Red -> green, verified independently (not trusting the worker's claim):
+   `git stash push -- internal/services/classifier/classifier.go` (isolated
+   stash, did not touch the concurrent worker's dataloader/models edits),
+   then `go test ./internal/services/classifier/... -run TestIsInternalTransfer -v -count=1`
+   on the pre-change classifier.go: `--- FAIL: TestIsInternalTransfer/transfer_category`
+   and `--- FAIL: TestIsInternalTransfer/usaa_transfer_pattern`, all other
+   subtests PASS. `git stash pop` restored the change; full classifier suite
+   is green afterward. Red->green claim holds.
+
+7. Tests assert on the right function: classifier_test.go's TestIsInternalTransfer
+   table calls `IsInternalTransfer(txn)` directly (verified by reading the test
+   body), not classifyTransaction — matches spec requirement.
+
+8. Diff scope: `git diff --name-only` = .swarm/ledger.tsv,
+   internal/models/transaction.go, internal/services/classifier/classifier.go,
+   internal/services/classifier/classifier_test.go,
+   internal/services/dataloader/{loader,loader_test,near_duplicates,near_duplicates_test}.go.
+   Manifest .swarm/manifests/T12.1.files lists only the two classifier files.
+   models/transaction.go and dataloader/* are T13's scope (concurrent worker),
+   not attributable to T12's own diff — consistent with dispatch instructions.
+
+9. Build and full suite: `go build ./...` exit 0. `go test ./internal/services/classifier/... -count=1 -v`
+   all PASS (18 subtests in TestIsInternalTransfer including the 5 spec-required
+   cases). `go test ./... -count=1` — all packages ok, no regressions.
+
+No refutation succeeded. Scratch test file
+internal/services/classifier/zzz_adversarial_test.go was created for probes
+1-3 and deleted after use (`git status --short internal/services/classifier/`
+confirms only the original two files remain modified).

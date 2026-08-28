@@ -1,0 +1,199 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T12
+ATTEMPT: 1
+---
+Repo /home/darrell/bin/ai/budget2, branch fix/import-dedup-classifier
+(`git branch --show-current` -> fix/import-dedup-classifier), work uncommitted
+in the working tree. Every assertion below is backed by a command I ran.
+
+--------------------------------------------------------------------
+C1. IsInternalTransfer category check: lowercased+trimmed category exactly
+    "transfer" => true, in addition to "credit card payment"; exact match
+    only ("Balance Transfer Fee" and "Transfers" must NOT match).
+--------------------------------------------------------------------
+RESULT: MET (behaviorally demonstrated, not inferred).
+
+Code (`git diff internal/services/classifier/` via `rtk proxy`):
+    -	if catLower == "credit card payment" {
+    +	if catLower == "credit card payment" || catLower == "transfer" {
+
+Because reading is not verification, I ran a behavioral probe against the
+working-tree classifier.go in a throwaway detached worktree (worktree at HEAD,
+current classifier.go/classifier_test.go copied in, probe_test.go added; both
+worktrees removed afterward, `git worktree list` shows only the repo and
+`git status --porcelain` shows no probe artifacts).
+
+Command: `go test ./internal/services/classifier/... -run TestProbe -v`
+Exit 0. Cases that isolate the CATEGORY path (description matches NO transfer
+pattern -- "WALMART GROCERY"), all PASS:
+    PASS TestProbe_CategoryPathIsolated/cat_Transfer_isolated        cat "Transfer"            => true
+    PASS TestProbe_CategoryPathIsolated/cat_transfer_lowercase       cat "transfer"            => true
+    PASS TestProbe_CategoryPathIsolated/cat_Transfer_padded_ws       cat "  Transfer  "        => true
+    PASS TestProbe_CategoryPathIsolated/cat_Transfer_TRIM+UPPER      cat "TRANSFER"            => true
+Exact-match-only (substring must NOT match), all PASS:
+    PASS .../cat_Transfers_plural            cat "Transfers"            => false
+    PASS .../cat_Balance_Transfer_Fee        cat "Balance Transfer Fee" => false
+    PASS .../cat_Transfer_Out                cat "Transfer Out"         => false
+    PASS .../cat_Bank_Transfer               cat "Bank Transfer"        => false
+Preserved behavior "category check is unconditional" (no income escape), PASS:
+    PASS .../cat_Transfer_+_income_kw_+_positive       desc "payroll deposit", cat "Transfer",            amt +5000 => true
+    PASS .../cat_CC_payment_+_income_kw_+_positive     desc "payroll deposit", cat "Credit Card Payment", amt +5000 => true
+The new branch is placed in the same unconditional `if` as the pre-existing
+"credit card payment" branch, and both behave identically under the probe.
+
+--------------------------------------------------------------------
+C2. "usaa transfer" added to InternalTransferPatterns, subject to the same
+    income-keyword escape as other patterns.
+--------------------------------------------------------------------
+RESULT: MET.
+
+Raw diff (`rtk proxy git diff -- internal/services/classifier/`) confirms the
+insertion lands inside `var InternalTransferPatterns = []string{` (the hunk
+header names the *preceding* symbol NeverIncomeKeywords, which is misleading;
+the hunk body shows the `InternalTransferPatterns` opening line at context):
+     var InternalTransferPatterns = []string{
+     	// Generic banking / credit-card payments
+     	"usaa funds transfer",
+    +	"usaa transfer",
+     	"internal transfer",
+Confirmed independently by `Read internal/services/classifier/classifier.go`:
+"usaa transfer" is line 57, inside InternalTransferPatterns (lines 54-77);
+NeverIncomeKeywords ends at line 47 and is unmodified.
+
+Probe (`go test ... -run TestProbe -v`), pattern path isolated from category:
+    PASS .../pattern_usaa_transfer                         desc "USAA Transfer",    cat "Category Pending", +8571.35 => true
+    PASS .../pattern_usaa_transfer_negative                desc "usaa transfer xyz", cat "",                 -8571.35 => true
+Income-keyword escape demonstrably applies to the NEW pattern:
+    PASS .../pattern_usaa_transfer_+_income_kw_+_positive  desc "USAA Transfer payroll", amt +8571.35 => false  (escaped)
+    PASS .../pattern_usaa_transfer_+_income_kw_+_negative  desc "USAA Transfer payroll", amt -8571.35 => true   (escape is positive-only, as before)
+
+--------------------------------------------------------------------
+C3. Preserved: rows already typed models.Transfer are never re-typed by
+    ClassifyTransactions.
+--------------------------------------------------------------------
+RESULT: MET.
+
+`rtk proxy git diff -- internal/services/classifier/` shows only two hunks in
+classifier.go (pattern insertion, category condition). ClassifyTransactions is
+untouched. Demonstrated behaviorally:
+Command: `go test ./internal/services/classifier/... -run TestProbe -v`
+    PASS TestProbe_ClassifyTransactionsSkipsTransfer
+which feeds a +8571.35 and a -8571.35 row both pre-typed models.Transfer plus a
+PAYROLL row, and asserts the two transfer rows keep TransactionType==Transfer
+AND keep their original signed amounts (no math.Abs normalization), while the
+PAYROLL row still classifies Income.
+
+--------------------------------------------------------------------
+C4. Required tests present in classifier_test.go (table-driven), all five.
+--------------------------------------------------------------------
+RESULT: MET (present and passing).
+
+Command: `go test ./internal/services/classifier/... -run TestIsInternalTransfer -v`
+Exit 0. I read the table (classifier_test.go lines 255-304; struct fields are
+{name, desc, cat, amount, want} and the loop at line 292-303 calls
+IsInternalTransfer and t.Errorf on mismatch -- the test asserts what its name
+claims). Required rows, each observed PASS by subtest name:
+  1. {Description "USAA Transfer", Category "Transfer", Amount 8571.35} -> true
+     line 273; PASS TestIsInternalTransfer/transfer_category
+  2. {Description "USAA Transfer", Category "Category Pending", 8571.35} -> true
+     line 274; PASS TestIsInternalTransfer/usaa_transfer_pattern
+  3. {Description "Balance Transfer Fee", Category "Fees"} -> false
+     line 280; PASS TestIsInternalTransfer/balance_transfer_fee
+  4. Category "Transfers" plural -> false
+     line 281; PASS TestIsInternalTransfer/transfer_category_plural_not_matched
+  5. Income regression {Description "transfer in from savings", Amount 500} -> false
+     line 289; PASS TestIsInternalTransfer/transfer_in_from_savings_income_keyword
+
+Red -> green demonstrated, not taken on the worker's word. Detached worktree at
+HEAD (pre-change classifier.go confirmed: `grep -n 'catLower == "transfer"\|"usaa transfer"'`
+matched nothing), new classifier_test.go copied in:
+Command: `go test ./internal/services/classifier/... -run TestIsInternalTransfer`
+Exit 1:
+    --- FAIL: TestIsInternalTransfer/transfer_category      IsInternalTransfer() = false, want true
+    --- FAIL: TestIsInternalTransfer/usaa_transfer_pattern  IsInternalTransfer() = false, want true
+The regression row (#5) and the negative rows (#3, #4) pass on BOTH trees,
+which is exactly what "keeps its current classification" requires.
+
+--------------------------------------------------------------------
+C5. go build ./... passes.
+--------------------------------------------------------------------
+RESULT: MET. Command: `rtk proxy go build ./...` -> exit 0 (run twice: once at
+the start, once after the concurrent T13 worker's dataloader/models edits
+landed; exit 0 both times).
+
+--------------------------------------------------------------------
+C6. go test ./internal/services/classifier/... passes with the new tests present.
+--------------------------------------------------------------------
+RESULT: MET. Command: `rtk proxy go test ./internal/services/classifier/...`
+    ok  	budget2/internal/services/classifier	0.005s   (exit 0)
+`go vet ./internal/services/classifier/...` -> exit 0.
+
+--------------------------------------------------------------------
+C7. go test ./internal/services/classifier/... ./internal/services/dataloader/... passes.
+--------------------------------------------------------------------
+RESULT: MET, and the dataloader package is GREEN (not red from the concurrent worker).
+Command: `rtk proxy go test ./internal/services/classifier/... ./internal/services/dataloader/...`
+    ok  	budget2/internal/services/classifier
+    ok  	budget2/internal/services/dataloader	1.422s   (exit 0)
+
+Full suite, spec line 86 ("go test ./... passes, no regressions elsewhere"):
+`rtk proxy go test -count=1 ./...` -> exit 0, zero non-"ok" lines. This was run
+AFTER the concurrent T13 worker's edits to internal/models/transaction.go and
+internal/services/dataloader/{loader,near_duplicates}{,_test}.go had landed, so
+it is a current reading, not a stale one.
+
+Blast-radius check on the one real downstream consumer: `grep -rn
+"IsInternalTransfer\|InternalTransferPatterns" --include=*.go` shows
+internal/services/transfers/transfers.go:340 calls classifier.IsInternalTransfer
+as a gate on pairing. Command:
+`go test ./internal/services/transfers/... ./internal/services/dataloader/... ./internal/services/classifier/... ./internal/handlers/...`
+-> exit 0, all ok. Nothing in the classifier diff could have broken dataloader:
+the diff adds one slice element and one `||` clause and touches no shared state.
+
+--------------------------------------------------------------------
+C8. git diff internal/services/classifier/ --name-only shows only classifier
+    files; matches manifest .swarm/manifests/T12.1.files.
+--------------------------------------------------------------------
+RESULT: MET.
+
+Command: `rtk proxy git diff --name-only -- internal/services/classifier/`
+    internal/services/classifier/classifier.go
+    internal/services/classifier/classifier_test.go
+(Note: bare `git diff --name-only` under the rtk hook returns a diffstat, not
+names. All git output above was taken through `rtk proxy`.)
+
+`cat .swarm/manifests/T12.1.files` lists exactly those two paths. Diffstat:
+2 files changed, 9 insertions(+), 1 deletion(-).
+
+SCOPE: Tracked files modified tree-wide (`rtk proxy git status --porcelain`)
+are .swarm/ledger.tsv (lead bookkeeping: adds the T12/T13 dispatched rows),
+internal/models/transaction.go and internal/services/dataloader/{loader.go,
+loader_test.go,near_duplicates.go,near_duplicates_test.go} -- all attributable
+to the concurrent T13 worker, none in T12's manifest, explicitly out of my
+verdict's scope. T12 itself touched only internal/services/classifier/**, which
+is NOT listed in .swarm/critical.globs (that file covers storage, dataloader,
+retirement/engine, transfers, accounts.go, mcpsvc/confirm). No critical glob
+touched by T12.
+
+--------------------------------------------------------------------
+FINDING (does not fail a written criterion; flagged for the lead)
+--------------------------------------------------------------------
+The committed test file contains no test that would fail if change #1 (the
+category check) were reverted. Mutation-tested, not guessed: in the HEAD
+worktree I applied ONLY the pattern change ("usaa transfer" inserted, the
+`catLower == "transfer"` clause left absent -- verified by grep showing
+line 156 as `if catLower == "credit card payment" {`) and ran
+`go test ./internal/services/classifier/... -run TestIsInternalTransfer`:
+    ok  	budget2/internal/services/classifier	0.002s   (exit 0)
+The whole suite passes with the category feature removed. Cause: the spec's
+own required row #1 uses Description "USAA Transfer", which also matches the
+newly added "usaa transfer" pattern, so it is satisfied via the pattern path
+and never reaches the category branch. The category feature is therefore
+correct (proved by my C1 probe) but unguarded against future regression.
+Strictly against the written criteria this is a PASS -- the criteria require
+the five listed rows to be present and passing and red->green to be shown, and
+both are demonstrated -- but a one-line addition such as
+    {"transfer category isolated", "WALMART GROCERY", "Transfer", -100, true}
+would close it. Offered as a finding, not a repair; I did not edit any file.

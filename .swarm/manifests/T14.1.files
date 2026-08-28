@@ -1,0 +1,2 @@
+web/templates/components/whatif/tax-optimizer.html
+internal/handlers/whatif/tax_optimizer_render_test.go

@@ -316,6 +316,17 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The conversion-sweep panel's "Apply" buttons (T16) post here — the same
+	// route and mutation semantics as the standalone Roth Conversion form
+	// above — but need the sweep table re-rendered afterward, not the
+	// standard what-if results column, so the "current" marker moves to the
+	// applied row. The standalone form never sends apply_source, so this
+	// branch changes nothing for any other caller of this handler.
+	if r.FormValue("apply_source") == conversionSweepApplySource {
+		saveAndRenderConversionSweep(w, r, settings)
+		return
+	}
+
 	// Save settings
 	saveAndRecalc(w, r, settings)
 }

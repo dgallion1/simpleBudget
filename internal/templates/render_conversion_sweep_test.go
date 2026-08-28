@@ -137,6 +137,195 @@ func TestRenderConversionSweepResults_NoRowsFallback(t *testing.T) {
 	}
 }
 
+// ── T16: best-row markers ─────────────────────────────────────────────────
+
+// TestRenderConversionSweepResults_LeastTaxAndLongestLastingSeparateMarkers
+// covers the non-color-only markers (ACCESSIBILITY.md #8 — pairs the
+// highlight with an icon and text, not color alone) when two different rows
+// each win one marker.
+func TestRenderConversionSweepResults_LeastTaxAndLongestLastingSeparateMarkers(t *testing.T) {
+	r := newConversionSweepRenderer(t)
+
+	rows := []map[string]interface{}{
+		{"Amount": 0.0, "Current": false, "Survives": true, "EndingBalanceReal": 1_000_000.0, "LifetimeTax": 500_000.0, "LifetimeIRMAA": 0.0, "LeastLifetimeTax": true},
+		{"Amount": 50_000.0, "Current": true, "Survives": true, "EndingBalanceReal": 2_000_000.0, "LifetimeTax": 600_000.0, "LifetimeIRMAA": 0.0, "LongestLasting": true},
+	}
+
+	out, err := r.RenderToString("whatif-conversion-sweep-results", map[string]interface{}{"Rows": rows})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+
+	if !strings.Contains(out, "&#9733; least lifetime tax") {
+		t.Errorf("expected the least-lifetime-tax marker (icon + text); body: %s", out)
+	}
+	if !strings.Contains(out, "&#9733; longest-lasting") {
+		t.Errorf("expected the longest-lasting marker (icon + text); body: %s", out)
+	}
+	if strings.Contains(out, "least tax &amp; longest-lasting") {
+		t.Errorf("did not expect the combined marker when two different rows win; body: %s", out)
+	}
+}
+
+// TestRenderConversionSweepResults_CombinedMarkerWhenSameRowWinsBoth covers
+// the "one combined marker" rule from CONVERSION_SWEEP_SPEC.md T16: a row
+// with both LeastLifetimeTax and LongestLasting true renders a single
+// combined badge, not two stacked badges.
+func TestRenderConversionSweepResults_CombinedMarkerWhenSameRowWinsBoth(t *testing.T) {
+	r := newConversionSweepRenderer(t)
+
+	rows := []map[string]interface{}{
+		{"Amount": 25_000.0, "Current": false, "Survives": true, "EndingBalanceReal": 2_000_000.0, "LifetimeTax": 100_000.0, "LifetimeIRMAA": 0.0, "LeastLifetimeTax": true, "LongestLasting": true},
+	}
+
+	out, err := r.RenderToString("whatif-conversion-sweep-results", map[string]interface{}{"Rows": rows})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+
+	if !strings.Contains(out, "&#9733; least tax &amp; longest-lasting") {
+		t.Errorf("expected one combined marker; body: %s", out)
+	}
+	if strings.Contains(out, "&#9733; least lifetime tax<") || strings.Contains(out, "&#9733; longest-lasting<") {
+		t.Errorf("did not expect the separate single-purpose markers alongside the combined one; body: %s", out)
+	}
+}
+
+// TestRenderConversionSweepResults_NoMarkerWhenNeitherFlagSet covers the
+// default: a row with neither flag renders no marker badge at all.
+func TestRenderConversionSweepResults_NoMarkerWhenNeitherFlagSet(t *testing.T) {
+	r := newConversionSweepRenderer(t)
+
+	rows := []map[string]interface{}{
+		{"Amount": 75_000.0, "Current": false, "Survives": true, "EndingBalanceReal": 500_000.0, "LifetimeTax": 800_000.0, "LifetimeIRMAA": 0.0},
+	}
+
+	out, err := r.RenderToString("whatif-conversion-sweep-results", map[string]interface{}{"Rows": rows})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	// Scope the check to the table body — the caption below the table
+	// statically mentions the marker glyph to explain its meaning, so
+	// searching the whole document would false-positive on that legend text.
+	tbodyStart := strings.Index(out, "<tbody>")
+	tbodyEnd := strings.Index(out, "</tbody>")
+	if tbodyStart == -1 || tbodyEnd == -1 {
+		t.Fatalf("could not locate <tbody>...</tbody> in output: %s", out)
+	}
+	if strings.Contains(out[tbodyStart:tbodyEnd], "&#9733;") {
+		t.Errorf("did not expect any best-row marker on the row; body: %s", out)
+	}
+}
+
+// ── T16: Apply buttons ───────────────────────────────────────────────────
+
+// TestRenderConversionSweepResults_ApplyButtonOnNonCurrentRowsOnly covers:
+// non-current rows get an Apply button whose accessible (visible) text
+// includes the dollar amount, submitting to the same route/semantics as the
+// standalone Roth Conversion form; the current row gets no Apply button.
+func TestRenderConversionSweepResults_ApplyButtonOnNonCurrentRowsOnly(t *testing.T) {
+	r := newConversionSweepRenderer(t)
+
+	rows := []map[string]interface{}{
+		{"Amount": 0.0, "Current": false, "Survives": true, "EndingBalanceReal": 1_000_000.0, "LifetimeTax": 500_000.0, "LifetimeIRMAA": 0.0, "RothStartYear": 2, "RothEndYear": 15},
+		{"Amount": 50_000.0, "Current": true, "Survives": true, "EndingBalanceReal": 900_000.0, "LifetimeTax": 600_000.0, "LifetimeIRMAA": 0.0, "RothStartYear": 2, "RothEndYear": 15},
+	}
+
+	out, err := r.RenderToString("whatif-conversion-sweep-results", map[string]interface{}{"Rows": rows})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+
+	if n := strings.Count(out, "hx-post=\"/whatif/roth-conversion\""); n != 1 {
+		t.Errorf("expected exactly one Apply button (only on the non-current row), got %d; body: %s", n, out)
+	}
+	if !strings.Contains(out, "Apply $0.00") {
+		t.Errorf("expected the $0 row's Apply button to state its own amount; body: %s", out)
+	}
+	if !strings.Contains(out, `name="apply_source" value="conversion-sweep"`) {
+		t.Errorf("expected the apply_source hidden field identifying the sweep Apply flow; body: %s", out)
+	}
+	if !strings.Contains(out, `name="annual_amount" value="0"`) {
+		t.Errorf("expected annual_amount=0 for the $0 row's Apply form; body: %s", out)
+	}
+	if !strings.Contains(out, `name="start_year" value="2"`) || !strings.Contains(out, `name="end_year" value="15"`) {
+		t.Errorf("expected the saved start/end years preserved in the Apply form; body: %s", out)
+	}
+	// The $0 row's Apply form must submit enabled="" (falsy), not "on" —
+	// enabled = amount > 0.
+	if !strings.Contains(out, `name="enabled" value="">`) {
+		t.Errorf("expected the $0 row's enabled field to be empty (unchecked); body: %s", out)
+	}
+}
+
+// TestRenderConversionSweepResults_ApplyButtonEnabledForPositiveAmount
+// covers the enabled = amount > 0 rule for a nonzero, non-current row.
+func TestRenderConversionSweepResults_ApplyButtonEnabledForPositiveAmount(t *testing.T) {
+	r := newConversionSweepRenderer(t)
+
+	rows := []map[string]interface{}{
+		{"Amount": 100_000.0, "Current": false, "Survives": false, "DepletionMonth": 300, "DepletionYears": 25, "LifetimeTax": 700_000.0, "LifetimeIRMAA": 5_000.0, "RothStartYear": 0, "RothEndYear": 0},
+	}
+
+	out, err := r.RenderToString("whatif-conversion-sweep-results", map[string]interface{}{"Rows": rows})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+
+	if !strings.Contains(out, "Apply $100,000.00") {
+		t.Errorf("expected the Apply button to state the amount; body: %s", out)
+	}
+	if !strings.Contains(out, `name="enabled" value="on">`) {
+		t.Errorf("expected enabled=\"on\" for a positive-amount Apply form; body: %s", out)
+	}
+}
+
+// ── T16: applied confirmation (aria-live) ────────────────────────────────
+
+// TestRenderConversionSweepResults_AppliedConfirmationAriaLive covers the
+// ACCESSIBILITY.md #10 requirement that a state-changing action announces
+// its result via an aria-live=polite region.
+func TestRenderConversionSweepResults_AppliedConfirmationAriaLive(t *testing.T) {
+	r := newConversionSweepRenderer(t)
+
+	rows := []map[string]interface{}{
+		{"Amount": 100_000.0, "Current": true, "Survives": true, "EndingBalanceReal": 1_200_000.0, "LifetimeTax": 700_000.0, "LifetimeIRMAA": 5_000.0},
+	}
+
+	out, err := r.RenderToString("whatif-conversion-sweep-results", map[string]interface{}{
+		"Rows": rows, "Applied": true, "AppliedAmount": 100_000.0,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+
+	if !strings.Contains(out, `aria-live="polite"`) {
+		t.Errorf("expected an aria-live region announcing the apply result; body: %s", out)
+	}
+	if !strings.Contains(out, "$100,000.00") {
+		t.Errorf("expected the confirmation to state the applied amount; body: %s", out)
+	}
+}
+
+// TestRenderConversionSweepResults_NoAppliedConfirmationOnPlainRun covers
+// the un-applied case (the button-triggered sweep run): no confirmation
+// banner when Applied is unset/false.
+func TestRenderConversionSweepResults_NoAppliedConfirmationOnPlainRun(t *testing.T) {
+	r := newConversionSweepRenderer(t)
+
+	rows := []map[string]interface{}{
+		{"Amount": 0.0, "Current": true, "Survives": true, "EndingBalanceReal": 1_000_000.0, "LifetimeTax": 500_000.0, "LifetimeIRMAA": 0.0},
+	}
+
+	out, err := r.RenderToString("whatif-conversion-sweep-results", map[string]interface{}{"Rows": rows})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	if strings.Contains(out, `aria-live="polite"`) {
+		t.Errorf("did not expect an applied confirmation on a plain (non-apply) sweep run; body: %s", out)
+	}
+}
+
 // TestRenderConversionSweep_ButtonState covers the initial page-embed
 // template: button-triggered only (a bare hx-post button, no results table,
 // no auto-run on load).

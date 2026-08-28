@@ -68,3 +68,32 @@ the sweep is 9 deterministic runs, so the endpoint must complete well under
 
 ## Tier
 2 (code) — checker-tests (anthropic lane) + checker-second (adversarial).
+
+# T16 — Make the sweep actionable
+
+## Behavior
+- Highlight two rows in the sweep results (distinctly and accessibly, not
+  color-only): "least lifetime tax" and "longest-lasting portfolio" (ties:
+  prefer the smaller amount). When one row wins both, one combined marker.
+- Each non-current row gets an "Apply" button that saves that annual
+  conversion amount to the active plan through the SAME server path the
+  existing Roth conversion form uses (`POST /whatif/roth-conversion` — reuse
+  its handler semantics; preserve saved start/end years; enabled = amount>0),
+  then refreshes the results panel so the "current" marker moves.
+- Applying is a write to the saved plan: the button must state the amount it
+  applies (visible text, not icon-only) and the swap must re-render the sweep
+  so the change is immediately visible. No confirmation dialog needed — the
+  existing form has none and the change is one field, reversible by clicking
+  another row.
+
+## Acceptance criteria
+1. `make build`, `make test`, `make css-verify` all pass.
+2. Tests: marker logic (least-tax row, longest-lasting row, tie handling,
+   combined marker), and an httptest flow proving Apply persists the amount
+   via the real router and the re-rendered table marks the new current row.
+3. Markers are not color-only (ACCESSIBILITY.md #8); Apply buttons have
+   accessible names including the dollar amount.
+4. No RunFull / Monte Carlo; no critical-glob changes.
+
+## Tier
+2 (code) — checker-tests + checker-second.

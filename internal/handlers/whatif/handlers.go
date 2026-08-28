@@ -803,6 +803,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/glide-path", handleWhatIfGlidePath)
 	r.Post("/whatif/guardrails", handleWhatIfGuardrails)
 	r.Post("/whatif/tax-optimize", handleWhatIfTaxOptimize)
+	r.Post("/whatif/conversion-sweep", handleWhatIfConversionSweep)
 }
 
 func handleWhatIf(w http.ResponseWriter, r *http.Request) {

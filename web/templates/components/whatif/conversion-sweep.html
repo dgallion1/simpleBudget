@@ -1,0 +1,86 @@
+{{/* Conversion Sweep card — button-triggered only, never runs on page
+     load. The button targets #conversion-sweep-panel with hx-swap
+     "innerHTML"; the results partial ("whatif-conversion-sweep-results")
+     intentionally does NOT re-render the #conversion-sweep-panel wrapper
+     (only its contents), so the swap never nests a second element with the
+     same id inside the first. */}}
+{{define "whatif-conversion-sweep"}}
+<div id="conversion-sweep-panel">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 conversion-sweep-card">
+        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Conversion Sweep</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            See what a flat annual Roth conversion amount &mdash; held constant every year &mdash; does to
+            how long your portfolio lasts, lifetime tax, and lifetime IRMAA.
+        </p>
+        <button hx-post="/whatif/conversion-sweep"
+                hx-target="#conversion-sweep-panel"
+                hx-swap="innerHTML"
+                hx-indicator="#conversion-sweep-loading"
+                hx-on::after-swap="document.querySelector('#conversion-sweep-panel h3')?.focus()"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md transition-colors">
+            Run Conversion Sweep
+            <span id="conversion-sweep-loading" class="htmx-indicator" aria-hidden="true">
+                <svg class="animate-spin motion-reduce:animate-none h-4 w-4" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </span>
+        </button>
+    </div>
+</div>
+{{end}}
+
+{{/* Conversion Sweep results partial — rendered by POST
+     /whatif/conversion-sweep and swapped into #conversion-sweep-panel's
+     innerHTML. The heading is focusable (tabindex="-1") with a visible
+     focus ring so the button's hx-on::after-swap handler above can move
+     focus into the swapped region once the triggering button is gone
+     (ACCESSIBILITY.md #10). */}}
+{{define "whatif-conversion-sweep-results"}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <h3 tabindex="-1" class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4 rounded focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-indigo-500 dark:focus:outline-indigo-400">Conversion Sweep</h3>
+    {{if .Rows}}
+    <div>
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b dark:border-gray-600">
+                    <th scope="col" class="text-left py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Annual conversion</th>
+                    <th scope="col" class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Portfolio lasts</th>
+                    <th scope="col" class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Lifetime tax</th>
+                    <th scope="col" class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">Lifetime IRMAA</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Rows}}
+                <tr class="border-b dark:border-gray-700 {{if .Current}}bg-indigo-50 dark:bg-indigo-900/20{{end}}">
+                    <td class="py-2 px-2 text-gray-800 dark:text-gray-200">
+                        {{formatMoney .Amount}}
+                        {{if .Current}}
+                        <span class="ml-2 inline-block text-xs font-medium px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">current</span>
+                        {{end}}
+                    </td>
+                    <td class="py-2 px-2 text-right text-gray-800 dark:text-gray-200">
+                        {{if .Survives}}
+                        <span class="text-green-700 dark:text-green-400">&#10003; survives</span> &middot; {{formatMoney .EndingBalanceReal}} real
+                        {{else}}
+                        {{.DepletionMonth}} mo (~{{.DepletionYears}} yrs)
+                        {{end}}
+                    </td>
+                    <td class="py-2 px-2 text-right text-red-600 dark:text-red-400">{{formatMoney .LifetimeTax}}</td>
+                    <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{formatMoney .LifetimeIRMAA}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+        Each row runs one deterministic projection at that flat annual conversion amount, held constant
+        every year (start/end years unchanged from your saved plan) &mdash; no Monte Carlo. Ending balance,
+        lifetime tax, and lifetime IRMAA are all in today's dollars (inflation-deflated), summed across
+        projection years. The highlighted row matches your saved plan's current annual conversion amount.
+    </p>
+    {{else}}
+    <p class="text-sm text-gray-500 dark:text-gray-400">No results.</p>
+    {{end}}
+</div>
+{{end}}

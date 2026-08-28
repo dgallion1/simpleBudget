@@ -1,0 +1,121 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T15
+ATTEMPT: 2
+---
+Scope: internal/handlers/whatif/handlers_sweep.go (+test),
+web/templates/components/whatif/conversion-sweep.html,
+web/static/css/tailwind.css. Compared against T15.1 verdicts (my own prior
+FAIL, and checker-tests' FAIL). Both defects that failed attempt 1 are
+targeted attack surfaces here.
+
+1. DEFECT 1 (my attempt-1 FAIL) — "today's dollars" caption over nominal
+   LifetimeTax. ATTACKED, DID NOT REPRODUCE.
+   - New helper lifetimeRealTaxAndIRMAA (handlers_sweep.go:48-58) replaces
+     the old `analysis.BuildTax(proj,in).TotalTaxPaid` call for LifetimeTax,
+     and now also computes LifetimeIRMAA the same way (previously nominal,
+     presumably a raw per-year sum — no longer present).
+   - Deflator check: `deflator := ys.CumulativeInflation; if deflator <= 0 {
+     deflator = 1}` is a byte-for-byte match of the guard in
+     tax_optimizer.go:237-239's projectionToCandidate (verified by reading
+     both). Same field (models.ProjectionYearSummary.CumulativeInflation),
+     same zero-guard, same per-year-then-sum order of operations. No
+     off-by-one: both loop over YearlySummaries and divide ys.Taxes by that
+     year's own deflator before summing (not sum-then-divide, which would
+     be wrong under a time-varying deflator).
+   - Net vs gross inflation: confirmed CumulativeInflation (used here) is
+     distinct from NetCumulativeInflation (engine/stepper.go:34-39, used
+     only for spending-phase rebasing, per loop_helpers.go). The sweep uses
+     the same field the Tax Optimizer's already-shipped LifetimeTaxReal
+     uses, not the net variant — correct choice, not the wrong series.
+   - EndingBalanceReal (handlers_sweep.go:131,
+     proj.Months[...].PortfolioBalanceReal) traces to
+     engine/month.go:161: `totalBalance / st.CumulativeInflation` — same
+     deflator field, so all three money columns and the caption are
+     internally consistent (verified, not assumed).
+   - Caption now reads "Ending balance, lifetime tax, and lifetime IRMAA are
+     all in today's dollars (inflation-deflated), summed across projection
+     years" (conversion-sweep.html:78-80) and the row markup separately
+     labels the balance cell "real" (line 64) — matches what the code now
+     computes for all three columns.
+   - New test TestHandleWhatIfConversionSweep_LifetimeTaxIsRealNotNominal
+     (handlers_sweep_test.go:351-428): fixture is sweepScenarioSettings(),
+     confirmed 30-year horizon (ProjectionYears=30) and 3% inflation
+     (models.DefaultWhatIfSettings() sets InflationRate: 3.0, uncontested
+     by the fixture) — nonzero multi-year inflation, not a same-value trap.
+     It independently re-derives wantReal inline (not by calling
+     lifetimeRealTaxAndIRMAA) from a projection it runs itself via
+     prepare.From/getEngine().Run, then separately asserts got is close to
+     wantReal (tol 0.01) AND asserts got is NOT close to nominal
+     BuildTax().TotalTaxPaid. That is not circular — it calls the same
+     formula but not the same function, and it independently guards
+     (line 394-396) that the fixture's real/nominal actually diverge before
+     trusting the rest of the assertions, so a fixture regression to
+     inflation=0 would fail loudly rather than silently passing.
+     Confirmed passing: `go test -run
+     TestHandleWhatIfConversionSweep_LifetimeTaxIsRealNotNominal -v` ->
+     PASS. Manifest's claim of reverting the fix and observing the test
+     fail (nominal 85409.17 vs real 76482.92) is consistent with the
+     magnitude of a 30yr/3% deflation and not independently re-verified by
+     me (would require reverting code), but the test's own internal
+     nominal-divergence guard (line 394-396) makes a false-positive PASS
+     structurally unlikely regardless.
+
+2. DEFECT 2 (checker-tests' attempt-1 FAIL) — stale tailwind.css.
+   ATTACKED, DID NOT REPRODUCE.
+   - `make css-verify` -> exit 0, "tailwind.css is up to date".
+   - Both previously-missing selectors now present in the shipped file:
+     `grep -o 'motion-reduce\\:animate-none' web/static/css/tailwind.css`
+     and `grep -o 'focus\\:outline-indigo-500' ...` both match.
+   - git diff shows tailwind.css changed (the file is single-line minified,
+     so diff reports 1/-1 but it's a full content rebuild); css-verify's
+     exact-rebuild comparison is the authoritative check that nothing else
+     drifted, and it passed clean — no evidence of dropped rules.
+
+3. Cross-column consistency — re-verified all three money columns
+   (EndingBalanceReal, LifetimeTax, LifetimeIRMAA) trace to
+   CumulativeInflation-deflated fields; no column left nominal while the
+   caption claims real.
+
+4. Regression check on attempt-1's six previously-clean surfaces:
+   - No RunFull/MonteCarlo: `grep -n "RunFull\|MonteCarlo"
+     handlers_sweep.go` -> only the doc comment, no call site (unchanged).
+   - Concurrency: `go test -race -run ConversionSweep
+     ./internal/handlers/whatif/...` -> PASS, no race.
+   - No changes under critical globs: `git status --porcelain` shows only
+     .swarm/ledger.tsv, handlers.go (+1 line, same as attempt 1),
+     whatif.html (+1 line, same), the new sweep files, and tailwind.css —
+     matches T15.2.manifest exactly, nothing under
+     internal/services/{storage,dataloader,retirement/engine,transfers}/**
+     or accounts.go/mcpsvc/confirm/**.
+   - Page-load auto-fire: whatif.html diff and conversion-sweep.html both
+     unchanged in this respect (button-only hx-post, no hx-trigger).
+   - Current-row marking / row count/order: full targeted test suite still
+     green (see below), logic in conversionSweepAmounts/
+     buildConversionSweepRow untouched by this attempt's diff.
+
+5. Full verification commands run directly (not trusting the manifest):
+   `go build ./...` -> exit 0.
+   `go vet ./...` -> exit 0.
+   `go test ./...` -> all packages ok, no failures.
+   `go test -count=1 -race ./internal/handlers/whatif/... -run
+     ConversionSweep` -> ok, 1.327s.
+   `go test ./internal/handlers/whatif/... -run 'ConversionSweep|Sweep' -v`
+     -> 12/12 PASS including the new real-vs-nominal test.
+   `make css-verify` -> exit 0.
+   `make build` -> exit 0. Live :8080 instance not touched, restarted, or
+   rebuilt over.
+
+Strongest attack attempted and result: re-deriving the deflator semantics
+independently against tax_optimizer.go (checking for net-vs-gross inflation
+mismatch or sum-then-divide vs divide-then-sum ordering, either of which
+would silently corrupt the "real" figure) — did not find a discrepancy; the
+new helper is a faithful, field-for-field mirror of the already-audited
+tax_optimizer.go deflation, extended consistently to IRMAA, and the ending
+balance column (never verified in attempt 1) also checks out as genuinely
+real via the same CumulativeInflation field. Both attempt-1 defects are
+fixed at the root cause (computation), not papered over by softening the
+caption, and are covered by tests I ran and read line-by-line myself.
+
+VERDICT: PASS

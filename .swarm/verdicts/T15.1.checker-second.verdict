@@ -1,0 +1,121 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T15
+ATTEMPT: 1
+---
+Scope reviewed: internal/handlers/whatif/handlers_sweep.go,
+handlers_sweep_test.go, internal/templates/render_conversion_sweep_test.go,
+web/templates/components/whatif/conversion-sweep.html, the route
+registration in handlers.go, and the call graph into prepare/engine/analysis.
+
+What I tried to break, and what happened:
+
+1. Concurrency / shared mutable state — DID NOT BREAK.
+   - candidateSettingsForConversionAmount does `cfg := *s` (shallow) then
+     replaces only the RothConversion pointer with a fresh value — mirrors
+     candidateSettingsForSS exactly (internal/services/retirement/analysis/
+     tax_optimizer.go:63-75).
+   - Each candidate goes through prepare.From -> DeepCopy, which is a full
+     JSON marshal/unmarshal round trip (internal/services/retirement/
+     prepare/prepare.go:80-93), not a pointer-preserving copy. That
+     eliminates interior-pointer aliasing across the 9 concurrent
+     eng.Run calls.
+   - engine.Run is documented and, by inspection of runMonthlyLoop/stepper,
+     behaves as a pure function of its Input; the only genuinely shared
+     value across goroutines is baseIn.Chain/Hooks, which are read-only
+     ([]PreparedChainLink, function value) built once outside the fan-out.
+   - `go test -race -run ConversionSweep ./internal/handlers/whatif/...`
+     found no race.
+   - baseIn.Hooks is the zero-value engine.Hooks{} (buildEngineInput never
+     populates it), which exactly matches the pre-existing precedent in
+     handleWhatIfTaxOptimize (handlers_rates.go:483-489) — not a regression
+     introduced by this task.
+
+2. Candidate-amount insertion logic (0/25k/.../200k + current) — DID NOT
+   BREAK. Verified via existing tests plus manual reasoning for current
+   already-in-list, current above max, current below min (symmetric),
+   nil RothConversion (defaults current to 0, already in list). Enabled
+   follows `amount > 0` correctly, including the amount=0 case explicitly
+   disabling (not leaving a stale Enabled=true) — TestCandidateSettings...
+   EnabledFollowsAmount covers this.
+
+3. Survives-vs-depletes rendering — DID NOT BREAK. Row and render tests
+   isolate each row's own <tr>...</tr> markup (not just substring search
+   in the whole document) so one row's content can't mask an assertion
+   about the sibling row; both the handler-level split and the render-level
+   split are exercised against a real engine-derived scenario, not a
+   synthetic fixture.
+
+4. Route/critical-globs/RunFull — DID NOT BREAK. `grep -n "RunFull\|
+   MonteCarlo" handlers_sweep.go` only matches the doc comment explaining
+   why the code deliberately avoids it; call graph is Load -> buildEngineInput
+   (prepare.From only, confirmed by reading handlers.go:235-273) -> eng.Run.
+   git status shows the changed/added files are handlers.go,
+   handlers_sweep.go(+test), render_conversion_sweep_test.go,
+   conversion-sweep.html, whatif.html — none match
+   .swarm/critical.globs (storage/**, dataloader/**, retirement/engine/**,
+   transfers/**, accounts/accounts.go, mcpsvc/confirm/**).
+
+5. Page-load auto-fire — DID NOT BREAK. `git diff HEAD~1 -- web/templates/
+   pages/whatif.html` shows exactly one added line, `{{template
+   "whatif-conversion-sweep" .}}` (the button-only card), not the
+   `-results` partial. TestRenderConversionSweep_ButtonState additionally
+   asserts no `<table>` and no `hx-trigger="load"/"revealed"` in that
+   template.
+
+6. REAL DEFECT FOUND — Lifetime Tax column is mislabeled as real dollars.
+   The template's caption (web/templates/components/whatif/
+   conversion-sweep.html:76-81) states: "Ending balance and lifetime tax
+   are in today's dollars; lifetime IRMAA is nominal, summed across
+   projection years." This is factually wrong for the Lifetime Tax column.
+   row.LifetimeTax is set from `analysis.BuildTax(proj, in).TotalTaxPaid`
+   (handlers_sweep.go:114-116), which is an un-deflated sum of
+   ProjectionYearSummary.Taxes across every year (tax.go:103-126) — it is
+   NOT divided by CumulativeInflation anywhere in that path. I confirmed
+   ys.Taxes itself is nominal by cross-referencing the sibling Tax
+   Optimizer feature, which explicitly deflates the equivalent figure:
+   `cand.LifetimeTaxReal += ys.Taxes / deflator` where
+   `deflator := ys.CumulativeInflation` (tax_optimizer.go:239-241) — i.e.
+   the codebase already has the "real" version of this exact quantity and
+   the sweep does not use it, contradicting its own caption.
+   I reproduced the magnitude with a throwaway test against
+   sweepScenarioSettings() (the fixture the handler tests themselves use):
+     nominal TotalTaxPaid=58836.03  real(deflated)=45722.73  ratio=1.287
+   That is a 28.7% overstatement relative to what the caption claims the
+   number represents — not a rounding-level discrepancy. A user reading
+   "in today's dollars" and comparing Lifetime Tax against the correctly
+   labeled real EndingBalanceReal column, or against the Tax Optimizer
+   card's LifetimeTaxReal, is given a false apples-to-apples impression
+   for the central financial figure this feature exists to produce.
+   (Test file used to reproduce, then removed — not part of the shipped
+   diff: internal/handlers/whatif/zz_sweep_check_test.go, content
+   preserved in this session's scratchpad.)
+
+   Note: acceptance criterion 5 in CONVERSION_SWEEP_SPEC.md literally says
+   "lifetime tax: reuse analysis.BuildTax(proj, in) totals" — so using
+   TotalTaxPaid does follow the letter of the spec. The defect is not
+   "used the wrong field per spec," it is that the worker's own added UI
+   copy asserts a units claim about that field that is false. The spec
+   never asked for that caption sentence, and as written it misinforms the
+   user about what they are looking at.
+
+7. Accessibility (ACCESSIBILITY.md) — DID NOT BREAK on the points checked:
+   #2 `<th scope="col">` present; #7/#12 dark-mode classes paired with light
+   throughout; #8 "current" row uses a text badge, not color alone; #10
+   focus moves to the swapped heading via hx-on::after-swap with
+   tabindex="-1" and a visible focus ring; #15 spinner has
+   `motion-reduce:animate-none`. No duplicate element IDs: the results
+   partial does not re-render the `#conversion-sweep-panel` wrapper it is
+   swapped into (only its inner contents via hx-swap="innerHTML").
+
+Verdict rationale: six of seven attack surfaces held up under adversarial
+pressure — this is solid work overall — but item 6 is a genuine, reproduced,
+user-facing factual error about the units of the report's central financial
+metric, in the feature's own added copy. Per the adversarial lane's mandate
+to default to FAIL on ambiguity, and because this is exactly the class of
+"real vs nominal dollars confusion" the dispatch explicitly asked me to
+hunt for, I am failing this attempt. Fix is narrow: either deflate
+LifetimeTax the way tax_optimizer.go does for LifetimeTaxReal, or correct
+the caption to say "lifetime tax and lifetime IRMAA are nominal, summed
+across projection years" and drop the "today's dollars" claim for tax.

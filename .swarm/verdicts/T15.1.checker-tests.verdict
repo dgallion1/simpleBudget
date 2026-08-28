@@ -1,0 +1,279 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T15
+ATTEMPT: 1
+---
+Repo: /home/darrell/bin/ai/budget2 (branch fix/import-dedup-classifier).
+Toolchain: /home/darrell/go-sdk/go/bin/go. Nothing verified against the live
+:8080 instance; all runtime evidence is go test / httptest.
+
+SUMMARY: criteria 1-6 PASS on evidence. Criterion 7 FAILS: the committed
+Tailwind stylesheet was not regenerated, so every focus-state and
+reduced-motion class the new template relies on has NO rule in the shipped
+CSS. `make css-verify` exits 2 and the missing selectors are attributable
+solely to this task's new template.
+
+--------------------------------------------------------------------------
+CRITERION 1 - `make build` and `make test` pass.  PASS
+  $ make build
+    /home/darrell/go-sdk/go/bin/go build -ldflags=... -o budget2 ./cmd/server
+    BUILD_EXIT=0
+  $ make test          (go test ./... ; go test -count=1 ./internal/handlers/accounts)
+    49 packages, all "ok"; includes budget2/internal/handlers/whatif and
+    budget2/internal/templates. Final line: ok budget2/internal/handlers/accounts 0.689s
+    TEST_EXIT=0
+  Cache-buster (make test reported many packages "(cached)"):
+  $ go test -count=1 ./internal/handlers/whatif/... ./internal/templates/...
+    ok budget2/internal/handlers/whatif 21.467s
+    ok budget2/internal/templates       0.356s   EXIT=0
+  Extra, not required by the criterion:
+  $ make vet    -> VET_EXIT=0 (go vet ./..., no output)
+  $ gofmt -l internal/handlers/whatif/handlers_sweep.go \
+             internal/handlers/whatif/handlers_sweep_test.go \
+             internal/templates/render_conversion_sweep_test.go \
+             internal/handlers/whatif/handlers.go
+    -> empty output (all formatted)
+  $ go test -count=1 -race ./internal/handlers/whatif/ -run ConversionSweep
+    -> ok ... 1.282s, RACE_EXIT=0 (the ParallelIndexed fan-out is race-clean)
+  NOTE (not part of criterion 1 as written, but the repo's own pipeline):
+  `make check` = vet static vuln css-verify test. css-verify exits 2 -> see
+  criterion 7.
+
+CRITERION 2 - 200 + one row per candidate, ascending, wall time < 2 s.  PASS
+  Verified via httptest, not curl (live :8080 runs an old binary and was left
+  untouched, per instruction).
+  $ go test -count=1 -v ./internal/handlers/whatif/ -run ConversionSweep
+    --- PASS: TestHandleWhatIfConversionSweep_RowCountOrderAndCurrent (0.02s)
+  That test (handlers_sweep_test.go:188-232) asserts w.Code == 200
+  (line 202), decodes the body and asserts len(rows) == 9 (line 210), and
+  asserts rows[i].Amount == {0,25k,...,200k}[i] i.e. ascending order
+  (lines 214-220). It measures elapsed around the handler call and fails if
+  elapsed > 2s (lines 196-207). Observed handler wall time: 0.02 s for all 9
+  projections - three orders of magnitude under the 2 s budget and
+  incompatible with any RunFull/Monte Carlo call (~7 s).
+  Route reachability:
+  $ grep -n "conversion-sweep\|tax-optimize" internal/handlers/whatif/handlers.go
+    805: r.Post("/whatif/tax-optimize", handleWhatIfTaxOptimize)
+    806: r.Post("/whatif/conversion-sweep", handleWhatIfConversionSweep)
+  Registered as POST, alongside /whatif/tax-optimize, as the spec requires.
+
+CRITERION 3 - current row marked; exactly 9 rows at $50k.  PASS
+  $ go test -count=1 -v ./internal/handlers/whatif/ -run ConversionSweep
+    --- PASS: TestConversionSweepAmounts_CurrentAlreadyInBaseList (0.00s)
+    --- PASS: TestConversionSweepAmounts_InsertsCurrentAmount (0.00s)
+    --- PASS: TestConversionSweepAmounts_InsertsAboveMax (0.00s)
+    --- PASS: TestConversionSweepAmounts_NilRothConversionTreatsCurrentAsZero (0.00s)
+    --- PASS: TestHandleWhatIfConversionSweep_RowCountOrderAndCurrent (0.02s)
+  Read the assertions: the saved plan in sweepScenarioSettings()
+  (handlers_sweep_test.go:155-167) sets AnnualAmount 50_000; the handler test
+  asserts len(rows)==9 and counts Current==true rows, failing unless exactly
+  one row is current AND its Amount is 50000 (lines 221-231). The insertion
+  path is covered separately: 60_000 -> 10 amounts with 60k in position 3
+  (line 47), 250_000 -> 10 amounts with 250k last (line 78).
+  $ go test -count=1 -v ./internal/templates/ -run ConversionSweep
+    --- PASS: TestRenderConversionSweepResults_CurrentRowMarked (0.01s)
+  That test asserts strings.Count(out, ">current<") == 1 and that the marker
+  sits inside the <tr> containing "$50,000.00" (render_conversion_sweep_test.go
+  :107-123) - i.e. it verifies the marker's row placement, not merely its
+  presence.
+
+CRITERION 4 - survives renders "survives" + ending real balance, never a
+              fabricated depletion month.  PASS
+  Model layer:
+  $ go test -count=1 -v ./internal/handlers/whatif/ -run ConversionSweep
+    --- PASS: TestHandleWhatIfConversionSweep_SurvivesVsDepletesSplit (0.01s)
+  Read the assertions (handlers_sweep_test.go:239-297): the scenario is tuned
+  so rows 0-2 survive and rows 3-8 deplete, giving BOTH branches real engine
+  output. Surviving rows must have Survives==true, EndingBalanceReal>0, and
+  DepletionMonth==0 ("no fabricated depletion month", line 272-274).
+  Depleting rows must have Survives==false, DepletionMonth>0,
+  DepletionYears>0, EndingBalanceReal==0 (lines 285-295).
+  Template layer:
+    --- PASS: TestRenderConversionSweepResults_SurvivesAndDepletesSplit (0.01s)
+  This test slices each row's own <tr>...</tr> markup before asserting
+  (render_conversion_sweep_test.go:65-71) so one row's substring cannot mask
+  the other's, then asserts the surviving row contains "survives" and
+  "$3,150,000.00" and does NOT contain "mo (~"; and the depleting row
+  contains "455 mo (~38 yrs)" and does NOT contain "survives".
+  Source confirms the guard: handlers_sweep.go:106 sets DepletionMonth only
+  under `if !proj.Survives && proj.DepletionMonth != nil`, and :110 sets
+  EndingBalanceReal only under `if proj.Survives`.
+
+CRITERION 5 - handler tests cover row count/order, current-row marking, the
+              survives-vs-depletes split; a render test covers the partial.  PASS
+  $ go test -count=1 -v ./internal/handlers/whatif/ -run 'ConversionSweep|CandidateSettingsForConversionAmount'
+    13/13 PASS. Coverage mapped to the criterion:
+      row count/order + current marking -> TestHandleWhatIfConversionSweep_RowCountOrderAndCurrent
+      survives-vs-depletes              -> TestHandleWhatIfConversionSweep_SurvivesVsDepletesSplit
+      copy discipline (no mutation of saved settings, start/end years kept)
+                                        -> TestCandidateSettingsForConversionAmount_DoesNotMutateSaved
+                                           (asserts pointer identity unchanged AND non-aliasing, lines 96-107)
+      error paths                       -> _LoadError (500 + message), _BuildEngineInputError (500 + message)
+      renderer path                     -> TestHandleWhatIfConversionSweep_RendersPartial
+                                           (asserts 10 "<tr" = 9 body + 1 header)
+  $ go test -count=1 -v ./internal/templates/ -run ConversionSweep
+    --- PASS: TestRenderConversionSweepResults_SurvivesAndDepletesSplit
+    --- PASS: TestRenderConversionSweepResults_CurrentRowMarked
+    --- PASS: TestRenderConversionSweepResults_NoRowsFallback
+    --- PASS: TestRenderConversionSweep_ButtonState
+    ok budget2/internal/templates 0.046s
+  New file /home/darrell/bin/ai/budget2/internal/templates/render_conversion_sweep_test.go
+  follows the render_*_test.go precedent (builds a real Renderer over
+  web.EmbeddedFS via NewFromFS). Tests assert what their names claim.
+
+CRITERION 6 - no changes under critical globs; no RunFull, no Monte Carlo.  PASS
+  $ git -C /home/darrell/bin/ai/budget2 status --porcelain
+     M .swarm/ledger.tsv
+     M internal/handlers/whatif/handlers.go
+     M web/templates/pages/whatif.html
+    ?? .swarm/manifests/T15.1.manifest
+    ?? CONVERSION_SWEEP_SPEC.md
+    ?? internal/handlers/whatif/handlers_sweep.go
+    ?? internal/handlers/whatif/handlers_sweep_test.go
+    ?? internal/templates/render_conversion_sweep_test.go
+    ?? web/templates/components/whatif/conversion-sweep.html
+  Nothing under internal/services/retirement/engine/**,
+  internal/services/storage/**, internal/services/dataloader/**,
+  internal/services/transfers/**, internal/services/accounts/accounts.go or
+  internal/services/mcpsvc/confirm/** (cat .swarm/critical.globs). Matches the
+  manifest exactly; no unauthorized files.
+  Both diffs are one added line each:
+  $ git diff internal/handlers/whatif/handlers.go web/templates/pages/whatif.html
+    handlers.go  +r.Post("/whatif/conversion-sweep", handleWhatIfConversionSweep)   (+1 -0)
+    whatif.html  +{{template "whatif-conversion-sweep" .}}                          (+1 -0)
+  No RunFull / Monte Carlo in the sweep path:
+  $ grep -n -i "runfull\|montecarlo" internal/handlers/whatif/handlers_sweep.go
+    only line 127, a comment ("Deliberately never calls retirement.RunFull").
+    No call site. The package's RunFull seam is `runFullFn` (handlers.go:61),
+    used only at handlers.go:102 - handlers_sweep.go never references it
+    (grep -n runFullFn internal/handlers/whatif/*.go).
+  $ grep -n "analysis\.\|engine\.\|prepare\." internal/handlers/whatif/handlers_sweep.go
+    the only cross-package calls are prepare.From (:91), eng.Run (:100),
+    analysis.BuildTax (:114), analysis.ParallelIndexed (:149).
+  $ grep -rn -i "montecarlo" internal/services/retirement/engine/
+    -> no matches; the engine package contains no Monte Carlo code at all.
+    analysis.BuildTax lives in analysis/tax.go, which likewise contains no
+    MonteCarlo reference (grep over tax.go and prepare/*.go: no matches).
+  Corroborating runtime evidence: 9 full projections + 9 BuildTax calls in
+  0.02 s (test output above). RunFull is ~7 s per the spec.
+  Button-triggered only, no auto-run:
+    web/templates/components/whatif/conversion-sweep.html contains no
+    hx-trigger at all - the only htmx trigger is the default click on the
+    <button hx-post="/whatif/conversion-sweep"> at line 15. Asserted by
+    TestRenderConversionSweep_ButtonState, which fails on hx-trigger="load"
+    or hx-trigger="revealed" and on any "<table" in the initial embed
+    (render_conversion_sweep_test.go:150-158) - PASS.
+
+CRITERION 7 - conforms to ACCESSIBILITY.md (table headers, contrast,
+              focus states).  *** FAIL ***
+
+  7a. WHAT PASSES.
+    ACCESSIBILITY.md #2 (data tables use <th> with scope): all four headers
+    carry scope="col" - conversion-sweep.html lines 47-50. Real <table>, no
+    layout table.
+    ACCESSIBILITY.md #3 (buttons act): the trigger is a real <button>
+    (line 15), not a div.
+    ACCESSIBILITY.md #8 (never colour alone): the current row pairs the
+    indigo background with a literal "current" text badge (line 59); the
+    surviving state pairs green with a check glyph and the word "survives"
+    (line 64).
+    ACCESSIBILITY.md #7/#12 for the table proper (computed with the WCAG
+    relative-luminance formula):
+      th text-gray-500 on white              4.83:1  pass
+      th dark:text-gray-400 on gray-800      5.78:1  pass
+      "survives" green-700 on white          5.02:1  pass
+      lifetime tax red-600 on white          4.83:1  pass
+      "current" badge indigo-700/indigo-100  6.41:1  pass
+
+  7b. FAILURE - the focus-state and reduced-motion CSS does not exist in the
+      shipped stylesheet. The template's a11y affordances are inert classes.
+    $ make css-verify
+      ./tmp/tailwindcss-3.4.17 -c tailwind.config.js -i web/static/css/tailwind.src.css -o tmp/tailwind.check.css --minify
+      ERROR: web/static/css/tailwind.css is stale - run 'make css' and commit the result
+      make: *** [Makefile:325: css-verify] Error 1
+      CSSVERIFY_EXIT=2
+    Attribution - the staleness is caused by THIS task, not inherited.
+    Diffing the selector sets of the freshly built CSS against the committed
+    one (python3 regex diff of tmp/tailwind.check.css vs
+    web/static/css/tailwind.css) yields 7 added selectors and 0 removed:
+      .focus\:outline:focus
+      .focus\:outline-2:focus
+      .focus\:outline-offset-2:focus
+      .focus\:outline-indigo-500:focus
+      .dark\:focus\:outline-indigo-400:focus:is(.dark ...)
+      .motion-reduce\:animate-none
+      .ring
+    Every one of those class tokens appears in exactly one source file:
+    $ grep -rn 'motion-reduce:animate-none' web/templates/ web/static/js/
+      web/templates/components/whatif/conversion-sweep.html:23
+    $ grep -rn 'focus:outline-indigo-500' web/templates/ web/static/js/
+      web/templates/components/whatif/conversion-sweep.html:41
+    (same single hit for focus:outline-2, focus:outline-offset-2,
+     dark:focus:outline-indigo-400.)
+    And the committed stylesheet has no rule for them:
+    $ grep -c 'focus\\:outline-indigo-500' web/static/css/tailwind.css  -> 0
+    $ grep -c 'motion-reduce'              web/static/css/tailwind.css  -> 0
+    $ grep -c 'focus\\:outline-indigo-500' tmp/tailwind.check.css       -> 1
+    $ grep -c 'motion-reduce'              tmp/tailwind.check.css       -> 1
+    $ git status --porcelain web/static/css/tailwind.css                -> empty
+      (the worker did not regenerate or commit it)
+
+    Consequence, tied to numbered points:
+    - ACCESSIBILITY.md #9 "focus indicator is visible". The results partial
+      moves focus to a tabindex="-1" <h3> via
+      hx-on::after-swap (conversion-sweep.html:19) - programmatic focus on a
+      tabindex="-1" element does not reliably match :focus-visible, which is
+      precisely why the worker added
+      `focus:outline focus:outline-2 focus:outline-offset-2
+       focus:outline-indigo-500 dark:focus:outline-indigo-400` at line 41.
+      Those five classes resolve to nothing in the shipped CSS, so focus
+      lands on an element with no visible indicator. The mechanism the
+      template documents in its own comment ("with a visible focus ring",
+      lines 35-38) is not delivered.
+    - ACCESSIBILITY.md #15 "respects prefers-reduced-motion for any animated
+      transition". The loading spinner is
+      `class="animate-spin motion-reduce:animate-none"` (line 23).
+      `animate-spin` IS in the committed CSS; `motion-reduce:animate-none` is
+      NOT. The spinner therefore animates unconditionally, including under
+      prefers-reduced-motion: reduce.
+    - ACCESSIBILITY.md #10's focus-restoration intent is only half-delivered:
+      the JS moves focus, but with no rendered indicator the restoration is
+      invisible to a sighted keyboard user.
+    Remedy: run `make css` and commit web/static/css/tailwind.css. No Go or
+    template change is required. `make css-verify` must exit 0.
+
+  7c. SECONDARY CONTRAST FINDING (reported, not the basis of the FAIL).
+    The explanatory footnote at conversion-sweep.html:76 uses
+    `text-xs text-gray-400 dark:text-gray-500`:
+      gray-400 #9ca3af on white     -> 2.54:1  (ACCESSIBILITY.md #7 wants 4.5:1)
+      gray-500 #6b7280 on gray-800  -> 3.04:1  (fails in dark mode too, #12)
+    This is body text, not large text, so 4.5:1 applies. Mitigating context:
+    this exact class pair is the established site-wide footnote convention -
+    $ grep -rc 'text-gray-400 dark:text-gray-500' web/templates -r
+      20 files, including rate-assumptions.html (18 uses) and the very file
+      the spec told the worker to mirror, tax-optimizer.html:146 and :184.
+    So the worker followed the mandated precedent; the defect is pre-existing
+    and repo-wide, not introduced by this design. Flagging for the lead: if
+    it is to be fixed it should be fixed as its own task across all 20 files,
+    not silently here. Fixing 7b alone is sufficient to clear criterion 7 as
+    the spec words it ("table headers, contrast, focus states") only if the
+    lead accepts the site-wide footnote precedent; otherwise both must change.
+
+  7d. OBSERVATION, no numbered point violated. The loading indicator span is
+    aria-hidden="true" with no aria-live status text, so a screen-reader user
+    gets no "running..." announcement while the sweep computes. ACCESSIBILITY
+    .md #10 requires aria-live only for "destructive or state-changing
+    actions"; a read-only sweep is neither. Not counted against the task.
+
+--------------------------------------------------------------------------
+SCOPE: clean. Exactly the six files in the manifest, plus .swarm/ledger.tsv
+and the untracked CONVERSION_SWEEP_SPEC.md / T15.1.manifest. No critical glob
+touched. tmp/tailwind.check.css was produced by my `make css-verify` run and
+is gitignored (.gitignore:4 "tmp/"). The live server on :8080 was not
+contacted, restarted or rebuilt over.
+
+BOTTOM LINE: 6 of 7 criteria met with cited evidence. Criterion 7 fails on a
+single, mechanically demonstrated, one-command defect: web/static/css/
+tailwind.css was never regenerated, so the template's focus-ring and
+reduced-motion classes have no CSS rules and `make css-verify` exits 2.

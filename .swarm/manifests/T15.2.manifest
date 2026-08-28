@@ -1,0 +1,23 @@
+TASK: T15
+ATTEMPT: 2
+WORKER: worker-coder
+
+FILES:
+internal/handlers/whatif/handlers_sweep.go
+internal/handlers/whatif/handlers_sweep_test.go
+web/templates/components/whatif/conversion-sweep.html
+web/static/css/tailwind.css
+
+COMMANDS:
+go build ./...                                                          -> exit 0, no output
+go test ./internal/handlers/whatif/... -run 'ConversionSweep|Sweep' -v  -> all PASS (12 tests, including new TestHandleWhatIfConversionSweep_LifetimeTaxIsRealNotNominal)
+(regression check) temporarily reverted lifetimeRealTaxAndIRMAA call to
+  the old analysis.BuildTax(proj,in).TotalTaxPaid nominal path, reran the
+  new test -> FAIL (LifetimeTax = 85409.17 == nominal, want real 76482.92);
+  restored the fix, reran -> PASS. Confirms the new test catches DEFECT 1.
+gofmt -l internal/handlers/whatif/handlers_sweep.go internal/handlers/whatif/handlers_sweep_test.go -> exit 0, no output (clean)
+go vet ./internal/handlers/whatif/...    -> exit 0, no output
+make css                                 -> exit 0, "web/static/css/tailwind.css rebuilt - commit it"
+make css-verify                          -> exit 0, "tailwind.css is up to date"
+make build                               -> exit 0
+make test (go test ./... ; go test -count=1 ./internal/handlers/accounts) -> all packages ok

@@ -1,0 +1,20 @@
+TASK: T15
+ATTEMPT: 1
+WORKER: worker-coder
+
+FILES:
+internal/handlers/whatif/handlers.go
+internal/handlers/whatif/handlers_sweep.go
+internal/handlers/whatif/handlers_sweep_test.go
+internal/templates/render_conversion_sweep_test.go
+web/templates/components/whatif/conversion-sweep.html
+web/templates/pages/whatif.html
+
+COMMANDS:
+go build ./...                          -> exit 0, no output
+go vet ./internal/handlers/whatif/... ./internal/templates/...  -> exit 0, no output
+gofmt -l <changed .go files>            -> exit 0, no output (all formatted)
+go test ./internal/handlers/whatif/... -run 'ConversionSweep|Sweep|CandidateSettingsForConversionAmount' -v -> all PASS
+go test ./internal/templates/... -run TestRenderConversionSweep -v -> all PASS (4 tests)
+make build                              -> exit 0
+make test (go test ./... ; go test -count=1 ./internal/handlers/accounts) -> all packages ok, including internal/handlers/whatif (22.923s) and internal/templates (0.409s)

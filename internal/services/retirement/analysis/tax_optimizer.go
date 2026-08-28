@@ -204,9 +204,18 @@ func topKSSPairs(ss *models.SSPortfolioAnalysis, currentPrimary, currentSpouse, 
 // also indirectly affects EndingPortfolioReal (the primary ranking
 // metric).
 //
-// PeakMarginalBracket and TotalRothConverted require explainability
-// fields the engine does not expose in Phase 1; both remain zero
-// and the UI renders "—" when zero.
+// PeakMarginalBracket is the max of the per-year measured marginal rates
+// (ProjectionYearSummary.MarginalRate). It is deliberately NOT
+// TaxCalculator.GetBracketRate, which is a statutory bracket-table lookup and
+// cannot see gain stacking or the section 86 phase-in.
+//
+// TotalRothConverted sums the engine's realized per-month conversions rather
+// than the planned PerYearConversions, so a strategy the engine could only
+// partly execute reports the amount actually converted. It is nominal.
+//
+// Both are reporting-only columns; neither participates in ranking. They stay
+// zero for a projection that never converts or never records a rate, and the
+// UI renders "—" for zero.
 func projectionToCandidate(proj *models.ProjectionResult, primaryClaim, spouseClaim int, strat models.RothOptimizerStrategy) models.TaxOptimizerCandidate {
 	cand := models.TaxOptimizerCandidate{
 		PrimaryClaimAge: primaryClaim,
@@ -230,6 +239,18 @@ func projectionToCandidate(proj *models.ProjectionResult, primaryClaim, spouseCl
 			deflator = 1 // pre-projection or unset
 		}
 		cand.LifetimeTaxReal += ys.Taxes / deflator
+		// +Inf is the hazard the guard exists for: it would win the max and
+		// pin the column at infinity for the whole candidate. (NaN is already
+		// safe -- every NaN comparison is false, so it never wins -- but it is
+		// excluded too so the intent does not rest on that subtlety.)
+		if r := ys.MarginalRate; !math.IsNaN(r) && !math.IsInf(r, 0) && r > cand.PeakMarginalBracket {
+			cand.PeakMarginalBracket = r
+		}
+	}
+	for _, m := range proj.Months {
+		if c := m.RothConversions; !math.IsNaN(c) && !math.IsInf(c, 0) {
+			cand.TotalRothConverted += c
+		}
 	}
 	return cand
 }

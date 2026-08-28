@@ -270,16 +270,26 @@ func TestIsInternalTransfer(t *testing.T) {
 
 		// Category-based
 		{"cc payment category", "some payment", "Credit Card Payment", -500, true},
+		{"transfer category", "USAA Transfer", "Transfer", 8571.35, true},
+		// Description matches no pattern, so only the category branch can
+		// classify this row — guards the category check independently.
+		{"transfer category isolated", "WALMART GROCERY", "Transfer", -100, true},
+		{"usaa transfer pattern", "USAA Transfer", "Category Pending", 8571.35, true},
 
 		// Not a transfer
 		{"grocery", "WALMART", "Food", -50, false},
 		{"payroll", "PAYROLL", "Income", 3000, false},
 		{"empty", "", "", 0, false},
+		{"balance transfer fee", "Balance Transfer Fee", "Fees", 0, false},
+		{"transfer category plural not matched", "some desc", "Transfers", -100, false},
 
 		// Transfer pattern but positive with income keyword => NOT transfer
 		{"transfer with income keyword", "usaa funds transfer payroll", "", 1000, false},
 		// Transfer pattern, positive, but no income keyword => IS transfer
 		{"transfer positive no income kw", "usaa funds transfer", "", 500, true},
+		// Regression: an income-keyword row unrelated to the transfer patterns
+		// or category keeps its current (non-transfer) classification.
+		{"transfer in from savings income keyword", "transfer in from savings", "", 500, false},
 	}
 
 	for _, tt := range tests {

@@ -54,6 +54,7 @@ var NeverIncomeKeywords = []string{
 var InternalTransferPatterns = []string{
 	// Generic banking / credit-card payments
 	"usaa funds transfer",
+	"usaa transfer",
 	"internal transfer",
 	"credit card payment",
 	"usaa credit card payment",
@@ -152,7 +153,7 @@ func IsInternalTransfer(t *models.Transaction) bool {
 	}
 
 	// Check category-based filtering
-	if catLower == "credit card payment" {
+	if catLower == "credit card payment" || catLower == "transfer" {
 		return true
 	}
 

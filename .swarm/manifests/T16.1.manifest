@@ -1,0 +1,20 @@
+TASK: T16
+ATTEMPT: 1
+WORKER: worker-coder
+FILES:
+internal/handlers/whatif/handlers_sweep.go
+internal/handlers/whatif/handlers_rates.go
+internal/handlers/whatif/handlers_sweep_test.go
+internal/templates/render_conversion_sweep_test.go
+web/templates/components/whatif/conversion-sweep.html
+web/static/css/tailwind.css
+COMMANDS:
+go build ./... -> exit 0
+make build -> exit 0
+make test -> exit 0 (all packages ok, including internal/handlers/whatif and internal/templates)
+go vet ./... -> exit 0, no output
+make css -> rebuilt web/static/css/tailwind.css (new emerald/indigo/border classes for markers and Apply button)
+make css-verify -> "tailwind.css is up to date" exit 0
+gofmt -l internal/handlers/whatif/handlers_sweep.go internal/handlers/whatif/handlers_rates.go internal/handlers/whatif/handlers_sweep_test.go internal/templates/render_conversion_sweep_test.go -> no output (clean)
+go test ./internal/handlers/whatif/... -run 'ConversionSweep|Sweep' -v -> all PASS (incl. TestMarkBestConversionSweepRows_*, TestConversionSweepApply_ThroughRealRouter, TestConversionSweepApply_ZeroAmountDisablesConversion)
+go test ./internal/templates/... -run 'ConversionSweep' -v -> all PASS (incl. marker/Apply-button/aria-live render tests)

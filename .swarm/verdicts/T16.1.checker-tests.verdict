@@ -1,0 +1,123 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T16
+ATTEMPT: 1
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/import-dedup-classifier, base 84bb50f (T15 accepted).
+No live server was touched; all evidence is `go build` / `go test` / httptest only.
+
+CRITERION 1 — `make build`, `make test`, `make css-verify` all pass.
+  $ make build            -> "go build -ldflags=... -o budget2 ./cmd/server"; BUILD_EXIT=0
+  $ make test             -> every package "ok" (last line "ok budget2/internal/handlers/accounts 0.720s"); MAKETEST_EXIT=0
+    (make test reported many packages cached, so re-run uncached:)
+  $ go test -count=1 ./internal/handlers/whatif/... ./internal/templates/...
+      ok budget2/internal/handlers/whatif   23.990s
+      ok budget2/internal/templates          0.449s   EXIT=0
+  $ make css-verify       -> "tailwind.css is up to date"; CSSVERIFY_EXIT=0
+  Extra hygiene:
+  $ go vet ./...          -> VET_EXIT=0, no output
+  $ gofmt -l internal/handlers/whatif/handlers_sweep.go internal/handlers/whatif/handlers_rates.go \
+      internal/handlers/whatif/handlers_sweep_test.go internal/templates/render_conversion_sweep_test.go
+      -> no output (clean). Repo-wide `gofmt -l ./internal ./cmd` lists 25 pre-existing files,
+         none of them T16 files.
+  $ go test -race -count=1 ./internal/handlers/whatif/... -run 'ConversionSweep|MarkBest'
+      -> ok, RACE_EXIT=0 (the sweep fan-out is concurrent; no data race).
+  MET.
+
+CRITERION 2 — Tests: marker logic (least-tax, longest-lasting, ties, combined) and an httptest
+flow proving Apply persists via the real router and the re-render moves "current".
+  $ go test -count=1 -v ./internal/handlers/whatif/... -run 'ConversionSweep|MarkBest|Sweep'
+    --- PASS: TestMarkBestConversionSweepRows_EmptyIsNoop
+    --- PASS: TestMarkBestConversionSweepRows_DistinctWinners
+    --- PASS: TestMarkBestConversionSweepRows_SurvivesBeatsAnyDepletion
+    --- PASS: TestMarkBestConversionSweepRows_TieOnLifetimeTaxPrefersSmallerAmount
+    --- PASS: TestMarkBestConversionSweepRows_TieOnSurvivorBalancePrefersSmallerAmount
+    --- PASS: TestMarkBestConversionSweepRows_TieOnDepletionMonthPrefersSmallerAmount
+    --- PASS: TestMarkBestConversionSweepRows_CombinedMarkerWhenSameRowWinsBoth
+    --- PASS: TestConversionSweepApply_ThroughRealRouter
+    --- PASS: TestConversionSweepApply_ZeroAmountDisablesConversion
+    (plus all 11 pre-existing T15 sweep tests PASS; ok budget2/internal/handlers/whatif 0.150s)
+  I read the test bodies rather than trusting the names
+  (/home/darrell/bin/ai/budget2/internal/handlers/whatif/handlers_sweep_test.go:492-759):
+   - The three tie tests feed rows in AMOUNT-DESCENDING order, so a pass cannot be an artifact of
+     iteration order; each asserts the smaller-amount row wins AND the larger one does not.
+   - SurvivesBeatsAnyDepletion pits DepletionMonth=5000 (not surviving) against Survives=true with
+     EndingBalanceReal=1 and asserts the survivor wins — the rule, not a coincidence.
+   - CombinedMarker asserts both flags true on one row and neither on the other.
+   - TestConversionSweepApply_ThroughRealRouter is a genuine end-to-end flow:
+       r := chi.NewRouter(); RegisterRoutes(r); ts := httptest.NewServer(r)
+       http.PostForm(ts.URL+"/whatif/roth-conversion", {apply_source=conversion-sweep,
+                     annual_amount=100000, enabled=on, start_year=3, end_year=12})
+     It asserts (a) 200, (b) the body is the SWEEP partial ("Conversion Sweep") — which fails if the
+     apply_source branch is absent, since saveAndRecalc would render the what-if results column
+     instead, (c) exactly one ">current<" marker and that it sits inside the $100,000.00 <tr>
+     (it slices the row between the surrounding <tr ... </tr>), (d) PERSISTENCE by a fresh
+     rm.Load() from disk: AnnualAmount==100000, StartYear/EndYear==3/12 preserved, Enabled==true,
+     and (e) an independent re-run of handleWhatIfConversionSweep also marks the $100,000 row
+     current — proving a real save, not a render artifact.
+   - TestConversionSweepApply_ZeroAmountDisablesConversion asserts the $0 apply persists
+     AnnualAmount 0 with Enabled==false (the enabled = amount>0 rule).
+  Route registration confirmed: internal/handlers/whatif/handlers.go:787 r.Post("/whatif/roth-conversion",...)
+  and :806 r.Post("/whatif/conversion-sweep",...), so the httptest server is the real router.
+  MET.
+
+CRITERION 3 — Markers not color-only (ACCESSIBILITY.md #8); Apply button accessible names include
+the dollar amount.
+  ACCESSIBILITY.md:30-31 — "Meaning is never conveyed by color alone — status flags pair color with
+  an icon or text."
+  $ git diff web/templates/components/whatif/conversion-sweep.html — badges render literal text:
+      "&#9733; least tax &amp; longest-lasting" | "&#9733; least lifetime tax" | "&#9733; longest-lasting"
+    i.e. star glyph + words inside the badge; color is redundant, never the sole carrier.
+  Apply button body: `Apply {{formatMoney .Amount}}` — visible text, not icon-only.
+  $ go test -count=1 -v ./internal/templates/... -run ConversionSweep
+    --- PASS: TestRenderConversionSweepResults_LeastTaxAndLongestLastingSeparateMarkers
+              (asserts "&#9733; least lifetime tax" and "&#9733; longest-lasting" present, combined absent)
+    --- PASS: TestRenderConversionSweepResults_CombinedMarkerWhenSameRowWinsBoth
+              (asserts the single combined badge, and that the two single badges are NOT also emitted)
+    --- PASS: TestRenderConversionSweepResults_NoMarkerWhenNeitherFlagSet (scoped to <tbody>)
+    --- PASS: TestRenderConversionSweepResults_ApplyButtonOnNonCurrentRowsOnly
+              (exactly one hx-post form for two rows -> current row has none; asserts "Apply $0.00",
+               apply_source hidden field, annual_amount=0, start_year=2/end_year=15 preserved,
+               enabled="" for the $0 row)
+    --- PASS: TestRenderConversionSweepResults_ApplyButtonEnabledForPositiveAmount
+              (asserts "Apply $100,000.00" and enabled="on")
+    --- PASS: TestRenderConversionSweepResults_AppliedConfirmationAriaLive
+    --- PASS: TestRenderConversionSweepResults_NoAppliedConfirmationOnPlainRun
+    ok budget2/internal/templates 0.117s
+  New "Apply" column has a proper `<th scope="col">Apply</th>`; the aria-live banner is
+  role="status" aria-live="polite" (ACCESSIBILITY.md #10) and states the applied amount.
+  Note on method: the accessible-name evidence is the rendered-output assertion above plus the
+  template source; no AT/axe run was performed (no headless a11y harness invoked in this check).
+  MET.
+
+CRITERION 4 — No RunFull / Monte Carlo; no critical-glob changes.
+  $ grep -nE "RunFull|MonteCarlo|monte" on the four changed Go/HTML files -> only
+    handlers_sweep.go:218 and :266 (comments explaining RunFull is deliberately NOT called),
+    handlers_sweep_test.go:212 (a pre-existing T15 assertion that the handler finishes well under 2s),
+    handlers_rates.go:60 handleWhatIfMonteCarlo — PRE-EXISTING function, untouched: the whole
+    handlers_rates.go diff is 11 added lines (+11/-0) at line 316, the apply_source branch only.
+  Apply path calls SaveWithRevision -> buildConversionSweepRows -> eng.Run per candidate; it does
+  not call saveAndRecalc or any RunFull.
+  $ git diff --name-only -> .swarm/ledger.tsv, CONVERSION_SWEEP_SPEC.md (both lead-authored: the
+    ledger row "T16 ... building" and the appended T16 spec section), plus the six files the
+    manifest claims. Untracked: .swarm/manifests/T16.1.manifest only.
+  $ git diff --name-only -- <each entry of .swarm/critical.globs> -> empty for all six globs
+    (storage, dataloader, retirement/engine, transfers, accounts/accounts.go, mcpsvc/confirm).
+  MET.
+
+REGRESSION FOCUS — shared handleWhatIfRothConversion.
+  The diff adds one guarded branch AFTER all existing parsing/validation and BEFORE saveAndRecalc:
+      if r.FormValue("apply_source") == conversionSweepApplySource { saveAndRenderConversionSweep(...); return }
+  $ grep -rn apply_source web/ internal/ -> the only template emitting it is
+    conversion-sweep.html:91; web/templates/components/whatif/roth-conversion.html (the standalone
+    form, hx-post="/whatif/roth-conversion", line 10) never sends it, so the branch is unreachable
+    for that path.
+  $ go test -count=1 -v ./internal/handlers/whatif/... -run 'Roth' -> 29 tests, all PASS, uncached,
+    including TestHandleWhatIfRothConversion, _Disabled, _ExistingConfig, _WithRenderer, _SaveError,
+    _ParseFormError, _RealParseFormError, _AnalysisError, _NilInitializesConfig,
+    _RejectsNegativeAnnualAmount, _RejectsEndYearBeforeStartYear, _NegativeStartYear/_NegativeEndYear,
+    _EndBeforeStart. ok budget2/internal/handlers/whatif 0.129s. NO REGRESSION.
+
+SCOPE: clean. Nothing outside the manifest's six files plus the lead's spec/ledger edits; no
+critical glob touched; no new dependencies beyond the already-vendored chi import in the test file.

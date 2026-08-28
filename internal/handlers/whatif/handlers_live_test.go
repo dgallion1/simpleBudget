@@ -313,7 +313,7 @@ func TestRenderWhatIfResultsOnly_EmitsNoOOBSwaps(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	renderWhatIfResultsOnly(w, settings, analysis)
+	renderWhatIfResultsOnly(w, settings, analysis, "")
 	body := w.Body.String()
 
 	if strings.Contains(body, "hx-swap-oob") {
@@ -324,7 +324,7 @@ func TestRenderWhatIfResultsOnly_EmitsNoOOBSwaps(t *testing.T) {
 	}
 
 	w2 := httptest.NewRecorder()
-	renderWhatIfResults(w2, settings, analysis)
+	renderWhatIfResults(w2, settings, analysis, "")
 	if !strings.Contains(w2.Body.String(), "hx-swap-oob") {
 		t.Error("user-initiated mutations must still resync the left column via OOB")
 	}

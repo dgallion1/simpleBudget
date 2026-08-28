@@ -1546,8 +1546,22 @@ type TaxOptimizerCandidate struct {
 	// Deterministic projection scores.
 	EndingPortfolioReal float64 `json:"ending_portfolio_real"`
 	LifetimeTaxReal     float64 `json:"lifetime_tax_real"`
+
+	// PeakMarginalBracket is the highest per-year effective marginal rate
+	// (percent) this candidate reaches over the projection, i.e. the max of
+	// ProjectionYearSummary.MarginalRate. It is a measured marginal rate, not a
+	// bracket-table lookup, so it accounts for capital-gain stacking and the
+	// section 86 Social Security phase-in and can exceed every statutory
+	// bracket. Reporting only -- it is not part of the ranking function.
 	PeakMarginalBracket float64 `json:"peak_marginal_bracket"`
-	TotalRothConverted  float64 `json:"total_roth_converted"`
+
+	// TotalRothConverted is the total dollars this candidate actually converted
+	// to Roth over the projection, in NOMINAL dollars (unlike the Real-suffixed
+	// fields above). It sums the engine's realized per-month conversions, so a
+	// strategy the engine could not execute in full -- an exhausted tax-deferred
+	// balance, a window that ends early -- reports what happened, not what
+	// PerYearConversions planned.
+	TotalRothConverted float64 `json:"total_roth_converted"`
 
 	// Monte Carlo refinement; zero-valued for non-top-5 entries.
 	MCSurvivalRate     float64 `json:"mc_survival_rate,omitempty"` // 0–100 percent (matches MonteCarloAnalysis.Stats.SuccessRate)

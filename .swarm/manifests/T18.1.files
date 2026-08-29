@@ -1,0 +1,17 @@
+internal/models/one_time_expense.go
+internal/models/one_time_expense_test.go
+internal/models/whatif.go
+internal/services/retirement/prepare/validate.go
+internal/services/retirement/prepare/validate_test.go
+internal/services/retirement/prepare/prepare.go
+internal/services/retirement/engine/expense.go
+internal/services/retirement/engine/stepper.go
+internal/services/retirement/engine/one_time_expense_test.go
+internal/services/retirement/analysis/one_time_expense_test.go
+internal/services/retirement/settings.go
+internal/handlers/whatif/handlers.go
+internal/handlers/whatif/handlers_income_expense.go
+internal/handlers/whatif/onetime_expense_test.go
+internal/templates/render.go
+web/templates/components/whatif/onetime-card.html
+web/templates/pages/whatif.html

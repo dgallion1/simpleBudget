@@ -1,0 +1,5 @@
+internal/services/retirement/prepare/validate.go
+internal/services/retirement/prepare/validate_test.go
+internal/handlers/whatif/handlers_income_expense.go
+internal/handlers/whatif/onetime_expense_test.go
+web/templates/components/whatif/onetime-card.html

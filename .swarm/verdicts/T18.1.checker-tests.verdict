@@ -1,0 +1,225 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T18
+ATTEMPT: 1
+---
+SUMMARY
+The feature itself is correct and the Tier-3 oracle passes. One criterion fails:
+a worker test named for the historical-backtest behaviour asserts nothing that
+the behaviour can violate. Proven by mutation, not by reading. Criteria 1, 2, 3,
+4, 6 PASS; criterion 5 FAILS.
+
+--------------------------------------------------------------------------
+CRITERION 1 — oracle exits 0 with ORACLE PASS; oracle tree untouched   PASS
+--------------------------------------------------------------------------
+  $ bash .swarm/tier3/T18/accept.sh
+      == build ==
+      == oracle probes (oracle-owned, compile-fails on featureless tree) ==
+      ok  	budget2/internal/services/mcpsvc/plan	0.869s
+      == worker-named tests present and passing ==
+      == every consumer: full suite ==
+      ORACLE PASS
+  $ bash .swarm/tier3/T18/accept.sh >/dev/null 2>&1; echo $?
+      ORACLE_EXIT=0
+
+  Oracle residue:
+  $ ls internal/services/mcpsvc/plan/ | grep -i zz   ->  (no output)
+  $ ls .swarm/tier3/T18/                             ->  accept.sh  oracle_test.go
+  $ git status --porcelain .swarm/tier3/T18/         ->  "?? .swarm/tier3/T18/"
+      (the whole dir is new/untracked this run — lead-authored; no zz_t18_oracle_test.go
+      left anywhere in the tree; accept.sh's rm -f is unconditional so it also cleans
+      up on failure.)
+
+  Oracle validated as meaningful, not just green: I removed the feature at the
+  stepper seam in an rsync copy (deleted both "+ oneTimeExpenseThisMonth" terms
+  from plannedTotalExpenses/totalExpenses) and re-ran it:
+  $ go test -run TestT18Oracle ./internal/services/mcpsvc/plan/   [mutant copy]
+      --- FAIL: TestT18Oracle_ExpenseHitsItsYearOnly
+      --- FAIL: TestT18Oracle_YearZeroUninflated
+      --- FAIL: TestT18Oracle_TodayDollarsInflateWithCPI
+
+--------------------------------------------------------------------------
+CRITERION 2 — go build / go vet / full go test clean                   PASS
+--------------------------------------------------------------------------
+  $ go build ./...                     -> build_exit=0
+  $ go vet ./...                       -> vet_exit=0
+  $ go test -count=1 ./...             -> TEST_EXIT=0
+      (filtered for anything not "ok"/"no test files": zero lines of output)
+
+--------------------------------------------------------------------------
+CRITERION 3 — engine semantics beyond the oracle                       PASS
+--------------------------------------------------------------------------
+  All probes written by me in an rsync copy at
+  <scratchpad>/b2probe (files zz_checker_probe*.go, zz_checker_semantics_test.go).
+
+  3a FINAL projection year (Year = ProjectionYears-1 = 9) lands, no panic:
+  $ go test -run TestCHK_FinalYearExpenseLands -v ./internal/services/retirement/analysis/
+      CHK-3a final-year(9) expense delta = 50000.00
+      CHK-3a final balance with=1169447.38 without=1222190.65
+      --- PASS
+      (also asserted zero leakage into years 0..8)
+
+  3b Expense exceeding the taxable pool still withdraws from the next pools:
+  $ go test -run TestCHK_TaxablePoolOverflowNonRuin -v ./internal/services/retirement/analysis/
+      CHK-3b' taxable pool=900000 expense=1500000 without=4709179.05 with=1583295.85 drop=3125883.19
+      --- PASS
+      (non-ruin scenario, so the drop is a real measurement; drop >> the $900k
+      taxable pool, so nothing was truncated at the pool boundary.
+      A ruin variant with a $600k expense on a $300k taxable pool also recorded
+      the full 600000.00 expense delta in year 2.)
+
+  3c Monte Carlo success rate falls:
+  $ go test -run TestCHK_MonteCarloSuccessRateDrops -v ./internal/services/retirement/analysis/
+      CHK-3c MC success baseline=45.33% with-expense=0.00%   --- PASS
+  $ go test -run TestCHK_MonteCarloNonDegenerateDrop -v ./internal/services/retirement/analysis/
+      CHK-3c' MC success baseline=96.50% with=90.50%          --- PASS
+      (non-degenerate endpoints, 400 runs, seed 11)
+
+  3d Historical backtest success rate falls (my own, stronger than the worker's):
+  $ go test -run TestCHK_BacktestSuccessRateDrops -v ./internal/services/retirement/analysis/
+      CHK-3d backtest success baseline=20.55% (survived 15/73) with=0.00% (survived 0/73)
+      --- PASS
+
+  3e/3f/3g/3h No double-count. Drop/amount ratio is constant at 1.563 across
+  amounts (25k/50k/100k) and across account mixes (all-taxable and all-Roth),
+  and equals (1+g)^7.5 for the plan's actual ~6.1% growth — i.e. exactly ONE
+  count of the expense plus lost compounding, not two.
+      CHK-3e amount=25000 drop=39064.73 ratio=1.563
+      CHK-3e amount=50000 drop=78279.90 ratio=1.566
+      CHK-3e amount=100000 drop=157773.13 ratio=1.578
+      CHK-3h ret=0 ratio=1.5626 implied-annual-growth-over-7.5y=0.0613
+
+  3i Spec's "general CPI only" clause — phase multipliers and healthcare
+  inflation must not touch the amount:
+  $ go test -run TestCHK_CPIOnly -v ./internal/services/retirement/engine/
+      CHK-3i plain CPI-only: got=112550.88 want=112550.88
+      CHK-3i phases enabled (multiplier at yr4 = 0.50): got=112550.88 want=112550.88
+      CHK-3i healthcare inflation 25%: got=112550.88 want=112550.88
+      --- PASS
+
+--------------------------------------------------------------------------
+CRITERION 4 — handler/UI: routes, persistence, card in the RENDERED page PASS
+--------------------------------------------------------------------------
+  Worker's own handler tests:
+  $ go test -count=1 -run TestOneTimeExpense ./internal/handlers/whatif/
+      ok  budget2/internal/handlers/whatif  0.064s
+
+  My probe, exercising the REAL chi router (RegisterRoutes + httptest.NewServer),
+  not the handler funcs directly — file zz_checker_route_probe_test.go:
+  $ go test -run TestCHK_RoutesRoundTripThroughRouter -v ./internal/handlers/whatif/
+      CHK-4a POST /whatif/onetime -> 200
+      CHK-4a persisted id=48a0a957-7cee-4015-82e4-60cbc6e5c0f7
+      CHK-4a DELETE /whatif/onetime/48a0a957-... -> 200
+      CHK-4a after delete: []
+      --- PASS
+      Round-trip asserted against rm.Load() (the settings file), both directions.
+      OOB response asserted to contain the new row and id="onetime-list".
+
+  Card present in the RENDERED page (GET /whatif through the router, 276758 bytes
+  of real HTML — not a grep of the template source):
+  $ go test -run TestCHK_CardAppearsInRenderedWhatIfPage -v ./internal/handlers/whatif/
+      CHK-4b rendered page length = 276758 bytes
+      --- PASS
+      All of the following asserted present in the rendered page after seeding a
+      row via POST: "One-Time Expenses", "Page Roof", "Year 5", "44,000",
+      id=/for="onetime-description", id="onetime-amount", id="onetime-year",
+      "Add one-time expense", aria-label="Remove one-time expense Page Roof",
+      hx-post="/whatif/onetime", hx-delete="/whatif/onetime/.
+
+--------------------------------------------------------------------------
+CRITERION 5 — worker tests assert what they claim                      FAIL
+--------------------------------------------------------------------------
+  FAILING ITEM: internal/services/retirement/analysis/one_time_expense_test.go
+                func TestOneTimeExpense_HistoricalBacktestPicksItUp (lines 33-59)
+
+  It is the ONLY test guarding the spec clause "historical backtest picks it up",
+  and it passes with the feature completely removed from the engine.
+
+  Mutation (rsync copy, real repo untouched): both "+ oneTimeExpenseThisMonth"
+  terms deleted from plannedTotalExpenses and totalExpenses in
+  internal/services/retirement/engine/stepper.go — i.e. the one-time expense is
+  computed and then discarded.
+
+  $ go test -count=1 -run TestOneTimeExpense ./internal/models/ \
+      ./internal/services/retirement/... ./internal/handlers/whatif/   [MUTANT]
+      --- FAIL: TestOneTimeExpense_MonteCarloPicksItUp
+      --- FAIL: TestOneTimeExpense_EngineLoopHitsOnlyItsYear
+      (everything else ok)
+  $ go test -run 'TestOneTimeExpense|TestCHK_Backtest' -v \
+      ./internal/services/retirement/analysis/                          [MUTANT]
+      --- PASS: TestOneTimeExpense_HistoricalBacktestPicksItUp     <-- survives
+      --- FAIL: TestOneTimeExpense_MonteCarloPicksItUp
+                got with=1735591.81 without=1735591.81
+      --- FAIL: TestCHK_BacktestSuccessRateDrops (my probe)
+                baseline=20.55 with=20.55
+
+  Why it is structurally unreachable, not merely lucky. Its only assertion is
+      if with.SurvivedCount > without.SurvivedCount { t.Errorf(...) }
+  and in its own scenario:
+  $ go test -run TestCHK_WorkerBacktestScenarioNumbers -v ./internal/services/retirement/analysis/
+      CHK-5 worker scenario with:    Survived=88 Success=100.0000 MeanFinal=1526127.56 n=88
+      CHK-5 worker scenario without: Survived=88 Success=100.0000 MeanFinal=1623975.67 n=88
+      CHK-5 mean final-balance delta (without-with) = 97848.11
+  Both arms survive 88/88 at 100%, so SurvivedCount can never differ in either
+  direction. The assertion cannot fire for any implementation, correct or not.
+  The test's own comment (lines 53-54) states the intended check — "must not
+  leave the mean final balance unchanged — if it did, the backtest loop dropped
+  it" — and the signal is right there (delta 97,848.11) but is never computed or
+  asserted on.
+
+  WHAT IS MISSING: one assertion in
+  internal/services/retirement/analysis/one_time_expense_test.go, in
+  TestOneTimeExpense_HistoricalBacktestPicksItUp, that fails when the backtest
+  drops the expense — e.g. mean/aggregate FinalBalance over a.Results strictly
+  lower with the expense than without (delta ~97.8k in the existing scenario), or
+  a tighter scenario where SuccessRate actually moves (see my CHK-3d: 20.55% ->
+  0.00% at PortfolioValue 400k / 2.8k per month / 25 years). The underlying
+  behaviour IS correct — my CHK-3d passes on the unmutated tree and fails on the
+  mutant — so this is a test defect only, not a product defect.
+
+  ALL OTHER TestOneTimeExpense* TESTS CHECKED AND SUBSTANTIVE:
+   - models/one_time_expense_test.go: JSONRoundTrip, JSONFieldNames (asserts the
+     literal one_time_expenses / id / description / year / amount wire keys via a
+     generic map), EmptyListOmitted (asserts the omitempty tag). Real.
+   - prepare/validate_test.go: 7 subtests + ValidationWiredIntoFrom; each error
+     case asserts strings.Contains(err, "one_time_expenses"). Real.
+   - engine/one_time_expense_test.go: PureFunctionYearTargeting (exact 70000 sum,
+     zero for all 8 other years), PureFunctionInflatesFromToday (exact
+     50000*1.03^3), EmptyListIsZero, EngineLoopHitsOnlyItsYear. All fail under
+     mutation or assert exact values. Real.
+   - handlers/whatif/onetime_expense_test.go: 9 tests, incl. round-trip against
+     rm.Load() and render assertions on labels/aria-label. Real.
+
+--------------------------------------------------------------------------
+CRITERION 6 — scope matches the manifest                               PASS
+--------------------------------------------------------------------------
+  $ git status --porcelain | awk '{print $2}' | grep -vE '^\.swarm/' | sort   vs
+    sort .swarm/manifests/T18.1.files
+      in manifest but NOT changed in tree:  (none)
+      in tree but NOT in manifest:          server.log, sse_stream.out
+
+  server.log / sse_stream.out are untracked RUNTIME artifacts, not source:
+  server.log's first line is "2026/08/28 20:37:43 ... Commit: ac67798d" (the T17
+  head) and it was still being appended at 21:13 during my own run by a live dev
+  server on :8080; it contains zero "onetime" entries. sse_stream.out is 6 bytes
+  (": ok") dated 20:29. Neither is worker-authored code. Noted, not a breach.
+
+  All 17 manifest paths accounted for. No mcpsvc file touched (grep -c mcpsvc on
+  the changed-file list = 0), consistent with "MCP overrides OUT of scope".
+
+  CRITICAL GLOBS TOUCHED (note, not a breach — Tier 3 permits it):
+    internal/services/retirement/engine/expense.go            (glob: engine/**)
+    internal/services/retirement/engine/stepper.go            (glob: engine/**)
+    internal/services/retirement/engine/one_time_expense_test.go (glob: engine/**)
+
+--------------------------------------------------------------------------
+TREE INTEGRITY
+--------------------------------------------------------------------------
+  No writing git command was run at any point. All mutation was done in an rsync
+  copy outside the repo; stepper.go restored and verified by hash:
+      restored-copy-sha: beb8f413674181d6f2de1d0da96cb4478b14277d8db3d5e224d8292558f1e391
+      real-repo-sha:     beb8f413674181d6f2de1d0da96cb4478b14277d8db3d5e224d8292558f1e391
+  Final `git status --porcelain` is identical to the session-start snapshot,
+  modulo .swarm/verdicts/T18.1.checker-second.verdict (the adversarial lane's,
+  which appeared mid-run) and this verdict file.

@@ -173,3 +173,16 @@ Restart the server against the live data dir and confirm via MCP:
    survives), so the FAIL held new columns to a bar no existing column meets.
    Follow-up recorded (not a T14 defect): a thead-index helper asserting each
    cell sits under its own header, applied to the whole tax-optimizer table.
+
+2. T18 spec change (2026-08-29, lead + user): after two Tier-3 attempts fell
+   to the same defect class (hard-fail validation of out-of-horizon one-time
+   expenses, reachable from writers that don't share the validator, bricking
+   every page load), the contract was redesigned: out-of-horizon entries are
+   DORMANT — never fatal on any path, contribute nothing, reactivate when the
+   horizon grows; malformed entries still hard-error; the add-handler keeps a
+   handler-local beyond-horizon rejection as UX. Oracle amended accordingly
+   (TestT18Oracle_OutOfHorizonEntryIsDormantNotFatal). Accepted attempt 3,
+   dual-lane pass; dormancy proven byte-identical to baseline. Residual note:
+   NaN/Inf amounts via raw HTTP hit a pre-existing form-parsing quirk shared
+   with sibling endpoints (harmless 500, nothing persisted) — tracked as
+   follow-up hardening, not T18 debt.

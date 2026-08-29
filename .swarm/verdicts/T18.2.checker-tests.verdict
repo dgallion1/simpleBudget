@@ -1,0 +1,256 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T18
+ATTEMPT: 2
+---
+Repo: /home/darrell/bin/ai/budget2  branch fix/import-dedup-classifier @ ac67798
+Lane: anthropic (primary). Tier 3. All mutation done in an rsync copy at
+$SCRATCH/b2copy; no writing git command was run at any point.
+
+==========================================================================
+CRITERION 1 — Tier-3 oracle passes; oracle dir untouched; no residue
+==========================================================================
+STATUS: PASS
+
+  $ bash .swarm/tier3/T18/accept.sh > oracle.out 2>&1; echo "ORACLE_EXIT=$?"
+      ORACLE_EXIT=0
+      == build ==
+      == oracle probes (oracle-owned, compile-fails on featureless tree) ==
+      ok  	budget2/internal/services/mcpsvc/plan	0.873s
+      == worker-named tests present and passing ==
+      == every consumer: full suite ==
+      ORACLE PASS
+  (Exit status taken from accept.sh itself, not from a pipeline tail.)
+
+  Oracle files byte-identical before and after the run:
+  $ sha256sum .swarm/tier3/T18/accept.sh .swarm/tier3/T18/oracle_test.go
+      466fa66878b8bce79917d0f64855e519a5c7ad524a0b78dfd6570ab6c01353f1  accept.sh
+      2557af2b3c372e0146840f089d4b4abf115a428eeaaba32696fb088c6c9e5155  oracle_test.go
+  (Same two hashes taken pre-run and post-run.) Directory listing still shows
+  exactly 2 files, mtimes 2026-08-28 20:48 — unmodified.
+
+  Residue check:
+  $ ls internal/services/mcpsvc/plan/ | grep -i zz_t18   ->  "NO zz_t18 residue"
+  $ ls internal/handlers/whatif/ internal/services/mcpsvc/plan/ \
+        internal/services/retirement/analysis/ | grep -E "zz_"
+      grep_exit=1  (no matches — none of my own probe files landed either)
+
+==========================================================================
+CRITERION 2 — build, vet, full test suite clean
+==========================================================================
+STATUS: PASS
+
+  $ go build ./...   -> BUILD_EXIT=0
+  $ go vet ./...     -> VET_EXIT=0   ("No issues found")
+  $ go test ./...    -> TEST_EXIT=0
+      grep -c "^ok"   = 49
+      grep -cE "^(ok|---|FAIL)" = 49   (i.e. 49 ok lines, zero --- or FAIL lines)
+      grep -E "FAIL|panic" -> NONE
+  Re-run at end of session (after all probes, tree restored):
+  $ go test -count=1 ./... >/dev/null; echo $?   -> 0
+
+==========================================================================
+CRITERION 3 — Defect-1 (save-before-validate) fixed, verified end-to-end
+==========================================================================
+STATUS: PASS
+
+READING THE FIX (internal/handlers/whatif/handlers_income_expense.go,
+handleWhatIfAddOneTime): after the local description/amount/year parse checks
+it now does, BEFORE any persistence:
+
+      current, err := retirementMgr.Load()
+      ...
+      current.OneTimeExpenses = append(current.OneTimeExpenses, expense)
+      if err := prepare.ValidateOneTimeExpenses(current); err != nil {
+          renderRetargetedError(w, "Failed to add one-time expense: "+err.Error(),
+              http.StatusBadRequest, target)
+          return
+      }
+      recalcAndRender(... retirementMgr.AddOneTimeExpense(expense) ...)
+
+  Ordering is correct: the AddOneTimeExpense call (the only persisting call)
+  is unreachable when validation fails.
+
+NO DRIFT BETWEEN SEAMS — the handler calls the *same* exported function the
+recalc path calls, not a re-implementation:
+  $ grep -rn "ValidateOneTimeExpenses" --include=*.go .
+      internal/handlers/whatif/handlers_income_expense.go:334  (handler, pre-save)
+      internal/services/retirement/prepare/prepare.go:60       (inside prepare.From)
+      internal/services/retirement/prepare/validate.go:91      (sole definition)
+  prepare.go:47-63 confirms line 60 is inside From(), after DeepCopy, so the
+  handler and every recalc enforce one identical rule set.
+
+MY OWN END-TO-END PROBES (I wrote these; they are not the worker's tests).
+Added internal/handlers/whatif/zz_checker_t18_test.go and zz_checker_t18b_test.go
+to the scratchpad copy only. Each asserts the raw on-disk whatif.json contents
+(os.ReadFile of settingsDir/whatif.json), not just the manager's return value.
+
+  $ go test -count=1 -v -run 'TestChecker_T18' ./internal/handlers/whatif/
+      === RUN   TestChecker_T18_YearEqualsHorizon_RejectedNotPersisted
+          ProjectionYears = 30
+          POST year=30 -> status 400          <-- 4xx, not 5xx
+          GET /whatif -> status 200           <-- page NOT bricked
+      --- PASS  (also asserted: whatif.json contains no "CheckerRoof";
+                 reload shows len(OneTimeExpenses)==0)
+      === RUN   TestChecker_T18_YearHorizonMinusOne_Accepted
+          POST year=29 (PY-1) -> status 200   <-- boundary still accepted
+      --- PASS  (asserted persisted on disk with Year==29, Amount==1234;
+                 subsequent GET /whatif == 200)
+      === RUN   TestChecker_T18_NegativeAmount_RejectedPreSave
+          POST amount=-500 -> status 400      <-- rejected pre-save
+      --- PASS  (asserted whatif.json has no "CheckerNeg", 0 entries persisted)
+      === RUN   TestChecker_T18_YearFarBeyondHorizon_Rejected
+          POST year=PY+25 -> status 400
+      --- PASS
+      ok  	budget2/internal/handlers/whatif	0.021s
+
+  Extra probe I ran on my own initiative — aliasing risk in the new
+  append-to-Load()-result pattern (if Load() returned the manager's cached
+  slice, a rejected add could still leak into memory):
+  $ go test -count=1 -v -run 'TestChecker_T18_RejectedAddDoesNotPollute' ./internal/handlers/whatif/
+      after rejected add, state = [{... Description:GoodOne Year:1 Amount:1000}]
+      final state = [{GoodOne ...} {GoodTwo ...}] ; GET /whatif = 200
+      --- PASS
+  No pollution: the rejected entry reaches neither disk nor a later Load(),
+  and a following valid add still works.
+
+MY PROBES BIND (they are detectors, not decoration). In the scratchpad copy I
+deleted the 839-char pre-save validation block from handleWhatIfAddOneTime
+(and its now-unused prepare import), rebuilt, and re-ran:
+  $ go test -count=1 -run 'TestChecker_T18|TestOneTimeExpense_HandlerAdd_YearBeyondHorizonRejected' ./internal/handlers/whatif/
+      --- FAIL: TestChecker_T18_YearEqualsHorizon_RejectedNotPersisted
+          POST year=30 -> status 500
+          want 4xx, got 500; body=... "Analysis failed: prepare primary settings:
+          prepare.From: validate: one_time_expenses[0] "CheckerRoof": year 30 is
+          beyond the 30-year projection horizon"
+      --- FAIL: TestChecker_T18_YearFarBeyondHorizon_Rejected  (status 500)
+      --- FAIL (worker's own) TestOneTimeExpense_HandlerAdd_YearBeyondHorizonRejected
+          ... one_time_expenses[0] "Roof": year 30 is beyond the 30-year horizon
+      FAIL	budget2/internal/handlers/whatif
+  This reproduces exactly the attempt-1 symptom (500 from prepare.From after
+  the write) and shows the worker's regression test now catches it — unlike
+  attempt 1's status-only assertion.
+  Restored and hash-verified:
+      copy: 47fab14cbd1cb7ad9da3eb45ab01aa5d51e0afc95bf2773d0cab81421e349ac2
+      real: 47fab14cbd1cb7ad9da3eb45ab01aa5d51e0afc95bf2773d0cab81421e349ac2
+  then re-ran the same -run selector -> "ok  budget2/internal/handlers/whatif".
+
+  I also read the worker's TestOneTimeExpense_HandlerAdd_YearBeyondHorizonRejected
+  in full. It does what its name claims: asserts 4xx (w.Code<400||>=500 fails),
+  reloads via rm.Load() and asserts the entry count is unchanged AND no entry
+  named "Roof" exists, then issues GET /whatif and requires 200. Three
+  independent assertions, all reachable — verified above by watching all three
+  arms fail under the injected defect.
+
+==========================================================================
+CRITERION 4 — Defect-2 (vacuous backtest assertion) fixed and binding
+==========================================================================
+STATUS: PASS
+
+READING THE REWRITE (internal/services/retirement/analysis/one_time_expense_test.go,
+TestOneTimeExpense_HistoricalBacktestPicksItUp): the SurvivedCount comparison is
+gone, replaced by a mean-FinalBalance comparison over a.Results via a new
+helper meanFinalBalance(t, results) that sums r.FinalBalance / len(results):
+
+      withMean := meanFinalBalance(t, with.Results)
+      withoutMean := meanFinalBalance(t, without.Results)
+      const nominalExpense = 50_000.0
+      if diff := withoutMean - withMean; diff < nominalExpense/2 { t.Errorf(...) }
+
+  i.e. the with-expense mean must be lower by >= $25,000. That matches the
+  criterion exactly. The old SurvivedCount check survives only as a comment
+  explaining why it was unreachable. TotalSequences is still asserted non-zero
+  and equal across arms, so an empty/degenerate Results set cannot pass.
+
+MUTATION PROBE (run by me, in the scratchpad copy):
+  $ git show HEAD:internal/services/retirement/engine/stepper.go > <copy>/stepper.go
+      pre-mutant sha: beb8f413674181d6f2de1d0da96cb4478b14277d8db3d5e224d8292558f1e391
+      mutant sha:     7152cb52395db78ace86e4f17ae35aea705c9e5541e1e65d1a12250617511045
+  (HEAD's stepper.go is the pre-feature version: it lacks oneTimeExpenseThisMonth
+   and the OneTimeExpensesForYear call, i.e. the expense is dropped from the
+   shared StepMonth loop.)
+  $ go build ./...   -> MUTANT_BUILD_OK
+  $ go test -count=1 -v -run 'TestOneTimeExpense_HistoricalBacktestPicksItUp' ./internal/services/retirement/analysis/
+      --- FAIL: TestOneTimeExpense_HistoricalBacktestPicksItUp (0.00s)
+          expected mean final balance to drop by at least 25000.00 (half the $50k
+          one-time expense) with the expense present; got with=1623975.67
+          without=1623975.67 (diff=0.00) — one-time expense may have been dropped
+          from the backtest loop
+      FAIL	budget2/internal/services/retirement/analysis
+  diff=0.00 under the mutant vs. a required >=25000 — the assertion is live and
+  discriminating. Attempt 1's version passed this same mutant; this one does not.
+
+  RESTORED and hash-verified:
+  $ cp stepper.go.orig.bak stepper.go; sha256sum <copy> <real>
+      beb8f413674181d6f2de1d0da96cb4478b14277d8db3d5e224d8292558f1e391  <copy>
+      beb8f413674181d6f2de1d0da96cb4478b14277d8db3d5e224d8292558f1e391  <real repo>
+  $ go test -count=1 -v -run 'TestOneTimeExpense_HistoricalBacktestPicksItUp' ./internal/services/retirement/analysis/
+      --- PASS  /  ok  budget2/internal/services/retirement/analysis  0.006s
+
+  Sibling test TestOneTimeExpense_MonteCarloPicksItUp also read: same-seed
+  paired runs, asserts withMean < withoutMean. Reachable and non-vacuous
+  (it is the same StepMonth seam the mutant removes).
+
+==========================================================================
+CRITERION 5 — scope: diff confined to the three manifest files
+==========================================================================
+STATUS: PASS
+
+  T18.2 manifest (3 paths):
+      internal/handlers/whatif/handlers_income_expense.go
+      internal/handlers/whatif/onetime_expense_test.go
+      internal/services/retirement/analysis/one_time_expense_test.go
+
+  Attempt-1's last lane verdict landed 2026-08-28 21:17:52 (checker-a11y).
+  Source files modified after that instant:
+  $ find internal web cmd scripts -newermt "2026-08-28 21:17:52" -type f \
+        \( -name '*.go' -o -name '*.html' -o -name '*.js' -o -name '*.css' \)
+      21:20:20  internal/handlers/whatif/onetime_expense_test.go        [manifest]
+      21:20:55  internal/handlers/whatif/handlers_income_expense.go     [manifest]
+      21:21:23  internal/services/retirement/analysis/one_time_expense_test.go [manifest]
+      21:27:29  internal/services/retirement/engine/stepper.go          [see below]
+
+  stepper.go — mtime bumped but CONTENT UNCHANGED. Its current sha256 is
+      beb8f413674181d6f2de1d0da96cb4478b14277d8db3d5e224d8292558f1e391
+  which is the exact hash recorded in .swarm/verdicts/T18.1.checker-tests.verdict
+  lines 221-222 as the attempt-1 accepted content ("real-repo-sha"). The 21:27:29
+  touch is inside my/the adversarial lane's probe window and is a cp-restore, not
+  an edit. `git diff --stat` on it still reports 11 insertions / 2 deletions and
+  the diff body is exactly the attempt-1 one-time-expense change
+  (+oneTimeExpenseThisMonth declaration, +OneTimeExpensesForYear call, +the two
+  expense-total terms). Not an attempt-2 change.
+
+  The other 14 attempt-1 files all carry attempt-1-window mtimes (20:54-21:00)
+  and are untouched.
+
+  Whole-tree content check against a snapshot I rsync'd before running any
+  probe: for every file in `git diff --name-only` plus all 17 attempt-1
+  manifest paths, sha256 in the live repo == sha256 in the snapshot. Zero
+  "DIFFERS" lines. Nothing in the repo changed during my verification.
+
+  CRITICAL GLOBS (.swarm/critical.globs): storage/**, dataloader/**,
+  retirement/engine/**, transfers/**, accounts.go, mcpsvc/confirm/**.
+  None of the three attempt-2 files matches any of them (analysis/ is not
+  engine/). Attempt 2 touched zero critical globs — and Tier 3 would permit
+  them anyway.
+
+  Note (not a breach): .claude/worktrees/** was written at 21:19 by other
+  agent infrastructure; it is gitignored (.gitignore:27 `.claude/*`) and does
+  not appear in git status. A transient `budget2.prev` binary appeared and
+  vanished during a concurrent rebuild of the gitignored `budget2` binary at
+  21:28:51; neither is worker-authored source.
+
+==========================================================================
+TREE INTEGRITY
+==========================================================================
+  No writing git command was run. All mutation (defect-1 injection, stepper.go
+  reversion, my two probe test files) happened in an rsync copy outside the
+  repo; both mutated files were restored in the copy and hash-matched against
+  the live repo.
+
+  Final `git status --porcelain` is identical to the session-start snapshot
+  except for `?? .swarm/verdicts/T18.2.checker-second.verdict` (the adversarial
+  lane's file, which appeared mid-run) and this verdict file. `M .swarm/ledger.tsv`
+  was already modified at session start. I did not read the checker-second
+  verdict; this verdict is independent.

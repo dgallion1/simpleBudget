@@ -1,0 +1,88 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T18
+ATTEMPT: 2
+---
+Scope check: `git status --porcelain` diff confined to the three manifest files
+(.swarm/manifests/T18.2.files: internal/handlers/whatif/handlers_income_expense.go,
+internal/handlers/whatif/onetime_expense_test.go,
+internal/services/retirement/analysis/one_time_expense_test.go). No out-of-scope
+edits. `go build ./...` clean, `go vet ./...` clean, full `go test ./...` — all
+packages `ok`, no FAILs. `.swarm/tier3/T18/accept.sh` → ORACLE PASS.
+
+Attacks that FAILED to break the attempt-2 delta (verified, not eyeballed):
+
+1. Clone reality. `retirementMgr.Load()` returns `prepare.Clone(sm.cache)` (a
+   real deep copy per settings.go:427-471 doc comment and code), so
+   `current.OneTimeExpenses = append(...)` in the handler's pre-check does not
+   alias the live cache. Confirmed by reading Load/LoadContext.
+
+2. 4xx path honesty / no state pollution. Probe test (POST year=30 → 4xx,
+   then POST a valid entry → 200, then reload): the valid "Good" entry
+   persists, the rejected "Bad" entry never appears in the reloaded settings.
+   PASS.
+
+3. Backtest test not vacuous. `meanFinalBalance` calls `t.Fatal` on an empty
+   results slice, so a mean-of-empty-NaN escape is not possible. Mutation-
+   tested by hand: backed up stepper.go (sha256), replaced
+   `oneTimeExpenseThisMonth = OneTimeExpensesForYear(s, currentYear)` with
+   `= 0.0`, re-ran `TestOneTimeExpense_HistoricalBacktestPicksItUp` — it FAILS
+   ("diff=0.00 ... may have been dropped from the backtest loop"), confirming
+   real signal. Restored file, `sha256sum -c` confirmed byte-identical
+   restore.
+
+4. `TestOneTimeExpense_HandlerAdd_YearBeyondHorizonRejected` genuinely
+   reloads settings and asserts non-persistence (not just status code), and
+   asserts a follow-up GET /whatif is 200 — this is the correct regression
+   test for attempt 1's specific defect and it passes.
+
+ATTACK THAT SUCCEEDED — same severity class as attempt 1, reproduced live:
+
+5. TOCTOU / alternate write path, exactly the angle the dispatch brief named.
+   `AddOneTimeExpense` (settings.go:1646) itself does NOT validate — it only
+   appends and saves. The new safety is entirely a property of the ONE
+   handler `handleWhatIfAddOneTime`. `UpdateSettings` (settings.go:1109,
+   `applySettingsUpdates` line ~1301: `settings.ProjectionYears = v`) writes
+   `projection_years` unconditionally, with **no call to
+   `ValidateOneTimeExpenses`** anywhere in that path. This is not a
+   contrived internal-only entry point: `web/templates/components/whatif/
+   portfolio-settings.html:85` has a live `#projection-years-slider` on the
+   /whatif page itself (quick-adjust control), which posts straight through
+   `UpdateSettings`.
+
+   Reproduced with a probe test (`internal/handlers/whatif/
+   zz_t18_shrink_probe_test.go`, added then removed, `git status --porcelain`
+   confirmed clean before/after this session):
+   - `rm.AddOneTimeExpense({Year: 29, ...})` with default ProjectionYears=30
+     — valid, saves fine.
+   - Pre-shrink `GET /whatif` → 200 (sanity).
+   - `rm.UpdateSettings({"projection_years": 20})` — succeeds, no validation.
+   - Post-shrink `GET /whatif` → **500**, body is the same bare
+     `renderError` fragment (handlers.go:614-627) attempt 1 produced, not the
+     full page — because `handleWhatIf` calls `runAnalysisWithCache` →
+     `prepare.From` → `ValidateOneTimeExpenses` unconditionally
+     (prepare.go:47-63, added by this same task), and that now rejects the
+     year-29 entry against the new horizon of 20.
+   - There is still no UI path back to delete the offending entry once the
+     page is bricked (the delete button lives on the page that no longer
+     renders).
+
+   This is not a preexisting/precedented pattern: `prepare.From` had no
+   analogous hard-validate-and-500 gate for any other collection before this
+   task (`BigTicketItem`, e.g., is never checked against `ProjectionYears` in
+   validate.go/prepare.go at all). The unconditional-500-on-render behavior
+   at `prepare.From` is new, introduced by this task's own
+   `ValidateOneTimeExpenses` call, and the worker guarded exactly one of the
+   (at least) two ordinary, UI-reachable ways to violate the invariant it
+   enforces. This matches the dispatch brief's explicit acid test ("if yes,
+   that is the SAME severity class as attempt 1's defect ... judge
+   accordingly") — a normal action (dragging the projection-years slider
+   down after adding a one-time expense near the current horizon) bricks the
+   /whatif page with no recovery path through the UI.
+
+Given a reproduced, evidence-backed, user-facing bricking defect of the same
+severity class as attempt 1's, gated by a validation seam this very task
+introduced, and reachable through a live UI control on the same page, attempt
+2 does not meet the criteria's implied safety bar any more completely than
+attempt 1 did — it only narrowed the entry point. VERDICT: FAIL.

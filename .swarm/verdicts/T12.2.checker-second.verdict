@@ -1,0 +1,88 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T12
+ATTEMPT: 2
+---
+Scope: isolated copy at
+/tmp/claude-1000/-home-darrell-bin-ai-budget2--claude-worktrees-fervent-nash-783b77/861fb54c-3e40-4443-872b-db2026183ef0/scratchpad/T12copy
+(cp -a of the worktree incl. .git). Never touched the main checkout or the
+real worktree except this verdict file.
+
+1. Attempt-1 finding re-tested: reproduced the exact killing mutation
+   (`internal/handlers/whatif/handlers.go`, `analysisFastOrCached`:
+   `return a, depHash, nil` -> `return a, depHash+"x", nil`) and ran
+   `go test ./internal/handlers/whatif/...`. Now RED:
+   - TestCalculateCacheMissRendersFastWithLoader: "loader hash =
+     \"b5f46f4bb72a0849x\", want \"b5f46f4bb72a0849\""
+   - TestPollCacheMissRendersPending: same pattern, different hash values
+   - TestPendingLoaderHashRoundTripsToFullResults: "status = 204, want 200
+     (the loader's own hash must be accepted by results-full)"
+   Mutation reverted; `diff` against backup confirms clean restore. The
+   attempt-1 finding is closed.
+
+2. Fix is not hollow — inspected the new/changed assertions directly:
+   - `loaderHashRE = regexp.MustCompile(`hx-get="/whatif/results-full\?hash=([^"]+)"`)`
+     captures the FULL value up to the closing quote (non-greedy on `"`,
+     not truncated), and both TestCalculateCacheMissRendersFastWithLoader
+     and TestPollCacheMissRendersPending assert `m[1] != wantHash` — exact
+     equality against an independently-computed `buildEngineInput` hash, not
+     `strings.Contains`. This is precisely the discrimination attempt-1
+     found missing.
+   - TestPendingLoaderHashRoundTripsToFullResults performs the true
+     end-to-end round trip: extract the rendered hash from a real
+     POST /whatif/calculate loader div, then GET
+     /whatif/results-full?hash=<extracted> and require 200 + the real MC
+     marker — this is the scenario a suffix- or truncation-corrupted
+     AsyncHash breaks (loader's own GET would 204 forever), independent of
+     any oracle-side hash computation.
+
+3. Own extra mutations tried (per the adversarial brief, targeting the same
+   hash-agreement chain named in the brief's acceptance criterion 3):
+   a. Truncated AsyncHash in `renderResultsTemplate`
+      (`partialData["AsyncHash"] = pendingHash` -> assign `pendingHash[:5]`
+      when longer than 5) — caught: same three tests fail with
+      "loader hash = \"7a2c2\", want \"7a2c269a35d54a74\"" and
+      TestPendingLoaderHashRoundTripsToFullResults gets 204 instead of 200.
+      Reverted; diff-clean restore confirmed.
+   b. Read `handleWhatIfResultsFull`'s post-compute re-check (the
+      settings-changed-during-compute guard) — matches the brief's spec
+      verbatim; already exercised by
+      TestResultsFullDetectsSettingsChangeDuringCompute (pre-existing, still
+      present, asserts 204). Did not re-mutate this path since attempt-1's
+      checker already demonstrated it fails correctly when the guard is
+      removed (recorded in the attempt-1 verdict), and the brief's specific
+      complaint (attempt 1) was only about the render->endpoint hash
+      identity, which is now covered.
+
+4. Full gate, unmutated copy:
+   - `gofmt -l` on all touched .go files (handlers.go,
+     handlers_live.go/_test.go, handlers_rates.go, handlers_test.go,
+     singleflight_test.go, results_full_test.go, orchestrator.go,
+     orchestrator_parallel_test.go): clean.
+   - `go build ./...`: clean.
+   - `go vet ./...`: clean.
+   - `go test ./...`: all 45 packages ok, including
+     budget2/internal/handlers/whatif (17.0s) and
+     budget2/internal/services/retirement (36.8s) and
+     budget2/internal/services/retirement/analysis (27.1s).
+   - `staticcheck ./...`: clean (no output).
+
+5. Scope check: `git status --porcelain` in the copy shows modifications
+   confined to the T12.2.files manifest list (handlers.go,
+   handlers_live.go, handlers_live_test.go, handlers_rates.go,
+   handlers_test.go, singleflight_test.go, orchestrator.go,
+   orchestrator_parallel_test.go, whatif.html, verdict-bar.html) plus the
+   new results_full_test.go (untracked, in the manifest). The only
+   out-of-manifest deltas are `.swarm/ledger.tsv` and untracked
+   `.swarm/briefs|manifests|verdicts/*` scaffolding files (not code).
+   `git diff --stat -- internal/services/retirement/engine` and
+   `git status --porcelain -- internal/services/retirement/engine` are both
+   empty — no engine/** touches, consistent with the brief's hard rule.
+
+Conclusion: the attempt-1 finding (loader hash unpinned, corruption
+undetectable) is closed by exact-equality regex assertions plus a genuine
+end-to-end round-trip test; two independent corruption mutations of my own
+(suffix, truncation) in the same hash-agreement chain are both caught; the
+full build/vet/test/staticcheck gate is green; scope matches the manifest
+with no engine/** touches.

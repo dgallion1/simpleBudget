@@ -1,0 +1,140 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T12
+ATTEMPT: 2
+---
+All work done in a `cp -a` copy at
+/tmp/claude-1000/-home-darrell-bin-ai-budget2--claude-worktrees-fervent-nash-783b77/861fb54c-3e40-4443-872b-db2026183ef0/scratchpad/base
+(plus disposable mutant copies mutA/mutB/mutC1/mutC2/mutC3/probe). Nothing was
+started on :8080. This verdict file is the only write to the real worktree.
+
+== Table-stakes gate ==
+  $ go build ./...      -> BUILD_EXIT=0 (no output)
+  $ go vet ./...        -> VET_EXIT=0 (no output)
+  $ staticcheck ./...   -> SC_EXIT=0 (no output; /home/darrell/go/bin/staticcheck)
+  $ go test ./...       -> TEST_EXIT=0, "Go test: 4629 passed in 49 packages"
+    (exit captured with $? directly, not through a pipe)
+  $ go test -count=1 ./internal/handlers/whatif/ ./internal/services/retirement/...
+    -> EXIT=0; ok whatif 25.958s, ok retirement 49.349s, ok analysis 39.490s,
+       ok engine 0.017s, + completeness/history/overrides/prepare ok
+  toolchain: go1.26.6 linux/amd64
+
+== Criterion 1: RunFull output unchanged by the refactor ==
+MET. $ go test ./internal/services/retirement/ -run TestRunFastMatchesRunFullCheapFields -v
+     -> "--- PASS: TestRunFastMatchesRunFullCheapFields (1.12s)"; EXIT=0
+Read the test (internal/services/retirement/orchestrator_parallel_test.go:100-148):
+it asserts nil Sensitivity/FailurePoints/MonteCarlo/HistoricalBacktest/
+SocialSecurity on RunFast and reflect.DeepEqual on Projection, BudgetFit,
+PresentValue, Sustainability, RMD, Tax, ProjectionExplainability, Settings
+against runFullWithSeed(eng, in, 42) — it asserts exactly what its name claims.
+Whole pre-existing retirement + analysis suites green (above).
+
+== Criterion 2: cache-miss mutation renders fast, no RunFull, loader + skeletons + OOB ==
+MET. $ go test ./internal/handlers/whatif/ -v -run '...' ->
+     "--- PASS: TestCalculateCacheMissRendersFastWithLoader (0.02s)"
+That test asserts 200, exact loader hash equality vs an independently computed
+buildEngineInput hash, "data-wf-pending" present, "scenarios with year-by-year"
+(real MC card marker) absent, and RunFull call count == 0.
+OOB clause demonstrated by a DISPOSABLE probe test written only into the
+throwaway copy (scratchpad/probe/.../zz_verifier_probe_test.go, never the real
+worktree):
+     status=200 loader=true oob=true pendingCard=true runFullCalls=0   (POST /whatif/calculate, cold cache)
+     status=200 loader=true pendingCard=true runFullCalls=0            (GET /whatif, cold cache)
+Also pre-existing TestHandleWhatIfSocialSecurity_WithRendererIncludesOOBRefresh
+(handlers_test.go:4593) passes on a cold cache (setupTestEnvWithRenderer resets
+cache at handlers_test.go:4458) and requires
+`id="whatif-social-security-card" hx-swap-oob="true"` in a mutation render.
+
+== Criterion 3: results-full hash guards (200 / pre-204 / post-204) ==
+MET. All three PASS in the -v run:
+     --- PASS: TestResultsFullRendersFullPartial (0.01s)
+     --- PASS: TestResultsFullStaleHashNoContent (0.00s)
+     --- PASS: TestResultsFullDetectsSettingsChangeDuringCompute (0.01s)
+     --- PASS: TestPendingLoaderHashRoundTripsToFullResults (0.01s)
+StaleHash asserts 204 AND RunFull count 0 (i.e. 204 *before* computing).
+RendersFullPartial asserts the MC marker present, no `id="whatif-async-loader"`,
+no `hx-swap-oob`. DetectsSettingsChange mutates MonthlyLivingExpenses through the
+manager inside the stubbed RunFull and requires 204.
+Route is wired: internal/handlers/whatif/handlers.go:830
+`r.Get("/whatif/results-full", handleWhatIfResultsFull)`; the template emits
+`hx-get="/whatif/results-full?hash={{.AsyncHash}}"` at web/templates/pages/whatif.html:165.
+
+== Criterion 4: chart endpoints don't invoke RunFull on a cache miss ==
+MET. "--- PASS: TestChartEndpointsDoNotBlockOnCacheMiss (0.00s)"; the test drives
+both handleWhatIfProjectionChart and handleWhatIfIncomeChart, requires 200 +
+parseable JSON, and asserts the RunFull counter == 0.
+
+== Criterion 5: cache-hit behavior unchanged (full render, no loader) ==
+MET as far as a command can show. "--- PASS: TestCalculateCacheHitRendersFull (0.01s)"
+asserts a seeded-cache POST /whatif/calculate has NO `id="whatif-async-loader"`,
+DOES have the real MC marker, and RunFull count == 0. "Byte-identical to today"
+in the literal sense is NOT demonstrable by any command I ran (no golden-file
+baseline exists); the evidence is that test plus the whole pre-existing whatif
+suite passing unchanged.
+
+== Criterion 6: singleflight guarantees on the new blocking endpoint ==
+MET. All four PASS after being repointed to GET /whatif/results-full:
+     --- PASS: TestSingleflightConcurrentCalculateRunsFullAnalysisOnce (0.21s)
+     --- PASS: TestSingleflightErrorResultNotCached (0.01s)
+     --- PASS: TestSingleflightPanicFailsAllCoalescedRequests (0.10s)
+     --- PASS: TestSingleflightWaiterHonorsContextCancellation (0.10s)
+     --- PASS: TestMonteCarloRerollCoalescesConcurrentRequests (0.21s)  (untouched)
+Read `git diff internal/handlers/whatif/singleflight_test.go`: they are genuinely
+concurrent (8 goroutines + entered/release channels; leader/waiter goroutines),
+and every property survives — RunFull count exactly 1 under 8 concurrent
+requests, count 0 on failed input building then 1 then still 1 after cache warm,
+500 + errAnalysisPanicked's message for BOTH leader and waiter with count 2 after
+recompute, and the cancelled waiter returning within 5s with context.Canceled's
+message while the leader still completes with count 1. No assertion was deleted;
+error checks became status+body checks because the entry point is now an HTTP
+handler.
+
+== Criterion 7: gofmt / gate / manifest ==
+MET. $ gofmt -l $(grep '\.go$' .swarm/manifests/T12.2.files) -> empty, exit 0.
+Gate results above. Manifest .swarm/manifests/T12.2.files exists and
+`git status --porcelain | grep -v '^\.swarm/'` diffs EMPTY against it
+("MANIFEST MATCHES ACTUAL").
+
+== MUTATION PROBES (all killed) ==
+(a) analysisFastOrCached: `return a, depHash, nil` -> `return a, depHash + "x", nil`
+    (copy mutA) $ go test ./internal/handlers/whatif/ -> EXIT=1, three kills:
+      --- FAIL: TestCalculateCacheMissRendersFastWithLoader
+          results_full_test.go:69: loader hash = "3abce0ef653f9280x", want "3abce0ef653f9280"
+      --- FAIL: TestPollCacheMissRendersPending
+          results_full_test.go:312: loader hash = "fbae6bd33bf8d9a3x", want "fbae6bd33bf8d9a3"
+      --- FAIL: TestPendingLoaderHashRoundTripsToFullResults
+          results_full_test.go:364: status = 204, want 200 (the loader's own hash must be accepted by results-full)
+    This is exactly the mutation that SURVIVED attempt 1; it is now killed three ways.
+
+(b) handleWhatIfResultsFull: pre-compute stale-hash guard REMOVED
+    (copy mutB) $ go test ./internal/handlers/whatif/ -> EXIT=1
+      --- FAIL: TestResultsFullStaleHashNoContent
+          results_full_test.go:156: status = 200, want 204
+    Variant with the guard INVERTED (`!=` -> `==`, copy mutB2) does not finish:
+    the singleflight tests park forever on `<-entered` because the leader 204s
+    without ever entering RunFull, so the package times out (I killed it at 10m).
+    That is also a failure, but the removal probe above is the clean kill.
+
+(c) RunFast / fastAnalysis cheap-field corruption:
+    C1 (copy mutC1) BudgetFit dropped from the SHARED fastAnalysis ->
+      --- FAIL: TestRunFastMatchesRunFullCheapFields (nil-pointer panic in
+      analysis.SensitivityWithBaseline via runFullWithSeed); EXIT=141.
+    C2 (copy mutC2) RunFast ALONE nils BudgetFit (asymmetric drift, RunFull intact) ->
+      orchestrator_parallel_test.go:128: BudgetFit differs between RunFast and RunFull
+      --- FAIL: TestRunFastMatchesRunFullCheapFields; EXIT=1
+    C3 (copy mutC3) RunFast skips fillDefaultHooks ->
+      lines 125/128/131/137/140/143: Projection, BudgetFit, PresentValue, RMD, Tax,
+      ProjectionExplainability all differ; --- FAIL; EXIT=1
+    The oracle is a real no-drift oracle, not a tautology.
+
+== SCOPE ==
+$ git --no-optional-locks status --porcelain -- internal/services/retirement/engine -> EMPTY
+  (no file under internal/services/retirement/engine/** modified)
+$ changed files filtered against .swarm/critical.globs -> EMPTY (no storage/**,
+  dataloader/**, engine/**, transfers/**, accounts.go, mcpsvc/confirm/** touched)
+Changed set (excluding .swarm/ bookkeeping) is exactly the 11 files in
+.swarm/manifests/T12.2.files: orchestrator.go, orchestrator_parallel_test.go,
+handlers.go, handlers_live.go, handlers_rates.go, handlers_live_test.go,
+singleflight_test.go, handlers_test.go, results_full_test.go (new),
+web/templates/pages/whatif.html, web/templates/components/whatif/verdict-bar.html.

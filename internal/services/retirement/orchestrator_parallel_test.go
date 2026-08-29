@@ -92,6 +92,61 @@ func TestRunFullDeterministicUnderParallelism(t *testing.T) {
 	}
 }
 
+// TestRunFastMatchesRunFullCheapFields is the refactor's no-drift oracle:
+// RunFast must leave the expensive fields nil and its cheap fields must be
+// reflect.DeepEqual to the same fields off a seeded full run, proving
+// fastAnalysis (shared by RunFast and runFullWithSeed) was not duplicated
+// or drifted by the refactor.
+func TestRunFastMatchesRunFullCheapFields(t *testing.T) {
+	s := parallelFanOutSettings()
+	in := engine.Input{Prepared: prepare.MustFrom(t, s)}
+	eng := engine.New()
+
+	fast := RunFast(eng, in)
+	full := runFullWithSeed(eng, in, 42)
+
+	if fast.Sensitivity != nil {
+		t.Error("RunFast.Sensitivity must be nil")
+	}
+	if fast.FailurePoints != nil {
+		t.Error("RunFast.FailurePoints must be nil")
+	}
+	if fast.MonteCarlo != nil {
+		t.Error("RunFast.MonteCarlo must be nil")
+	}
+	if fast.HistoricalBacktest != nil {
+		t.Error("RunFast.HistoricalBacktest must be nil")
+	}
+	if fast.SocialSecurity != nil {
+		t.Error("RunFast.SocialSecurity must be nil")
+	}
+
+	if !reflect.DeepEqual(fast.Projection, full.Projection) {
+		t.Error("Projection differs between RunFast and RunFull")
+	}
+	if !reflect.DeepEqual(fast.BudgetFit, full.BudgetFit) {
+		t.Error("BudgetFit differs between RunFast and RunFull")
+	}
+	if !reflect.DeepEqual(fast.PresentValue, full.PresentValue) {
+		t.Error("PresentValue differs between RunFast and RunFull")
+	}
+	if !reflect.DeepEqual(fast.Sustainability, full.Sustainability) {
+		t.Error("Sustainability differs between RunFast and RunFull")
+	}
+	if !reflect.DeepEqual(fast.RMD, full.RMD) {
+		t.Error("RMD differs between RunFast and RunFull")
+	}
+	if !reflect.DeepEqual(fast.Tax, full.Tax) {
+		t.Error("Tax differs between RunFast and RunFull")
+	}
+	if !reflect.DeepEqual(fast.ProjectionExplainability, full.ProjectionExplainability) {
+		t.Error("ProjectionExplainability differs between RunFast and RunFull")
+	}
+	if !reflect.DeepEqual(fast.Settings, full.Settings) {
+		t.Error("Settings differs between RunFast and RunFull")
+	}
+}
+
 // BenchmarkRunFull tracks the wall-clock cost of the full analysis
 // fan-out — the number the whatif recalc path pays on every cache miss.
 func BenchmarkRunFull(b *testing.B) {

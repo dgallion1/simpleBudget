@@ -5484,8 +5484,25 @@ func TestHandleWhatIfSocialSecurity_PopulatesPortfolio(t *testing.T) {
 		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
 	}
 
+	// The mutation renders immediately from the cheap RunFast path (no
+	// SocialSecurity yet); fetch the full analysis through the async
+	// endpoint the pending render's loader would hit.
+	saved, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	_, hash, err := buildEngineInput(saved)
+	if err != nil {
+		t.Fatalf("buildEngineInput: %v", err)
+	}
+	fullW := httptest.NewRecorder()
+	handleWhatIfResultsFull(fullW, httptest.NewRequest("GET", "/whatif/results-full?hash="+hash, nil))
+	if fullW.Code != http.StatusOK {
+		t.Fatalf("results-full status = %d, want 200. body: %s", fullW.Code, fullW.Body.String())
+	}
+
 	var pageData models.WhatIfPageData
-	if err := json.NewDecoder(w.Body).Decode(&pageData); err != nil {
+	if err := json.NewDecoder(fullW.Body).Decode(&pageData); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
 	if pageData.Analysis == nil || pageData.Analysis.SocialSecurity == nil {

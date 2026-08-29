@@ -79,7 +79,9 @@ func handleWhatIfMonteCarlo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderWhatIfResults(w, settings, analysis)
+	// This is the deliberately uncached Monte Carlo re-roll: it always
+	// returns the full analysis, never the fast path, so pendingHash is "".
+	renderWhatIfResults(w, settings, analysis, "")
 }
 
 // handleWhatIfSpendingPhases handles updates to spending phase configuration

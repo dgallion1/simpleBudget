@@ -149,7 +149,7 @@ func handleWhatIfPoll(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
+	analysis, pendingHash, err := analysisFastOrCached(settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -162,5 +162,5 @@ func handleWhatIfPoll(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		w.Header().Set("HX-Trigger", string(trigger))
 	}
-	renderWhatIfResultsOnly(w, settings, analysis)
+	renderWhatIfResultsOnly(w, settings, analysis, pendingHash)
 }

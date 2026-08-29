@@ -49,12 +49,14 @@ func registerUndo(s *mcp.Server, deps Deps) {
 		}
 
 		// ClearDuplicateDecision is a silent no-op for an unknown key, which
-		// would let this tool claim it undid something it did not.
-		decisions, err := deps.Decisions.LoadDuplicateDecisions()
+		// would let this tool claim it undid something it did not. Look up
+		// through legacy aliases too: a decision recorded before StableID
+		// existed is filed under the pair's old key, but every caller here
+		// (list_duplicates included) hands back the current one.
+		prior, ok, err := deps.Decisions.LookupDuplicateDecision(key)
 		if err != nil {
 			return nil, undoOutput{}, err
 		}
-		prior, ok := decisions[key]
 		if !ok {
 			return nil, undoOutput{}, fmt.Errorf(
 				"pair_key %q has no decision recorded against it, so there is nothing to undo; call list_duplicates with include_resolved to see what does", key)

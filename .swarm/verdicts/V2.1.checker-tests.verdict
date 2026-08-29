@@ -1,0 +1,178 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: V2
+ATTEMPT: 1
+---
+All work verified in a copy of the repo at
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/v2-tests
+(cp -a, .git preserved). The only write to /home/darrell/bin/ai/budget2 is this file.
+
+STATE NOTE (affects how the diff commands were run): the V2 work is UNCOMMITTED
+in the working tree. `git rev-parse HEAD master` -> both 010f1aa667b2..., i.e.
+branch fix/undo-alias-backup-symlink has no commits ahead of master. Therefore
+the literal `git diff master...HEAD -- ...` prints nothing for ANY path
+(verified: `git diff master...HEAD -- internal/services/backup
+internal/handlers/backup | wc -l` -> 0). I reviewed the change with
+`git diff master -- <paths>` (worktree vs master), which does show it.
+
+CRITERION 1 - go build / go vet clean.
+  $ go build ./...            -> no output, BUILD_EXIT=0
+  $ go vet ./...              -> no output, VET_EXIT=0
+  MET.
+
+CRITERION 2 - go test ./... fully green.
+  $ go test ./...             -> EXIT=0; 49 "ok" package lines, zero FAIL lines
+                                 (grep -v '^ok|no test files' produced nothing).
+  $ go test -count=1 ./...    -> FULL_COUNT1_EXIT=0, no FAIL lines (re-run with
+                                 cache disabled so no cached result masked a
+                                 failure). Run after my scratch test was deleted.
+  MET.
+
+CRITERION 3 - the two backup packages green with -count=1; the five new tests
+run by name and are not skipped.
+  $ go test -count=1 ./internal/services/backup/ ./internal/handlers/backup/
+      -> EXIT=0, "235 passed in 2 packages"
+  $ go test -count=1 -v -run 'TestSnapshot_SkipsSymlinkedDirectory|TestSnapshot_SkipsDanglingSymlink|TestSnapshot_ArchivesSymlinkToRegularFile' ./internal/services/backup/
+      === RUN   TestSnapshot_SkipsSymlinkedDirectory
+      --- PASS: TestSnapshot_SkipsSymlinkedDirectory (0.00s)
+      === RUN   TestSnapshot_SkipsDanglingSymlink
+      --- PASS: TestSnapshot_SkipsDanglingSymlink (0.00s)
+      === RUN   TestSnapshot_ArchivesSymlinkToRegularFile
+      --- PASS: TestSnapshot_ArchivesSymlinkToRegularFile (0.00s)
+      ok  budget2/internal/services/backup  0.014s   EXIT=0
+  $ go test -count=1 -v -run 'TestHandleBackup_SkipsSymlinkedDirectory|TestHandleBackup_SkipsDanglingSymlink' ./internal/handlers/backup/
+      === RUN   TestHandleBackup_SkipsSymlinkedDirectory
+      --- PASS: TestHandleBackup_SkipsSymlinkedDirectory (0.00s)
+      === RUN   TestHandleBackup_SkipsDanglingSymlink
+      --- PASS: TestHandleBackup_SkipsDanglingSymlink (0.00s)
+      ok  budget2/internal/handlers/backup  0.010s   EXIT=0
+  All five show "=== RUN" + "--- PASS"; none SKIP.
+  MET.
+
+  Tests read, not just run. I opened all five in the diff. They assert what
+  their names claim: the symlinked-dir tests create a real dir with a file plus
+  os.Symlink to it and assert len(zr.File)==1 / len(got)==1 with the real path
+  present and nothing prefixed "link/" or named "link"; the dangling tests
+  os.Symlink to a nonexistent target and assert the single surviving entry is
+  the real file; the symlink-to-regular-file test asserts BOTH real.csv and
+  shortcut.csv present with identical content (old behavior preserved). The
+  snapshot tests additionally assert meta.FileCount and meta.TotalBytes exclude
+  the skipped links.
+
+  Load-bearing check (my own, not required by the brief): in a second copy I ran
+  `git checkout master -- internal/services/backup/snapshot.go internal/handlers/backup/handlers.go`
+  (keeping the new tests) and re-ran them:
+      --- FAIL: TestSnapshot_SkipsSymlinkedDirectory
+      --- FAIL: TestSnapshot_SkipsDanglingSymlink
+      --- FAIL: TestHandleBackup_SkipsSymlinkedDirectory
+          handlers_test.go:242: symlinked directory must not appear in backup, found "link"
+      --- FAIL: TestHandleBackup_SkipsDanglingSymlink
+          handlers_test.go:278: want keep.csv, got "dangling"
+  Four of the five fail without the fix, so they genuinely pin the defect.
+  TestSnapshot_ArchivesSymlinkToRegularFile passes before and after, which is
+  correct for a no-change regression guard.
+
+CRITERION 4 - independent end-to-end behavioral proof.
+  I wrote my own scratch test (internal/services/backup/zz_checker_e2e_test.go,
+  package backup, self-contained: no worker helpers), data dir = one real file
+  accounts.csv + os.Symlink to a directory OUTSIDE the data dir containing
+  outside.csv + a dangling symlink; ran svc.Snapshot(ctx) and opened the zip.
+  $ go test -count=1 -v -run TestCheckerE2E ./internal/services/backup/
+      === RUN   TestCheckerE2E_SymlinkedDirAndDangling
+          zz_checker_e2e_test.go:62: zip entries: map[accounts.csv:id,name
+              1,checking
+              ]
+      --- PASS: TestCheckerE2E_SymlinkedDirAndDangling (0.00s)
+      === RUN   TestCheckerE2E_RealFileReadFailureStillAborts
+          zz_checker_e2e_test.go:108: expected abort: backup: build zip: open
+              .../secret.csv: permission denied
+      --- PASS: TestCheckerE2E_RealFileReadFailureStillAborts (0.00s)
+      ok  budget2/internal/services/backup  0.007s   EXIT=0
+  Proven: Snapshot returns nil error; the zip's ONLY entry is accounts.csv with
+  the correct bytes (the test errors on any other entry name, so nothing under
+  "dirlink"/"danglink" and no "outside.csv" from descending the link);
+  meta.FileCount==1 and meta.TotalBytes==len(real content). The second test
+  proves a chmod-000 REAL regular file still aborts the snapshot.
+  The same scratch test, run against the master-reverted sources, FAILED
+  (--- FAIL: TestCheckerE2E_SymlinkedDirAndDangling), confirming it exercises
+  the fix. Scratch file deleted afterwards (ls -> "No such file or directory")
+  and the full suite re-run clean without it.
+  MET.
+
+CRITERION 5 - one shared decision point used by all three walks; stale comment
+updated.
+  $ grep -rn "filepath.Walk" --include=*.go internal/services/backup internal/handlers/backup
+      internal/services/backup/snapshot.go:174   (buildZip)
+      internal/handlers/backup/handlers.go:269   (manual encrypted download)
+      internal/handlers/backup/handlers.go:383   (plaintext download)
+      (remaining hits are comments in _test.go files)
+  Exactly three production walks.
+  $ grep -rn "ArchiveEntry" --include=*.go .
+      internal/services/backup/snapshot.go:303   func ArchiveEntry(path string, info os.FileInfo) bool
+      internal/services/backup/snapshot.go:192   if !ArchiveEntry(path, info)
+      internal/handlers/backup/handlers.go:283   if !backupsvc.ArchiveEntry(path, info)
+      internal/handlers/backup/handlers.go:396   if !backupsvc.ArchiveEntry(path, info)
+  One exported definition, three call sites - one per walk, none re-deriving
+  symlink handling. It is defined in internal/services/backup/snapshot.go
+  immediately after SkipPredicate (SkipPredicate ends at line ~288,
+  ArchiveEntry doc starts line 291). Reading the three walks (sed 155-235
+  snapshot.go, 250-330 and 370-430 handlers.go), the guard sits in the identical
+  position in all three: after the isDir/SkipDir branch, after skip(path,false),
+  before filepath.Rel / zw.Create / read, and before any count/byte
+  accumulation - so skipped links are excluded from meta counts (snapshot
+  count/total) and from the plaintext handler's fileCount/totalBytes.
+  Comment: $ grep -n "symlinked directory's contents are not walked here"
+  internal/services/backup/snapshot.go -> ABSENT. The block at snapshot.go:167
+  now reads "...ArchiveEntry decides what happens to it. A symlinked file is
+  read through by os.ReadFile below and archived under the link's relative name
+  (matches historical behavior); a symlink to a directory, or a dangling
+  symlink, is skipped without error and without being descended into."
+  MET.
+
+CRITERION 6 - diff review: real-file abort path unchanged; restore/storage
+untouched.
+  $ git diff master -- internal/services/backup internal/handlers/backup
+      The ENTIRE production diff is three insertions of the identical 3-line
+      guard (snapshot.go +192, handlers.go +283, +396) plus the comment rewrite
+      plus the new ArchiveEntry function. No line in any of the three walks was
+      deleted or modified. Specifically the abort paths are byte-identical to
+      master: snapshot.go "raw, err := os.ReadFile(path); if err != nil {
+      return err }"; handlers.go "return fmt.Errorf(\"open %s: %w\", path, err)"
+      and "copy %s into backup"; plaintext "file, err := store.OpenFile(path);
+      if err != nil { return err }". Confirmed behaviorally by
+      TestCheckerE2E_RealFileReadFailureStillAborts (criterion 4).
+  $ git diff master...HEAD -- internal/services/restore internal/services/storage | wc -l  -> 0
+  $ git diff master     -- internal/services/restore internal/services/storage | wc -l  -> 0
+      Empty under both forms, so restore and storage walks are untouched.
+  MET (with the state note above about master...HEAD being empty for all paths).
+
+SCOPE.
+  $ git diff master --name-only
+      .gitignore
+      .swarm/ledger.tsv
+      internal/handlers/backup/handlers.go
+      internal/handlers/backup/handlers_test.go
+      internal/services/backup/snapshot.go
+      internal/services/backup/snapshot_test.go
+      internal/services/dataloader/duplicate_decisions.go
+      internal/services/dataloader/duplicate_decisions_test.go
+      internal/services/mcpsvc/admin/register.go
+      internal/services/mcpsvc/admin/undo.go
+      internal/services/mcpsvc/admin/undo_test.go
+  The four V2 files match .swarm/manifests/V2.1.files exactly - no more, no
+  less. The five dataloader/mcpsvc-admin files match .swarm/manifests/V1.1.files
+  exactly and belong to task V1 sharing this branch. .gitignore (+3, ignores
+  /server.log) and .swarm/ledger.tsv are run bookkeeping outside both manifests.
+  .swarm/critical.globs lists internal/services/storage/**,
+  internal/services/dataloader/**, retirement/engine/**, transfers/**,
+  accounts/accounts.go, mcpsvc/confirm/**: V2 touches NONE of them
+  (dataloader is V1's, not V2's).
+
+RESIDUAL OBSERVATION (not a criterion, for the lead's awareness).
+  HandleBackupPlaintext (handlers.go:383) has the guard by inspection and by
+  grep, but no behavioral test of its own - the two new handler tests both
+  exercise HandleBackup only. Correctness there rests on the shared helper plus
+  identical guard placement, not on an executed assertion. All six stated
+  acceptance criteria are still met; criterion 3 named exactly five tests and
+  criterion 5 is a grep criterion, both of which are satisfied.

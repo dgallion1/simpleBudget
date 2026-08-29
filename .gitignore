@@ -39,3 +39,6 @@ reflection-notes.md
 /filter-test-*.png
 .swarm/tier3/*/wt-*/
 .swarm/work/
+
+# Dev-server output at repo root
+/server.log

@@ -83,6 +83,32 @@ func (dl *DataLoader) loadDuplicateDecisionsLocked(tx *storage.SharedTx) (map[st
 	return doc.Decisions, nil
 }
 
+// LookupDuplicateDecision finds the decision filed for pairKey: the exact
+// key first, then its legacy aliases from the most recent load (see
+// legacyPairKeysFor). A decision recorded before StableID existed is filed
+// under the pair's old content-hash key while every caller today hands back
+// the current one, so a lookup by the current key alone would miss it. ok is
+// false with a nil error when neither the key nor any alias holds a
+// decision; err is non-nil only when the decisions file exists and fails to
+// parse.
+func (dl *DataLoader) LookupDuplicateDecision(pairKey string) (decision DuplicateDecision, ok bool, err error) {
+	tx, done := dl.beginWrite()
+	defer done()
+	decisions, err := dl.loadDuplicateDecisionsLocked(tx)
+	if err != nil {
+		return DuplicateDecision{}, false, err
+	}
+	if d, found := decisions[pairKey]; found {
+		return d, true, nil
+	}
+	for _, legacy := range dl.legacyPairKeysFor(pairKey) {
+		if d, found := decisions[legacy]; found {
+			return d, true, nil
+		}
+	}
+	return DuplicateDecision{}, false, nil
+}
+
 // SaveDuplicateDecision writes a decision keyed by pairKey, replacing
 // any prior decision under the same key. Validates outcome and the
 // hash invariants for kept_winner.

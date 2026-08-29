@@ -1,0 +1,89 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: V1
+ATTEMPT: 1
+---
+Setup: cp -a /home/darrell/bin/ai/budget2 -> scratchpad/v1-second (kept .git); all
+work done in the copy. Diffs are uncommitted working-tree changes on
+fix/undo-alias-backup-symlink (branch tip == master); `git diff master...HEAD`
+is empty for that reason, `git diff HEAD` shows the real changes.
+
+Baseline (in copy, after removing my own probe files):
+- `go build ./...` -> clean, exit 0.
+- `go vet ./...` -> clean, exit 0.
+- `go test ./...` -> all 47 packages ok, none skipped.
+- `bash .swarm/tier3/V1/accept.sh` -> "ORACLE PASS", 4/4 checks pass, planted
+  test files (zz_oracle_v1_test.go, zz_oracle_v1_helper_test.go) removed by
+  its own trap.
+- Oracle integrity, both ends: reverted the 5 manifest files to `git checkout
+  --` (master state) in a second copy and re-ran accept.sh unmodified -> FAILS
+  as expected (CHECK 01-oracle-e2e FAIL, CHECK 02-package-suites FAIL,
+  "tool call returned an error result"). Confirms the oracle is not vacuous
+  and was not weakened. `.swarm/manifests/V1.1.files` lists only the 5 source
+  files touched (duplicate_decisions.go/_test.go, register.go, undo.go,
+  undo_test.go) -- accept.sh is not in that list and shows no worker edits.
+
+Attacks attempted (each as a standalone Go test written and run against the
+copy, then deleted before the final baseline run above):
+
+1. Precedence conflict: filed a decision under BOTH the current (StableID)
+   key AND a legacy content-hash alias, with DIFFERENT outcomes
+   (current=kept_winner, legacy=kept_both). LookupDuplicateDecision returned
+   the CURRENT key's outcome (kept_winner) -- matches SaveDuplicateDecision's
+   own precedence (current key deletes/overrides legacy on save). PASS,
+   attack failed to break it.
+
+2. Concurrency: 20 goroutines each calling LookupDuplicateDecision("pairA")
+   concurrently with 20 goroutines calling SaveDuplicateDecision("pairA", ...)
+   under `go test -race`. No race reported. Confirmed by reading the code
+   that LookupDuplicateDecision takes dl.beginWrite() (dl.writeMu.Lock() +
+   dl.store.BeginShared()), the identical sequence Load/Save/Clear use --
+   not a bypass read.
+
+3. Refusal regression, three sub-cases, all still refuse as required:
+   - corrupt decisions JSON ("{not valid json") -> undo_resolve returns an
+     error result (IsError=true), the parse error is NOT swallowed into a
+     false "nothing to undo" refusal or a false success.
+   - decisions file exists, is valid JSON, has one entry, but the queried
+     key matches neither it nor any alias -> refused with a non-empty
+     message.
+   - whitespace-only pair_key ("   ") -> refused (existing TrimSpace guard
+     unaffected by this change).
+
+4. previous_outcome for a legacy-ONLY entry with outcome=kept_both (the gap
+   flagged in the dispatch: worker's own new tests pair "legacy alias" only
+   with kept_winner, and pair kept_both only with the current key -- the
+   combination is untested by both the worker's suite and accept.sh). Wrote
+   the missing combination by hand: filed a kept_both decision under the
+   legacy key only, called undo_resolve with the current key. Result:
+   previous_outcome="kept_both", unresolved_remaining=1, legacy key removed
+   from the on-disk file after undo. Functionally correct -- Lookup and
+   Clear are both outcome-agnostic so this was expected -- but this remains
+   a genuine coverage gap in both the worker's tests and the Tier-3 oracle:
+   nothing in the checked-in test suite would catch a future regression
+   confined to the kept_both+legacy-alias path. Noting as a finding, not a
+   blocking defect, since I verified the actual behavior independently and
+   it is correct.
+
+5. Interface drift: grepped for all non-test references to `DecisionStore`
+   and for any test-local fake/mock implementing it -- only `*DataLoader`
+   satisfies it (structurally, via newLiveDeps in tests); no second
+   implementation needed updating and none was silently stubbed.
+
+6. Scope check: ClearDuplicateDecision and SaveDuplicateDecision are
+   byte-for-byte unchanged in the diff (confirmed via `git diff HEAD --
+   internal/services/dataloader/duplicate_decisions.go`, the only new hunk
+   is the added LookupDuplicateDecision function). ensureDecisionsSnapshot
+   and the post-undo `deps.load()` reload block in undo.go are unchanged --
+   the only edit in undo.go replaces `deps.Decisions.LoadDuplicateDecisions()`
+   + map lookup with `deps.Decisions.LookupDuplicateDecision(key)`.
+
+7. Sibling-scope check: the working tree also carries unrelated changes to
+   internal/handlers/backup, internal/services/backup, and .gitignore
+   (evidently task V2's diff, sharing the tree). V1's manifest and diff
+   scope is clean of these; not counted against V1.
+
+No attack broke the implementation. Baseline and oracle are green at both
+ends. Verdict: PASS, with one non-blocking coverage-gap finding (#4) for the
+record.

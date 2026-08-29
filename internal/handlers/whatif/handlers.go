@@ -789,6 +789,8 @@ func RegisterRoutes(r chi.Router) {
 	r.Delete("/whatif/bigticket/{id}", handleWhatIfDeleteBigTicket)
 	r.Post("/whatif/bigticket/{id}/restore", handleWhatIfRestoreBigTicket)
 	r.Delete("/whatif/bigticket/{id}/purge", handleWhatIfPurgeBigTicket)
+	r.Post("/whatif/onetime", handleWhatIfAddOneTime)
+	r.Delete("/whatif/onetime/{id}", handleWhatIfDeleteOneTime)
 	r.Get("/whatif/scenarios", handleListScenarios)
 	r.Post("/whatif/scenarios", handleCreateScenario)
 	r.Post("/whatif/scenarios/switch", handleSwitchScenario)

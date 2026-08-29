@@ -1,6 +1,7 @@
 package whatif
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement/prepare"
 )
 
 // parseNamedAmount parses the name + amount fields shared by the Add forms.
@@ -274,6 +276,86 @@ func handleWhatIfRestoreBigTicket(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	recalcAndRender(w, r, "Failed to restore big ticket item", func() (*models.WhatIfSettings, int, error) {
 		settings, err := retirementMgr.RestoreBigTicketItem(id)
+		return settings, revisionUnreported, err
+	})
+}
+
+func handleWhatIfAddOneTime(w http.ResponseWriter, r *http.Request) {
+	const target = "#whatif-add-onetime-error"
+	if err := r.ParseForm(); err != nil {
+		renderRetargetedError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest, target)
+		return
+	}
+
+	description := strings.TrimSpace(r.FormValue("description"))
+	if description == "" {
+		renderRetargetedError(w, "Description is required", http.StatusBadRequest, target)
+		return
+	}
+
+	amount, err := parseRequiredFormFloat(r, "amount")
+	if err != nil {
+		renderRetargetedError(w, err.Error(), http.StatusBadRequest, target)
+		return
+	}
+	if amount < 0 {
+		renderRetargetedError(w, "Amount cannot be negative", http.StatusBadRequest, target)
+		return
+	}
+
+	year, err := parseFormInt(r, "year")
+	if err != nil {
+		renderRetargetedError(w, "Invalid year: "+err.Error(), http.StatusBadRequest, target)
+		return
+	}
+	if year < 0 {
+		renderRetargetedError(w, "Year cannot be negative", http.StatusBadRequest, target)
+		return
+	}
+
+	expense := models.OneTimeExpense{
+		ID:          uuid.New().String(),
+		Description: description,
+		Year:        year,
+		Amount:      amount,
+	}
+
+	// Validate the would-be new list against the invariants prepare.From
+	// enforces on every recalc (malformed Amount/Year) BEFORE persisting, so a
+	// bad row can never reach storage.
+	current, err := retirementMgr.Load()
+	if err != nil {
+		renderRetargetedError(w, "Failed to add one-time expense: "+err.Error(), http.StatusInternalServerError, target)
+		return
+	}
+	current.OneTimeExpenses = append(current.OneTimeExpenses, expense)
+	if err := prepare.ValidateOneTimeExpenses(current); err != nil {
+		renderRetargetedError(w, "Failed to add one-time expense: "+err.Error(), http.StatusBadRequest, target)
+		return
+	}
+
+	// Beyond-horizon is a handler-only rejection, not a shared-validator rule:
+	// at add time it's almost certainly a typo, so we reject it here for a
+	// friendly UX message. But the invariant must not live in
+	// ValidateOneTimeExpenses, because every other write path (settings
+	// shrinking ProjectionYears, MCP apply_changes) runs that validator too,
+	// and an existing entry going out of horizon there is a legitimate,
+	// non-fatal user action (the engine treats it as dormant), not an error.
+	if year >= current.ProjectionYears {
+		renderRetargetedError(w, fmt.Sprintf("Year %d is beyond the %d-year projection horizon", year, current.ProjectionYears), http.StatusBadRequest, target)
+		return
+	}
+
+	recalcAndRender(w, r, "Failed to add one-time expense", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.AddOneTimeExpense(expense)
+		return settings, revisionUnreported, err
+	})
+}
+
+func handleWhatIfDeleteOneTime(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	recalcAndRender(w, r, "Failed to remove one-time expense", func() (*models.WhatIfSettings, int, error) {
+		settings, err := retirementMgr.RemoveOneTimeExpense(id)
 		return settings, revisionUnreported, err
 	})
 }

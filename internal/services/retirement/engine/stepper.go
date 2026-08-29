@@ -179,6 +179,7 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 	monthInYear := m % 12
 	phaseAge := s.GetPhaseReferenceAge(currentYear)
 	bigTicketExpenseThisMonth := 0.0
+	oneTimeExpenseThisMonth := 0.0
 	rothConversionThisMonth := 0.0
 	allowTaxDeferredWithdrawal := !taxDeferredDelayActive(s, currentYear)
 	penaltyRate := earlyWithdrawalPenaltyRate(s.CurrentAge, currentYear)
@@ -215,6 +216,14 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 		bigTicketResult := ApplyBigTicketItemsForYear(s, currentYear, allowTaxDeferredWithdrawal, penaltyRate, &st.TaxDeferredBalance, &st.TaxableAccount, &st.RothBalance, &st.RothBasis)
 		bigTicketExpenseThisMonth += bigTicketResult.UnfundedExpense
 		st.BigTicketRothEarnings = bigTicketResult.RothEarningsWithdrawal
+
+		// One-time expenses (models.OneTimeExpense) are spending, not a
+		// funding-source draw: unlike big-ticket items they are folded
+		// straight into the year's expense total so the standard
+		// withdrawal-gross-up/tax machinery applies to them like any other
+		// expense, rather than being withdrawn directly from a specific
+		// account first.
+		oneTimeExpenseThisMonth = OneTimeExpensesForYear(s, currentYear)
 	}
 
 	// The month's injected returns; drawn after the chain transition so a
@@ -266,8 +275,8 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 	// planned and adjusted stay in sync for them.
 	activeHealthcare := s.GetTotalHealthcareCost(m) * p.HealthcareMultiplier
 	propertyTax := PropertyTaxAtMonth(s, m)
-	plannedTotalExpenses := st.CurrentLivingExpenses + activeHealthcare + propertyTax + bigTicketExpenseThisMonth
-	totalExpenses := adjustedLivingExpenses + activeHealthcare + propertyTax + bigTicketExpenseThisMonth
+	plannedTotalExpenses := st.CurrentLivingExpenses + activeHealthcare + propertyTax + bigTicketExpenseThisMonth + oneTimeExpenseThisMonth
+	totalExpenses := adjustedLivingExpenses + activeHealthcare + propertyTax + bigTicketExpenseThisMonth + oneTimeExpenseThisMonth
 
 	for _, source := range s.ExpenseSources {
 		expenseAmount := source.GetAdjustedAmount(m, s.InflationRate)

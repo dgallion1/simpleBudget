@@ -79,3 +79,33 @@ func ValidatePersons(s *models.WhatIfSettings) error {
 
 	return nil
 }
+
+// ValidateOneTimeExpenses checks the settings' OneTimeExpenses slice for the
+// invariants the retirement engine relies on:
+//
+//   - Amount is non-negative
+//   - Year is non-negative
+//
+// Year is deliberately NOT bounded against ProjectionYears here. An entry
+// whose Year >= ProjectionYears is DORMANT, not invalid: the engine never
+// charges it (OneTimeExpensesForYear only fires within the projection loop,
+// which never reaches that year), so the projection runs and renders
+// normally. This lets ProjectionYears shrink underneath an existing entry
+// (settings page, MCP apply_changes, or any other writer) without bricking
+// prepare.From on every subsequent load. The add-handler still rejects a
+// beyond-horizon entry at submit time as a likely typo, but that is a
+// handler-level UX check, not a shared invariant — see
+// handleWhatIfAddOneTime.
+//
+// An empty or absent list is always valid.
+func ValidateOneTimeExpenses(s *models.WhatIfSettings) error {
+	for i, e := range s.OneTimeExpenses {
+		if e.Amount < 0 {
+			return fmt.Errorf("one_time_expenses[%d] %q: amount must be non-negative, got %v", i, e.Description, e.Amount)
+		}
+		if e.Year < 0 {
+			return fmt.Errorf("one_time_expenses[%d] %q: year must be non-negative, got %d", i, e.Description, e.Year)
+		}
+	}
+	return nil
+}

@@ -1642,6 +1642,50 @@ func (sm *SettingsManager) PurgeRemovedBigTicketItem(id string) (*models.WhatIfS
 	return settings, nil
 }
 
+// AddOneTimeExpense adds a new planned one-time expense and saves atomically.
+func (sm *SettingsManager) AddOneTimeExpense(expense models.OneTimeExpense) (*models.WhatIfSettings, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
+	if err != nil {
+		return nil, err
+	}
+
+	settings.OneTimeExpenses = append(settings.OneTimeExpenses, expense)
+
+	if err := sm.saveInternalAndBump(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
+// RemoveOneTimeExpense removes a one-time expense by ID and saves atomically.
+func (sm *SettingsManager) RemoveOneTimeExpense(id string) (*models.WhatIfSettings, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	settings, err := sm.loadInternal()
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]models.OneTimeExpense, 0, len(settings.OneTimeExpenses))
+	for _, expense := range settings.OneTimeExpenses {
+		if expense.ID != id {
+			filtered = append(filtered, expense)
+		}
+	}
+	settings.OneTimeExpenses = filtered
+
+	if err := sm.saveInternalAndBump(settings); err != nil {
+		return nil, err
+	}
+
+	return settings, nil
+}
+
 // slugify converts a scenario name to a URL-safe filename slug
 func slugify(name string) string {
 	slug := strings.ToLower(strings.TrimSpace(name))

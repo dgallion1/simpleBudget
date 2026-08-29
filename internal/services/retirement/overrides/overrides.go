@@ -23,6 +23,16 @@ type Overrides struct {
 	SpouseClaimAge         *int     `json:"spouse_claim_age,omitempty" jsonschema:"spouse Social Security claim age, 62-70"`
 	ProjectionYears        *int     `json:"projection_years,omitempty" jsonschema:"length of the projection in years"`
 	FilingStatus           *string  `json:"filing_status,omitempty" jsonschema:"single, married_joint, married_separate, or head_of_household"`
+
+	// HealthcareMonthlyCost is today's total household healthcare cost, not the
+	// Medicare-era cost: it never touches MedicareMonthlyCost,
+	// ACACostAfterEmployer, or any inflation field.
+	HealthcareMonthlyCost *float64 `json:"healthcare_monthly_cost,omitempty" jsonschema:"the household's CURRENT total monthly healthcare cost in dollars, i.e. what is paid today, not the Medicare-era cost; when the plan has multiple healthcare persons configured, this total is distributed across them proportionally to their existing individual costs (split equally if those are all currently zero); with no persons configured it sets the legacy single scalar"`
+	// SocialSecurityFRABenefit and SpouseFRABenefit both require an existing
+	// social_security configuration on the scenario (set in the UI); Apply
+	// returns a validation error rather than fabricating one.
+	SocialSecurityFRABenefit *float64 `json:"social_security_fra_benefit,omitempty" jsonschema:"primary person's GROSS monthly Social Security benefit at full retirement age (FRA) — before Medicare premium deductions and tax withholding, which the engine computes itself; the scenario must already have Social Security configured in the UI"`
+	SpouseFRABenefit         *float64 `json:"spouse_fra_benefit,omitempty" jsonschema:"spouse's GROSS monthly Social Security benefit at full retirement age (FRA) — before Medicare premium deductions and tax withholding, which the engine computes itself; the scenario must already have Social Security configured in the UI"`
 }
 
 // Apply returns a deep copy of base with the overrides applied. base is never
@@ -108,6 +118,38 @@ func Apply(base *models.WhatIfSettings, o Overrides) (*models.WhatIfSettings, er
 		}
 		s.TaxConfig.FilingStatus = models.FilingStatus(*o.FilingStatus)
 	}
+	if o.HealthcareMonthlyCost != nil {
+		if len(s.HealthcarePersons) > 0 {
+			total := 0.0
+			for _, p := range s.HealthcarePersons {
+				total += p.CurrentMonthlyCost
+			}
+			if total == 0 {
+				share := *o.HealthcareMonthlyCost / float64(len(s.HealthcarePersons))
+				for i := range s.HealthcarePersons {
+					s.HealthcarePersons[i].CurrentMonthlyCost = share
+				}
+			} else {
+				for i := range s.HealthcarePersons {
+					proportion := s.HealthcarePersons[i].CurrentMonthlyCost / total
+					s.HealthcarePersons[i].CurrentMonthlyCost = proportion * *o.HealthcareMonthlyCost
+				}
+			}
+		} else {
+			s.MonthlyHealthcare = *o.HealthcareMonthlyCost
+		}
+	}
+	if o.SocialSecurityFRABenefit != nil || o.SpouseFRABenefit != nil {
+		if s.SocialSecurity == nil {
+			return nil, fmt.Errorf("scenario has no social_security configuration to override: configure Social Security in the UI first")
+		}
+		if o.SocialSecurityFRABenefit != nil {
+			s.SocialSecurity.FRABenefit = *o.SocialSecurityFRABenefit
+		}
+		if o.SpouseFRABenefit != nil {
+			s.SocialSecurity.SpouseFRABenefit = *o.SpouseFRABenefit
+		}
+	}
 	return s, nil
 }
 
@@ -160,6 +202,15 @@ func (o Overrides) validate() error {
 	}
 	if r := o.InvestmentReturn; r != nil && (*r < -20 || *r > 50) {
 		return &ValidationError{Err: fmt.Errorf("investment_return must be between -20 and 50 percent, got %v", *r)}
+	}
+	if v := o.HealthcareMonthlyCost; v != nil && *v < 0 {
+		return &ValidationError{Err: fmt.Errorf("healthcare_monthly_cost must be >= 0, got %v", *v)}
+	}
+	if v := o.SocialSecurityFRABenefit; v != nil && *v < 0 {
+		return &ValidationError{Err: fmt.Errorf("social_security_fra_benefit must be >= 0, got %v", *v)}
+	}
+	if v := o.SpouseFRABenefit; v != nil && *v < 0 {
+		return &ValidationError{Err: fmt.Errorf("spouse_fra_benefit must be >= 0, got %v", *v)}
 	}
 	return nil
 }

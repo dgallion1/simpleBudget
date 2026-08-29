@@ -62,4 +62,23 @@ func TestRunWithOverrides_OmitsMonteCarlo(t *testing.T) {
 	}
 }
 
+// TestRunWithOverrides_HealthcareMonthlyCostMeasurablyChangesAnalysis proves
+// the engine actually consumes the distributed CurrentMonthlyCost values, not
+// just that Apply sets them: the base scenario has no HealthcarePersons, so
+// this exercises the legacy-scalar branch through the full run.
+func TestRunWithOverrides_HealthcareMonthlyCostMeasurablyChangesAnalysis(t *testing.T) {
+	lo, err := RunWithOverrides(baseSettings(), Overrides{HealthcareMonthlyCost: ptr(200.0)})
+	if err != nil {
+		t.Fatalf("RunWithOverrides(low): %v", err)
+	}
+	hi, err := RunWithOverrides(baseSettings(), Overrides{HealthcareMonthlyCost: ptr(5_000.0)})
+	if err != nil {
+		t.Fatalf("RunWithOverrides(high): %v", err)
+	}
+	if hi.Headline.FinalBalance >= lo.Headline.FinalBalance {
+		t.Errorf("higher healthcare cost should reduce final balance: low=%v high=%v",
+			lo.Headline.FinalBalance, hi.Headline.FinalBalance)
+	}
+}
+
 func ptr(f float64) *float64 { return &f }

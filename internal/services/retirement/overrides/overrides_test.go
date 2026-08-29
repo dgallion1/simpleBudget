@@ -1,6 +1,7 @@
 package overrides
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -217,6 +218,47 @@ func TestApply_EachFieldChangesOnlyItsDestination(t *testing.T) {
 			},
 		},
 		{
+			name: "HealthcareMonthlyCost",
+			base: baseSettings,
+			o:    Overrides{HealthcareMonthlyCost: ptr(750)},
+			check: func(t *testing.T, base, got *models.WhatIfSettings) {
+				if got.MonthlyHealthcare != 750 {
+					t.Errorf("MonthlyHealthcare = %v, want 750", got.MonthlyHealthcare)
+				}
+				if got.HealthcareInflation != base.HealthcareInflation {
+					t.Errorf("HealthcareInflation changed to %v, want unchanged %v", got.HealthcareInflation, base.HealthcareInflation)
+				}
+			},
+		},
+		{
+			name: "SocialSecurityFRABenefit",
+			base: baseSettingsWithSS,
+			o:    Overrides{SocialSecurityFRABenefit: ptr(3_000)},
+			check: func(t *testing.T, base, got *models.WhatIfSettings) {
+				if got.SocialSecurity == nil || got.SocialSecurity.FRABenefit != 3_000 {
+					t.Fatalf("SocialSecurity.FRABenefit = %+v, want 3000", got.SocialSecurity)
+				}
+				if got.SocialSecurity.SpouseFRABenefit != base.SocialSecurity.SpouseFRABenefit {
+					t.Errorf("SpouseFRABenefit changed to %v, want unchanged %v",
+						got.SocialSecurity.SpouseFRABenefit, base.SocialSecurity.SpouseFRABenefit)
+				}
+			},
+		},
+		{
+			name: "SpouseFRABenefit",
+			base: baseSettingsWithSS,
+			o:    Overrides{SpouseFRABenefit: ptr(1_200)},
+			check: func(t *testing.T, base, got *models.WhatIfSettings) {
+				if got.SocialSecurity == nil || got.SocialSecurity.SpouseFRABenefit != 1_200 {
+					t.Fatalf("SocialSecurity.SpouseFRABenefit = %+v, want 1200", got.SocialSecurity)
+				}
+				if got.SocialSecurity.FRABenefit != base.SocialSecurity.FRABenefit {
+					t.Errorf("FRABenefit changed to %v, want unchanged %v",
+						got.SocialSecurity.FRABenefit, base.SocialSecurity.FRABenefit)
+				}
+			},
+		},
+		{
 			name: "FilingStatus",
 			base: baseSettings,
 			o:    Overrides{FilingStatus: strPtr("married_joint")},
@@ -311,6 +353,193 @@ func TestValidateWritable_RejectsRothWindowWithoutAmount(t *testing.T) {
 	if !strings.Contains(err.Error(), "roth_conversion_amount") {
 		t.Fatalf("error %q should name the missing field", err)
 	}
+}
+
+func TestApply_HealthcareMonthlyCost_NoPersons_SetsLegacyScalar(t *testing.T) {
+	base := baseSettings()
+	base.MonthlyHealthcare = 500
+	got, err := Apply(base, Overrides{HealthcareMonthlyCost: ptr(900)})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got.MonthlyHealthcare != 900 {
+		t.Errorf("MonthlyHealthcare = %v, want 900", got.MonthlyHealthcare)
+	}
+	if base.MonthlyHealthcare != 500 {
+		t.Error("Apply mutated base.MonthlyHealthcare")
+	}
+}
+
+func TestApply_HealthcareMonthlyCost_DistributesProportionally(t *testing.T) {
+	base := baseSettings()
+	base.HealthcarePersons = []models.HealthcarePerson{
+		{ID: "a", CurrentMonthlyCost: 1500},
+		{ID: "b", CurrentMonthlyCost: 750},
+	}
+	got, err := Apply(base, Overrides{HealthcareMonthlyCost: ptr(1600)})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	const tol = 0.01
+	if abs(got.HealthcarePersons[0].CurrentMonthlyCost-1066.666667) > tol {
+		t.Errorf("person a CurrentMonthlyCost = %v, want ~1066.67", got.HealthcarePersons[0].CurrentMonthlyCost)
+	}
+	if abs(got.HealthcarePersons[1].CurrentMonthlyCost-533.333333) > tol {
+		t.Errorf("person b CurrentMonthlyCost = %v, want ~533.33", got.HealthcarePersons[1].CurrentMonthlyCost)
+	}
+	sum := got.HealthcarePersons[0].CurrentMonthlyCost + got.HealthcarePersons[1].CurrentMonthlyCost
+	if abs(sum-1600) > tol {
+		t.Errorf("distributed sum = %v, want 1600", sum)
+	}
+	// base must not be mutated
+	if base.HealthcarePersons[0].CurrentMonthlyCost != 1500 || base.HealthcarePersons[1].CurrentMonthlyCost != 750 {
+		t.Error("Apply mutated base.HealthcarePersons")
+	}
+}
+
+func TestApply_HealthcareMonthlyCost_SplitsEquallyWhenExistingTotalIsZero(t *testing.T) {
+	base := baseSettings()
+	base.HealthcarePersons = []models.HealthcarePerson{
+		{ID: "a", CurrentMonthlyCost: 0},
+		{ID: "b", CurrentMonthlyCost: 0},
+	}
+	got, err := Apply(base, Overrides{HealthcareMonthlyCost: ptr(1600)})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got.HealthcarePersons[0].CurrentMonthlyCost != 800 || got.HealthcarePersons[1].CurrentMonthlyCost != 800 {
+		t.Errorf("expected an even 800/800 split, got %v/%v",
+			got.HealthcarePersons[0].CurrentMonthlyCost, got.HealthcarePersons[1].CurrentMonthlyCost)
+	}
+}
+
+func TestApply_HealthcareMonthlyCost_DoesNotTouchMedicareOrACAFields(t *testing.T) {
+	base := baseSettings()
+	base.HealthcarePersons = []models.HealthcarePerson{
+		{ID: "a", CurrentMonthlyCost: 1000, MedicareMonthlyCost: 300, ACACostAfterEmployer: 450},
+	}
+	got, err := Apply(base, Overrides{HealthcareMonthlyCost: ptr(1200)})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got.HealthcarePersons[0].MedicareMonthlyCost != 300 {
+		t.Errorf("MedicareMonthlyCost changed to %v, want unchanged 300", got.HealthcarePersons[0].MedicareMonthlyCost)
+	}
+	if got.HealthcarePersons[0].ACACostAfterEmployer != 450 {
+		t.Errorf("ACACostAfterEmployer changed to %v, want unchanged 450", got.HealthcarePersons[0].ACACostAfterEmployer)
+	}
+}
+
+func TestApply_SocialSecurityFRABenefits(t *testing.T) {
+	base := baseSettingsWithSS()
+	got, err := Apply(base, Overrides{
+		SocialSecurityFRABenefit: ptr(2_800),
+		SpouseFRABenefit:         ptr(1_900),
+	})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got.SocialSecurity.FRABenefit != 2_800 {
+		t.Errorf("FRABenefit = %v, want 2800", got.SocialSecurity.FRABenefit)
+	}
+	if got.SocialSecurity.SpouseFRABenefit != 1_900 {
+		t.Errorf("SpouseFRABenefit = %v, want 1900", got.SocialSecurity.SpouseFRABenefit)
+	}
+	if base.SocialSecurity.FRABenefit != 2_500 {
+		t.Error("Apply mutated base.SocialSecurity.FRABenefit")
+	}
+}
+
+func TestApply_SocialSecurityFRABenefit_NilConfigErrors(t *testing.T) {
+	base := baseSettings() // no SocialSecurity configured
+	if _, err := Apply(base, Overrides{SocialSecurityFRABenefit: ptr(2_000)}); err == nil {
+		t.Fatal("expected an error when overriding FRA benefit with no social_security configuration")
+	} else if !strings.Contains(err.Error(), "social_security") {
+		t.Errorf("error should mention social_security configuration, got: %v", err)
+	}
+}
+
+func TestApply_SpouseFRABenefit_NilConfigErrors(t *testing.T) {
+	base := baseSettings() // no SocialSecurity configured
+	if _, err := Apply(base, Overrides{SpouseFRABenefit: ptr(1_000)}); err == nil {
+		t.Fatal("expected an error when overriding spouse FRA benefit with no social_security configuration")
+	} else if !strings.Contains(err.Error(), "social_security") {
+		t.Errorf("error should mention social_security configuration, got: %v", err)
+	}
+}
+
+func TestApply_RejectsNegativeHealthcareAndSSValues(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		o     Overrides
+		field string
+	}{
+		{"negative healthcare cost", Overrides{HealthcareMonthlyCost: ptr(-1)}, "healthcare_monthly_cost"},
+		{"negative FRA benefit", Overrides{SocialSecurityFRABenefit: ptr(-1)}, "social_security_fra_benefit"},
+		{"negative spouse FRA benefit", Overrides{SpouseFRABenefit: ptr(-1)}, "spouse_fra_benefit"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Apply(baseSettingsWithSS(), tc.o); err == nil {
+				t.Fatal("expected a validation error")
+			} else if !strings.Contains(err.Error(), tc.field) {
+				t.Errorf("error should name %q, got: %v", tc.field, err)
+			}
+		})
+	}
+}
+
+// TestApply_HealthcareAndSocialSecurityFieldsSurviveJSONRoundTrip covers the
+// persistence mechanism apply_changes actually relies on (the settings
+// manager marshals *models.WhatIfSettings to JSON and writes it to disk):
+// the values Apply produces for the three new fields must round-trip through
+// JSON encode/decode unchanged.
+func TestApply_HealthcareAndSocialSecurityFieldsSurviveJSONRoundTrip(t *testing.T) {
+	base := baseSettingsWithSS()
+	base.HealthcarePersons = []models.HealthcarePerson{
+		{ID: "a", CurrentMonthlyCost: 1500},
+		{ID: "b", CurrentMonthlyCost: 750},
+	}
+	got, err := Apply(base, Overrides{
+		HealthcareMonthlyCost:    ptr(1600),
+		SocialSecurityFRABenefit: ptr(2_800),
+		SpouseFRABenefit:         ptr(1_900),
+	})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	data, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	var roundTripped models.WhatIfSettings
+	if err := json.Unmarshal(data, &roundTripped); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+
+	const tol = 0.01
+	if abs(roundTripped.HealthcarePersons[0].CurrentMonthlyCost-got.HealthcarePersons[0].CurrentMonthlyCost) > tol {
+		t.Errorf("person a CurrentMonthlyCost did not round-trip: got %v, want %v",
+			roundTripped.HealthcarePersons[0].CurrentMonthlyCost, got.HealthcarePersons[0].CurrentMonthlyCost)
+	}
+	if abs(roundTripped.HealthcarePersons[1].CurrentMonthlyCost-got.HealthcarePersons[1].CurrentMonthlyCost) > tol {
+		t.Errorf("person b CurrentMonthlyCost did not round-trip: got %v, want %v",
+			roundTripped.HealthcarePersons[1].CurrentMonthlyCost, got.HealthcarePersons[1].CurrentMonthlyCost)
+	}
+	if roundTripped.SocialSecurity == nil || roundTripped.SocialSecurity.FRABenefit != got.SocialSecurity.FRABenefit {
+		t.Errorf("FRABenefit did not round-trip: got %+v, want %v", roundTripped.SocialSecurity, got.SocialSecurity.FRABenefit)
+	}
+	if roundTripped.SocialSecurity.SpouseFRABenefit != got.SocialSecurity.SpouseFRABenefit {
+		t.Errorf("SpouseFRABenefit did not round-trip: got %v, want %v",
+			roundTripped.SocialSecurity.SpouseFRABenefit, got.SocialSecurity.SpouseFRABenefit)
+	}
+}
+
+func abs(f float64) float64 {
+	if f < 0 {
+		return -f
+	}
+	return f
 }
 
 func ptr(f float64) *float64  { return &f }

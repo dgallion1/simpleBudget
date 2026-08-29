@@ -192,9 +192,13 @@ func Register(s *mcp.Server, deps Deps) {
 			"An open what-if page picks the change up within about two seconds. A copy of the scenario " +
 			"is saved before this session's first change to that scenario — later changes in the same " +
 			"session are not separately recoverable; recovering from an unwanted change means restoring " +
-			"that .bak file by hand. Note two behaviors: roth_conversion_amount of 0 DISABLES " +
-			"conversions, and healthcare_inflation cannot be saved (preview it with run_scenario). " +
-			"Read the whatif://assumptions resource before drawing conclusions.",
+			"that .bak file by hand. Note several behaviors: roth_conversion_amount of 0 DISABLES " +
+			"conversions, healthcare_inflation cannot be saved (preview it with run_scenario), " +
+			"social_security_fra_benefit/spouse_fra_benefit are GROSS monthly amounts at full " +
+			"retirement age and require Social Security to already be configured in the UI, and " +
+			"healthcare_monthly_cost is today's total household cost, distributed proportionally " +
+			"across any configured healthcare persons. Read the whatif://assumptions resource " +
+			"before drawing conclusions.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in applyChangesInput) (res *mcp.CallToolResult, out applyChangesOutput, err error) {
 		defer recoverToError("apply_changes", &err)
 

@@ -253,6 +253,13 @@ function renderMajorExpenseBreakdown(items) {
  *                                  (target − actual; positive = saved, negative = overspent).
  *                                  Zero is the reference; fill above zero green, below red.
  *                                  Overrides options.target.
+ * @param {number} [options.neutralBand] - Balance mode only. Dead-band half-width
+ *                                  around zero (matches the KPI card's on-budget
+ *                                  epsilon): green fill only for v > neutralBand,
+ *                                  red fill only for v < -neutralBand. Values inside
+ *                                  ±neutralBand feed neither fill, so the chart's
+ *                                  color story agrees with the card's classification.
+ *                                  Default 0 (no dead band).
  */
 function renderSparkline(containerId, values, color, options) {
     const container = document.getElementById(containerId);
@@ -277,9 +284,13 @@ function renderSparkline(containerId, values, color, options) {
     if (isBalance) {
         // Split the line into above-zero (green = saved) and below-zero
         // (red = overspent) segments by clamping each direction. Two filled
-        // traces against the zero baseline give the divergent fill.
-        const above = values.map(v => v > 0 ? v : 0);
-        const below = values.map(v => v < 0 ? v : 0);
+        // traces against the zero baseline give the divergent fill. A
+        // neutralBand dead band (matching the KPI card's on-budget epsilon)
+        // excludes values within ±neutralBand from either fill, so the
+        // chart's color story cannot contradict the card's classification.
+        const nb = (typeof options.neutralBand === 'number' && isFinite(options.neutralBand)) ? options.neutralBand : 0;
+        const above = values.map(v => v > nb ? v : 0);
+        const below = values.map(v => v < -nb ? v : 0);
 
         data.push({
             type: 'scatter',
@@ -552,6 +563,7 @@ function initSparklines() {
         const valuesAttr = el.getAttribute('data-values');
         const color = el.getAttribute('data-color') || '#6366f1';
         const targetAttr = el.getAttribute('data-target');
+        const neutralBandAttr = el.getAttribute('data-neutral-band');
         const mode = el.getAttribute('data-mode') || '';
 
         if (valuesAttr && valuesAttr !== 'null' && valuesAttr !== '[]') {
@@ -566,6 +578,12 @@ function initSparklines() {
                         const t = parseFloat(targetAttr);
                         if (isFinite(t) && t > 0) {
                             options.target = t;
+                        }
+                    }
+                    if (neutralBandAttr !== null && neutralBandAttr !== '') {
+                        const nb = parseFloat(neutralBandAttr);
+                        if (isFinite(nb) && nb > 0) {
+                            options.neutralBand = nb;
                         }
                     }
                     renderSparkline(el.id, values, color, options);

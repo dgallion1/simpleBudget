@@ -278,8 +278,6 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 		months = months[len(months)-6:]
 	}
 
-	var combinedCumulativeBalance []float64
-	var runningCombinedBalance float64
 	for _, m := range months {
 		incAmt := 0.0
 		if inc, ok := monthlyIncome[m]; ok {
@@ -304,10 +302,56 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 		healthcareTrend = append(healthcareTrend, hcAmt)
 		livingTrend = append(livingTrend, livingMonth)
 		trendLabels = append(trendLabels, m)
+	}
 
-		if hasCombinedTarget {
-			runningCombinedBalance += combinedTarget - (livingMonth + hcAmt)
-			combinedCumulativeBalance = append(combinedCumulativeBalance, runningCombinedBalance)
+	// Combined cumulative balance — a calendar-month walk over
+	// [rangeStart, rangeEnd], built in its own loop independent of the
+	// transaction-month trend loop above. Each calendar month intersecting
+	// the range contributes a pro-rated target accrual (via the same
+	// MonthsBetween helper MonthsInRange uses, so per-month accruals sum
+	// to combinedTarget*MonthsInRange exactly) less that month's actual
+	// outflow spend (all outflows — living + healthcare — matching
+	// CombinedCumulativeDelta's basis). A month with no transactions still
+	// produces a point: the target accrues, nothing is spent. See the
+	// field doc on models.DashboardMetrics.CombinedCumulativeBalance for
+	// the resulting invariant and its pre-filtered-TransactionSet
+	// precondition.
+	var combinedCumulativeBalance []float64
+	if hasCombinedTarget {
+		loc := rangeStart.Location()
+		monthCursor := time.Date(rangeStart.Year(), rangeStart.Month(), 1, 0, 0, 0, 0, loc)
+		lastMonth := time.Date(rangeEnd.Year(), rangeEnd.Month(), 1, 0, 0, 0, 0, loc)
+
+		var running float64
+		for cur := monthCursor; !cur.After(lastMonth); cur = cur.AddDate(0, 1, 0) {
+			monthStart := cur
+			monthEnd := cur.AddDate(0, 1, 0).AddDate(0, 0, -1) // last calendar day of cur's month
+
+			segStart := monthStart
+			if rangeStart.After(segStart) {
+				segStart = rangeStart
+			}
+			segEnd := monthEnd
+			if rangeEnd.Before(segEnd) {
+				segEnd = rangeEnd
+			}
+
+			accrual := combinedTarget * MonthsBetween(segStart, segEnd)
+
+			spend := 0.0
+			if bucket, ok := monthlyOutflows[cur.Format("2006-01")]; ok {
+				spend = math.Abs(bucket.SumAmount())
+			}
+
+			running += accrual - spend
+			combinedCumulativeBalance = append(combinedCumulativeBalance, running)
+		}
+
+		// Display cap: keep only the LAST 6 walked points. Running totals
+		// (and therefore the dropped months' carry-in) are preserved —
+		// only which points are plotted is trimmed.
+		if len(combinedCumulativeBalance) > 6 {
+			combinedCumulativeBalance = combinedCumulativeBalance[len(combinedCumulativeBalance)-6:]
 		}
 	}
 

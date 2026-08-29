@@ -1,0 +1,7 @@
+internal/services/metrics/metrics.go
+internal/services/metrics/metrics_test.go
+internal/models/dashboard.go
+internal/handlers/dashboard/verdict.go
+internal/handlers/dashboard/verdict_test.go
+web/templates/components/kpis.html
+web/static/js/charts.js

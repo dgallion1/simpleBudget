@@ -892,9 +892,15 @@ func TestCalculateMetrics_CombinedCumulativeBalance_NoTargetReturnsNil(t *testin
 }
 
 func TestCalculateMetrics_CombinedCumulativeBalance_AccumulatesMonthlyBalance(t *testing.T) {
-	// Two months: Jan $1000 living, Feb $2000 living. Target $1500/mo combined,
-	// no healthcare. Balance uses target-actual (positive = saved):
-	// Jan = +500 (under by $500), Feb = +500 - 500 = 0.
+	// Two calendar months, both fully inside the range: Jan (31 days) and
+	// Feb (28 days). Target $1500/mo combined, no healthcare, actual spend
+	// $1000 in Jan and $2000 in Feb. Each month's accrual is pro-rated by
+	// MonthsBetween on that calendar month's own day count (not a flat
+	// 1.0), so:
+	//   Jan accrual = 1500 * (31/30.4375) = 1527.7207...
+	//   Feb accrual = 1500 * (28/30.4375) = 1379.8768...
+	//   Jan balance = 1527.7207 - 1000              =  527.7207
+	//   Feb balance = 527.7207 + (1379.8768 - 2000) =  -92.4025
 	jan := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
 	feb := time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -909,20 +915,24 @@ func TestCalculateMetrics_CombinedCumulativeBalance_AccumulatesMonthlyBalance(t 
 	if len(m.CombinedCumulativeBalance) != 2 {
 		t.Fatalf("CombinedCumulativeBalance length = %d, want 2", len(m.CombinedCumulativeBalance))
 	}
-	if !floatEqual(m.CombinedCumulativeBalance[0], 500) {
-		t.Errorf("CombinedCumulativeBalance[0] = %.2f, want +500 (saved $500 in Jan)", m.CombinedCumulativeBalance[0])
+	if !floatEqual(m.CombinedCumulativeBalance[0], 527.72) {
+		t.Errorf("CombinedCumulativeBalance[0] = %.4f, want ~527.7207 (1500*31/30.4375 - 1000)", m.CombinedCumulativeBalance[0])
 	}
-	if !floatEqual(m.CombinedCumulativeBalance[1], 0) {
-		t.Errorf("CombinedCumulativeBalance[1] = %.2f, want 0 (Feb $500 over erases Jan savings)", m.CombinedCumulativeBalance[1])
+	if !floatEqual(m.CombinedCumulativeBalance[1], -92.40) {
+		t.Errorf("CombinedCumulativeBalance[1] = %.4f, want ~-92.4025 (prior + 1500*28/30.4375 - 2000)", m.CombinedCumulativeBalance[1])
 	}
 }
 
 func TestCalculateMetrics_CombinedCumulativeBalance_LastIsNegationOfCumulativeDelta(t *testing.T) {
 	// Invariant: the last value of CombinedCumulativeBalance must equal the
-	// negation of CombinedCumulativeDelta (within month-rounding slack).
-	// Balance uses target-actual; Delta uses actual-target. If they fail to
-	// negate, the chart and the Budget KPI card will show contradictory
-	// over/under signs.
+	// EXACT negation of CombinedCumulativeDelta (float-summation noise
+	// only -- not a month-rounding approximation). Both are now built from
+	// the same calendar-month walk over [rangeStart, rangeEnd]: per-month
+	// accruals sum to combinedTarget*MonthsInRange exactly because the
+	// per-month day segments partition the range's inclusive days, and
+	// per-month spends sum to totalExpenses exactly because callers pass a
+	// range-pre-filtered TransactionSet. So running == -(actual-target) ==
+	// -CombinedCumulativeDelta to within float64 noise, not dollars.
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC)
 	ts := makeTransactionSet(
@@ -940,14 +950,85 @@ func TestCalculateMetrics_CombinedCumulativeBalance_LastIsNegationOfCumulativeDe
 		t.Fatalf("CombinedCumulativeBalance empty; want non-empty when combined target is set")
 	}
 	last := m.CombinedCumulativeBalance[len(m.CombinedCumulativeBalance)-1]
-	// Slack: per-month series uses integer-month target (1550) while
-	// CombinedCumulativeDelta uses fractional MonthsInRange (e.g. 2.957 mo
-	// for a 90-day Jan 1 – Mar 31 window). Difference is bounded by
-	// combinedTarget * |len(trend) - MonthsInRange| ≈ 1550 * 0.043 ≈ $67,
-	// so we allow $100 to comfortably cover the rounding gap while still
-	// catching any real divergence between the chart and the KPI card.
-	if math.Abs(last-(-m.CombinedCumulativeDelta)) > 100 {
-		t.Errorf("balance tail %.2f vs -CombinedCumulativeDelta %.2f — must agree (within $100 month-rounding slack)", last, -m.CombinedCumulativeDelta)
+	if math.Abs(last-(-m.CombinedCumulativeDelta)) > 0.01 {
+		t.Errorf("balance tail %.4f vs -CombinedCumulativeDelta %.4f — must agree exactly (float noise only, no month-rounding slack)", last, -m.CombinedCumulativeDelta)
+	}
+}
+
+func TestCalculateMetrics_CombinedCumulativeBalance_MoreThanSixMonths_CapsAndCarriesIn(t *testing.T) {
+	// 8 calendar months (Jan-Aug 2025), combined target $1000/mo, $500
+	// spend each month (Housing only). The walked series has 8 points but
+	// the display cap keeps only the LAST 6 (Mar-Aug); the running totals
+	// those 6 points carry are not reset at the cap boundary -- Aug's
+	// point still reflects Jan+Feb's carry-in. Proven by checking the tail
+	// against -CombinedCumulativeDelta computed over the FULL 8-month
+	// range: if the cap zeroed the carry-in instead of just trimming the
+	// display, the tail would be off by the dropped months' net
+	// contribution and the invariant would fail.
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 8, 31, 0, 0, 0, 0, time.UTC)
+	var txns []models.Transaction
+	for i := 0; i < 8; i++ {
+		date := time.Date(2025, time.Month(i+1), 15, 0, 0, 0, 0, time.UTC)
+		txns = append(txns, makeTransaction("Rent", -500, date, models.Outflow, "Housing"))
+	}
+	ts := makeTransactionSet(txns...)
+
+	m := Calculate(ts, start, end, 1000, 0)
+
+	if len(m.CombinedCumulativeBalance) != 6 {
+		t.Fatalf("CombinedCumulativeBalance length = %d, want 6 (capped to last 6 of 8 walked months)", len(m.CombinedCumulativeBalance))
+	}
+	last := m.CombinedCumulativeBalance[len(m.CombinedCumulativeBalance)-1]
+	if math.Abs(last-(-m.CombinedCumulativeDelta)) > 0.01 {
+		t.Errorf("balance tail %.4f vs -CombinedCumulativeDelta %.4f — must agree (carry-in must survive the 6-month display cap)", last, -m.CombinedCumulativeDelta)
+	}
+}
+
+func TestCalculateMetrics_CombinedCumulativeBalance_PartialMonthRange(t *testing.T) {
+	// Range starts mid-January and ends mid-March -- neither endpoint is a
+	// full calendar month. Each of the 3 intersecting calendar months
+	// contributes only its intersection with [start, end], so accruals
+	// still sum to combinedTarget*MonthsInRange exactly (day-partitioned).
+	start := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 3, 20, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -600, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Rent", -700, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Rent", -800, time.Date(2025, 3, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+
+	m := Calculate(ts, start, end, 750, 0)
+
+	if len(m.CombinedCumulativeBalance) != 3 {
+		t.Fatalf("CombinedCumulativeBalance length = %d, want 3 (Jan, Feb, Mar)", len(m.CombinedCumulativeBalance))
+	}
+	last := m.CombinedCumulativeBalance[len(m.CombinedCumulativeBalance)-1]
+	if math.Abs(last-(-m.CombinedCumulativeDelta)) > 0.01 {
+		t.Errorf("balance tail %.4f vs -CombinedCumulativeDelta %.4f — must agree even with partial first/last calendar months", last, -m.CombinedCumulativeDelta)
+	}
+}
+
+func TestCalculateMetrics_CombinedCumulativeBalance_ZeroTransactionMiddleMonth(t *testing.T) {
+	// Jan and Mar have transactions; Feb has none at all. Feb must still
+	// get a walked point (target accrues, nothing spent) rather than being
+	// skipped -- skipping it would both undercount the series length and
+	// break the tail invariant (Feb's accrual would never be added).
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -1000, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Rent", -1000, time.Date(2025, 3, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+
+	m := Calculate(ts, start, end, 800, 0)
+
+	if len(m.CombinedCumulativeBalance) != 3 {
+		t.Fatalf("CombinedCumulativeBalance length = %d, want 3 (Jan, Feb, Mar -- Feb still gets a point)", len(m.CombinedCumulativeBalance))
+	}
+	last := m.CombinedCumulativeBalance[len(m.CombinedCumulativeBalance)-1]
+	if math.Abs(last-(-m.CombinedCumulativeDelta)) > 0.01 {
+		t.Errorf("balance tail %.4f vs -CombinedCumulativeDelta %.4f — must agree even with an empty middle month", last, -m.CombinedCumulativeDelta)
 	}
 }
 

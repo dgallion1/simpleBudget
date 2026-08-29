@@ -26,6 +26,12 @@ type BudgetVerdictView struct {
 	SavingsRate float64
 	TotalIncome float64
 
+	// Eps is onBudgetEps, always set regardless of HasTarget/classification
+	// outcome. Exposed so the sparkline-budget chart can apply the same
+	// dead band the card's own over/under classification uses, instead of
+	// coloring by a bare v>0/v<0 comparison that disagrees with the card.
+	Eps float64
+
 	// Living/Healthcare are the per-bucket decomposition of Delta, so the
 	// band can say *which* bucket is over/under instead of only the net.
 	// A bucket with no target configured is never shown and never counted
@@ -133,7 +139,7 @@ func classifyVerdictSentence(living, healthcare BucketFigure, totalIsOver bool, 
 // already computed for the selected date range. It does no money math beyond
 // summing totals the metrics expose.
 func BuildBudgetVerdict(m *models.DashboardMetrics) BudgetVerdictView {
-	v := BudgetVerdictView{Health: models.HealthNeutral}
+	v := BudgetVerdictView{Health: models.HealthNeutral, Eps: onBudgetEps}
 	if m == nil {
 		return v
 	}

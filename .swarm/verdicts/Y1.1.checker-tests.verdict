@@ -1,0 +1,184 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: Y1
+ATTEMPT: 1
+---
+All commands run in /home/darrell/bin/ai/budget2/.claude/worktrees/y-sparkline
+(branch fix/sparkline-budget-basis, base origin/master @ 8ed11c3). All go/git
+commands run through `rtk proxy` to defeat rtk's output rewriting. I wrote
+nothing into the worktree except this verdict file; `git status --porcelain`
+after all probes is unchanged (8 M + the lead/checker untracked .swarm files).
+Sensitivity probes used `go test -overlay=` with mutated copies held in the
+scratchpad — the worktree sources were never edited.
+
+CRITERION 1 — build, vet, full test suite green. MET.
+  $ rtk proxy go build ./...      -> no output, build exit=0
+  $ rtk proxy go vet ./...        -> no output, vet exit=0
+  $ rtk proxy go test -count=1 ./...
+      test exit=0
+      ok_count=49 fail_count=0 total_lines=49
+  (-count=1 used deliberately: the first `go test ./...` reported all 49
+  packages "(cached)", so the cached run was not accepted as evidence.)
+  Full-repo scope per ruling Y-2026-08-29b, not package scope.
+
+CRITERION 2 — the four required CombinedCumulativeBalance scenarios, each
+asserting tail == -CombinedCumulativeDelta within $0.01. MET.
+  $ rtk proxy go test ./internal/services/metrics/ -run CombinedCumulativeBalance -v -count=1
+      exit=0; 6 RUN/PASS lines:
+        _NoTargetReturnsNil                      PASS
+        _AccumulatesMonthlyBalance               PASS
+        _LastIsNegationOfCumulativeDelta         PASS   <- multi-month calendar range (Jan 1 - Mar 31)
+        _MoreThanSixMonths_CapsAndCarriesIn      PASS   <- >6-month range (Jan-Aug), cap + carry-in
+        _PartialMonthRange                       PASS   <- mid-month start AND end (Jan 10 - Mar 20)
+        _ZeroTransactionMiddleMonth              PASS   <- empty middle month (Feb)
+  I read the bodies (metrics_test.go:926-1033). Each of the four scenario
+  tests contains the literal assertion
+      if math.Abs(last-(-m.CombinedCumulativeDelta)) > 0.01 {
+  at lines 953, 983, 1007, 1030 respectively, with `last` taken as
+  CombinedCumulativeBalance[len(...)-1]. The names are not decorative.
+
+  Sensitivity (the tests are not vacuous) — mutation A, overlay-only, replaced
+  `accrual := combinedTarget * MonthsBetween(segStart, segEnd)` with
+  `accrual := combinedTarget` (i.e. the OLD flat whole-month basis):
+    $ rtk proxy go test -overlay=.../overlayA.json ./internal/services/metrics/ -run CombinedCumulativeBalance -v -count=1
+      --- FAIL: _AccumulatesMonthlyBalance      (got 500.0000, want ~527.7207)
+      --- FAIL: _LastIsNegationOfCumulativeDelta (tail -1050.0000 vs -1116.8378)
+      --- FAIL: _MoreThanSixMonths_CapsAndCarriesIn (tail 4000.0000 vs 3983.5729)
+      --- FAIL: _PartialMonthRange              (tail 150.0000 vs -375.1540)
+      --- FAIL: _ZeroTransactionMiddleMonth     (tail 400.0000 vs 365.5031)
+  Note _PartialMonthRange under the old basis gives tail +150 while
+  -delta is -375.15 — opposite signs, i.e. exactly the reported defect
+  (chart green while the card says over). The new tests catch it.
+
+  Sensitivity of the carry-in claim specifically — mutation B rebased the
+  kept window (`base := series[len-7]; ... series[i] -= base`), simulating a
+  cap that trims the accounting rather than just the display:
+    $ rtk proxy go test -overlay=.../overlayB.json ./internal/services/metrics/ -run CombinedCumulativeBalance -v -count=1
+      --- FAIL: _MoreThanSixMonths_CapsAndCarriesIn (tail 3045.1745 vs 3983.5729)
+      all five other tests still PASS
+  So the carry-in test isolates carry-in and nothing else.
+
+CRITERION 3 — the `> 100` slack literal is gone from metrics_test.go. MET.
+  $ rtk proxy grep -n "> 100" internal/services/metrics/metrics_test.go
+      (no output; exit=1)
+  $ rtk proxy grep -n "math.Abs" internal/services/metrics/metrics_test.go
+      27:  return math.Abs(a-b) < 0.01          (floatEqual helper)
+      953: ... > 0.01
+      983: ... > 0.01
+      1007:... > 0.01
+      1030:... > 0.01
+  Every tolerance comparison in the file is now 0.01. The removed lines are
+  visible in the diff:
+      -	if math.Abs(last-(-m.CombinedCumulativeDelta)) > 100 {
+      -		t.Errorf("... must agree (within $100 month-rounding slack)" ...)
+
+CRITERION 4 — charts.js: balance mode only; fills honor neutralBand; the
+attr->options plumbing exists in initSparklines. MET.
+  Static: $ rtk proxy git diff origin/master -- web/static/js/charts.js
+    exactly 3 hunks — (a) JSDoc @param options.neutralBand, (b) inside the
+    `if (isBalance)` block at line 284: `const nb = (typeof
+    options.neutralBand === 'number' && isFinite(options.neutralBand)) ?
+    options.neutralBand : 0;` and `v > nb` / `v < -nb` replacing `v > 0` /
+    `v < 0`, (c) initSparklines: `const neutralBandAttr =
+    el.getAttribute('data-neutral-band');` plus the guarded
+    `if (isFinite(nb) && nb > 0) options.neutralBand = nb;`.
+    No +/- line touches the hasTarget branch (line 328+) or the plain branch.
+  $ rtk proxy node --check web/static/js/charts.js  -> SYNTAX OK
+  Behavioural: no JS test harness exists in the repo, so I loaded charts.js
+  into a node vm sandbox (stubbed Plotly/document) and captured the traces
+  handed to Plotly.newPlot. Input values [5,0.5,-0.5,-5,1,-1,1.5,-1.5]:
+    A) balance, no neutralBand:  red y=[0,0,-0.5,-5,0,-1,0,-1.5]
+                                 green y=[5,0.5,0,0,1,0,1.5,0]   (old behaviour preserved)
+    B) balance, neutralBand=1:   red y=[0,0,0,-5,0,0,0,-1.5]
+                                 green y=[5,0,0,0,0,0,1.5,0]
+       -> 0.5, -0.5, 1, -1 all excluded from BOTH fills; |v| == 1 is excluded,
+          matching the card's strict `delta > eps` / `delta < -eps`. 1.5/-1.5
+          still filled. Main line trace y = full unclamped values; layout
+          shapes y0 = 0 (zero baseline unchanged).
+    C) neutralBand=NaN:          identical to A (isFinite guard works)
+    D) target mode with neutralBand also passed: 5 traces, y0=10, byte-for-byte
+       the old target structure — neutralBand ignored. Target mode untouched.
+    E) plain mode: single tozeroy trace, no shapes. Untouched.
+    F) initSparklines on an element with data-neutral-band="1":
+       red y=[0,0,0,-5], green y=[5,0,0,0]  -> attr reaches renderSparkline.
+    G) initSparklines with data-neutral-band="0": falls back to nb=0
+       (the `nb > 0` guard), same as A.
+
+CRITERION 5 — no numeric eps literal in kpis.html; band flows from
+onBudgetEps via BudgetVerdictView.Eps. MET.
+  $ rtk proxy grep -n "neutral-band" web/templates/components/kpis.html
+      193:  data-neutral-band="{{.BudgetVerdict.Eps}}"     (template action, no literal)
+  $ rtk proxy grep -rn "onBudgetEps" internal/
+      verdict.go:11   const onBudgetEps = 1.0
+      verdict.go:142  v := BudgetVerdictView{Health: models.HealthNeutral, Eps: onBudgetEps}
+      verdict.go:165/177 the same constant drives the card's own classification
+  End-to-end runtime proof (overlay added one t.Logf to an existing test; no
+  source edited):
+    $ rtk proxy go test -overlay=.../overlayP.json ./internal/handlers/dashboard/ \
+        -run TestDashboardKPIs_BudgetSparkline_BalanceMode -v -count=1
+      PROBE-RENDERED-EXCERPT:
+        <span class="num">$536.96</span> under
+        <div id="sparkline-budget" class="h-10 mt-2"
+             data-values="[536.9609856262834]"
+             data-color="#6366f1"
+             data-mode="balance"
+             data-neutral-band="1"></div>
+  The attribute renders as "1" (parseFloat-safe, > 0, so the guard admits it),
+  and the card text "under" agrees with the positive tail — the sign story the
+  task exists to reconcile.
+  $ rtk proxy git diff origin/master -- internal/handlers/dashboard/verdict_test.go
+      asserts v.Eps == 1.0 in two subtests, including the nil-metrics early
+      return (Eps is set unconditionally, as D-Y1-deadband requires).
+
+CRITERION 6 — a >6-month range still yields at most 6 points. MET.
+  _MoreThanSixMonths_CapsAndCarriesIn (8 calendar months in range) has
+  `if len(m.CombinedCumulativeBalance) != 6 { t.Fatalf(...) }` at
+  metrics_test.go:979 and PASSes (criterion-2 run above).
+  Sensitivity — mutation C changed the cap from 6 to 12:
+    $ rtk proxy go test -overlay=.../overlayC.json ./internal/services/metrics/ \
+        -run CombinedCumulativeBalance_MoreThanSixMonths -v -count=1
+      metrics_test.go:980: CombinedCumulativeBalance length = 8, want 6
+      --- FAIL
+  So the length assertion is real, and the un-mutated code caps at 6.
+
+CRITERION 7 — trend arrays and labels: code path untouched by the diff. MET.
+  $ rtk proxy git diff origin/master -- internal/services/metrics/metrics.go \
+      | grep -E "^[+-]" | grep -iE "incomeTrend|expensesTrend|savingsTrend|healthcareTrend|livingTrend|trendLabels"
+      (no output; grep-exit=1)
+  Not one added or removed line in metrics.go mentions any trend array or
+  trendLabels. The diff's only changes to the pre-existing trend loop are the
+  removal of the two balance-accumulator declarations above it and the removal
+  of the `if hasCombinedTarget { ... }` block from inside it; every
+  `*Trend = append(...)` and `trendLabels = append(...)` line is diff context.
+  The new balance walk is a separate loop, as D-Y1-basis requires. The
+  transaction-month 6-cap (`months = months[len(months)-6:]`) is unchanged.
+
+CRITERION 8 — manifest lists every touched file and nothing else. MET.
+  $ rtk proxy git diff --name-only origin/master | grep -v '^\.swarm/' | sort  > diffnames.txt
+  $ sort .swarm/manifests/Y1.1.files                                          > manifest.txt
+  $ rtk proxy diff manifest.txt diffnames.txt
+      -> IDENTICAL (diff produced no output)
+  The only diff entry excluded is .swarm/ledger.tsv (lead-owned); .swarm/Y-RUN-SPEC.md
+  and .swarm/manifests/Y1.1.files are untracked lead/worker artifacts. All 7
+  manifest paths are repo-relative, one per line, and each resolves to an
+  existing file (checked with a per-line `test -f`: 7x OK, 0 MISSING).
+
+SCOPE
+  $ rtk proxy git diff --stat origin/master
+      .swarm/ledger.tsv                           |   1 +
+      internal/handlers/dashboard/verdict.go      |   8 +-
+      internal/handlers/dashboard/verdict_test.go |   9 +
+      internal/models/dashboard.go                |  29 +++--
+      internal/services/metrics/metrics.go        |  54 ++++++--
+      internal/services/metrics/metrics_test.go   | 119 +++++++++++++-----
+      web/static/js/charts.js                     |  24 +++-
+      web/templates/components/kpis.html          |   3 +-
+  Every file is inside the Y1 territory list in Y-RUN-SPEC.md. Territory
+  sub-limits honoured: internal/models/dashboard.go changes only the
+  CombinedCumulativeBalance field's doc comment (no field or tag changes);
+  kpis.html changes only the sparkline-budget div (one attribute added).
+  $ cat .swarm/critical.globs -> storage/**, dataloader/**, retirement/engine/**,
+      transfers/**, accounts/accounts.go, mcpsvc/confirm/** — none touched.
+  No .swarm/tier3/Y1/accept.sh exists (Y1 is Tier 2), so there is no
+  executable oracle to defer to; the criteria above were verified directly.

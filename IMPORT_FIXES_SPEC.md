@@ -186,3 +186,15 @@ Restart the server against the live data dir and confirm via MCP:
    NaN/Inf amounts via raw HTTP hit a pre-existing form-parsing quirk shared
    with sibling endpoints (harmless 500, nothing persisted) — tracked as
    follow-up hardening, not T18 debt.
+
+3. Task-ID collision at merge (2026-08-29, lead + user): master's PR #62
+   swarm run (fast-first results render) independently used the ID T12,
+   colliding with this run's T12 in the ledger, manifests, and verdicts.
+   Per user decision, the master-side run was renamed T12F during the merge
+   of master into this branch: its ledger row, brief, manifests, and four
+   verdict files were moved to T12F.* names, and the TASK: header inside
+   those verdicts was updated to T12F so filename and header stay parseable
+   by the gate. Verdict bodies, checkers, families, and outcomes are
+   otherwise byte-identical to what the PR #62 run recorded. Follow-up for
+   the process: parallel runs need a task-ID namespace (per-run prefix) so
+   ledgers merge without surgery.

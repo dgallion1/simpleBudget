@@ -5,11 +5,18 @@ package whatif
 // expensive retirement.RunFull fan-out exactly once, later requests must be
 // served from the cache, failed input building must not poison the cache,
 // and a panicking leader must not wedge future requests.
+//
+// The coalescing path is GET /whatif/results-full (handleWhatIfResultsFull):
+// mutating handlers like handleWhatIfCalculate now render immediately from
+// the cheap RunFast path on a cache miss and never invoke RunFull, so the
+// tests below drive handleWhatIfResultsFull directly, computing the current
+// dep-hash via buildEngineInput on loaded settings.
 
 import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -29,12 +36,21 @@ func swapRunFull(t *testing.T, fn func(*engine.Engine, engine.Input) *models.Wha
 }
 
 // TestSingleflightConcurrentCalculateRunsFullAnalysisOnce fires 8 concurrent
-// cache-missing POST /whatif/calculate requests and proves RunFull executed
-// exactly once, then verifies a request after completion is served from the
-// cache without recomputing.
+// cache-missing GET /whatif/results-full requests and proves RunFull
+// executed exactly once, then verifies a request after completion is served
+// from the cache without recomputing.
 func TestSingleflightConcurrentCalculateRunsFullAnalysisOnce(t *testing.T) {
-	_, cleanup := setupTestEnv(t)
+	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
+
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	_, hash, err := buildEngineInput(settings)
+	if err != nil {
+		t.Fatalf("buildEngineInput: %v", err)
+	}
 
 	const n = 8
 	var calls int32
@@ -55,8 +71,8 @@ func TestSingleflightConcurrentCalculateRunsFullAnalysisOnce(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest("POST", "/whatif/calculate", nil)
-			handleWhatIfCalculate(w, req)
+			req := httptest.NewRequest("GET", "/whatif/results-full?hash="+hash, nil)
+			handleWhatIfResultsFull(w, req)
 			statuses[i] = w.Code
 			bodies[i] = w.Body.String()
 		}(i)
@@ -91,7 +107,7 @@ func TestSingleflightConcurrentCalculateRunsFullAnalysisOnce(t *testing.T) {
 	// A request AFTER completion must be served from the cache: RunFull
 	// count stays at 1.
 	w := httptest.NewRecorder()
-	handleWhatIfCalculate(w, httptest.NewRequest("POST", "/whatif/calculate", nil))
+	handleWhatIfResultsFull(w, httptest.NewRequest("GET", "/whatif/results-full?hash="+hash, nil))
 	if w.Code != http.StatusOK {
 		t.Fatalf("post-completion request: status = %d, want 200", w.Code)
 	}
@@ -102,10 +118,12 @@ func TestSingleflightConcurrentCalculateRunsFullAnalysisOnce(t *testing.T) {
 
 // TestSingleflightErrorResultNotCached verifies that a failed analysis (input
 // building error) neither runs RunFull nor populates the cache as a success:
-// the next good request computes normally.
+// the next good request computes normally. The broken-chain fixture (see
+// setupItemsThenBreakChain) makes buildEngineInput fail on the currently
+// active settings, exactly like handleWhatIfResultsFull's own input-building
+// error branch.
 func TestSingleflightErrorResultNotCached(t *testing.T) {
-	_, cleanup := setupTestEnv(t)
-	defer cleanup()
+	rm, _ := setupItemsThenBreakChain(t, func(rm *retirement.SettingsManager) {})
 
 	var calls int32
 	swapRunFull(t, func(eng *engine.Engine, in engine.Input) *models.WhatIfAnalysis {
@@ -113,32 +131,43 @@ func TestSingleflightErrorResultNotCached(t *testing.T) {
 		return retirement.RunFull(eng, in)
 	})
 
-	bad := models.DefaultWhatIfSettings()
-	bad.ScenarioChain = []models.ScenarioChainLink{
-		{ScenarioFilename: "does-not-exist.json", TransitionAge: 70},
-	}
-	if _, err := runAnalysisWithCache(context.Background(), bad); err == nil {
-		t.Fatal("expected error for missing chained scenario")
+	w := httptest.NewRecorder()
+	handleWhatIfResultsFull(w, httptest.NewRequest("GET", "/whatif/results-full?hash=irrelevant", nil))
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("broken chain: status = %d, want 500", w.Code)
 	}
 	if got := atomic.LoadInt32(&calls); got != 0 {
 		t.Fatalf("RunFull executed %d times on failed input building, want 0", got)
 	}
 
-	// The failure must not have been cached as a success: a good request
-	// computes, and only then does a repeat request hit the cache.
-	good := models.DefaultWhatIfSettings()
-	analysis, err := runAnalysisWithCache(context.Background(), good)
+	// The failure must not have been cached as a success: fix the chain, and
+	// only then does a good request compute (then a repeat hit the cache).
+	good, err := rm.Load()
 	if err != nil {
-		t.Fatalf("good settings: unexpected error: %v", err)
+		t.Fatalf("Load: %v", err)
 	}
-	if analysis == nil {
-		t.Fatal("good settings: nil analysis")
+	good.ScenarioChain = nil
+	if err := rm.Save(good); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	_, goodHash, err := buildEngineInput(good)
+	if err != nil {
+		t.Fatalf("buildEngineInput: %v", err)
+	}
+
+	w2 := httptest.NewRecorder()
+	handleWhatIfResultsFull(w2, httptest.NewRequest("GET", "/whatif/results-full?hash="+goodHash, nil))
+	if w2.Code != http.StatusOK {
+		t.Fatalf("good settings: status = %d, want 200", w2.Code)
 	}
 	if got := atomic.LoadInt32(&calls); got != 1 {
 		t.Fatalf("RunFull executed %d times for first good request, want 1", got)
 	}
-	if _, err := runAnalysisWithCache(context.Background(), good); err != nil {
-		t.Fatalf("cached good settings: unexpected error: %v", err)
+
+	w3 := httptest.NewRecorder()
+	handleWhatIfResultsFull(w3, httptest.NewRequest("GET", "/whatif/results-full?hash="+goodHash, nil))
+	if w3.Code != http.StatusOK {
+		t.Fatalf("cached good settings: status = %d, want 200", w3.Code)
 	}
 	if got := atomic.LoadInt32(&calls); got != 1 {
 		t.Fatalf("RunFull executed %d times after cache warm, want still 1", got)
@@ -152,8 +181,17 @@ func TestSingleflightErrorResultNotCached(t *testing.T) {
 // crash the process), nothing is cached, and a subsequent request
 // recomputes.
 func TestSingleflightPanicFailsAllCoalescedRequests(t *testing.T) {
-	_, cleanup := setupTestEnv(t)
+	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
+
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	_, hash, err := buildEngineInput(settings)
+	if err != nil {
+		t.Fatalf("buildEngineInput: %v", err)
+	}
 
 	var calls int32
 	entered := make(chan struct{}, 1)
@@ -167,34 +205,45 @@ func TestSingleflightPanicFailsAllCoalescedRequests(t *testing.T) {
 		return &models.WhatIfAnalysis{}
 	})
 
-	settings := models.DefaultWhatIfSettings()
-
-	leaderErr := make(chan error, 1)
+	leaderResult := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		_, err := runAnalysisWithCache(context.Background(), settings)
-		leaderErr <- err
+		w := httptest.NewRecorder()
+		handleWhatIfResultsFull(w, httptest.NewRequest("GET", "/whatif/results-full?hash="+hash, nil))
+		leaderResult <- w
 	}()
 	<-entered
 
-	waiterErr := make(chan error, 1)
+	waiterResult := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		_, err := runAnalysisWithCache(context.Background(), settings)
-		waiterErr <- err
+		w := httptest.NewRecorder()
+		handleWhatIfResultsFull(w, httptest.NewRequest("GET", "/whatif/results-full?hash="+hash, nil))
+		waiterResult <- w
 	}()
 	time.Sleep(100 * time.Millisecond) // let the waiter queue on the flight
 	close(release)
 
-	if err := <-leaderErr; err != errAnalysisPanicked {
-		t.Fatalf("leader error = %v, want errAnalysisPanicked", err)
+	leader := <-leaderResult
+	if leader.Code != http.StatusInternalServerError {
+		t.Fatalf("leader status = %d, want 500", leader.Code)
 	}
-	if err := <-waiterErr; err != errAnalysisPanicked {
-		t.Fatalf("waiter error = %v, want errAnalysisPanicked", err)
+	if !strings.Contains(leader.Body.String(), errAnalysisPanicked.Error()) {
+		t.Fatalf("leader body %q does not carry errAnalysisPanicked's message", leader.Body.String())
+	}
+
+	waiter := <-waiterResult
+	if waiter.Code != http.StatusInternalServerError {
+		t.Fatalf("waiter status = %d, want 500", waiter.Code)
+	}
+	if !strings.Contains(waiter.Body.String(), errAnalysisPanicked.Error()) {
+		t.Fatalf("waiter body %q does not carry errAnalysisPanicked's message", waiter.Body.String())
 	}
 
 	// Nothing was cached from the panicked run: a fresh request recomputes
 	// and succeeds.
-	if _, err := runAnalysisWithCache(context.Background(), settings); err != nil {
-		t.Fatalf("request after panic: unexpected error: %v", err)
+	w := httptest.NewRecorder()
+	handleWhatIfResultsFull(w, httptest.NewRequest("GET", "/whatif/results-full?hash="+hash, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("request after panic: status = %d, want 200", w.Code)
 	}
 	if got := atomic.LoadInt32(&calls); got != 2 {
 		t.Fatalf("RunFull executed %d times, want 2 (panicked run + recompute)", got)
@@ -206,8 +255,17 @@ func TestSingleflightPanicFailsAllCoalescedRequests(t *testing.T) {
 // of staying parked until the (possibly wedged) flight finishes; the flight
 // itself keeps running and its result is still cached.
 func TestSingleflightWaiterHonorsContextCancellation(t *testing.T) {
-	_, cleanup := setupTestEnv(t)
+	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
+
+	settings, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	_, hash, err := buildEngineInput(settings)
+	if err != nil {
+		t.Fatalf("buildEngineInput: %v", err)
+	}
 
 	var calls int32
 	entered := make(chan struct{}, 1)
@@ -219,28 +277,32 @@ func TestSingleflightWaiterHonorsContextCancellation(t *testing.T) {
 		return retirement.RunFull(eng, in)
 	})
 
-	settings := models.DefaultWhatIfSettings()
-
-	leaderDone := make(chan error, 1)
+	leaderDone := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		_, err := runAnalysisWithCache(context.Background(), settings)
-		leaderDone <- err
+		w := httptest.NewRecorder()
+		handleWhatIfResultsFull(w, httptest.NewRequest("GET", "/whatif/results-full?hash="+hash, nil))
+		leaderDone <- w
 	}()
 	<-entered
 
 	ctx, cancel := context.WithCancel(context.Background())
-	waiterErr := make(chan error, 1)
+	waiterDone := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		_, err := runAnalysisWithCache(ctx, settings)
-		waiterErr <- err
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/whatif/results-full?hash="+hash, nil).WithContext(ctx)
+		handleWhatIfResultsFull(w, req)
+		waiterDone <- w
 	}()
 	time.Sleep(100 * time.Millisecond) // let the waiter queue on the flight
 	cancel()
 
 	select {
-	case err := <-waiterErr:
-		if err != context.Canceled {
-			t.Fatalf("cancelled waiter error = %v, want context.Canceled", err)
+	case w := <-waiterDone:
+		if w.Code != http.StatusInternalServerError {
+			t.Fatalf("cancelled waiter status = %d, want 500", w.Code)
+		}
+		if !strings.Contains(w.Body.String(), context.Canceled.Error()) {
+			t.Fatalf("cancelled waiter body %q does not carry context.Canceled's message", w.Body.String())
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("cancelled waiter stayed parked on the flight")
@@ -249,11 +311,13 @@ func TestSingleflightWaiterHonorsContextCancellation(t *testing.T) {
 	// The flight was NOT cancelled: it completes and caches, so the next
 	// request is served without recomputing.
 	close(release)
-	if err := <-leaderDone; err != nil {
-		t.Fatalf("leader: unexpected error: %v", err)
+	if w := <-leaderDone; w.Code != http.StatusOK {
+		t.Fatalf("leader: status = %d, want 200", w.Code)
 	}
-	if _, err := runAnalysisWithCache(context.Background(), settings); err != nil {
-		t.Fatalf("post-completion request: unexpected error: %v", err)
+	w := httptest.NewRecorder()
+	handleWhatIfResultsFull(w, httptest.NewRequest("GET", "/whatif/results-full?hash="+hash, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("post-completion request: status = %d, want 200", w.Code)
 	}
 	if got := atomic.LoadInt32(&calls); got != 1 {
 		t.Fatalf("RunFull executed %d times, want 1 (cancellation must not kill or duplicate the flight)", got)

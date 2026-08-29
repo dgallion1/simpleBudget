@@ -60,6 +60,10 @@ var cache = &analysisCache{}
 // expensive analysis fan-out. Production never reassigns it.
 var runFullFn = retirement.RunFull
 
+// runFastFn indirects retirement.RunFast so tests can count or stub the
+// fast-path analysis. Production never reassigns it.
+var runFastFn = retirement.RunFast
+
 // errAnalysisPanicked is returned to every request coalesced onto an
 // analysis whose RunFull panicked. The panic value and stack are logged in
 // runFullRecovered; all callers fail cleanly with a 500 and the client can
@@ -100,6 +104,19 @@ func runFullRecovered(in engine.Input) (analysis *models.WhatIfAnalysis, err err
 		}
 	}()
 	return runFullFn(getEngine(), in), nil
+}
+
+// runFastRecovered runs the RunFast analysis, converting a panic into
+// errAnalysisPanicked. Mirrors runFullRecovered's recover/log/error contract
+// so a panicking fast path fails exactly like a panicking full one.
+func runFastRecovered(in engine.Input) (analysis *models.WhatIfAnalysis, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("whatif: fast analysis panicked: %v\n%s", r, debug.Stack())
+			analysis, err = nil, errAnalysisPanicked
+		}
+	}()
+	return runFastFn(getEngine(), in), nil
 }
 
 // awaitAnalysis waits for a singleflight result channel, honoring request
@@ -153,7 +170,7 @@ const revisionUnreported = 0
 // revision must be the revision the caller's own write produced (see
 // SettingsManager.SaveWithRevision), or revisionUnreported.
 func renderRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings, revision int) {
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
+	analysis, pendingHash, err := analysisFastOrCached(settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -163,7 +180,7 @@ func renderRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatI
 			w.Header().Set("HX-Trigger", string(trigger))
 		}
 	}
-	renderWhatIfResults(w, settings, analysis)
+	renderWhatIfResults(w, settings, analysis, pendingHash)
 }
 
 // recalcAndRender is the shared tail of a mutating what-if handler: apply
@@ -312,6 +329,24 @@ func runAnalysisWithCache(ctx context.Context, settings *models.WhatIfSettings) 
 	return awaitAnalysis(ctx, ch)
 }
 
+// analysisFastOrCached returns the cached full analysis when fresh, else a
+// RunFast analysis plus the dep-hash the client needs to fetch the full
+// analysis asynchronously. pendingHash == "" means the analysis is full.
+func analysisFastOrCached(settings *models.WhatIfSettings) (*models.WhatIfAnalysis, string, error) {
+	in, depHash, err := buildEngineInput(settings)
+	if err != nil {
+		return nil, "", err
+	}
+	if cached, ok := cachedAnalysis(depHash); ok {
+		return cached, "", nil
+	}
+	a, err := runFastRecovered(in)
+	if err != nil {
+		return nil, "", err
+	}
+	return a, depHash, nil
+}
+
 // runFreshAnalysis runs an UNCACHED RunFull — the Monte Carlo re-roll
 // endpoint, whose whole point is a fresh auto-seeded simulation — while
 // still coalescing concurrent identical requests: a double-click or two
@@ -346,23 +381,36 @@ func buildResultsPartialData(settings *models.WhatIfSettings, analysis *models.W
 
 // renderWhatIfResults renders the results partial plus the out-of-band swaps
 // that resync the left column. Used by every user-initiated mutation.
-func renderWhatIfResults(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis) {
-	renderResultsTemplate(w, "whatif-results-with-oob", settings, analysis)
+//
+// pendingHash is the dep-hash of a RunFast analysis awaiting its async full
+// fetch, or "" when analysis is already the full analysis.
+func renderWhatIfResults(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, pendingHash string) {
+	renderResultsTemplate(w, "whatif-results-with-oob", settings, analysis, pendingHash)
 }
 
 // renderWhatIfResultsOnly renders the results column alone, with no OOB swaps.
 // The background poll uses this: it must not rewrite a left-column control the
 // user may be typing into or dragging.
-func renderWhatIfResultsOnly(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis) {
-	renderResultsTemplate(w, "whatif-results", settings, analysis)
+//
+// pendingHash is the dep-hash of a RunFast analysis awaiting its async full
+// fetch, or "" when analysis is already the full analysis.
+func renderWhatIfResultsOnly(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, pendingHash string) {
+	renderResultsTemplate(w, "whatif-results", settings, analysis, pendingHash)
 }
 
 // renderResultsTemplate computes the shared results partial data (Completeness
 // findings included so every recalc handler reports them identically) and
 // renders it under the given template name, falling back to JSON when no
 // renderer is configured.
-func renderResultsTemplate(w http.ResponseWriter, name string, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis) {
+//
+// pendingHash is the dep-hash of a RunFast analysis awaiting its async full
+// fetch, or "" when analysis is already the full analysis; it sets
+// AnalysisPending/AsyncHash on the partial data so the template can embed the
+// async loader and skeleton cards.
+func renderResultsTemplate(w http.ResponseWriter, name string, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, pendingHash string) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
+	partialData["AnalysisPending"] = pendingHash != ""
+	partialData["AsyncHash"] = pendingHash
 	if renderer != nil {
 		_ = renderer.RenderPartial(w, name, partialData)
 	} else {
@@ -779,6 +827,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/spending-phases/add", handleWhatIfAddPhase)
 	r.Delete("/whatif/spending-phases/{index}", handleWhatIfDeletePhase)
 	r.Post("/whatif/spending-phases/reset", handleWhatIfResetPhases)
+	r.Get("/whatif/results-full", handleWhatIfResultsFull)
 	r.Get("/whatif/chart/projection", handleWhatIfProjectionChart)
 	r.Get("/whatif/chart/projection/no-guardrails", handleWhatIfProjectionChartNoGuardrails)
 	r.Get("/whatif/chart/income", handleWhatIfIncomeChart)
@@ -815,8 +864,10 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		settings = models.DefaultWhatIfSettings()
 	}
 
-	// Run full analysis (with caching)
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
+	// Run the fast analysis immediately on a cache miss (or serve the cached
+	// full analysis); a cold page load then paints in ms with skeletons that
+	// self-fill from /whatif/results-full.
+	analysis, pendingHash, err := analysisFastOrCached(settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -829,15 +880,17 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 	findings := completeness.Check(settings)
 
 	pageData := map[string]interface{}{
-		"Title":          "What-If Analysis",
-		"ActiveTab":      "whatif",
-		"Settings":       settings,
-		"Analysis":       analysis,
-		"Verdict":        BuildVerdict(analysis, settings),
-		"Scenarios":      scenarios,
-		"ActiveScenario": activeScenario,
-		"ActiveFilename": activeFilename,
-		"Findings":       findings,
+		"Title":           "What-If Analysis",
+		"ActiveTab":       "whatif",
+		"Settings":        settings,
+		"Analysis":        analysis,
+		"Verdict":         BuildVerdict(analysis, settings),
+		"Scenarios":       scenarios,
+		"ActiveScenario":  activeScenario,
+		"ActiveFilename":  activeFilename,
+		"Findings":        findings,
+		"AnalysisPending": pendingHash != "",
+		"AsyncHash":       pendingHash,
 	}
 
 	templates.AttachDuplicateCount(pageData, loader)
@@ -860,6 +913,43 @@ func handleWhatIfCalculate(w http.ResponseWriter, r *http.Request) {
 	// this request's own to hand the client as a baseline.
 	renderRecalc(w, r, settings, revisionUnreported)
 }
+
+// handleWhatIfResultsFull serves the full (expensive) analysis for the async
+// loader a pending results render embeds. The hash parameter is the dep-hash
+// that pending render was built from; a mismatch with the CURRENT settings
+// hash means a newer mutation owns the results panel, so answer 204 (htmx: no
+// swap) instead of clobbering it with figures for superseded settings. The
+// check runs again after the multi-second compute because settings can change
+// while the flight runs; the late 204 keeps the newer render on screen.
+func handleWhatIfResultsFull(w http.ResponseWriter, r *http.Request) {
+	settings, err := retirementMgr.LoadContext(r.Context())
+	if err != nil {
+		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, depHash, err := buildEngineInput(settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if r.URL.Query().Get("hash") != depHash {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	analysis, err := runAnalysisWithCache(r.Context(), settings)
+	if err != nil {
+		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if cur, curErr := retirementMgr.Load(); curErr == nil {
+		if _, curHash, hashErr := buildEngineInput(cur); hashErr == nil && curHash != depHash {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
+	renderWhatIfResultsOnly(w, settings, analysis, "")
+}
+
 func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.LoadContext(r.Context())
 	if err != nil {
@@ -869,7 +959,7 @@ func handleWhatIfProjectionChart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
+	analysis, _, err := analysisFastOrCached(settings)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -892,7 +982,7 @@ func handleWhatIfIncomeChart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analysis, err := runAnalysisWithCache(r.Context(), settings)
+	analysis, _, err := analysisFastOrCached(settings)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)

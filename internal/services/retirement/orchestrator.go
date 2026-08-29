@@ -21,6 +21,44 @@ const MonteCarloRuns = 1000
 // 0 = auto-seed from time.
 const MonteCarloSeed int64 = 0
 
+// fillDefaultHooks returns in with DefaultHooks auto-filled when the caller
+// passed zero-valued hooks — RunFull's historical convention, shared by
+// RunFast so both entry points resolve hooks identically.
+func fillDefaultHooks(in engine.Input) engine.Input {
+	if in.Hooks.SocialSecurityProjectionActive == nil &&
+		in.Hooks.ProjectedSocialSecurityIncome == nil &&
+		in.Hooks.ResolveChainTransition == nil {
+		in.Hooks = DefaultHooks()
+	}
+	return in
+}
+
+// RunFast executes only the deterministic projection and the cheap
+// post-projection analyses. The expensive fields — Sensitivity,
+// FailurePoints, MonteCarlo, HistoricalBacktest, SocialSecurity — stay nil.
+// The what-if handlers use it to render the results partial immediately on a
+// cache miss while the full analysis loads asynchronously behind it.
+func RunFast(eng *engine.Engine, in engine.Input) *models.WhatIfAnalysis {
+	in = fillDefaultHooks(in)
+	return fastAnalysis(in, eng.Run(in))
+}
+
+// fastAnalysis assembles the cheap analyses derived from the single baseline
+// projection.
+func fastAnalysis(in engine.Input, proj *models.ProjectionResult) *models.WhatIfAnalysis {
+	budgetFit := analysis.BudgetFit(in, proj)
+	return &models.WhatIfAnalysis{
+		Settings:                 in.Prepared.Settings(),
+		Projection:               proj,
+		ProjectionExplainability: analysis.BuildExplainability(proj, in),
+		BudgetFit:                budgetFit,
+		PresentValue:             analysis.PresentValue(in, proj),
+		Sustainability:           analysis.Score(budgetFit.RequiredRate, proj.Survives),
+		RMD:                      analysis.BuildRMD(proj, in),
+		Tax:                      analysis.BuildTax(proj, in),
+	}
+}
+
 // RunFull executes the full what-if analysis fan-out for in. Returns a
 // fully populated *models.WhatIfAnalysis. Auto-fills DefaultHooks when
 // the caller passes a zero-valued Input.Hooks so existing handler call
@@ -33,20 +71,11 @@ func RunFull(eng *engine.Engine, in engine.Input) *models.WhatIfAnalysis {
 // unexported helper for the retirement-package test helper that pins the
 // MC seed for deterministic comparisons.
 func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.WhatIfAnalysis {
-	if in.Hooks.SocialSecurityProjectionActive == nil &&
-		in.Hooks.ProjectedSocialSecurityIncome == nil &&
-		in.Hooks.ResolveChainTransition == nil {
-		in.Hooks = DefaultHooks()
-	}
+	in = fillDefaultHooks(in)
 	proj := eng.Run(in)
-
-	// Cheap post-projection analyses derived from the single baseline run.
-	explainability := analysis.BuildExplainability(proj, in)
-	budgetFit := analysis.BudgetFit(in, proj)
-	presentValue := analysis.PresentValue(in, proj)
-	sustainability := analysis.Score(budgetFit.RequiredRate, proj.Survives)
-	rmd := analysis.BuildRMD(proj, in)
-	tax := analysis.BuildTax(proj, in)
+	a := fastAnalysis(in, proj)
+	settings := a.Settings
+	budgetFit := a.BudgetFit
 
 	// Resolve ONE effective MC seed for the whole recalc (same pattern as
 	// runTaxOptimizerWithSeed). If we passed mcSeed=0 down, every Monte
@@ -79,7 +108,6 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 		backtest      *models.HistoricalBacktestAnalysis
 		ssAnalysis    *models.SSComparisonAnalysis
 	)
-	settings := in.Prepared.Settings()
 
 	branches := []func(){
 		func() { sensitivity = analysis.SensitivityWithBaseline(eng, in, proj, budgetFit) },
@@ -109,21 +137,13 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 		backtest.HistoricalVsMC = backtest.SuccessRate - monteCarlo.Stats.SuccessRate
 	}
 
-	return &models.WhatIfAnalysis{
-		Settings:                 settings,
-		Projection:               proj,
-		ProjectionExplainability: explainability,
-		BudgetFit:                budgetFit,
-		PresentValue:             presentValue,
-		Sustainability:           sustainability,
-		Sensitivity:              sensitivity,
-		FailurePoints:            failurePoints,
-		MonteCarlo:               monteCarlo,
-		RMD:                      rmd,
-		Tax:                      tax,
-		HistoricalBacktest:       backtest,
-		SocialSecurity:           ssAnalysis,
-	}
+	a.Sensitivity = sensitivity
+	a.FailurePoints = failurePoints
+	a.MonteCarlo = monteCarlo
+	a.HistoricalBacktest = backtest
+	a.SocialSecurity = ssAnalysis
+
+	return a
 }
 
 // RunTaxOptimizer runs only the Tax Optimizer analysis (and the

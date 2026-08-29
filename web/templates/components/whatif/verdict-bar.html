@@ -42,6 +42,9 @@
             <div class="num text-base font-bold {{if gt $v.EndBalance 0.0}}text-emerald-600 dark:text-emerald-400{{else}}text-gray-500 dark:text-gray-400{{end}}">{{formatDollars $v.EndBalance}}</div>
         </div>
         {{end}}
+        {{if .AnalysisPending}}
+        <span class="text-[10px] uppercase tracking-wide font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 rounded-full px-2 py-1">updating risk metrics…</span>
+        {{end}}
     </div>
 </div>
 {{end}}

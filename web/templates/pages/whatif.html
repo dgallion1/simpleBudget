@@ -161,6 +161,13 @@
 {{end}}
 
 {{define "whatif-results"}}
+{{if .AnalysisPending}}
+<div id="whatif-async-loader"
+     hx-get="/whatif/results-full?hash={{.AsyncHash}}"
+     hx-trigger="load"
+     hx-target="#whatif-results"
+     hx-swap="innerHTML"></div>
+{{end}}
 <div id="whatif-completeness-wrapper">
     {{template "whatif-completeness" .}}
 </div>
@@ -180,7 +187,7 @@
     {{/* Overview */}}
     <div data-wf-panel="overview" class="space-y-4">
         {{template "whatif-projection-chart" .}}
-        {{template "whatif-failure-points" .}}
+        {{if .AnalysisPending}}{{template "whatif-pending-card" "Failure Thresholds"}}{{else}}{{template "whatif-failure-points" .}}{{end}}
     </div>
 
     {{/* Cash Flow */}}
@@ -193,9 +200,9 @@
 
     {{/* Risk */}}
     <div data-wf-panel="risk" class="space-y-4 hidden">
-        {{template "whatif-sensitivity" .}}
-        {{template "whatif-monte-carlo" .}}
-        {{template "whatif-historical-backtest" .}}
+        {{if .AnalysisPending}}{{template "whatif-pending-card" "Sensitivity Analysis"}}{{else}}{{template "whatif-sensitivity" .}}{{end}}
+        {{if .AnalysisPending}}{{template "whatif-pending-card" "Monte Carlo Simulation"}}{{else}}{{template "whatif-monte-carlo" .}}{{end}}
+        {{if .AnalysisPending}}{{template "whatif-pending-card" "Historical Backtesting"}}{{else}}{{template "whatif-historical-backtest" .}}{{end}}
         {{template "whatif-guardrail-events" .}}
     </div>
 
@@ -207,7 +214,11 @@
 
     {{/* Strategies */}}
     <div data-wf-panel="strategies" class="space-y-4 hidden">
-        {{template "whatif-social-security-results" .}}
+        {{if .AnalysisPending}}
+          {{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.FRABenefit 0.0)}}
+          {{template "whatif-pending-card" "Social Security Claiming Comparison"}}
+          {{end}}
+        {{else}}{{template "whatif-social-security-results" .}}{{end}}
         {{template "whatif-tax-optimizer-results" .}}
         {{template "whatif-conversion-sweep" .}}
     </div>
@@ -339,4 +350,26 @@
         {{end}}
     </div>
 </template>
+{{end}}
+
+{{/* whatif-pending-card is a skeleton placeholder for an expensive analysis
+     section not yet available from the async /whatif/results-full fetch.
+     Takes the card title as the dot. */}}
+{{define "whatif-pending-card"}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" data-wf-pending>
+    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">{{.}}</h3>
+    <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-300">
+        <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+            </path>
+        </svg>
+        Computing…
+    </div>
+    <div class="mt-3 space-y-2 animate-pulse" aria-hidden="true">
+        <div class="h-3 bg-gray-100 dark:bg-gray-700 rounded w-3/4"></div>
+        <div class="h-3 bg-gray-100 dark:bg-gray-700 rounded w-1/2"></div>
+    </div>
+</div>
 {{end}}

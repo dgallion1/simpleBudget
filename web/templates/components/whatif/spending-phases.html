@@ -104,7 +104,7 @@
         </div>
     </div>
 
-    <!-- Spending Trajectory Preview -->
+    <!-- Spending Trajectory (rendered server-side from the engine projection) -->
     <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
         <div class="flex items-center justify-between mb-2">
             <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">Spending Trajectory</h4>
@@ -116,6 +116,11 @@
             </div>
         </div>
         <div id="phase-preview-panel" class="hidden text-xs">
+            <style>
+                #phase-preview-panel .traj-real { display: none; }
+                #phase-preview-panel.traj-view-real .traj-real { display: inline; }
+                #phase-preview-panel.traj-view-real .traj-nominal { display: none; }
+            </style>
             <!-- Dollar view toggle -->
             <div class="flex items-center justify-end gap-1 mb-2">
                 <span class="text-gray-500 dark:text-gray-400 text-xs">View:</span>
@@ -138,17 +143,20 @@
                         <th class="text-left py-1">Age</th>
                         {{end}}
                         <th class="text-left py-1">Phase</th>
-                        <th class="text-right py-1">Spend</th>
-                        <th class="text-right py-1">Income</th>
-                        <th class="text-right py-1">Need</th>
-                        <th class="text-right py-1">RMD</th>
-                        <th class="text-right py-1" title="Withdrawal Rate: annual withdrawal as % of total portfolio">WR%</th>
+                        <th class="text-right py-1" title="Average monthly expenses in the projection">Spend</th>
+                        <th class="text-right py-1" title="Average monthly income in the projection">Income</th>
+                        <th class="text-right py-1" title="Actual monthly portfolio withdrawal in the projection (covers the spending gap, taxes, and any forced RMD)">Draw</th>
+                        <th class="text-right py-1" title="Forced minimum distribution actually taken in the projection">RMD</th>
+                        <th class="text-right py-1" title="Withdrawal Rate: the year's portfolio draw as % of its starting balance">WR%</th>
                     </tr>
                 </thead>
                 <tbody id="phase-preview-body" class="text-gray-700 dark:text-gray-200">
                 </tbody>
             </table>
-            <p id="dollar-view-note" class="mt-2 text-xs text-gray-500 dark:text-gray-400 italic hidden">
+            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400 italic">
+                Figures come from the retirement projection (includes Roth conversions, taxes, and withdrawal order).
+            </p>
+            <p id="dollar-view-note" class="mt-1 text-xs text-gray-500 dark:text-gray-400 italic hidden">
                 Today's $ shows purchasing power in current dollars (inflation-adjusted)
             </p>
         </div>
@@ -156,28 +164,32 @@
 </div>
 {{end}}
 
-{{/* Expense Sources Data - separate template for OOB updates */}}
-{{define "whatif-expense-sources-data"}}
-<script id="expense-sources-data">
-// Additional expense sources from settings (updated via OOB)
-window.expenseSources = [
-{{- if .Settings.ExpenseSources}}
-{{- range $i, $src := .Settings.ExpenseSources}}
-{{- if $i}},{{end}}
-    {name: "{{$src.Name}}", amount: {{$src.Amount}}, startYear: {{$src.StartYear}}, endYear: {{$src.EndYear}}, inflation: {{$src.Inflation}}, discretionary: {{$src.Discretionary}}}
-{{- end}}
-{{- end}}
-];
-// Income sources from settings (updated via OOB)
-window.incomeSources = [
-{{- if .Settings.IncomeSources}}
-{{- range $i, $src := .Settings.IncomeSources}}
-{{- if $i}},{{end}}
-    {name: "{{$src.Name}}", amount: {{$src.Amount}}, startYear: {{div $src.StartMonth 12}}, endYear: {{if $src.EndMonth}}{{div $src.EndMonth 12}}{{else}}0{{end}}, cola: {{if gt $src.COLARate 0.0}}true{{else}}false{{end}}}
-{{- end}}
-{{- end}}
-];
-// Trigger preview update if visible
+{{/* Spending Trajectory rows — rendered by GET /whatif/spending-trajectory
+     from the engine projection. Each dollar cell carries both views; the
+     Nominal/Today's toggle switches them via the traj-view-real class. */}}
+{{define "whatif-spending-trajectory-rows"}}
+{{if .Rows}}
+{{range .Rows}}
+<tr class="border-t border-gray-200 dark:border-gray-600">
+    <td class="py-1">{{.PrimaryAge}}</td>
+    {{if $.HasSpouse}}<td class="py-1">{{.SpouseAge}}</td>{{end}}
+    <td class="py-1 text-gray-500 dark:text-gray-400">{{.PhaseName}}</td>
+    <td class="text-right py-1"><span class="traj-nominal">{{formatDollars .SpendNominal}}</span><span class="traj-real">{{formatDollars .SpendReal}}</span></td>
+    <td class="text-right py-1"><span class="traj-nominal">{{formatDollars .IncomeNominal}}</span><span class="traj-real">{{formatDollars .IncomeReal}}</span></td>
+    <td class="text-right py-1">{{if gt .DrawNominal 0.5}}<span class="traj-nominal">{{formatDollars .DrawNominal}}</span><span class="traj-real">{{formatDollars .DrawReal}}</span>{{else}}-{{end}}</td>
+    <td class="text-right py-1{{if gt .RMDNominal 0.5}} text-blue-600 dark:text-blue-400{{end}}" data-col="rmd">{{if gt .RMDNominal 0.5}}<span class="traj-nominal">{{formatDollars .RMDNominal}}</span><span class="traj-real">{{formatDollars .RMDReal}}</span>{{else}}-{{end}}</td>
+    <td class="text-right py-1 {{if gt .WithdrawalRate 5.0}}text-red-600 dark:text-red-400{{else if gt .WithdrawalRate 4.0}}text-amber-600 dark:text-amber-400{{else}}text-green-600 dark:text-green-400{{end}}">{{printf "%.1f" .WithdrawalRate}}%</td>
+</tr>
+{{end}}
+{{else}}
+<tr><td colspan="{{if .HasSpouse}}8{{else}}7{{end}}" class="py-2 text-center text-gray-500 dark:text-gray-400 italic">No projection data</td></tr>
+{{end}}
+{{end}}
+
+{{/* Trajectory refresh hook - re-rendered (OOB) on every results recalc so
+     the engine-fed Spending Trajectory table refreshes when it's open. */}}
+{{define "whatif-trajectory-refresh"}}
+<script id="trajectory-refresh-script">
 if (typeof updatePhasePreview === 'function') {
     updatePhasePreview();
 }
@@ -186,101 +198,10 @@ if (typeof updatePhasePreview === 'function') {
 
 {{/* Spending Phases Scripts */}}
 {{define "whatif-spending-phases-scripts"}}
-<input type="hidden" id="main-current-age" value="{{.Settings.CurrentAge}}">
-<input type="hidden" id="spouse-age-input" value="{{.Settings.SpouseAge}}">
-<div id="expense-sources-data-wrapper">
-{{template "whatif-expense-sources-data" .}}
+<div id="trajectory-refresh-wrapper">
+{{template "whatif-trajectory-refresh" .}}
 </div>
 <script>
-// Track current dollar view mode
-let dollarViewMode = 'nominal';
-
-// IRS Uniform Lifetime Table (ages 72-120)
-const uniformLifetimeTable = {
-    72: 27.4, 73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0, 79: 21.1,
-    80: 20.2, 81: 19.4, 82: 18.5, 83: 17.7, 84: 16.8, 85: 16.0, 86: 15.2, 87: 14.4,
-    88: 13.7, 89: 12.9, 90: 12.2, 91: 11.5, 92: 10.8, 93: 10.1, 94: 9.5, 95: 8.9,
-    96: 8.4, 97: 7.8, 98: 7.3, 99: 6.8, 100: 6.4, 101: 6.0, 102: 5.6, 103: 5.2,
-    104: 4.9, 105: 4.6, 106: 4.3, 107: 4.1, 108: 3.9, 109: 3.7, 110: 3.5,
-    111: 3.4, 112: 3.3, 113: 3.1, 114: 3.0, 115: 2.9, 116: 2.8, 117: 2.7,
-    118: 2.5, 119: 2.3, 120: 2.0
-};
-
-const RMD_START_AGE = 73;
-
-// Calculate RMD for a given tax-deferred balance and age
-function calculateRMD(taxDeferredBalance, age) {
-    if (age < RMD_START_AGE || taxDeferredBalance <= 0) return 0;
-    const factor = uniformLifetimeTable[age] || 2.0; // Use minimum for ages > 120
-    return taxDeferredBalance / factor;
-}
-
-// Calculate expected return from per-account asset allocation
-// Mirrors Go's GetExpectedReturnFromAllocation() method
-function getExpectedReturnFromAllocation() {
-    // Conservative forward-looking estimates
-    const stockMean = 7.0;
-    const bondMean = 4.0;
-    const cashMean = 3.0;
-
-    // Get account weights
-    const tdPercent = parseFloat(document.querySelector('input[name="tax_deferred_percent"]')?.value) || 60;
-    const rothPercent = parseFloat(document.querySelector('input[name="roth_percent"]')?.value) || 10;
-    const taxPercent = Math.max(0, 100 - tdPercent - rothPercent);
-
-    // Get per-account allocations (default 60/40/0 if not set)
-    const getVal = (name, def) => parseFloat(document.querySelector(`input[name="${name}"]`)?.value) || def;
-
-    const tdStock = getVal('tax_deferred_stock_percent', 60);
-    const tdCash = getVal('tax_deferred_cash_percent', 0);
-    const tdBond = 100 - tdStock - tdCash;
-
-    const rothStock = getVal('roth_stock_percent', 60);
-    const rothCash = getVal('roth_cash_percent', 0);
-    const rothBond = 100 - rothStock - rothCash;
-
-    const taxStock = getVal('taxable_stock_percent', 60);
-    const taxCash = getVal('taxable_cash_percent', 0);
-    const taxBond = 100 - taxStock - taxCash;
-
-    // Calculate blended return for each account
-    const tdReturn = (tdStock * stockMean + tdBond * bondMean + tdCash * cashMean) / 100;
-    const rothReturn = (rothStock * stockMean + rothBond * bondMean + rothCash * cashMean) / 100;
-    const taxReturn = (taxStock * stockMean + taxBond * bondMean + taxCash * cashMean) / 100;
-
-    // Weight by account percentage
-    return (tdPercent * tdReturn + rothPercent * rothReturn + taxPercent * taxReturn) / 100;
-}
-
-// Getter for expense sources (uses window.expenseSources set by OOB-updatable script)
-function getExpenseSources() {
-    return window.expenseSources || [];
-}
-
-// Getter for income sources (uses window.incomeSources set by OOB-updatable script)
-function getIncomeSources() {
-    return window.incomeSources || [];
-}
-
-// Calculate total monthly income for a given year (0-indexed from now)
-function getTotalIncome(year, inflation) {
-    let total = 0;
-    for (const src of getIncomeSources()) {
-        // Check if income is active this year
-        if (year < src.startYear) continue;
-        if (src.endYear > 0 && year >= src.endYear) continue;
-
-        let amount = src.amount;
-        // Apply COLA if enabled (2%/yr from start year)
-        if (src.cola && year > src.startYear) {
-            const yearsSinceStart = year - src.startYear;
-            amount *= Math.pow(1.02, yearsSinceStart);
-        }
-        total += amount;
-    }
-    return total;
-}
-
 function updatePhaseSliderLabel(slider) {
     var key = slider.dataset.quickAdjustKey;
     if (key) {
@@ -335,11 +256,12 @@ function togglePhasePreview() {
 }
 
 function setDollarView(mode) {
-    dollarViewMode = mode;
+    const panel = document.getElementById('phase-preview-panel');
     const btnNominal = document.getElementById('btn-nominal');
     const btnToday = document.getElementById('btn-today');
     const note = document.getElementById('dollar-view-note');
 
+    panel.classList.toggle('traj-view-real', mode === 'today');
     if (mode === 'nominal') {
         btnNominal.className = 'px-2 py-0.5 rounded text-xs bg-indigo-600 text-white';
         btnToday.className = 'px-2 py-0.5 rounded text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300';
@@ -349,301 +271,17 @@ function setDollarView(mode) {
         btnToday.className = 'px-2 py-0.5 rounded text-xs bg-indigo-600 text-white';
         note.classList.remove('hidden');
     }
-    updatePhasePreview();
 }
 
-// Calculate additional expenses for a given year (0-indexed from now)
-function getAdditionalExpenses(year, inflation, phaseEnabled, multiplier) {
-    let total = 0;
-    for (const src of getExpenseSources()) {
-        // Check if expense is active this year
-        if (year < src.startYear) continue;
-        if (src.endYear > 0 && year >= src.endYear) continue;
-
-        let amount = src.amount;
-        // Apply inflation if enabled for this expense
-        if (src.inflation && inflation > 0) {
-            const yearsSinceStart = year - src.startYear;
-            amount *= Math.pow(1 + inflation/100, yearsSinceStart);
-        }
-        // Apply phase multiplier to discretionary expenses
-        if (phaseEnabled && src.discretionary) {
-            amount *= multiplier;
-        }
-        total += amount;
-    }
-    return total;
-}
-
+// Fetch the Spending Trajectory rows from the engine projection. The table
+// is server-rendered from the same projection as the results column and
+// re-fetched on every recalc (the OOB whatif-trajectory-refresh script).
 function updatePhasePreview() {
     const panel = document.getElementById('phase-preview-panel');
-    if (panel.classList.contains('hidden')) return;
-
-    // Use specific IDs to avoid picking up healthcare person age inputs
-    const currentAge = parseInt(document.getElementById('main-current-age')?.value || '65');
-    const spouseAge = parseInt(document.getElementById('spouse-age-input')?.value || '0');
-    const hasSpouse = spouseAge > 0;
-    const phaseRef = document.querySelector('[name="phase_age_reference"]')?.value || 'younger';
-    const baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_input')?.value || '4000');
-    const inflation = parseFloat(document.getElementById('inflation-rate-slider')?.value || '3');
-    const projectionYears = parseInt(document.querySelector('[name="projection_years"]')?.value || '30');
-
-    // Helper: Calculate phase reference age based on setting
-    function getPhaseReferenceAge(years) {
-        const primaryAge = currentAge + years;
-        const sAge = hasSpouse ? spouseAge + years : primaryAge;
-        switch (phaseRef) {
-            case 'spouse': return hasSpouse ? sAge : primaryAge;
-            case 'older': return hasSpouse ? Math.max(primaryAge, sAge) : primaryAge;
-            case 'younger': return hasSpouse ? Math.min(primaryAge, sAge) : primaryAge;
-            default: return primaryAge; // "primary"
-        }
+    if (!panel || panel.classList.contains('hidden')) return;
+    if (window.htmx) {
+        htmx.ajax('GET', '/whatif/spending-trajectory', {target: '#phase-preview-body', swap: 'innerHTML'});
     }
-
-    // Check if phases are enabled
-    // Check both the checkbox (toggle) and hidden input (form state)
-    const enabledCheckbox = document.querySelector('input[type="checkbox"][name="enabled"]');
-    const enabledHidden = document.querySelector('input[type="hidden"][name="enabled"]');
-    const phasesEnabled = enabledCheckbox ? enabledCheckbox.checked : (enabledHidden?.value === 'true');
-
-    // Get phase settings - dynamically detect all phases
-    const phases = [];
-    for (let i = 0; i < 20; i++) { // Support up to 20 phases
-        const multiplierInput = document.querySelector(`[name="phase_${i}_multiplier"]`);
-        if (!multiplierInput) break; // No more phases
-
-        const startAgeInput = document.querySelector(`[name="phase_${i}_start_age"]`);
-        const nameInput = document.querySelector(`[name="phase_${i}_name"]`);
-        phases.push({
-            name: nameInput?.value || `Phase ${i + 1}`,
-            startAge: i === 0 ? 0 : parseInt(startAgeInput?.value || (65 + i * 10)),
-            multiplier: parseFloat(multiplierInput?.value || 1)
-        });
-    }
-
-    // Get portfolio settings
-    const portfolioValue = parseFloat(document.getElementById('portfolio-slider')?.value || '1000000');
-    const taxDeferredPct = parseFloat(document.querySelector('[name="tax_deferred_percent"]')?.value || '60');
-    const rothPct = parseFloat(document.querySelector('[name="roth_percent"]')?.value || '10');
-    const taxablePct = Math.max(0, 100 - taxDeferredPct - rothPct);
-    let investmentReturn = parseFloat(document.getElementById('investment-return-slider')?.value || '6');
-    // When slider is 0, use expected return from per-account asset allocation
-    if (investmentReturn === 0) {
-        investmentReturn = getExpectedReturnFromAllocation();
-    }
-    const annualReturn = investmentReturn / 100;
-
-    // Generate preview years - every year for accurate RMD tracking
-    const allYears = [];
-    for (let y = 0; y <= projectionYears; y++) {
-        allYears.push(y);
-    }
-
-    // Display years (show every 2 years for readability)
-    const displayYears = [0];
-    for (let y = 2; y < projectionYears; y += 2) {
-        displayYears.push(y);
-    }
-    if (displayYears[displayYears.length - 1] !== projectionYears) {
-        displayYears.push(projectionYears);
-    }
-    const displayYearSet = new Set(displayYears);
-
-    // Calculate initial spending (year 0) for comparison
-    let initialMultiplier = phasesEnabled ? phases[0].multiplier : 1.0;
-    const initialAdditional = getAdditionalExpenses(0, inflation, phasesEnabled, initialMultiplier);
-    const initialSpending = baseExpenses * initialMultiplier + initialAdditional;
-
-    // Track portfolio balances year-over-year
-    let taxDeferredBalance = portfolioValue * (taxDeferredPct / 100);
-    let rothBalance = portfolioValue * (rothPct / 100);
-    let taxableBalance = portfolioValue * (taxablePct / 100);
-    let totalBalance = portfolioValue;
-
-    const tbody = document.getElementById('phase-preview-body');
-    tbody.innerHTML = '';
-
-    // Pre-calculate all years to track balances, only display subset
-    const yearData = [];
-
-    allYears.forEach((year) => {
-        const primaryAgeAtYear = currentAge + year;
-        const spouseAgeAtYear = hasSpouse ? spouseAge + year : 0;
-        const phaseAge = getPhaseReferenceAge(year);
-
-        // RMD uses OLDER person's age (whoever hits 73 first)
-        const olderAgeAtYear = hasSpouse ? Math.max(primaryAgeAtYear, spouseAgeAtYear) : primaryAgeAtYear;
-
-        // Find applicable phase
-        let phaseName = phases.length > 0 ? phases[0].name : 'Go-Go';
-        let multiplier = 1.0;
-        if (phasesEnabled && phases.length > 0) {
-            for (let i = phases.length - 1; i >= 0; i--) {
-                if (phaseAge >= phases[i].startAge) {
-                    multiplier = phases[i].multiplier;
-                    phaseName = phases[i].name;
-                    break;
-                }
-            }
-        } else {
-            phaseName = '-';
-        }
-
-        const inflationFactor = Math.pow(1 + inflation/100, year);
-        const additionalExpenses = getAdditionalExpenses(year, inflation, phasesEnabled, multiplier);
-
-        // Calculate spending in nominal dollars (needed for RMD comparison)
-        const baseWithPhase = baseExpenses * multiplier * inflationFactor;
-        let additionalNominal = 0;
-        for (const src of getExpenseSources()) {
-            if (year < src.startYear) continue;
-            if (src.endYear > 0 && year >= src.endYear) continue;
-            let amount = src.amount;
-            if (src.inflation) {
-                amount *= Math.pow(1 + inflation/100, year);
-            }
-            if (phasesEnabled && src.discretionary) {
-                amount *= multiplier;
-            }
-            additionalNominal += amount;
-        }
-        const monthlySpendingNominal = baseWithPhase + additionalNominal;
-        const annualSpending = monthlySpendingNominal * 12;
-
-        // Calculate income
-        const monthlyIncome = getTotalIncome(year, inflation);
-        const annualIncome = monthlyIncome * 12;
-
-        // Calculate spending gap (what you NEED to withdraw)
-        const annualNeed = Math.max(0, annualSpending - annualIncome);
-        const monthlyNeed = annualNeed / 12;
-
-        // Calculate RMD (what you're FORCED to withdraw)
-        // Uses older person's age - they hit RMD requirement first
-        const annualRMD = calculateRMD(taxDeferredBalance, olderAgeAtYear);
-        const monthlyRMD = annualRMD / 12;
-
-        // Actual withdrawal: max of need and RMD (RMD must be taken even if not needed)
-        // If RMD exceeds need, the excess goes to taxable account (or spending)
-        const actualWithdrawal = Math.max(annualNeed, annualRMD);
-
-        // Calculate withdrawal rate
-        const withdrawalRate = totalBalance > 0 ? (actualWithdrawal / totalBalance) * 100 : 0;
-
-        // Store data for display
-        if (displayYearSet.has(year)) {
-            // Display values based on view mode
-            let displaySpending;
-            if (dollarViewMode === 'nominal') {
-                displaySpending = monthlySpendingNominal;
-            } else {
-                displaySpending = baseExpenses * multiplier + additionalExpenses;
-            }
-
-            yearData.push({
-                year,
-                primaryAge: primaryAgeAtYear,
-                spouseAge: spouseAgeAtYear,
-                phaseName,
-                spending: displaySpending,
-                monthlyIncome,
-                monthlyNeed: dollarViewMode === 'nominal' ? monthlyNeed : monthlyNeed / inflationFactor,
-                monthlyRMD: dollarViewMode === 'nominal' ? monthlyRMD : monthlyRMD / inflationFactor,
-                withdrawalRate,
-                taxDeferredBalance,
-                totalBalance
-            });
-        }
-
-        // Update balances for next year
-        // 1. Subtract withdrawals from appropriate accounts
-        // Withdrawal priority: RMD (forced) → Taxable → Roth → Tax-Deferred
-        let remainingWithdrawal = actualWithdrawal;
-
-        // RMD comes from tax-deferred first (forced withdrawal)
-        if (annualRMD > 0 && taxDeferredBalance > 0) {
-            const rmdTaken = Math.min(annualRMD, taxDeferredBalance);
-            taxDeferredBalance -= rmdTaken;
-            remainingWithdrawal -= rmdTaken;
-            // If RMD exceeds need, excess goes to taxable (simplified: assume it's spent or reinvested)
-        }
-
-        // Remaining need: Taxable first (most tax-efficient order)
-        if (remainingWithdrawal > 0 && taxableBalance > 0) {
-            const fromTaxable = Math.min(remainingWithdrawal, taxableBalance);
-            taxableBalance -= fromTaxable;
-            remainingWithdrawal -= fromTaxable;
-        }
-
-        // Then Roth (tax-free but preserve if possible)
-        if (remainingWithdrawal > 0 && rothBalance > 0) {
-            const fromRoth = Math.min(remainingWithdrawal, rothBalance);
-            rothBalance -= fromRoth;
-            remainingWithdrawal -= fromRoth;
-        }
-
-        // Finally additional tax-deferred beyond RMD
-        if (remainingWithdrawal > 0 && taxDeferredBalance > 0) {
-            const fromTaxDeferred = Math.min(remainingWithdrawal, taxDeferredBalance);
-            taxDeferredBalance -= fromTaxDeferred;
-            remainingWithdrawal -= fromTaxDeferred;
-        }
-
-        // 2. Apply investment returns to all accounts
-        taxDeferredBalance *= (1 + annualReturn);
-        rothBalance *= (1 + annualReturn);
-        taxableBalance *= (1 + annualReturn);
-        totalBalance = taxDeferredBalance + rothBalance + taxableBalance;
-    });
-
-    // Render the display rows
-    yearData.forEach((data) => {
-        const row = document.createElement('tr');
-        row.className = 'border-t border-gray-200 dark:border-gray-600';
-
-        // Color coding for withdrawal rate
-        const wrColorClass = data.withdrawalRate > 5 ? 'text-red-600 dark:text-red-400' :
-                            data.withdrawalRate > 4 ? 'text-amber-600 dark:text-amber-400' :
-                            'text-green-600 dark:text-green-400';
-
-        // Color for RMD (highlight when RMD exceeds need)
-        const rmdExceedsNeed = data.monthlyRMD > data.monthlyNeed && data.monthlyRMD > 0;
-        const rmdColorClass = rmdExceedsNeed ? 'text-amber-600 dark:text-amber-400' :
-                             data.monthlyRMD > 0 ? 'text-blue-600 dark:text-blue-400' : '';
-
-        // Build age column(s)
-        const ageColumns = hasSpouse
-            ? `<td class="py-1">${data.primaryAge}</td><td class="py-1">${data.spouseAge}</td>`
-            : `<td class="py-1">${data.primaryAge}</td>`;
-
-        // Format need - show $0 or negative as "-"
-        const needDisplay = data.monthlyNeed > 0
-            ? `$${Math.round(data.monthlyNeed).toLocaleString()}`
-            : '-';
-
-        // Format RMD - show "-" when no RMD required
-        const rmdDisplay = data.monthlyRMD > 0
-            ? `$${Math.round(data.monthlyRMD).toLocaleString()}`
-            : '-';
-
-        row.innerHTML = `
-            ${ageColumns}
-            <td class="py-1 text-gray-500 dark:text-gray-400">${data.phaseName}</td>
-            <td class="text-right py-1">$${Math.round(data.spending).toLocaleString()}</td>
-            <td class="text-right py-1">$${Math.round(data.monthlyIncome).toLocaleString()}</td>
-            <td class="text-right py-1">${needDisplay}</td>
-            <td class="text-right py-1 ${rmdColorClass}">${rmdDisplay}</td>
-            <td class="text-right py-1 ${wrColorClass}">${data.withdrawalRate.toFixed(1)}%</td>
-        `;
-        tbody.appendChild(row);
-    });
 }
-
-// Update preview when phase sliders change
-document.addEventListener('input', function(e) {
-    if (e.target.name && e.target.name.startsWith('phase_')) {
-        updatePhasePreview();
-    }
-});
 </script>
 {{end}}

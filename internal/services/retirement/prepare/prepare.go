@@ -57,6 +57,9 @@ func From(cfg *models.WhatIfSettings) (PreparedSettings, error) {
 	if err := ValidatePersons(clone); err != nil {
 		return PreparedSettings{}, fmt.Errorf("prepare.From: validate: %w", err)
 	}
+	if err := ValidateOneTimeExpenses(clone); err != nil {
+		return PreparedSettings{}, fmt.Errorf("prepare.From: validate: %w", err)
+	}
 	return PreparedSettings{s: clone}, nil
 }
 

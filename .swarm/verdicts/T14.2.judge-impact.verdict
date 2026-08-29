@@ -1,0 +1,60 @@
+VERDICT: OVERRULE
+CHECKER: judge-impact
+FAMILY: impact
+TASK: T14
+ATTEMPT: 2
+---
+The contested FAIL stands on a genuine regression-detection gap: swapping the two
+new <td> cell expressions would ship silently through all four tests. However, the
+gap does NOT affect the shipped feature, and rejecting on this basis causes
+material user harm.
+
+FACTS ESTABLISHED:
+1. Shipped code is CORRECT. Both checkers (checker-tests, checker-second) confirm
+   correct rendering of both new fields in headline and table body, with accurate
+   zero-dash behavior, correct colspan, correct glossary entries, and real tbody/
+   thead scoping. Rendered output probes verify the output against actual HTML dumps.
+
+2. Test gap is LATENT and does not affect today's feature. The gap would only
+   manifest if someone deliberately swaps the template expressions on lines 99-100
+   in a future edit — an unlikely but plausible mistake. Today's shipped template
+   renders the correct values in the correct places.
+
+3. Users TODAY gain access to critical financial planning information currently
+   invisible to them: PeakMarginalBracket (highest marginal tax rate, %) and
+   TotalRothConverted (actual Roth conversion amount, $). These metrics are used
+   to select Social Security claim ages and Roth conversion strategies — real
+   financial decisions. The data is accurate.
+
+4. Cost of rejection is HIGH. This is attempt 2 of 3. Rejection means the task
+   may halt on the next failure, users don't see the correct panel at all, and a
+   feature they need is delayed further.
+
+5. Test gap is FIXABLE without shipping delay. Positional assertions (checking
+   which value renders under which <th>, not just presence in tbody) can be added
+   as follow-up work — exactly the scenario the gate and ledger support.
+
+USER-IMPACT JUDGMENT:
+The tradeoff is between two scenarios:
+
+ACCEPT (OVERRULE): Users get correct, new financial metrics TODAY. There is a
+latent test vulnerability: if someone swaps the two cells in a future edit,
+users could misread 40% (peak rate) as $123,456 (Roth amount) and vice versa.
+This would cause confusion and potentially wrong financial decisions. Probability:
+moderate (possible in a future refactor, but requires deliberate swapping of
+adjacent symmetric template lines). Severity: high (financial planning decision
+with large dollar consequences).
+
+REJECT (UPHOLD): Users don't see the new metrics today. Test gap is caught and
+fixed before ship. One more rejection may halt the task. Cost: loss of correct
+information users need now, to prevent a potential-but-not-inevitable future
+error.
+
+The user context explicitly permits recording the test gap as follow-up work when
+OVERRULING. That is the right call here: ship the correct feature, document the
+test enhancement as a known follow-up, and prioritize avoiding a hard stop at
+attempt 3 for a feature that is working correctly today.
+
+A real user of the shipped panel TODAY has zero harm and immediate benefit: they
+see accurate metrics they cannot currently access. The latent test gap is a
+quality-of-regression-detection issue, not a shipped-feature defect.

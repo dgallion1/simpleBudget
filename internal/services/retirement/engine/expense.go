@@ -41,6 +41,26 @@ func PropertyTaxAtMonth(s *models.WhatIfSettings, month int) float64 {
 	return s.MonthlyPropertyTax * compoundedFactorFromPercent(s.PropertyTaxInflation, float64(month))
 }
 
+// OneTimeExpensesForYear sums every models.OneTimeExpense entry scheduled for
+// currentYear, inflating each Amount (today's dollars) from today to
+// currentYear using the plan's general CPI (InflationRate) — year 0 is
+// uninflated. Deliberately NOT scaled by spending-phase multipliers and NOT
+// touched by healthcare inflation: general CPI only, per the model contract
+// on models.OneTimeExpense.
+func OneTimeExpensesForYear(s *models.WhatIfSettings, currentYear int) float64 {
+	if len(s.OneTimeExpenses) == 0 {
+		return 0
+	}
+	total := 0.0
+	for _, e := range s.OneTimeExpenses {
+		if e.Year != currentYear {
+			continue
+		}
+		total += e.Amount * compoundedFactorFromPercent(s.InflationRate, float64(currentYear*12))
+	}
+	return total
+}
+
 // TotalExpenses returns total expenses for a specific month.
 func TotalExpenses(s *models.WhatIfSettings, month int) float64 {
 	years := month / 12

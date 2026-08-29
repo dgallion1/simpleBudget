@@ -117,6 +117,7 @@ func getFuncMap() template.FuncMap {
 		"hasManualSocialSecurityIncomeSource": retirement.HasManualSocialSecurityIncomeSource,
 		"projectedSSEntries":                  retirement.ProjectedSSEntries,
 		"isSocialSecurityIncomeSource":        engine.IsSocialSecurityIncomeSource,
+		"startYear":                           engine.ParseStartYear,
 	}
 }
 

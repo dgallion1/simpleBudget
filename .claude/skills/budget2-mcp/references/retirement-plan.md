@@ -36,6 +36,26 @@ fields keep the scenario's value.
 
 Params: `scenario`, `overrides`.
 
+### overrides fields worth knowing the gotchas for
+
+Most `overrides` fields are self-explanatory scalars (`monthly_living_expenses`,
+`inflation_rate`, claim ages, etc.). Three are less obvious:
+
+- `healthcare_monthly_cost` — the household's **current** total monthly
+  healthcare cost in dollars, i.e. what is paid today, not the Medicare-era
+  cost. It never touches Medicare cost, ACA-after-employer cost, or any
+  inflation field. If the plan has multiple healthcare persons configured,
+  this total is **distributed across them proportionally to their existing
+  individual costs** (split evenly if those are all currently zero); with no
+  healthcare persons configured, it sets the legacy single scalar instead.
+- `social_security_fra_benefit` / `spouse_fra_benefit` — the primary/spouse
+  **GROSS** monthly Social Security benefit at full retirement age (FRA),
+  i.e. *before* Medicare premium deductions and tax withholding — the engine
+  computes those itself, so do not pre-net them. Both require the scenario to
+  already have a `social_security` configuration (set once in the UI); if it
+  doesn't, the call fails with an error naming the missing configuration
+  rather than fabricating one.
+
 ## open_page (read)
 
 Returns the URL of the what-if page, switching the active scenario first if

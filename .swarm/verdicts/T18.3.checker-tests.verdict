@@ -1,0 +1,189 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T18
+ATTEMPT: 3
+---
+Repo: /home/darrell/bin/ai/budget2 @ HEAD ac67798 (branch fix/import-dedup-classifier),
+working tree dirty with the T18 feature. Verified by execution only. No mutating git
+command was run. The :8080 instance was never contacted; all live probing used
+scripts/whatif-verify.sh on port 8127 against a throwaway data copy
+(/tmp/budget2-whatif-verify-8127), torn down at the end.
+
+CRITERION 1 — oracle passes, oracle dir untouched, dormancy probe runs, no zz residue: MET
+  $ bash .swarm/tier3/T18/accept.sh
+    == build ==
+    == oracle probes (oracle-owned, compile-fails on featureless tree) ==
+    ok  	budget2/internal/services/mcpsvc/plan	1.024s
+    == worker-named tests present and passing ==
+    == every consumer: full suite ==
+    ORACLE PASS
+    EXIT=0
+  The lead's new probe is not skipped. Re-run verbosely (manual copy-in/copy-out of the
+  same oracle file):
+  $ cp .swarm/tier3/T18/oracle_test.go internal/services/mcpsvc/plan/zz_t18_oracle_test.go
+    && go test -count=1 -v -run TestT18Oracle ./internal/services/mcpsvc/plan/
+    --- PASS: TestT18Oracle_ExpenseHitsItsYearOnly (0.04s)
+    --- PASS: TestT18Oracle_YearZeroUninflated (0.04s)
+    --- PASS: TestT18Oracle_SameYearExpensesSum (0.04s)
+    --- PASS: TestT18Oracle_TodayDollarsInflateWithCPI (0.78s)
+    --- PASS: TestT18Oracle_ValidationRejectsMalformedOnly (0.02s)
+    --- PASS: TestT18Oracle_OutOfHorizonEntryIsDormantNotFatal (0.05s)
+    ok  budget2/internal/services/mcpsvc/plan  0.973s     EXIT=0
+  Six RUN lines, six PASS lines, zero SKIP.
+  Residue: $ find . -name 'zz*' -not -path './.git/*'  -> only the pre-existing, permanent
+  oracle sources .swarm/tier3/R{1,4,11,12}/oracle/zz_oracle_r*_test.go (and worktree copies).
+  Nothing named zz_t18_* anywhere; $ ls internal/services/mcpsvc/plan | grep zz -> "no zz residue".
+  Oracle dir integrity: sha256sum of .swarm/tier3/T18/{accept.sh,oracle_test.go} taken before
+  and after the run are byte-identical —
+    466fa66878b8bce79917d0f64855e519a5c7ad524a0b78dfd6570ab6c01353f1  accept.sh
+    e2c281449c5d25f67b6af2154be547f5497378e2fb07f3034de3d4d6c2439e62  oracle_test.go
+
+CRITERION 2 — build, vet, full suite: MET
+  $ /home/darrell/go-sdk/go/bin/go build ./...   -> raw build exit=0 (go1.26.6)
+  $ go vet ./...                                 -> "No issues found", vet exit=0
+  $ /home/darrell/go-sdk/go/bin/go test ./... | grep -vE '^ok|no test files'
+    -> no output, TEST EXIT=0. 45 "ok" packages, zero FAIL lines.
+
+CRITERION 3 — attempt-2 defect dead END-TO-END on a live instance: MET
+  Slider path located by reading the markup, not assumed: the range input
+  id="projection-years-slider" name="projection_years" in
+  web/templates/components/whatif/portfolio-settings.html sits inside
+  <form hx-post="/whatif/settings" ...>; the quick-adjust drawer's second
+  projection_years slider carries data-quick-adjust-mirror="true" and mirrors into that
+  same named input, so both surfaces funnel through POST /whatif/settings. I posted the
+  form's five actual fields (extracted from the rendered page: portfolio_value=2500000,
+  monthly_living_expenses=7386, monthly_property_tax=666, property_tax_inflation=4.0,
+  projection_years=N) — not rm.UpdateSettings.
+  a) $ POST /whatif/settings projection_years=30 -> 200 ; persisted projection_years = 30
+  b) $ POST /whatif/onetime description=Roof year=29 amount=50000 -> 200 ;
+     persisted one_time_expenses = [{id:37e1b037..., description:Roof, year:29, amount:50000}]
+     $ GET /whatif -> 200 ; hint present? 0   (year 29 < horizon 30: active, no hint — correct)
+  c) REAL SLIDER SHRINK: $ POST /whatif/settings projection_years=20 -> 200
+     Response is the 337215-byte results fragment, not an error render: the only
+     "error"/"failed" substrings in it are the OOB clear-divs
+     (#whatif-add-income-error ... #whatif-add-onetime-error) and the Monte Carlo copy
+     "Average depletion year (failed scenarios)". persisted projection_years = 20,
+     entry still present at year 29.
+     $ GET /whatif -> 200 ; hint occurrences: 1 ;
+       "beyond current horizon (20 yr) — not counted; edit the year or extend the
+        projection to reactivate it"
+     Under attempt 2 this sequence bricked every subsequent page load; it now returns 200.
+  d) MCP-SHAPED SHRINK, driven over the live /mcp streamable-HTTP endpoint (JSON-RPC
+     initialize -> notifications/initialized -> tools/call), i.e. the real
+     Settings.ApplyOverrides + prepare.From path apply_changes uses:
+       apply_changes {"overrides":{"projection_years":30}} -> no "error" member, isError null,
+         applied {'projection_years': 30}, snapshot written to the ISOLATED backup dir
+         /tmp/budget2-whatif-verify-8127/backups/mcp-snapshots/... ; GET /whatif -> 200, hint 0
+       apply_changes {"overrides":{"projection_years":20}} (a genuine shrink under the
+         existing year-29 entry) -> has error field: False, isError: None,
+         applied {'projection_years': 20}, final_balance 4379866
+         GET /whatif -> 200 ; hint text rendered.
+  e) GROW BACK, real slider, entry still present: $ POST /whatif/settings projection_years=30
+     -> 200 ; GET /whatif -> 200 ; hint count at h30 = 0 (hint disappears).
+     Entry counts again — MCP run_scenario (read-only) at horizon 30 with the entry vs the
+     same horizon after deleting it:
+       h30 WITH entry final_balance: 6834371
+       h30 NO   entry final_balance: 6995717   (differs: True)
+       year rows whose expenses differ: [(29, 151642)]  — exactly one row, year 29, the
+       50,000 today-dollar amount inflated to year 29. Every other row identical.
+
+CRITERION 4 — dormancy exactness, my own probe, byte-for-byte: MET
+  At horizon 20 with the dormant year-29 entry present I captured the full MCP
+  run_scenario AnalysisView (headline + all 20 year rows + budget/tax/rmd sections,
+  json.dumps sort_keys=True), then deleted the entry via DELETE /whatif/onetime/{id}
+  (-> 200, persisted one_time_expenses = None) and captured it again at the same horizon.
+    $ sha256sum A_h20_with_dormant.json B_h20_no_entry.json
+      8f2e59a60eec6b5ae3c1b49d65c3871fdcd6276b700f231de2c05df12f016945  A_h20_with_dormant.json
+      8f2e59a60eec6b5ae3c1b49d65c3871fdcd6276b700f231de2c05df12f016945  B_h20_no_entry.json
+    $ diff A_h20_with_dormant.json B_h20_no_entry.json  -> empty
+  Identical hash, empty diff: headline (final_balance 4379866, sustainability_score 75,
+  survives, label) and every one of the 20 year rows match exactly, not approximately.
+  Independently, a shrink->grow->shrink round trip reproduced the same bytes
+  (A2 vs A: diff -q -> IDENTICAL), so dormancy is stable across horizon churn.
+
+CRITERION 5 — handler seam, and the rejection lives in the handler not the validator: MET
+  Validator no longer knows about the horizon:
+    $ awk '/^func ValidateOneTimeExpenses/,/^}/' internal/services/retirement/prepare/validate.go
+      | grep -c ProjectionYears   ->  0
+  (The only three ProjectionYears occurrences in that file, lines 89/90/93, are inside the
+  doc comment explaining why the bound was removed. The function body checks Amount < 0 and
+  Year < 0 and nothing else.) The beyond-horizon rejection is in
+  internal/handlers/whatif/handlers_income_expense.go handleWhatIfAddOneTime, after a
+  prepare.ValidateOneTimeExpenses call on the would-be list and before AddOneTimeExpense.
+  Live, against the running instance at horizon 30:
+    beyond-horizon (year=35)  -> HTTP 400  ">Year 35 is beyond the 30-year projection horizon"
+    neg-amount (amount=-5)    -> HTTP 400  ">Amount cannot be negative"
+    neg-year (year=-3)        -> HTTP 400  ">Year cannot be negative"
+    no-desc                   -> HTTP 400  ">Description is required"
+    after all four: persisted one_time_expenses = None (nothing written)
+    $ GET /whatif -> 200
+  Boundary probed explicitly: year=30 (== horizon) -> HTTP 400, not persisted;
+  year=29 (== horizon-1) -> HTTP 200, persisted. Off-by-one is correct.
+  Worker tests read for vacuity, /home/darrell/bin/ai/budget2/internal/handlers/whatif/onetime_expense_test.go:
+    - TestOneTimeExpense_HandlerAdd_YearBeyondHorizonRejected (l.124) does more than assert a
+      status: it snapshots len(OneTimeExpenses) before, requires 4xx (w.Code < 400 || >= 500),
+      RELOADS from disk and asserts the count is unchanged and no "Roof" row exists, then
+      issues a real GET /whatif through handleWhatIf and requires 200. That is exactly the
+      assertion attempt 1 lacked.
+    - TestOneTimeExpense_HorizonShrinkKeepsPageAlive (l.181) is the attempt-2 repro and is not
+      vacuous: it adds a year-29 entry under a 30-year horizon (and asserts that default first),
+      shrinks via rm.UpdateSettings({"projection_years":20}) — the settings-manager path — then
+      asserts GET /whatif == 200 AND that the body contains both "Roof" and
+      "beyond current horizon".
+    $ go test -count=1 -v -run TestOneTimeExpense ./internal/handlers/whatif/
+      ./internal/services/retirement/prepare/ ./internal/models/
+      ./internal/services/retirement/engine/ ./internal/services/retirement/analysis/
+      -> 12 + 9(subtests) + 3 + 4 + 2 PASS lines, five "ok" packages, zero FAIL/SKIP.
+    validate_test.go's new cases assert both directions: negative amount and negative year
+    still error (and the message names one_time_expenses), while Year==ProjectionYears and
+    Year=99 must NOT error, plus From() end-to-end for both.
+
+CRITERION 6 — dormant hint rendered, real text, amber in both themes: MET
+  Live render (GET /whatif at horizon 20 with the dormant year-29 entry -> 200), element
+  extracted from the response body:
+    <div class="text-xs text-amber-600 dark:text-amber-400 mt-1">
+      beyond current horizon (20 yr) — not counted; edit the year or extend the projection
+      to reactivate it
+    </div>
+    aria-hidden on hint element: False
+    text-amber-600 (light): True     dark:text-amber-400 (dark): True
+  It is a real text node inside a visible div, adjacent to the still-rendered
+  "Year 29 (2055)" line, with no aria-hidden, no sr-only, and no display-none class.
+  Source: web/templates/components/whatif/onetime-card.html:46-50, guarded by
+  {{if ge .Item.Year .Settings.ProjectionYears}} — which is why the h30 renders showed
+  hint count 0 and the h20 renders showed 1.
+
+CRITERION 7 — scope: MET
+  Attempt-3 edits, by mtime window (the lead amended the oracle at 08:48:37 and the ledger at
+  08:48:55 on 2026-08-29; every worker edit is later, 08:51:02–09:02:33):
+    $ find internal web -newermt '2026-08-29 08:49' -type f \( -name '*.go' -o -name '*.html' \)
+      internal/handlers/whatif/handlers_income_expense.go
+      internal/handlers/whatif/onetime_expense_test.go
+      internal/services/retirement/prepare/validate.go
+      internal/services/retirement/prepare/validate_test.go
+      web/templates/components/whatif/onetime-card.html
+  That is exactly the five paths in .swarm/manifests/T18.3.files, no more and no fewer.
+  The remaining seven modified + five added paths in the working tree all carry
+  2026-08-28 20:54–21:27 mtimes and appear in the T18.1/T18.2 manifests.
+  .swarm/critical.globs: attempt 3 touches none of them (the only critical-glob files in the
+  whole T18 diff, internal/services/retirement/engine/{expense,stepper}.go, are attempt-1/2
+  work and are permitted at Tier 3 in any case).
+  Oracle ownership: .swarm/tier3/T18/oracle_test.go has mtime 08:48:37, strictly before the
+  worker's first edit at 08:51:02, and its sha256 is unchanged across my accept.sh run — the
+  file I read (containing TestT18Oracle_OutOfHorizonEntryIsDormantNotFatal at l.120-146) is
+  the file accept.sh executed. Read-only check; I did not modify it.
+  LIMITATION, stated rather than papered over: there is no committed snapshot of the
+  attempt-2 tree, so "diff vs attempt-2 state" is demonstrated by the mtime window above plus
+  the fact that `git diff --stat HEAD` reported the identical 12 files / 307 insertions /
+  2 deletions at the start and at the end of my session — not by a content diff against a
+  stored attempt-2 snapshot.
+
+SCOPE NOTE (not a criterion, reported as fact): two untracked non-source scratch files at the
+repo root, server.log (mtime 2026-08-28 21:48) and sse_stream.out (mtime 2026-08-28 20:29),
+were listed by `git status --porcelain` at the start of my session and were gone by the end.
+I did not delete them and ran no command that targets them; scripts/whatif-verify.sh only
+rm -rf's /tmp/budget2-whatif-verify-8127. Most likely a concurrent agent's cleanup. Neither
+file is tracked, neither is a source file, and neither affects any criterion.
+Final `git status --porcelain` is otherwise identical to the session start, modulo this
+verdict file.

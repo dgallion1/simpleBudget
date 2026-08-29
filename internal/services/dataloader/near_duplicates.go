@@ -128,12 +128,51 @@ func detectNearDuplicatePairs(txns []models.Transaction) []DuplicatePair {
 	return pairs
 }
 
-// isCandidatePair returns true if exactly one of (a, b) looks like a
-// scheduled bill pay AND the other looks like a posted check.
+// isCandidatePair returns true if (a, b) look like a near-duplicate by
+// either of two shapes:
+//   - exactly one of (a, b) looks like a scheduled bill pay AND the other
+//     looks like a posted check, or
+//   - both are a same-day (or next-day) re-export of the same bank row:
+//     their Original Description values match once whitespace and case
+//     differences are ignored, even though Description itself was
+//     rewritten between exports.
+//
+// Callers only reach this with rows already bucketed by matching sign,
+// amount-in-cents, and TransactionType (see detectNearDuplicatePairs).
 func isCandidatePair(a, b models.Transaction) bool {
 	aBP, aPC := classify(a)
 	bBP, bPC := classify(b)
-	return (aBP && bPC) || (aPC && bBP)
+	if (aBP && bPC) || (aPC && bBP) {
+		return true
+	}
+	return isSameDayReimportPair(a, b)
+}
+
+// isSameDayReimportPair implements the second candidate shape: a
+// transaction that was re-exported with a rewritten Description but an
+// unchanged Original Description column. Restricted to a 1-day window
+// (tighter than the bill-pay/check shape's duplicateWindowDays) because,
+// unlike a bill-pay clearing, this shape has no status signal to lean on
+// -- an exact Original Description match plus same amount is the only
+// evidence, so the date window stays narrow.
+func isSameDayReimportPair(a, b models.Transaction) bool {
+	if dayDiff(a.Date, b.Date) > 1 {
+		return false
+	}
+	if a.OriginalDescription == "" || b.OriginalDescription == "" {
+		return false
+	}
+	return normalizeOriginalDescription(a.OriginalDescription) == normalizeOriginalDescription(b.OriginalDescription)
+}
+
+// whitespaceRunRE collapses runs of whitespace to a single space so that
+// incidental export-formatting differences (extra padding, tabs) in the
+// Original Description column don't defeat the comparison.
+var whitespaceRunRE = regexp.MustCompile(`\s+`)
+
+func normalizeOriginalDescription(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	return whitespaceRunRE.ReplaceAllString(s, " ")
 }
 
 func classify(t models.Transaction) (billPay, postedCheck bool) {

@@ -521,6 +521,72 @@ func TestLoadCSVFile_PopulatesStatus(t *testing.T) {
 	}
 }
 
+func TestLoadCSVFile_OriginalDescription(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "dataloader_origdesc_test")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Live example from IMPORT_FIXES_SPEC.md T13.
+	csv := "Date,Description,Original Description,Category,Amount,Status\n" +
+		"2026-08-12,\"Lucid BILL PMT                622400A0AHSQ\",\"Lucid BILL PMT                622400A0AHSQ\",Category Pending,-1580.43,Posted\n" +
+		"2026-08-12,\"Lucid Bill a Ahsq\",\"Lucid BILL PMT                622400A0AHSQ\",Bills & Utilities,-1580.43,Posted\n"
+
+	csvPath := filepath.Join(tmpDir, "bank.csv")
+	if err := os.WriteFile(csvPath, []byte(csv), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	store, _ := storage.New(tmpDir)
+	loader := New(tmpDir, store)
+
+	got, err := loader.loadCSVFile(csvPath)
+	if err != nil {
+		t.Fatalf("loadCSVFile: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 transactions, got %d", len(got))
+	}
+	want := "Lucid BILL PMT                622400A0AHSQ"
+	if got[0].OriginalDescription != want {
+		t.Errorf("first row OriginalDescription = %q, want %q", got[0].OriginalDescription, want)
+	}
+	if got[1].OriginalDescription != want {
+		t.Errorf("second row OriginalDescription = %q, want %q", got[1].OriginalDescription, want)
+	}
+}
+
+func TestLoadCSVFile_OriginalDescriptionAbsentColumnIsEmpty(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "dataloader_origdesc_absent_test")
+	if err != nil {
+		t.Fatalf("temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	csv := "Date,Description,Amount,Status\n" +
+		"2026-08-12,Lucid,-1580.43,Posted\n"
+
+	csvPath := filepath.Join(tmpDir, "bank.csv")
+	if err := os.WriteFile(csvPath, []byte(csv), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	store, _ := storage.New(tmpDir)
+	loader := New(tmpDir, store)
+
+	got, err := loader.loadCSVFile(csvPath)
+	if err != nil {
+		t.Fatalf("loadCSVFile: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(got))
+	}
+	if got[0].OriginalDescription != "" {
+		t.Errorf("OriginalDescription = %q, want empty (no such column)", got[0].OriginalDescription)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))

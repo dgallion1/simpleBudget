@@ -1,7 +1,7 @@
 VERDICT: PASS
 CHECKER: checker-tests
 FAMILY: anthropic
-TASK: T12
+TASK: T12F
 ATTEMPT: 2
 ---
 All work done in a `cp -a` copy at

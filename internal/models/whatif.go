@@ -194,6 +194,11 @@ type WhatIfSettings struct {
 	// Big Ticket Items (one-time financial events)
 	BigTicketItems        []BigTicketItem `json:"big_ticket_items,omitempty"`
 	RemovedBigTicketItems []BigTicketItem `json:"removed_big_ticket_items,omitempty"`
+
+	// OneTimeExpenses are planned discrete future outlays (new roof, car,
+	// wedding) that hit a single projection year. See OneTimeExpense for the
+	// inflation and validation semantics.
+	OneTimeExpenses []OneTimeExpense `json:"one_time_expenses,omitempty"`
 }
 
 // SocialSecurityConfig holds user's SS benefit info for claiming age analysis
@@ -811,6 +816,8 @@ func DefaultWhatIfSettings() *WhatIfSettings {
 		// Big ticket items (empty by default)
 		BigTicketItems:        []BigTicketItem{},
 		RemovedBigTicketItems: []BigTicketItem{},
+		// One-time expenses (empty by default)
+		OneTimeExpenses: []OneTimeExpense{},
 	}
 	// Derived state (CurrentAge/SpouseAge) is populated by prepare.From at the
 	// engine boundary. The CurrentAge field above (65) matches the primary

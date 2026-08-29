@@ -28,10 +28,20 @@ const (
 
 // Transaction represents a single financial transaction
 type Transaction struct {
-	ID                  string          `json:"id"`
-	Date                time.Time       `json:"date"`
-	Amount              float64         `json:"amount"`
-	Description         string          `json:"description"`
+	ID          string    `json:"id"`
+	Date        time.Time `json:"date"`
+	Amount      float64   `json:"amount"`
+	Description string    `json:"description"`
+	// OriginalDescription is the bank's raw, unedited description, taken
+	// from an optional "Original Description" CSV column. Some exports
+	// carry a user/bank-rewritten Description alongside this stable raw
+	// text; two re-exported copies of the same transaction can therefore
+	// have different Description values but an identical
+	// OriginalDescription, which near-duplicate detection uses as a
+	// second candidate signal (see near_duplicates.go). Empty when the
+	// source CSV has no such column. Deliberately excluded from
+	// ComputeHash and StableIDFor -- see their docs.
+	OriginalDescription string          `json:"original_description,omitempty"`
 	DisplayName         string          `json:"display_name,omitempty"`         // User-assigned alias
 	MajorExpenseName    string          `json:"major_expense_name,omitempty"`   // Derived; stamped at load time, not persisted to source CSVs
 	EnrichedDescription string          `json:"enriched_description,omitempty"` // Derived from external sources (e.g. Amazon order data); stamped at load time

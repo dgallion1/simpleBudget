@@ -1,0 +1,6 @@
+== build ==
+== oracle probes (oracle-owned, compile-fails on featureless tree) ==
+ok  	budget2/internal/services/mcpsvc/plan	0.899s
+== worker-named tests present and passing ==
+== every consumer: full suite ==
+ORACLE PASS

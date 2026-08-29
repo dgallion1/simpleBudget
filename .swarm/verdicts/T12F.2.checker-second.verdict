@@ -1,7 +1,7 @@
 VERDICT: PASS
 CHECKER: checker-second
 FAMILY: adversarial
-TASK: T12
+TASK: T12F
 ATTEMPT: 2
 ---
 Scope: isolated copy at

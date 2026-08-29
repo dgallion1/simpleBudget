@@ -20,6 +20,66 @@ func makeTx(date string, amount float64, desc, status string) models.Transaction
 	return t
 }
 
+// makeTxOriginal is a sibling of makeTx for the same-day-reimport shape,
+// which additionally keys on OriginalDescription.
+func makeTxOriginal(date string, amount float64, desc, status, original string) models.Transaction {
+	t := makeTx(date, amount, desc, status)
+	t.OriginalDescription = original
+	return t
+}
+
+func TestDetect_SameDayReimport_LucidPair(t *testing.T) {
+	// Live example from IMPORT_FIXES_SPEC.md T13: the aggregator's first
+	// export carries the raw bank text with a "Category Pending"
+	// placeholder; a later export rewrites Description and assigns a
+	// category, but Original Description stays identical.
+	const original = "Lucid BILL PMT                622400A0AHSQ"
+	left := makeTxOriginal("2026-08-12", -1580.43, original, "Posted", original)
+	left.Category = "Category Pending"
+	right := makeTxOriginal("2026-08-12", -1580.43, "Lucid Bill a Ahsq", "Posted", original)
+	right.Category = "Bills & Utilities"
+	txns := []models.Transaction{left, right}
+	pairs := detectNearDuplicatePairs(txns)
+	if len(pairs) != 1 {
+		t.Fatalf("expected 1 pair, got %d", len(pairs))
+	}
+	if pairs[0].Key == "" {
+		t.Error("pair key should be non-empty")
+	}
+}
+
+func TestDetect_SameDayReimport_WindowExceeded(t *testing.T) {
+	const original = "Lucid BILL PMT                622400A0AHSQ"
+	txns := []models.Transaction{
+		makeTxOriginal("2026-08-12", -1580.43, original, "Posted", original),
+		makeTxOriginal("2026-08-14", -1580.43, "Lucid Bill a Ahsq", "Posted", original), // 2 days
+	}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (window exceeded), got %d", len(got))
+	}
+}
+
+func TestDetect_SameDayReimport_DifferentOriginalDescription(t *testing.T) {
+	txns := []models.Transaction{
+		makeTxOriginal("2026-08-12", -1580.43, "Lucid BILL PMT 622400A0AHSQ", "Posted", "Lucid BILL PMT 622400A0AHSQ"),
+		makeTxOriginal("2026-08-12", -1580.43, "Lucid Bill a Ahsq", "Posted", "Some Other Raw Text"),
+	}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (different Original Description), got %d", len(got))
+	}
+}
+
+func TestDetect_SameDayReimport_EmptyOriginalNotPaired(t *testing.T) {
+	const original = "Lucid BILL PMT                622400A0AHSQ"
+	txns := []models.Transaction{
+		makeTxOriginal("2026-08-12", -1580.43, original, "Posted", original),
+		makeTxOriginal("2026-08-12", -1580.43, "Lucid Bill a Ahsq", "Posted", ""),
+	}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (empty Original Description), got %d", len(got))
+	}
+}
+
 func TestDetect_PositiveLucidCase(t *testing.T) {
 	txns := []models.Transaction{
 		makeTx("2026-03-19", -1580.43, "Lucid", "Scheduled Bill Pay"),

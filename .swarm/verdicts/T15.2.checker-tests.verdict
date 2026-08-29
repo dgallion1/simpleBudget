@@ -1,0 +1,368 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T15
+ATTEMPT: 2
+---
+Repo: /home/darrell/bin/ai/budget2, branch fix/import-dedup-classifier.
+Toolchain: /home/darrell/go-sdk/go/bin/go. No .swarm/tier3/T15/accept.sh exists
+(Tier 2), so there is no executable oracle; every criterion below is tied to a
+command I ran. Nothing was verified against the live :8080 instance -- it was
+never contacted, restarted or rebuilt over; all runtime evidence is
+go test / httptest. Two throwaway probe files were injected with `go test
+-overlay` from the scratchpad so that no repo file was created or edited;
+`git status --porcelain` before and after my run is identical.
+
+SUMMARY: all 7 criteria met on cited evidence. Both attempt-1 defects are fixed
+and I independently reproduced the fix AND the failure it prevents (mutation
+test, criterion 5 below). One standing observation carried forward from my
+attempt-1 verdict 7c (footnote contrast, site-wide pre-existing convention) is
+restated at the end -- it is not a new finding and not the basis of any FAIL.
+
+--------------------------------------------------------------------------
+CRITERION 1 -- `make build` and `make test` pass.  PASS
+
+  $ make build
+    /home/darrell/go-sdk/go/bin/go build -ldflags="-s -w -X ...Version=1.0.0
+      -X ...BuildTime=2026-08-28T19:29:06Z" -o budget2 ./cmd/server
+    EXIT=0
+  $ make test          (= go test ./... ; go test -count=1 ./internal/handlers/accounts)
+    49 packages, every line "ok"; last line
+      ok  budget2/internal/handlers/accounts  0.703s
+    EXIT=0
+  make test reported most packages "(cached)", so I busted the cache on
+  everything this change can reach:
+  $ go test -count=1 ./internal/handlers/whatif/... ./internal/templates/...
+    ok  budget2/internal/handlers/whatif  21.741s
+    ok  budget2/internal/templates         0.358s      EXIT=0
+  $ go test -count=1 ./web/... ./cmd/server/... ./internal/services/retirement/...
+    ok  budget2/web                                 0.006s
+    ok  budget2/cmd/server                          7.796s
+    ok  budget2/internal/services/retirement       33.383s
+    ok  budget2/internal/services/retirement/analysis 23.177s
+    (+ completeness, engine, history, overrides, prepare -- all ok)  EXIT=0
+    (web and cmd/server matter because the template and the stylesheet are
+     embedded there; retirement/analysis matters because the fix mirrors
+     tax_optimizer.go.)
+  Not required by the criterion, run anyway:
+  $ go vet ./...                                   VET_EXIT=0, no output
+  $ gofmt -l internal/handlers/whatif/handlers_sweep.go \
+             internal/handlers/whatif/handlers_sweep_test.go \
+             internal/handlers/whatif/handlers.go \
+             internal/templates/render_conversion_sweep_test.go
+    -> empty output, GOFMT_EXIT=0 (all four formatted)
+  $ go test -count=1 -race -run 'ConversionSweep|Sweep' ./internal/handlers/whatif/
+    ok  budget2/internal/handlers/whatif  1.365s   RACE_EXIT=0
+    (the 9-way ParallelIndexed fan-out is race-clean)
+  $ make css-verify        -- see criterion 7; EXIT=0, "tailwind.css is up to date"
+    This is DEFECT 2 from attempt 1, now cleared. Attempt 1 exited 2 here.
+
+CRITERION 2 -- POST returns 200, one row per candidate ascending, wall time
+               < 2 s.  PASS
+
+  Verified end-to-end over the REAL registered chi route (not a direct handler
+  call), through httptest.NewServer, with the real template renderer. Probe
+  injected via `go test -overlay` (scratchpad file, nothing written to the
+  repo):
+  $ go test -count=1 -overlay <scratchpad>/overlay3.json \
+      -run TestZZCheckerRouteEndToEnd -v ./internal/handlers/whatif/
+    status=200 elapsed=9.60004ms bytes=8047
+    body <tr> rows: 10  (1 thead row + 9 data rows)
+    row 1: $0.00        ... survives  ... $55,928.36   $0.00
+    row 2: $25,000.00   ... survives  ... $32,683.98   $0.00
+    row 3: $50,000.00 [current] survives ... $45,722.73 $0.00
+    row 4: $75,000.00   359 mo (~30 yrs)  $56,992.29   $0.00
+    row 5: $100,000.00  344 mo (~29 yrs)  $76,482.92   $0.00
+    row 6: $125,000.00  333 mo (~28 yrs)  $86,003.29   $3,603.93
+    row 7: $150,000.00  323 mo (~27 yrs)  $93,837.15   $8,453.09
+    row 8: $175,000.00  317 mo (~26 yrs)  $101,187.55  $9,053.12
+    row 9: $200,000.00  310 mo (~26 yrs)  $105,033.13  $14,498.56
+    --- PASS
+  9.6 ms for the whole request including render -- 200x under the 2 s budget
+  and flatly incompatible with a ~7 s RunFull. Amounts are strictly ascending
+  in document order. The repo's own test asserts the same bound:
+  $ go test -count=1 -v ./internal/handlers/whatif/ -run 'ConversionSweep|Sweep'
+    --- PASS: TestHandleWhatIfConversionSweep_RowCountOrderAndCurrent (0.02s)
+    (handlers_sweep_test.go:205-234 asserts w.Code==200, elapsed<=2s,
+     len(rows)==9, rows[i].Amount == {0,25k,...,200k}[i])
+  Route registration:
+  $ grep -n "conversion-sweep\|tax-optimize" internal/handlers/whatif/handlers.go
+    805: r.Post("/whatif/tax-optimize", handleWhatIfTaxOptimize)
+    806: r.Post("/whatif/conversion-sweep", handleWhatIfConversionSweep)
+
+CRITERION 3 -- current row marked; exactly 9 rows with the saved plan at
+               $50k.  PASS
+
+  From the same end-to-end probe above: exactly 9 data rows, and exactly one
+  carries `>current<` -- the $50,000.00 row, which also gets the
+  bg-indigo-50/dark:bg-indigo-900/20 row tint. No other row is marked.
+  $ go test -count=1 -v ./internal/handlers/whatif/ -run 'ConversionSweep|Sweep'
+    --- PASS: TestConversionSweepAmounts_CurrentAlreadyInBaseList (9 amounts)
+    --- PASS: TestConversionSweepAmounts_InsertsCurrentAmount (60k -> 10, in
+              position 3)
+    --- PASS: TestConversionSweepAmounts_InsertsAboveMax (250k -> 10, last)
+    --- PASS: TestConversionSweepAmounts_NilRothConversionTreatsCurrentAsZero
+    --- PASS: TestHandleWhatIfConversionSweep_RowCountOrderAndCurrent
+  I read that last test: it counts Current==true rows and fails unless the
+  count is exactly 1 AND that row's Amount is 50000 (lines 218-234) -- it does
+  not merely assert presence.
+  $ go test -count=1 -v ./internal/templates/ -run ConversionSweep
+    --- PASS: TestRenderConversionSweepResults_CurrentRowMarked
+    Asserts strings.Count(out, ">current<") == 1 and that the marker sits
+    inside the <tr> containing "$50,000.00" (render_conversion_sweep_test.go
+    :107-123) -- row placement, not just presence.
+
+CRITERION 4 -- a surviving projection renders "survives" + ending real
+               balance, never a fabricated depletion month.  PASS
+
+  End-to-end HTML (probe above) shows both branches from real engine output:
+    surviving rows render `&#10003; survives &middot; $33,133.36 real` and
+    contain no "mo (~" at all;
+    depleting rows render `359 mo (~30 yrs)` and contain no "survives".
+  $ go test -count=1 -v ./internal/handlers/whatif/ -run 'ConversionSweep|Sweep'
+    --- PASS: TestHandleWhatIfConversionSweep_SurvivesVsDepletesSplit (0.01s)
+    Read it: rows 0-2 must have Survives==true, EndingBalanceReal>0 and
+    DepletionMonth==0 (lines 264-278); rows 3-8 must have Survives==false,
+    DepletionMonth>0, DepletionYears>0 and EndingBalanceReal==0
+    (lines 281-299). Both branches come from real eng.Run output on
+    sweepScenarioSettings(), not a synthetic fixture -- my probe confirms the
+    fixture really does split 3 surviving / 6 depleting.
+  $ go test -count=1 -v ./internal/templates/ -run ConversionSweep
+    --- PASS: TestRenderConversionSweepResults_SurvivesAndDepletesSplit
+    It slices each row's own <tr>..</tr> before asserting (lines 65-71), so one
+    row's text cannot mask the other's assertion.
+  Source guard: handlers_sweep.go:126 sets DepletionMonth only under
+  `if !proj.Survives && proj.DepletionMonth != nil`; :130 sets
+  EndingBalanceReal only under `if proj.Survives`.
+
+CRITERION 5 -- handler tests cover row count/order, current-row marking, the
+               survives-vs-depletes split; a render test covers the partial.
+               PASS
+
+  $ go test -count=1 -v ./internal/handlers/whatif/ -run 'ConversionSweep|Sweep'
+    11 tests, all PASS (0.082s). Mapping to the criterion:
+      row count/order + current marking -> _RowCountOrderAndCurrent
+      survives-vs-depletes              -> _SurvivesVsDepletesSplit
+      lifetime tax/IRMAA populated      -> _LifetimeTaxAndIRMAAPopulated
+      real-vs-nominal (DEFECT 1)        -> _LifetimeTaxIsRealNotNominal   [NEW]
+      error paths                       -> _LoadError, _BuildEngineInputError
+      renderer path                     -> _RendersPartial (asserts 10 "<tr")
+    Copy discipline is covered separately by
+    TestCandidateSettingsForConversionAmount_{DoesNotMutateSaved,
+    EnabledFollowsAmount,NilSavedRothConversion} (all PASS).
+  $ go test -count=1 -v ./internal/templates/ -run ConversionSweep
+    --- PASS: TestRenderConversionSweepResults_SurvivesAndDepletesSplit
+    --- PASS: TestRenderConversionSweepResults_CurrentRowMarked
+    --- PASS: TestRenderConversionSweepResults_NoRowsFallback
+    --- PASS: TestRenderConversionSweep_ButtonState
+    ok budget2/internal/templates 0.046s
+    (render_conversion_sweep_test.go builds a real Renderer over
+     web.EmbeddedFS via NewFromFS -- the render_*_test.go precedent.)
+
+  DEFECT 1 (attempt 1) -- lifetime tax nominal while the caption claimed
+  today's dollars -- INDEPENDENTLY CONFIRMED FIXED:
+
+  (a) The deflation matches the Tax Optimizer's LifetimeTaxReal pattern.
+      Read side by side:
+        tax_optimizer.go:236-241
+          for _, ys := range proj.YearlySummaries {
+              deflator := ys.CumulativeInflation
+              if deflator <= 0 { deflator = 1 }
+              cand.LifetimeTaxReal += ys.Taxes / deflator
+        handlers_sweep.go:48-58 (lifetimeRealTaxAndIRMAA)
+          for _, ys := range proj.YearlySummaries {
+              deflator := ys.CumulativeInflation
+              if deflator <= 0 { deflator = 1 }
+              tax   += ys.Taxes / deflator
+              irmaa += ys.IRMAA / deflator
+      Same field (ys.Taxes = federal+state+NIIT), same deflator, same
+      `<= 0 -> 1` guard for pre-projection/unset years. IRMAA gets the same
+      treatment, which is what makes the caption's "all in today's dollars"
+      true for both columns rather than only one.
+
+  (b) The fixture genuinely makes real and nominal diverge -- measured, not
+      assumed. Overlay probe printing both figures on sweepScenarioSettings():
+      $ go test -count=1 -overlay <scratchpad>/overlay.json \
+          -run TestZZCheckerProbeRealVsNominal -v ./internal/handlers/whatif/
+        amt=0      real=55928.36 nominal=95712.48 ratio=0.584  survives=true
+        amt=50000  real=45722.73 nominal=58836.03 ratio=0.777  survives=true
+        amt=100000 real=76482.92 nominal=85409.17 ratio=0.895  survives=false
+      The test's asserted row (amount=100000) diverges by $8,926.25 -- ~10.5%,
+      far outside its 0.01 tolerance. The test also refuses to pass vacuously:
+      lines 394-396 t.Fatalf "fixture does not exercise the defect" unless
+      real < nominal strictly, so a future fixture edit that collapses the two
+      figures fails loudly instead of silently rubber-stamping.
+
+  (c) MUTATION TEST -- the new test actually catches the original defect.
+      I reverted the production line to the nominal path via `go test -overlay`
+      (scratchpad copy of handlers_sweep.go with
+      `row.LifetimeTax = analysis.BuildTax(proj, in).TotalTaxPaid`; the repo
+      file was never touched) and re-ran the full sweep suite:
+      $ go test -count=1 -overlay <scratchpad>/overlay2.json \
+          -run 'ConversionSweep|Sweep' -v ./internal/handlers/whatif/
+        --- FAIL: TestHandleWhatIfConversionSweep_LifetimeTaxIsRealNotNominal
+            LifetimeTax = 85409.16630406468, want 76482.9158239755
+              (per-year deflated sum)
+            LifetimeTax = 85409.16630406468 equals nominal TotalTaxPaid
+              85409.16630406468 -- must report real, not nominal
+        (all 10 other sweep tests still PASS)
+      So the new test is exactly and solely load-bearing for DEFECT 1: it is
+      the only test in the suite that fails when the defect is reintroduced,
+      and it fails on both its assertions. This also independently confirms
+      the worker's manifest line 14-17 regression claim, including its exact
+      numbers (85409.17 nominal / 76482.92 real).
+
+  Caption now matches the code (conversion-sweep.html:76-81): "Ending balance,
+  lifetime tax, and lifetime IRMAA are all in today's dollars
+  (inflation-deflated), summed across projection years." Attempt 1's caption
+  said IRMAA was nominal and tax was real, and neither was true.
+
+  NOTE for the lead, not a defect: the spec's Behavior section (line 37) says
+  "lifetime tax: reuse `analysis.BuildTax(proj, in)` totals". The fix
+  deliberately departs from that sentence, because BuildTax.TotalTaxPaid is
+  nominal and was the cause of DEFECT 1. No numbered acceptance criterion
+  (1-7) mentions BuildTax, so this does not fail any criterion -- but the
+  Behavior text is now stale against the code and SPEC/CONVERSION_SWEEP_SPEC
+  should be amended if the lead wants the document to stay accurate.
+
+CRITERION 6 -- no changes under critical globs; no RunFull, no Monte Carlo;
+               no page-load auto-run.  PASS
+
+  $ git -C /home/darrell/bin/ai/budget2 status --porcelain
+     M .swarm/ledger.tsv
+     M internal/handlers/whatif/handlers.go
+     M web/static/css/tailwind.css
+     M web/templates/pages/whatif.html
+    ?? .swarm/manifests/T15.1.manifest
+    ?? .swarm/manifests/T15.2.manifest
+    ?? .swarm/verdicts/T15.1.checker-second.verdict
+    ?? .swarm/verdicts/T15.1.checker-tests.verdict
+    ?? .swarm/verdicts/T15.2.checker-second.verdict
+    ?? CONVERSION_SWEEP_SPEC.md
+    ?? internal/handlers/whatif/handlers_sweep.go
+    ?? internal/handlers/whatif/handlers_sweep_test.go
+    ?? internal/templates/render_conversion_sweep_test.go
+    ?? web/templates/components/whatif/conversion-sweep.html
+  Checked against `cat .swarm/critical.globs`
+  (storage/**, dataloader/**, retirement/engine/**, transfers/**,
+   accounts/accounts.go, mcpsvc/confirm/**): ZERO matches. The only tracked
+  code diff is one line:
+  $ git diff internal/handlers/whatif/handlers.go
+    +r.Post("/whatif/conversion-sweep", handleWhatIfConversionSweep)   (+1 -0)
+  $ git diff web/templates/pages/whatif.html
+    +{{template "whatif-conversion-sweep" .}}                          (+1 -0)
+    -- the button-only card, NOT the "-results" partial, so nothing runs on
+       page load.
+  No RunFull / Monte Carlo anywhere in the sweep path:
+  $ grep -rn "RunFull\|MonteCarlo\|Backtest" internal/handlers/whatif/handlers_sweep.go \
+      internal/handlers/whatif/handlers_sweep_test.go \
+      web/templates/components/whatif/conversion-sweep.html
+    handlers_sweep.go:142  -- doc comment only ("Deliberately never calls
+                              retirement.RunFull")
+    handlers_sweep_test.go:209 -- assertion message text only
+    No call site in either file; the template has none.
+  Corroborating runtime evidence: 9 full projections + render in 9.6 ms
+  (criterion 2). RunFull is ~7 s per the spec's own constraint.
+  Auto-run negative, asserted by test:
+    --- PASS: TestRenderConversionSweep_ButtonState
+    (render_conversion_sweep_test.go:150-158 fails on hx-trigger="load",
+     hx-trigger="revealed", or any "<table" in the initial embed)
+  And observed in the served HTML: probe reported `has hx-trigger load: false`.
+
+CRITERION 7 -- conforms to ACCESSIBILITY.md (table headers, contrast, focus
+               states).  PASS
+
+  DEFECT 2 (attempt 1) -- stale generated CSS -- CONFIRMED FIXED:
+  $ make css-verify
+    ./tmp/tailwindcss-3.4.17 -c tailwind.config.js -i web/static/css/tailwind.src.css
+      -o tmp/tailwind.check.css --minify
+    Done in 655ms.
+    tailwind.css is up to date
+    EXIT=0        (attempt 1: EXIT=2)
+  The seven selectors that were missing in attempt 1 are now in the shipped
+  stylesheet, and the regeneration is purely additive -- I diffed the selector
+  sets of git HEAD's tailwind.css against the working-tree one:
+    bytes 59176 -> 59827
+    ADDED   (7): .focus\:outline:focus  .focus\:outline-2:focus
+                 .focus\:outline-offset-2:focus  .focus\:outline-indigo-500:focus
+                 .dark\:focus\:outline-indigo-400:focus:is(.dark ...)
+                 .motion-reduce\:animate-none  .ring
+    REMOVED (0)
+  So no other page lost a rule. Per-selector confirmation in the committed file:
+  $ grep -c '<selector>' web/static/css/tailwind.css
+    focus\:outline-indigo-500 -> 1; dark\:focus\:outline-indigo-400 -> 1;
+    focus\:outline-offset-2 -> 1; focus\:outline-2 -> 1; motion-reduce -> 1
+  Consequence: ACCESSIBILITY.md #9 (visible focus indicator) and #15
+  (prefers-reduced-motion) are now actually delivered, not just declared in
+  markup. Attempt 1's failure was precisely that these classes resolved to
+  nothing.
+
+  Other numbered points, checked mechanically against the served HTML:
+    #2  data tables use <th> with scope -- probe: `scope="col" count=4`, all
+        four headers, real <table>, no layout table. (Better than the
+        tax-optimizer.html precedent it mirrors, which has no scope at all.)
+    #3  links navigate / buttons act -- the trigger is a real <button>
+        (conversion-sweep.html:15), not a div.
+    #8  meaning never by colour alone -- "current" is a text badge on top of
+        the tint; survival pairs green with a check glyph and the word
+        "survives" (observed in the probe's raw HTML).
+    #10 focus restored after swap -- hx-on::after-swap focuses the results
+        heading, which is tabindex="-1" with the (now real) focus ring.
+    #12 dark-mode parity -- every colour class is paired with a dark: variant.
+    #15 spinner carries motion-reduce:animate-none, now backed by a CSS rule.
+  Contrast (#7/#12), computed with the WCAG relative-luminance formula over
+  every foreground/background pair in the new template (Tailwind v3 palette;
+  tailwind.config.js has `extend: {}` -- no custom palette, so the stock hexes
+  apply). 19 of 21 pairs pass:
+    th light gray-500/white 4.83   th dark gray-400/gray-800 5.78
+    cell light gray-800/white 14.68   cell dark gray-200/gray-800 11.86
+    cell on current row light 13.13   dark 11.38
+    "survives" green-700/white 5.02   green-400/gray-800 8.42
+    tax red-600/white 4.83            red-400/gray-800 5.31
+    IRMAA gray-600/white 7.56         gray-300/gray-800 9.96
+    "current" badge 6.41 light / 6.52 dark
+    button label white/indigo-600 6.29
+    card heading 14.68 / 13.34; card intro 7.56 / 5.78
+
+  STANDING OBSERVATION (carried forward verbatim from my attempt-1 verdict
+  item 7c; NOT a new finding and NOT the basis of any FAIL). The explanatory
+  footnote at conversion-sweep.html:76 uses `text-xs text-gray-400
+  dark:text-gray-500`:
+      gray-400 #9ca3af on white     -> 2.54:1  (ACCESSIBILITY.md #7 wants 4.5:1)
+      gray-500 #6b7280 on gray-800  -> 3.04:1  (fails in dark mode too, #12)
+  $ grep -rc 'text-gray-400 dark:text-gray-500' web/templates -r | wc -l
+    115 occurrences across the site, including tax-optimizer.html:146 and :184
+    -- the exact file the spec (line 42) told the worker to mirror.
+  I flagged this in attempt 1 as "reported, not the basis of the FAIL",
+  explicitly noting it should be fixed as its own site-wide task rather than
+  silently here, and the lead's attempt-2 brief scoped the rework to the two
+  defects only. I am holding that position for consistency: the worker
+  followed the mandated precedent, the deviation is pre-existing and
+  repo-wide, and it is unchanged from attempt 1. If the lead now wants
+  criterion 7 read strictly against ACCESSIBILITY.md #7 with no precedent
+  allowance, this is the one thing that would flip it -- that is a lead
+  decision about the standard, not a finding I can resolve, and it would
+  condemn 115 existing call sites along with this one.
+
+--------------------------------------------------------------------------
+SCOPE: clean. The attempt-2 manifest lists 4 files
+(handlers_sweep.go, handlers_sweep_test.go, conversion-sweep.html,
+web/static/css/tailwind.css); the working tree additionally carries
+handlers.go, whatif.html and render_conversion_sweep_test.go, all of which are
+attempt-1 changes still uncommitted on the same branch and all authorized by
+the brief. .swarm/ledger.tsv is lead bookkeeping. No critical glob touched.
+tmp/tailwind.check.css is a build artefact of my own `make css-verify` and is
+gitignored. `git status --porcelain` is byte-identical before and after my
+verification run apart from the other lane's verdict file appearing -- I
+created and edited nothing in the repo; both probes ran through
+`go test -overlay` from the scratchpad.
+Live instance: :8080 was never contacted, killed, restarted or rebuilt over.
+`make build` writes ./budget2, which replaces the file on disk but cannot
+disturb the already-running process (it holds the old inode); this was
+required by the brief.
+
+BOTTOM LINE: 7 of 7 criteria met with cited evidence. Both attempt-1 defects
+are fixed and independently reproduced: the deflation matches
+tax_optimizer.go:236-241 field-for-field, the fixture makes real and nominal
+diverge by ~10.5% on the asserted row, and a mutation test proves the new
+test -- and only that test -- fails when the nominal path is restored.

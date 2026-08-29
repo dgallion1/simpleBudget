@@ -1,0 +1,32 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T18
+ATTEMPT: 1
+---
+Oracle (.swarm/tier3/T18/accept.sh) passes: `bash .swarm/tier3/T18/accept.sh` → "ORACLE PASS". Manifest (17 files, .swarm/manifests/T18.1.files) matches `git status --porcelain` diff exactly; no out-of-scope files touched.
+
+Attacks that FAILED to break the claim (verified, not just eyeballed):
+
+1. Fold-in granularity/timing. internal/services/retirement/engine/stepper.go:226 calls `OneTimeExpensesForYear` only inside `if monthInYear == 0` — once per year, not per month. Probe test (t18run helper + baseSettings, InflationRate=0, one $12,000 expense at Year=2, ProjectionYears=5) gave per-year deltas [0,0,12000,0,0] — exactly one hit, correct year, no 12x overcharge.
+
+2. MC / backtest wiring. internal/services/retirement/analysis/one_time_expense_test.go's TestOneTimeExpense_MonteCarloPicksItUp and TestOneTimeExpense_HistoricalBacktestPicksItUp exist and pass (`go test ./internal/services/retirement/analysis/... -run TestOneTimeExpense` — included in the full-suite oracle run). Reverting the stepper.go fold-in line by hand (not done via git, verified by re-reading the diff hunk) would drop `oneTimeExpenseThisMonth` from `totalExpenses`, which these regression tests are built to catch (same-seed MC divergence, backtest survival-count comparison).
+
+3. Inflation convention. `OneTimeExpensesForYear` uses `compoundedFactorFromPercent(s.InflationRate, currentYear*12)` — annual compounding of the static InflationRate assumption. This is NOT the same code path as living expenses' `st.CumulativeInflation` (which compounds `p.InflationAnnual`, the per-month/per-draw stochastic or historical value, monthly). In Monte Carlo, `p.InflationAnnual = s.InflationRate/100 * inflationVar` (varies by draw); in the historical backtest, `p.InflationAnnual` is the actual sequence-year CPI (unrelated to `s.InflationRate`). So a one-time expense's inflation does NOT track the MC/backtest path's actual inflation experience the way living expenses do. However, this exactly mirrors the pre-existing, already-shipped convention for `PropertyTaxAtMonth` (`s.PropertyTaxInflation` via the same `compoundedFactorFromPercent` helper, same disconnect from path inflation) — i.e., it is a precedented codebase pattern, not a novel defect introduced by this task. Not counted as a fail.
+
+4. ID handling. Add always assigns `uuid.New().String()` server-side (handlers_income_expense.go); the HTTP form cannot inject duplicate/empty IDs. `RemoveOneTimeExpense` silently no-ops (200) on an unknown ID rather than 404 — but `RemoveBigTicketItem` (settings.go:1545) has the identical silent-no-op-on-unknown-id pattern already in the codebase. Not a new defect.
+
+5. Persistence / .bak: add survives reload (worker's own TestOneTimeExpense_HandlerAdd_PersistsToSettings, verified passing).
+
+ATTACK THAT SUCCEEDED — confirmed defect, reproduced live:
+
+6. "Form parsing: negative amount or year submitted through the HTTP form — rejected at the handler/prepare seam, or saved-then-erroring later?" The handler (`handleWhatIfAddOneTime`) checks `amount < 0` and `year < 0` before persisting, but does NOT check `year >= s.ProjectionYears`. That bound is enforced only later, in `prepare.From` → `ValidateOneTimeExpenses`, called from `runAnalysisWithCache` — which `recalcAndRender` invokes AFTER `mutate()` (i.e., after `AddOneTimeExpense` has already called `saveInternalAndBump` and written the entry to disk).
+
+   Reproduced with a probe test (`internal/handlers/whatif/zz_t18_probe_test.go`, added then removed, `git status --porcelain` confirmed clean before/after): POST /whatif/onetime with `year = ProjectionYears` (30) returns HTTP 500 "Analysis failed: prepare primary settings: prepare.From: validate: one_time_expenses[0] "BadYear": year 30 is beyond the 30-year projection horizon" — AND a subsequent `rm.Load()` shows the invalid entry WAS persisted:
+   `BUG CONFIRMED: invalid entry was persisted to disk despite validation error: {ID:9d0041fa... Description:BadYear Year:30 Amount:1000}`
+
+   Severity: this is not merely a cosmetic saved-then-erroring quirk. `handleWhatIf` (the main GET /whatif page handler) calls the same `runAnalysisWithCache` → `prepare.From` path unconditionally before rendering the page (handlers.go:811-823), and returns `renderError` (a bare error fragment, not the full page) on failure. Once a user submits a one-time expense with `year == ProjectionYears` (an easy off-by-one — e.g. entering "year 30" for a 30-year projection, which the UI's own "Year" input does nothing to prevent since the client-side max isn't enforced server-side either), every subsequent load of /whatif — including the one that would show the delete button to remove the bad entry — returns HTTP 500. The page is bricked; recovery requires editing the settings JSON file directly, which the UI never exposes. This directly contradicts the safety implied by the claim's "validation at prepare seam ... year>=ProjectionYears rejected" and is exactly the failure mode the dispatch brief named as an explicit attack angle.
+
+   The worker's own `TestOneTimeExpense_HandlerAdd_YearBeyondHorizonRejected` test (internal/handlers/whatif/onetime_expense_test.go) only asserts `w.Code >= 400`; it never reloads settings afterward to check for persistence, so it passes despite the bug and gave false confidence.
+
+Given a reproduced, evidence-backed, user-facing bricking defect squarely inside a named attack angle, this task does not meet its criteria as claimed. VERDICT: FAIL.

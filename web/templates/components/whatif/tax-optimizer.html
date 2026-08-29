@@ -25,6 +25,8 @@
         {{else}}
         Ending: {{formatMoney $best.EndingPortfolioReal}} real
         {{end}}
+        · peak marginal: {{if eq $best.PeakMarginalBracket 0.0}}&mdash;{{else}}{{printf "%.0f" $best.PeakMarginalBracket}}%{{end}}
+        · Roth converted: {{if eq $best.TotalRothConverted 0.0}}&mdash;{{else}}{{formatMoney $best.TotalRothConverted}} nominal{{end}}
     </div>
 
     {{/* Top alternatives table. The MC Median column is the actual sort
@@ -61,6 +63,12 @@
                         {{template "taxopt-th-tooltip" (dict "Label" "Lifetime Tax" "Tip" "Total federal + state + NIIT taxes paid over the full projection, in today's dollars. IRMAA is reported separately as a cost and not included here." "Align" "right")}}
                     </th>
                     <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
+                        {{template "taxopt-th-tooltip" (dict "Label" "Peak Rate" "Tip" "Highest per-year effective marginal rate this candidate reaches over the projection. It is measured, not looked up in a bracket table, so capital-gain stacking and the Social Security taxability phase-in can push it above every statutory bracket. Reporting only — not part of the ranking metric." "Align" "right")}}
+                    </th>
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
+                        {{template "taxopt-th-tooltip" (dict "Label" "Roth Conv" "Tip" "Total dollars this candidate actually converted to Roth over the projection, in nominal (not inflation-adjusted) dollars, unlike the real-dollar columns. Reflects what the engine realized, not what was planned. Renders as \"—\" when the candidate never converted." "Align" "right")}}
+                    </th>
+                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "Δ vs Baseline" "Tip" "Change in deterministic End Portfolio vs your current saved scenario. Green = improvement, amber = regression." "Align" "right")}}
                     </th>
                     {{if gt $to.MonteCarloRuns 0}}
@@ -88,6 +96,8 @@
                     <td class="py-2 px-2 text-right text-indigo-700 dark:text-indigo-300 font-semibold">{{formatMoney $c.MCMedianEndingReal}}</td>
                     {{end}}
                     <td class="py-2 px-2 text-right text-red-600 dark:text-red-400">{{formatMoney $c.LifetimeTaxReal}}</td>
+                    <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{if eq $c.PeakMarginalBracket 0.0}}&mdash;{{else}}{{printf "%.0f" $c.PeakMarginalBracket}}%{{end}}</td>
+                    <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{if eq $c.TotalRothConverted 0.0}}&mdash;{{else}}{{formatMoney $c.TotalRothConverted}}{{end}}</td>
                     <td class="py-2 px-2 text-right {{if gt $delta 0.0}}text-green-600 dark:text-green-400{{else if lt $delta 0.0}}text-amber-600 dark:text-amber-400{{else}}text-gray-500 dark:text-gray-400{{end}}">
                         {{if gt $delta 0.0}}+{{end}}{{formatMoney $delta}}
                     </td>
@@ -99,7 +109,7 @@
                 </tr>
                 {{if $c.PerYearConversions}}
                 <tr class="border-b dark:border-gray-700 {{if eq $i 0}}bg-green-50 dark:bg-green-900/20{{end}}">
-                    <td colspan="{{if gt $to.MonteCarloRuns 0}}7{{else}}5{{end}}" class="px-2 pb-2">
+                    <td colspan="{{if gt $to.MonteCarloRuns 0}}9{{else}}7{{end}}" class="px-2 pb-2">
                         <details class="text-xs text-gray-600 dark:text-gray-300">
                             <summary class="cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400">
                                 Show conversion amounts
@@ -153,6 +163,10 @@
             {{end}}
             <dt class="font-medium text-gray-700 dark:text-gray-200">Lifetime Tax</dt>
             <dd>Total federal + state + NIIT taxes paid over the projection, in today's dollars. (IRMAA is tracked separately as a cost.)</dd>
+            <dt class="font-medium text-gray-700 dark:text-gray-200">Peak Rate</dt>
+            <dd>Highest per-year effective marginal rate this candidate reaches over the projection — a measured rate, not a bracket-table lookup, so capital-gain stacking and the Social Security taxability phase-in can push it above every statutory bracket. Reporting only; not part of the ranking metric. Shown as &ldquo;&mdash;&rdquo; when the projection never recorded a rate.</dd>
+            <dt class="font-medium text-gray-700 dark:text-gray-200">Roth Conv</dt>
+            <dd>Total dollars this candidate actually converted to Roth over the projection, in nominal (not inflation-adjusted) dollars — unlike the other dollar columns here. Reflects what the engine realized, not what was planned. Shown as &ldquo;&mdash;&rdquo; when the candidate never converted.</dd>
             <dt class="font-medium text-gray-700 dark:text-gray-200">&Delta; vs Baseline</dt>
             <dd>Change in deterministic End Portfolio vs your current saved scenario. Green = improvement, amber = regression.</dd>
             {{if gt $to.MonteCarloRuns 0}}

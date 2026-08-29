@@ -1,0 +1,84 @@
+VERDICT: OVERRULE
+CHECKER: judge-standards
+FAMILY: adversarial
+TASK: T14
+ATTEMPT: 2
+---
+Facts verified independently (not just transcribed from the two verdicts):
+- go build ./... and go test ./internal/handlers/whatif/... -run TaxOptimizer
+  both pass on the actual worktree.
+- Diff is confined to web/templates/components/whatif/tax-optimizer.html
+  (16 +/-) and the new internal/handlers/whatif/tax_optimizer_render_test.go,
+  matching .swarm/manifests/T14.2.files exactly; the other modified paths in
+  git status are unrelated in-flight work (classifier/*, dataloader/*,
+  transaction.go, ledger.tsv).
+- Reproduced probe (a) myself on a scratch copy (sha256
+  eda62ab0...feae07a0 confirmed pristine before/after): deleting the two new
+  tbody <td> cells causes go test ./internal/handlers/whatif/... to FAIL, as
+  required.
+- Reproduced the swap probe myself: swapping only the inner expressions of
+  the Peak Rate <td> (line 99) and Roth Conv <td> (line 100) — so
+  TotalRothConverted's formatMoney output lands under the "Peak Rate" header
+  and PeakMarginalBracket's percent output lands under "Roth Conv" — leaves
+  ALL FOUR tests passing. This is a real, reproducible gap: the tbody
+  assertions are strings.Contains against the whole scoped tbody, not
+  positional/per-cell, so a column-identity regression ships silently.
+  checker-second's factual claim is correct; checker-tests' PASS did not
+  contest this fact, it simply wasn't in scope of what checker-tests
+  evaluated against.
+
+The two lanes therefore do not actually disagree on any fact. They disagree
+on whether the written standard for this attempt required this probe to be
+covered. That is the question this ruling turns on, and it must be answered
+from the text of "Written acceptance criteria for attempt 2," which is the
+sole governing document cited for this dispute (no SPEC.md/ACCESSIBILITY.md
+section is cited against T14 — this is a code-test-binding dispute, not a
+content/a11y one).
+
+Criterion 4 reads: "Tests must BIND — five enumerated mutation probes must
+fail: (a) ... (e) .... Body assertions scoped to tbody, header assertions to
+thead, colspan test counts real <th>s against the parsed colspan value."
+
+Read as written, the em-dash and colon introduce an operational definition,
+not an illustrative minimum. "Tests must bind" is immediately unpacked into
+a closed, lettered list (a)-(e) plus three named scoping/counting mechanics
+(tbody scoping, thead scoping, colspan-vs-parsed-th-count). Nothing in the
+sentence says "at least," "including," "such as," or "and equivalent
+mutations" — the phrasing one would expect if the enumeration were meant as
+representative rather than exhaustive. Compare to criterion 3, which is
+open ("Zero renders '—' in headline + body for both fields; glossary notes
+the dash") and is satisfied by whatever renders correctly, not by a fixed
+list — criterion 4's drafters clearly knew how to write an open requirement
+and chose not to here. That this is "attempt 2" reinforces the reading: the
+enumerated list is almost certainly the direct, deliberately narrowed
+response to attempt 1's specific vacuity failures (unscoped assertions,
+first-close truncation on nested tbody, "$0.00" collision) — precisely the
+failure modes (a)-(e) target. A column-swap regression is a different bug
+class (positional/identity, not presence/deletion/scope) that was not among
+those failure modes and was not added to the list for attempt 2.
+
+Independently, I verified all five enumerated probes are satisfied (probe
+(a) directly by me; (b)-(e) via checker-tests' cited before/after test
+output and file line references, which I read against the actual template
+and test file and found consistent with the source — e.g., thead/tbody
+extraction functions at lines 95-127, colspan literals at line 112 matching
+the 7/9 counted in tests, zero-dash guards at lines 28-29/99-100 matching
+the `eq $x 0.0` pattern). The scoping/counting mechanics named in criterion
+4 (tbody scoping, thead scoping, colspan-vs-real-<th>-count) are also
+implemented exactly as specified.
+
+checker-second's charter (CLAUDE.md: "asks 'what would make this wrong,'
+defaults to FAIL on ambiguity") governs why an adversarial lane exists and
+justifies probing beyond the four probes it re-ran from attempt 1 — but it
+does not relax the specific, closed acceptance text governing this
+particular attempt when that text is unambiguous. There is no ambiguity
+here to default against: criterion 4 enumerates exactly what "bind" means
+for this task, and the work meets it letter-for-letter. The swap defect is
+real, worth recording, and should become an explicit probe (f) — or a new
+task — for a future attempt; it is not, on the text as written, grounds to
+fail attempt 2.
+
+Ruling: OVERRULE. checker-second's FAIL is set aside; attempt 2 meets the
+written acceptance criteria. Recommend the lead record the swap-coverage gap
+as a follow-up item (e.g., an added probe (f) in a future SPEC.md ruling or
+a new lightweight task) rather than reopening T14 attempt 2.

@@ -170,6 +170,9 @@ var columnMappings = map[string][]string{
 		"transaction status", "Transaction Status", "TRANSACTION STATUS",
 		"state", "State",
 	},
+	"Original Description": {
+		"original description", "Original Description", "ORIGINAL DESCRIPTION",
+	},
 }
 
 // New creates a new DataLoader
@@ -515,6 +518,14 @@ func (dl *DataLoader) loadCSVFileForAccount(filePath string, acct *models.Accoun
 		// to distinguish scheduled bill-pays from posted checks.
 		if idx, ok := colIndex["Status"]; ok && idx < len(record) {
 			t.Status = strings.TrimSpace(record[idx])
+		}
+
+		// Parse Original Description (optional). Used by near-duplicate
+		// detection to catch a re-exported copy of the same bank row
+		// whose Description was rewritten but whose raw bank text
+		// wasn't. Absent column leaves this empty.
+		if idx, ok := colIndex["Original Description"]; ok && idx < len(record) {
+			t.OriginalDescription = strings.TrimSpace(record[idx])
 		}
 
 		t.Hash = t.ComputeHash()

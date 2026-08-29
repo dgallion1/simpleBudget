@@ -1,0 +1,102 @@
+VERDICT: OVERRULE
+CHECKER: judge-claude
+FAMILY: anthropic
+TASK: T14
+ATTEMPT: 2
+---
+Lens: correctness against the WRITTEN acceptance criteria for attempt 2.
+
+WHAT I VERIFIED MECHANICALLY (all in an rsync copy at
+scratchpad/b2j, .git excluded; no writing command of any kind was run in
+/home/darrell/bin/ai/budget2 — only `git status --porcelain`, `git diff
+--stat` and `git --no-pager diff`, all read-only. Both T14 files hash
+identical before and after my session:
+  tax-optimizer.html            eda62ab087e9b2094dea9db51bf2c453c697db2f1304c4ddad81a681feae07a0
+  tax_optimizer_render_test.go  5c4033e32a7773b679c93923c170fd69d8f99c3970fac2699abc64f8211b91c1
+These are the same hashes checker-second recorded, so the tree it probed is
+the tree I probed.)
+
+1. checker-second's factual claim is TRUE. I swapped only the inner
+   expressions of the two new <td>s (template lines 99/100) and ran
+   `go test -count=1 ./internal/handlers/whatif/ -run TaxOptimizer -v`:
+   all four TaxOptimizer tests PASS. The mutant survives. The claim is
+   reproducible and correctly diagnosed (strings.Contains within a scoped
+   tbody, never cell-under-its-own-header).
+
+2. checker-tests' claims are ALSO true. I re-ran all five enumerated
+   probes independently:
+     (a) delete the two new tbody <td>s -> FAIL (render_test.go:161,164,204)
+     (b) delete the two new <th>s      -> FAIL (Renders... + Colspan...)
+     (c) revert zero-dash, all 4 sites -> FAIL (ZeroRendersAsDash)
+     (d) stale colspan 9/7 -> 7/5      -> FAIL (Colspan..., both subtests)
+     (e) remove headline additions     -> FAIL (Renders... + ZeroRendersAsDash)
+   Criterion 1: `go build ./...` exit 0. Criterion 2: `go test -count=1
+   ./...` — zero non-ok packages. Criterion 5: `git diff --stat` on the
+   template is 15+/1-, and the diff is exactly the headline pair, the two
+   <th>s, the two <td>s, the colspan 7/5->9/7 bump, and the two glossary
+   dt/dd pairs; the test file is the only other path. Matches
+   .swarm/manifests/T14.2.files.
+
+3. The SHIPPED ARTIFACT IS CORRECT. I dumped the rendered output directly
+   (throwaway probe test, deleted after use) and parsed header labels
+   against cell order:
+     non-MC headers: Strategy, SS (P/S), End Portfolio, Lifetime Tax,
+                     Peak Rate, Roth Conv, Δ vs Baseline
+     non-MC row 0:   ..., $150,000.00, 40%, $123,456.00, +$50,000.00
+     MC headers:     ..., Lifetime Tax, Peak Rate, Roth Conv, Δ, MC Surv%
+     MC row 0:       ..., $150,000.00, 40%, $123,456.00, +$50,000.00, 0%
+     zero row:       ..., $180,000.00, &mdash;, &mdash;, $0.00
+   PeakMarginalBracket renders under "Peak Rate" and TotalRothConverted
+   under "Roth Conv", in both modes; the zero contract holds in exactly
+   those two positions. There is NO user-visible defect. What
+   checker-second found is a gap in future regression coverage, not a
+   wrong rendering.
+
+WHY THE FAIL DOES NOT HOLD
+
+(i) Criterion 4 defines "bind" operationally and exhaustively. It names
+five probes that must fail and names the three mechanisms that make them
+fail (body assertions scoped to tbody, header assertions to thead, colspan
+counted against parsed <th>s). All five bind; all three mechanisms are
+present and load-bearing. The written standard notes the swapped-cell probe
+was NOT among the enumerated criteria. Attempt 2's brief was a remediation
+brief written after attempt 1 precisely to make the bar decidable; reading
+"bind" as "no surviving mutant exists" makes the bar unbounded, and under
+that reading no attempt at any task could ever be accepted, because a
+further surviving mutant is always constructible (swap the two glossary
+<dd> bodies, swap the two <th> Tips, and so on).
+
+(ii) DECISIVE: the gap is pre-existing and table-wide, not introduced by
+T14. I swapped the two PRE-EXISTING cells — End Portfolio
+({{formatMoney $c.EndingPortfolioReal}}) and Lifetime Tax
+({{formatMoney $c.LifetimeTaxReal}}) — and ran
+`go test -count=1 ./internal/handlers/whatif/ ./internal/templates/`:
+both packages ok. So column-identity binding is absent for every column in
+this table, and has been since before T14. checker-second is holding T14's
+two new columns to a standard that none of the table's other five columns
+meets and that the brief did not ask for. Failing attempt 2 on it would
+require the worker to build a header-indexed cell-assertion harness that
+was never specified, for two columns, while five neighbouring columns keep
+the same gap — an inconsistent and unrequested remedy.
+
+(iii) checker-second's own framing concedes the point. Its root-cause
+paragraph faults "the task description's claim that the tests verify these
+two new columns 'as two table columns after Lifetime Tax'" as an
+overstatement. But that phrase in the task is a RENDERING requirement, and
+the rendering requirement is met — verified above from actual output. The
+overstatement, if any, is in a PASS narrative, not in the work. A checker
+may not fail the worker for a claim the worker did not make.
+
+CREDIT WHERE DUE. checker-second's finding is true, reproducible, honestly
+scoped (it lists seven checks that passed before naming the one that
+failed), and it restored and sha256-verified the template. This is the
+adversarial lane working as designed. The finding should be RECORDED as
+follow-up work — a small helper that parses the outer thead into an index
+map and asserts each row's cell at the header's index, applied to the whole
+tax-optimizer table, not just the two new columns. That is a new task, not
+a defect in T14.2.
+
+RULING: OVERRULE. The contested FAIL is set aside. Attempt 2 meets all five
+written criteria; the column-identity gap is a genuine but out-of-scope,
+pre-existing, non-user-visible coverage limitation and belongs in a
+follow-up task.

@@ -1,0 +1,157 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T14
+ATTEMPT: 2
+---
+All probes run against a scratchpad COPY of the repo
+(/tmp/.../scratchpad/b2, rsync -a, .git excluded). No writing git command was
+run in /home/darrell/bin/ai/budget2. `git status --porcelain` at start and end
+is identical except for one new file written by the other lane
+(.swarm/verdicts/T14.2.checker-second.verdict).
+
+C1 — go build ./... passes.
+  cmd: cd /home/darrell/bin/ai/budget2 && go build ./...
+  out: BUILD_EXIT=0
+  also: go vet ./... -> VET_EXIT=0 (no diagnostics)
+  PASS
+
+C2 — full go test ./... passes.
+  cmd: go test -count=1 ./...   (uncached, all 50 packages)
+  out: TEST_EXIT=0, zero non-"ok" lines
+  cmd: go test -count=1 -race -run TestWhatIfTaxOptimizer ./internal/handlers/whatif/
+  out: ok budget2/internal/handlers/whatif 1.554s
+  cmd: gofmt -l on the new test file -> no output
+  PASS
+
+C3 — both fields render in the headline AND as two columns after "Lifetime
+Tax", with taxopt-th-tooltip headers, glossary <dl> entries, and
+printf "%.0f"+% / formatMoney for non-zero.
+  Evidence is the RENDERED output, not the source: a probe test in the COPY
+  (zzz_probe_dump_test.go, deleted after use) called
+  renderer.RenderToString("whatif-tax-optimizer-results", ...) and wrote the
+  HTML to dump_nonmc.html / dump_mc.html / dump_zerobest.html.
+  headline (non-MC dump):
+    Best: SS 67, Fill 24% bracket, 67→72 — Ending: $900,000.00 real
+    · peak marginal: 40% · Roth converted: $123,456.00 nominal
+    ("40%" is printf "%.0f" of 40.5 + literal %; "$123,456.00" is formatMoney)
+  <thead> labels, parsed from the outer thead of each dump:
+    non-MC (7): Strategy, SS (P/S), End Portfolio, Lifetime Tax, Peak Rate,
+                Roth Conv, Δ vs Baseline
+    MC    (9): Strategy, SS (P/S), End Portfolio, MC Median ▼, Lifetime Tax,
+                Peak Rate, Roth Conv, Δ vs Baseline, MC Surv%
+    -> both new columns sit immediately after Lifetime Tax; both are rendered
+       through the taxopt-th-tooltip template (each label arrives wrapped in
+       the tooltip's <span ... title="...">LABEL</span>, which is how the
+       label regex extracted them).
+  <tbody> row 0 of the non-MC dump, cells in order:
+    ...$150,000.00 (Lifetime Tax) | 40% | $123,456.00 | +$50,000.00 (Δ)
+  glossary <dl>, dt/dd pairs parsed from the dump: "Peak Rate" and
+  "Roth Conv" entries present, in column order between "Lifetime Tax" and
+  "Δ vs Baseline".
+  PASS
+
+C4 — ZERO CONTRACT: zero renders &mdash; in headline and tbody, both fields;
+glossary notes the dash. Verified by rendering.
+  Contract source confirmed in internal/services/retirement/analysis/tax_optimizer.go
+  (projectionToCandidate doc comment): "They stay zero for a projection that
+  never converts or never records a rate, and the UI renders \"—\" for zero."
+  tbody, zero-valued candidate row from dump_nonmc.html (candidate 2,
+  "No conversions", PeakMarginalBracket=0, TotalRothConverted=0):
+    ...$180,000.00 | &mdash; | &mdash; | $0.00 (Δ, legitimately zero)
+    -> no "0%", no "$0.00" in either of the two fields under test.
+  headline, dump_zerobest.html (Best itself zeroed):
+    Best: SS 67, No conversions — Ending: $850,000.00 real
+    · peak marginal: &mdash; · Roth converted: &mdash;
+  glossary dd text (from the same rendered dump): Peak Rate — "Shown as
+  &ldquo;&mdash;&rdquo; when the projection never recorded a rate."; Roth Conv
+  — "Shown as &ldquo;&mdash;&rdquo; when the candidate never converted."
+  PASS
+
+C5 — details-row colspan is 9 (MC) / 7 (non-MC); no other column-count
+dependency missed.
+  cmd: regex colspan="(\d+)" over the rendered dumps
+  out: dump_mc.html -> ['9'] ; dump_nonmc.html -> ['7'] ; and the whole non-MC
+       document contains the string "colspan" exactly once, so there is no
+       second span to keep in sync inside this template.
+  Cross-check of the numbers against reality: rendered <th> count in <thead>
+  is 9 (MC) and 7 (non-MC) — matches the colspan in each mode.
+  Other consumers searched:
+    grep -rn colspan web/templates/components/whatif/ -> only line 112 of
+      tax-optimizer.html
+    grep -rn "tax-optimizer|taxopt|Peak Rate|Roth Conv" web/static/js/ -> no
+      matches (no JS indexes this table's columns)
+    grep -rn "whatif-tax-optimizer-results" web/templates -> only
+      pages/whatif.html:210 includes the panel; no snapshot/testdata fixture of
+      this table exists (grep -rln "Lifetime Tax" testdata/ web/ internal/
+      returns only the template itself).
+  PASS
+
+C6 — TESTS BIND. Attempt-1 mutation probes re-run by me, each on the COPY,
+template restored from a sha256-verified pristine copy after every probe
+(eda62ab087e9b2094dea9db51bf2c453c697db2f1304c4ddad81a681feae07a0 before and
+after each mutation).
+  (a) delete the two new tbody <td> cells (template lines 99-100):
+      --- FAIL: TestWhatIfTaxOptimizer_RendersPeakRateAndRothConverted
+      --- FAIL: TestWhatIfTaxOptimizer_ZeroRendersAsDash/table_body
+      failing assertions were the tbody-scoped ones:
+        render_test.go:161: expected table body to render 40% peak rate
+        render_test.go:164: expected table body to render $123,456.00
+      -> this is the exact attempt-1 vacuity: the headline still contains
+         "40%" and "$123,456.00", and the test still failed, so the tbody
+         scoping is real and load-bearing.
+  (b) delete the two new <th> headers (lines 65-70):
+      --- FAIL: TestWhatIfTaxOptimizer_RendersPeakRateAndRothConverted
+      --- FAIL: TestWhatIfTaxOptimizer_ColspanMatchesColumnCount (both subtests)
+      -> the glossary <dt>s still carry the identical label text "Peak Rate" /
+         "Roth Conv" and the test still failed: thead scoping is real.
+  (c) revert zero-dash to unconditional formatting (all four sites, headline
+      and tbody):
+      --- FAIL: TestWhatIfTaxOptimizer_ZeroRendersAsDash/table_body
+      --- FAIL: TestWhatIfTaxOptimizer_ZeroRendersAsDash/headline
+  (d) stale colspan (9/7 -> 7/5):
+      --- FAIL: TestWhatIfTaxOptimizer_ColspanMatchesColumnCount
+          both subtests (without and with Monte Carlo columns)
+  (e) remove the two headline additions (lines 28-29):
+      --- FAIL: TestWhatIfTaxOptimizer_RendersPeakRateAndRothConverted
+      --- FAIL: TestWhatIfTaxOptimizer_ZeroRendersAsDash/headline
+  (f) extra probe of mine — delete the two glossary <dt>/<dd> pairs:
+      --- FAIL at render_test.go:173 for both entries.
+  Test bodies read (internal/handlers/whatif/tax_optimizer_render_test.go):
+   - tbodyOf (L115-127) takes the FIRST "<tbody>" and the LAST "</tbody>".
+     The nested per-year-conversions table does render its own
+     <thead>/<tbody> inside the outer tbody — confirmed in dump_nonmc.html,
+     where parsed outer-tbody rows are: row0 = candidate 1, row1 = the
+     colspan details row containing the nested table, row2 = the nested
+     table's data row, row3 = the zero-valued "No conversions" candidate.
+     A first-close implementation would have truncated before row3; the zero
+     subtest locates "No conversions" inside the extracted slice and passes,
+     so the nested case is handled correctly.
+   - theadOf (L95-108) takes the first <thead>..</thead>; the outer thead
+     closes at template line 80, before the nested thead at line 119 — so the
+     extraction is the outer header row (label parse above confirms 7/9
+     outer labels, not the nested "Age"/"Conversion" pair).
+   - The zero subtest deliberately does NOT assert on "$0.00" globally; it
+     slices the single zero candidate's <tr> and requires exactly 2
+     "&mdash;", plus a negative assertion that "0%" is absent. That closes
+     the attempt-1 hole where the unrelated Δ-vs-Baseline "$0.00" satisfied
+     the assertion.
+   - TestWhatIfTaxOptimizer_ColspanMatchesColumnCount parses the rendered
+     colspan with regexp and compares it to strings.Count(thead, "<th") for
+     each mode, in addition to the 7/9 literals — it counts actual <th>s
+     against the parsed colspan value as required.
+  PASS
+
+C7 — Scope.
+  cmd: git diff --stat  -> the only T14 file modified is
+       web/templates/components/whatif/tax-optimizer.html (16 +/-).
+  cmd: git status --porcelain -> the only new T14 file is untracked
+       internal/handlers/whatif/tax_optimizer_render_test.go.
+  .swarm/manifests/T14.2.files lists exactly those two paths — matches.
+  The other modified paths (internal/services/classifier/*,
+  internal/services/dataloader/*, internal/models/transaction.go,
+  .swarm/ledger.tsv) are the unrelated in-flight work named in the brief;
+  T14 touched none of them.
+  .swarm/critical.globs (storage, dataloader, retirement/engine, transfers,
+  accounts.go, mcpsvc/confirm) — neither T14 file matches any glob.
+  PASS

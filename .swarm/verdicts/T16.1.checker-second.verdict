@@ -1,0 +1,90 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T16
+ATTEMPT: 1
+---
+Attacks attempted and outcome:
+
+1. Shared-handler leakage (handlers_rates.go). Read full handleWhatIfRothConversion:
+   ParseForm -> Load -> enabled/annual_amount/start_year/end_year validation (all with
+   error returns) happens BEFORE the `if r.FormValue("apply_source") == conversionSweepApplySource`
+   branch, so the Apply path cannot skip any validation the standalone path performs, and
+   vice versa (same code executes for both). Checked the standalone form template
+   (web/templates/components/whatif/roth-conversion.html): distinct <form> element, distinct
+   hx-target (#whatif-results vs #conversion-sweep-panel), no apply_source field anywhere —
+   no way for a standalone submit to accidentally carry apply_source or land on the sweep
+   render tail. `git diff HEAD~2 -- handlers_rates.go` shows only a 13-line additive branch
+   at the end of the function; no other changes.
+
+2. Marker logic (markBestConversionSweepRows / isLowerLifetimeTax / lastsLonger). Traced the
+   pairwise-tournament algorithm by hand for: survives-with-tiny-balance vs.
+   depletes-at-huge-month (survivor wins, test TestMarkBestConversionSweepRows_
+   SurvivesBeatsAnyDepletion, passes), 3-way tie on lifetime tax with amounts fed in
+   decreasing order (each pairwise step re-picks the smaller amount, so order cannot smuggle
+   a wrong winner — verified this isn't an iteration-order accident, not just an assumption),
+   equal ending balances, equal depletion months, single-row and empty-row cases (loop body
+   never executes past index 0, no panic, no out-of-bounds). Combined-marker and
+   distinct-marker cases both tested and pass. No case where I could produce a wrong winner.
+
+3. Apply flow. Verified via template (conversion-sweep.html) that RothStartYear/RothEndYear
+   are stamped onto every row from the SAVED settings at row-build time (not from a
+   previously-applied candidate), then round-tripped as hidden fields — confirmed by
+   TestConversionSweepApply_ThroughRealRouter, which sets start=3/end=12, applies a
+   different amount, and asserts the years survive a fresh Load() from disk. $0 apply:
+   template renders `enabled` hidden field as `{{if gt .Amount 0.0}}on{{end}}`, i.e. empty
+   for $0, and handleWhatIfRothConversion sets Enabled = (form value == "on") -> false;
+   TestConversionSweepApply_ZeroAmountDisablesConversion confirms Enabled=false AND
+   AnnualAmount=0 land on disk. Re-checked whether the $0 row would still show "current"
+   after that apply: conversionSweepCurrentAmount compares AnnualAmount only (not Enabled),
+   so 0==0 marks it current — correct, and consistent with pre-existing T15 semantics.
+   Concurrent double-Apply clicks: no new locking was added, but this is pre-existing
+   shared-infra behavior (retirementMgr.Save last-write-wins) untouched by T16 and not an
+   acceptance criterion here.
+
+4. Re-render freshness. saveAndRenderConversionSweep calls buildConversionSweepRows(settings)
+   AFTER SaveWithRevision, using the just-mutated settings pointer, so both the "current"
+   marker and the 9 projections are recomputed against the new plan, not served stale.
+   TestConversionSweepApply_ThroughRealRouter independently re-runs handleWhatIfConversionSweep
+   after the Apply response and confirms the SAME new current row from a fully separate
+   handler invocation, ruling out a "renders right once" artifact.
+
+5. Swap/target correctness: run button and Apply forms both target #conversion-sweep-panel
+   with hx-swap="innerHTML"; the results partial deliberately does not repeat the wrapper
+   div's id (comment explains this explicitly), so repeated swaps cannot nest a second
+   #conversion-sweep-panel or duplicate the aria-live banner. Confirmed by reading the
+   partial boundaries directly.
+
+6. aria-live banner: `{{if .Applied}}<div role="status" aria-live="polite">...</div>{{end}}`
+   — present only when Applied=true (button-triggered plain sweep run passes applied=false;
+   TestRenderConversionSweepResults_NoAppliedConfirmationOnPlainRun confirms absence). Only
+   one instance possible per render (single conditional block, no loop).
+
+7. tailwind.css: `git diff --stat HEAD~2 -- web/static/css/tailwind.css` = "1 file changed,
+   1 insertion(+), 1 deletion(-)" (the file is single-line minified output, so this is the
+   normal shape of any tailwind change). `make css-verify` independently regenerates and
+   confirms "tailwind.css is up to date" — nothing dropped, nothing stale.
+
+8. Critical globs / RunFull: `.swarm/critical.globs` includes
+   internal/services/retirement/engine/**; `git diff --stat HEAD~2` against that path is
+   empty. Grep for RunFull/MonteCarlo in the two changed handler files: only comment
+   references, no calls added.
+
+9. Tests are not vacuous or circular: TestHandleWhatIfConversionSweep_LifetimeTaxIsRealNotNominal
+   derives its expected value independently (re-running prepare.From + eng.Run + its own
+   deflation loop) rather than re-asserting the production formula, and asserts the real
+   figure is strictly less than analysis.BuildTax's nominal figure so the test can't
+   accidentally pass against a regression. TestConversionSweepApply_ThroughRealRouter uses
+   `chi.NewRouter()` + `RegisterRoutes(r)` + `httptest.NewServer` (confirmed by grep — real
+   route registration, not a hand-mounted handler) and separately reloads from disk via
+   rm.Load() rather than trusting the HTTP response body alone.
+
+10. Ran `go test ./internal/handlers/whatif/... -run 'ConversionSweep|Sweep' -race -count=1 -v`
+    myself: 20/20 pass, no race detected. Ran `make build`, `make test` (full `go test ./...`
+    plus the accounts re-run), `go vet ./...`, `gofmt -l` on all four changed Go files: all
+    clean/passing. `make css-verify` passes.
+
+No defect found despite targeted attempts on every listed attack surface plus a few of my
+own (single/empty-row marker edge cases, concurrent-apply infra, current-marking ignoring
+Enabled). Implementation matches CONVERSION_SWEEP_SPEC.md T16 acceptance criteria 1-4 and
+ACCESSIBILITY.md #8 and #10.

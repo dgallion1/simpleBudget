@@ -1,0 +1,93 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T18
+ATTEMPT: 3
+---
+Scope: git status --porcelain diff vs .swarm/manifests/T18.3.files. All 12
+files still `M`/untracked from attempts 1-2 remain in the tree, but mtimes
+confirm only the 5 manifest files (validate.go, validate_test.go,
+handlers_income_expense.go, onetime_expense_test.go, onetime-card.html) were
+touched in this attempt's window (2026-08-29 08:50-08:53); the rest are stale
+carryovers from attempt 1 (2026-08-28), unchanged. No new out-of-scope edits.
+
+Build/test/oracle: `go build ./...` clean, `go vet ./...` clean, `go test
+./...` all packages ok, `bash .swarm/tier3/T18/accept.sh` → ORACLE PASS
+(oracle_test.go was itself amended for the dormancy contract —
+TestT18Oracle_OutOfHorizonEntryIsDormantNotFatal covers year==horizon and a
+horizon-shrink-under-an-existing-entry case).
+
+Mutation tests (backed up via cp, sha256sum-verified byte-identical restore,
+git status --porcelain confirmed unchanged before/after):
+1. Deleted the handler-local `year >= current.ProjectionYears` reject block
+   in handlers_income_expense.go → TestOneTimeExpense_HandlerAdd_
+   YearBeyondHorizonRejected fails (only that test), confirming it is real
+   signal for the UX-typo guard. Restored, sha256 verified.
+2. Re-added a `year >= ProjectionYears` hard-error gate inside
+   ValidateOneTimeExpenses (the exact defect class this task removes) →
+   killed by three independent suites simultaneously: the oracle
+   (TestT18Oracle_OutOfHorizonEntryIsDormantNotFatal), the worker's own
+   validate_test.go (3 subtests: dormant-at-horizon, dormant-past-horizon,
+   TestOneTimeExpense_OutOfHorizonWiredThroughFromAsDormant), and
+   TestOneTimeExpense_HorizonShrinkKeepsPageAlive in the handler package.
+   Restored, sha256 verified.
+
+Attack angles probed live against scripts/whatif-verify.sh port 8128
+(:8080 never touched; torn down cleanly at the end):
+- Sweep endpoint (/whatif/conversion-sweep — builds engine input via
+  buildEngineInput → prepare.From) and /whatif/montecarlo: both return 200
+  with a dormant entry present (horizon 20, entry at year 25). Confirmed by
+  reading buildEngineInput — it funnels through the same prepare.From /
+  ValidateOneTimeExpenses choke point as the page handler, so dormancy-safety
+  is structural, not per-endpoint.
+- Reactivation exactness (30→add year 25→shrink 20 [dormant, hint shown,
+  page 200]→regrow 30 [hint gone, page 200]): same ID, same Amount (50000)
+  persisted throughout. OneTimeExpensesForYear recomputes
+  `e.Amount * compoundedFactorFromPercent(s.InflationRate, currentYear*12)`
+  fresh from static fields on every call — no cached/mutated inflation state
+  exists to double-apply, so "doubly inflated" or "re-ID'd on reactivation"
+  is structurally impossible, not just untested.
+- UI hint truthfulness: onetime-card.html uses `{{if ge .Item.Year
+  .Settings.ProjectionYears}}` — exact boundary match. The OOB flow
+  (whatif-results-with-oob → #onetime-list hx-swap-oob) is wired for the
+  mutating /whatif/settings handler (used by the projection-years slider),
+  so the hint appears/disappears live on horizon shrink/regrow without a
+  manual reload — verified by curl: hint text present in the same POST
+  response body that shrinks the horizon, absent in the regrow response.
+- Handler-local check honesty: uses `retirementMgr.Load()` (a verified real
+  deep copy per attempt-2's checker) read fresh inside the handler, not a
+  stale value — confirmed by reading the code, current.ProjectionYears is
+  the just-loaded value.
+- Huge year (1e9) at add time: rejected by the same `year >=
+  ProjectionYears` handler check (any realistic ProjectionYears is far
+  smaller), so a permanently-dormant huge-year entry cannot be created
+  through the add form; OneTimeExpensesForYear is only ever invoked by the
+  stepper for currentYear in [0, ProjectionYears), so even a huge Year value
+  already on disk (e.g. from direct file editing) can never reach the
+  compounding call, structurally.
+- amount=1e400 (out-of-range float): strconv.ParseFloat returns a range
+  error, correctly rejected with 400, not silently coerced to +Inf.
+
+Residual finding (not failing the contract): amount=NaN or amount=Inf
+submitted directly via HTTP (curl, not reachable by typing into the
+`type="number"` input in a real browser) passes both the handler's
+`amount < 0` check and ValidateOneTimeExpenses's `e.Amount < 0` check
+(NaN/Inf comparisons against 0 are false in Go), then fails downstream at
+`json.Marshal` (JSON has no NaN/Inf representation) with a leaked internal
+error string and an HTTP 500. Verified live: NOT persisted (settings file
+unchanged), and GET /whatif still returns 200 immediately after — so it is
+recoverable, not bricking, and cannot corrupt persisted money math (Go's
+JSON encoder is a hard backstop against ever writing NaN/Inf to disk from
+any write path). Also verified pre-existing/precedented: the same amount=NaN
+probe against /whatif/expense (a different, out-of-scope form) 500s
+identically, confirming this is a shared, already-shipped quirk of
+parseRequiredFormFloat/statusForMutationError, not something T18 introduced.
+Per the dispatch brief's severity-class test (normal user action ->
+unrecoverable/500, or silent money corruption) this does not qualify: the
+browser's number input blocks non-numeric entry, so it requires bypassing
+the UI, and neither corruption nor bricking follows. Noted for awareness,
+not a contract-class defect.
+
+No remaining path found that errors on a dormant entry across
+render/projection/sweep/MC/backtest/tax-optimizer paths; dormancy is exact
+at the horizon boundary; reactivation is exact and idempotent. VERDICT: PASS.

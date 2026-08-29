@@ -1,0 +1,157 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T12F
+ATTEMPT: 1
+---
+All verification ran in an isolated `cp -a` copy (.git preserved) at
+.../scratchpad/copy (pristine) and .../scratchpad/mut (mutation probes).
+The app was never started; nothing bound :8080. This verdict file is the ONLY
+write made to the real worktree.
+
+NOTE ON TREE DRIFT: the worktree moved under me mid-check. My snapshot matches
+manifest T12.1.files. A manifest T12.2.files and .swarm/verdicts/
+T12.1.checker-second.verdict (FAIL, adversarial) appeared during my run, and
+internal/handlers/whatif/results_full_test.go has since gained a test. Every
+result below is for the ATTEMPT-1 snapshot, which is what I was asked to judge.
+
+=== TABLE STAKES (all green on the pristine attempt-1 copy) ===
+`go version` -> go1.26.6 linux/amd64
+`go build ./...`     -> exit 0 ("Go build: Success")
+`go vet ./...`       -> exit 0 ("Go vet: No issues found")
+`staticcheck ./...`  -> exit 0, no findings
+`go test ./...` (bare, unfiltered, output to fulltest.log) -> TEST EXIT=0;
+  all 50 packages `ok`, incl. internal/handlers/whatif 15.471s and
+  internal/services/retirement 34.658s.
+`gofmt -l $(grep '\.go$' .swarm/manifests/T12.1.files)` -> empty output.
+
+=== SCOPE ===
+`git status --porcelain` in the copy lists exactly the 11 manifest files
+(+ .swarm/ledger.tsv bookkeeping + the untracked brief/manifest/results_full_test.go).
+`git status --porcelain -- internal/services/retirement/engine/` -> EMPTY.
+Cross-checked .swarm/critical.globs (storage, dataloader, retirement/engine,
+transfers, accounts.go, mcpsvc/confirm): none touched.
+`git diff --name-only $(git merge-base master HEAD)` agrees with the manifest.
+
+=== CRITERION-BY-CRITERION ===
+
+1. RunFull output unchanged by the refactor -- PASS.
+   Strongest oracle I ran (not just "suite is green"): wrote a throwaway
+   harness dumping runFullWithSeed(engine.New(), in, 42) as indented JSON, and
+   ran it in TWO copies -- one with internal/services/retirement/orchestrator.go
+   + orchestrator_parallel_test.go checked out from `master`, one at HEAD.
+     both wrote 193397 bytes
+     `cmp` -> "differ: byte 230, line 11"
+     `diff` -> exactly 2 lines, only:  "id": "e53b837a-..." vs "d797aedd-..."
+   CONTROL: ran the master harness a SECOND time -> the same "id" line differs
+   between two master runs ("e53b837a-..." vs "3200b5e6-..."), proving that
+   field is pre-existing per-run UUID nondeterminism, not refactor drift.
+     `grep -v '"id":'` on both, then `cmp` -> IDENTICAL over 5822 lines.
+   Plus TestRunFastMatchesRunFullCheapFields PASS (1.71s) and the whole
+   internal/services/retirement suite ok (34.658s).
+
+2. Cache-miss mutation render: no RunFull, loader div + skeletons, OOB kept
+   -- BEHAVIOR PASS, TEST DISCRIMINATION FAIL (see FINDING below).
+   TestCalculateCacheMissRendersFastWithLoader PASS; it asserts 200,
+   id="whatif-async-loader", data-wf-pending, absence of the real-MC marker
+   "scenarios with year-by-year", and RunFull count == 0.
+   The OOB clause is asserted by NO worker test, so I wrote my own oracle
+   (temp file in the mut copy, since deleted) POSTing /whatif/calculate cold:
+     hx-swap-oob occurrences: 20 | loader present: true | pending cards: 4
+   MUTATION (mine): renderRecalc reverted to blocking runAnalysisWithCache ->
+     TestCalculateCacheMissRendersFastWithLoader FAILED with 5 assertions
+     incl. "RunFull executed 1 times on a cache miss, want 0". KILLED.
+
+3. results-full: current hash -> full partial; stale -> 204 pre-compute;
+   settings change during compute -> 204 post-compute -- PASS.
+   TestResultsFullStaleHashNoContent / TestResultsFullRendersFullPartial /
+   TestResultsFullDetectsSettingsChangeDuringCompute all PASS.
+   My oracle on the full partial: status=200 pending=0 loader=false oob=0.
+   MUTATION A (assigned): inverted the pre-compute guard
+     `!= depHash` -> `== depHash`. Full whatif suite FAILED:
+     --- FAIL: TestResultsFullStaleHashNoContent
+     --- FAIL: TestResultsFullRendersFullPartial
+     --- FAIL: TestSingleflightConcurrentCalculateRunsFullAnalysisOnce
+     --- FAIL: TestSingleflightErrorResultNotCached          KILLED.
+   MUTATION B (mine): deleted the post-compute re-check block entirely.
+     Exactly one failure, the test named for it:
+     --- FAIL: TestResultsFullDetectsSettingsChangeDuringCompute   KILLED.
+     (All 10 sibling tests still PASS -> precise, non-overlapping coverage.)
+
+4. Chart JSON endpoints return on cache miss without RunFull -- PASS.
+   TestChartEndpointsDoNotBlockOnCacheMiss PASS (asserts 200 + valid JSON on
+   both /whatif/chart/projection and /whatif/chart/income, RunFull count 0).
+   MUTATION (mine): both chart handlers reverted to runAnalysisWithCache ->
+     "RunFull executed 1 times for chart endpoints on a cache miss, want 0"
+     --- FAIL: TestChartEndpointsDoNotBlockOnCacheMiss           KILLED.
+
+5. Cache hit renders full, no loader -- PASS.
+   TestCalculateCacheHitRendersFull PASS (asserts no whatif-async-loader,
+   real MC marker present, RunFull count 0 because the cache is pre-seeded).
+
+6. Singleflight coalescing / error-not-cached / panic / ctx-cancel on the new
+   endpoint -- PASS.
+   All four PASS after repointing: ...RunsFullAnalysisOnce (0.21s),
+   ...ErrorResultNotCached (0.01s), ...PanicFailsAllCoalescedRequests (0.10s),
+   ...WaiterHonorsContextCancellation (0.11s). TestMonteCarloRerollCoalesces
+   ...ConcurrentRequests untouched and PASS.
+   I read `git diff internal/handlers/whatif/singleflight_test.go` line by
+   line: the tests were translated from asserting returned `error` values to
+   asserting HTTP status + response body, and every guarded property survives
+   -- RunFull call counts (==1, ==2, still ==1 after cache warm) are
+   unchanged, errAnalysisPanicked and context.Canceled are still asserted
+   (now via strings.Contains on the rendered error body), the 5s
+   "waiter stayed parked" timeout is retained. Nothing weakened or deleted.
+   These tests do exercise real concurrency (8 goroutines + entered/release
+   channels), so they match their names.
+
+7. gofmt clean / build+vet+test+staticcheck green / manifest written -- PASS.
+   See TABLE STAKES. .swarm/manifests/T12.1.files exists, 11 lines, and
+   matches `git status` exactly.
+
+=== FINDING (why this is FAIL) ===
+Criterion 2's test does not discriminate on the loader's hash VALUE, so the
+core mechanism of the feature is unguarded.
+
+  MUTATION (independently reproduced by me, matching the adversarial
+  checker's finding): in analysisFastOrCached,
+      return a, depHash, nil   ->   return a, depHash + "x", nil
+  This is the "loader div renders with the wrong hash" attack. In production
+  it means the rendered loader's own GET can never match the current dep-hash,
+  so it 204s forever and the pending skeleton hangs permanently -- a silent,
+  total failure of fast-first.
+
+  Ran the FULL attempt-1 package suite against it:
+      go test ./internal/handlers/whatif/ -count=1
+      -> ok  budget2/internal/handlers/whatif  11.442s   (EXIT 0)
+  MUTATION SURVIVED. TestCalculateCacheMissRendersFastWithLoader only checks
+  strings.Contains(body, "/whatif/results-full?hash=") -- a prefix that a
+  corrupted or empty hash still satisfies. TestPollCacheMissRendersPending
+  only checks the div's id. Every results-full test feeds its own
+  independently-computed hash straight to the handler, bypassing the rendered
+  value, so no test ever round-trips render -> endpoint.
+
+  The shipped attempt-1 code is CORRECT (`return a, depHash, nil`); there is
+  no live user-facing bug. The defect is test discrimination, which is
+  precisely what this check exists to certify, and my instructions gate PASS
+  on mutation probes being killed. One was not.
+
+  CONFIRMATION the gap is real and attempt-1-specific: I applied the identical
+  mutation to the current (attempt-2) worktree and it is killed by three
+  tests -- TestCalculateCacheMissRendersFastWithLoader,
+  TestPollCacheMissRendersPending, and the new
+  TestPendingLoaderHashRoundTripsToFullResults. So the remedy is already
+  written; it is simply not part of attempt 1.
+
+WHAT IS MISSING (for the worker, not for me to fix): in
+internal/handlers/whatif/results_full_test.go, extract the hash from the
+rendered loader (regexp on hx-get="/whatif/results-full?hash=([^"]+)") and
+assert EQUALITY with the buildEngineInput dep-hash for the same settings, in
+both TestCalculateCacheMissRendersFastWithLoader and
+TestPollCacheMissRendersPending; and round-trip that extracted hash through
+handleWhatIfResultsFull expecting 200.
+
+All mutations were applied only in scratch copies. `diff -r` confirmed the
+mut copy was restored to the attempt-1 state after each probe, and the
+pristine copy matches the worktree (web/ IDENTICAL; internal/ differs only by
+the attempt-2 test additions that landed after my snapshot).

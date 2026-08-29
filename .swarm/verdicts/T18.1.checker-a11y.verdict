@@ -1,0 +1,126 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: T18
+ATTEMPT: 1
+---
+Scope: web/templates/components/whatif/onetime-card.html (new), included from
+web/templates/pages/whatif.html, handlers in
+internal/handlers/whatif/handlers_income_expense.go (POST /whatif/onetime,
+DELETE /whatif/onetime/{id}). Standard: WCAG 2.2 AA (no ACCESSIBILITY.md in
+this repo).
+
+Method: started scripts/whatif-verify.sh on port 8123 (isolated data/backups),
+loaded the real rendered page, added/removed one-time expenses via the actual
+UI form and via curl against the endpoints, ran `npx @axe-core/cli` against
+the live page, computed WCAG contrast ratios for every new Tailwind color
+pairing (light + dark), and drove the card with a headless Chromium
+(Playwright) session to observe focus behavior across htmx swaps. Server
+stopped cleanly at the end (`whatif-verify.sh stop 8123`).
+
+PASSING CHECKS (specific to the new card):
+1. Labels: #onetime-description, #onetime-year, #onetime-amount each have a
+   <label for=...> with matching id; ids are static/singular (the add-form
+   renders once, not per-row), so no duplicate-id risk. axe's "label" rule
+   (28 site-wide violations) does not cite any onetime-* input — confirmed by
+   grep against the axe output.
+2. Accessible names: submit button has visible text "Add one-time expense".
+   Remove button carries aria-label="Remove one-time expense {Description}",
+   naming WHICH row it removes (verified in rendered HTML after a real POST,
+   e.g. aria-label="Remove one-time expense New Roof"); its decorative SVG is
+   aria-hidden="true". axe found zero violations referencing onetime markup.
+3. Keyboard operability: all controls are native <button>/<input>; no
+   onclick-only non-focusable elements. Verified reachable and operable via
+   Playwright .focus()/.click() without a mouse.
+4. Calendar-year hint exposed to AT: the label text itself reads "Projection
+   year (0 = 2026)" and the per-item hint "Year 1 (2027)" is plain visible
+   text (not a title-only/visual-only tooltip) — read by AT with no extra
+   markup needed.
+5. No hidden-text abuse: no sr-only/aria-hidden misuse found in the new
+   template; the one aria-hidden (decorative X icon) is correctly paired with
+   a visible aria-label on the button.
+6. Focus retention on successful ADD: verified via Playwright — after a
+   successful POST, the submit button (outside the OOB-swapped #onetime-list)
+   keeps focus; document.activeElement is NOT document.body.
+7. Screenshots (onetime-light.png, onetime-dark.png) confirm every control in
+   the new card is visibly present and operable in BOTH themes — no
+   control that is visible in one theme and invisible in the other.
+
+FINDINGS TREATED AS OBSERVATIONS, NOT T18 FAILURES (each reproduced
+byte-for-byte identically in a sibling component that already shipped on this
+same page, i.e. pre-existing per the task's own scoping rule):
+
+A. Header hint contrast: `text-xs text-gray-400 dark:text-gray-500` on
+   "Roof, car, wedding..." computes to 2.54:1 on white (light) — below the
+   4.5:1 AA minimum for normal text. axe's color-contrast rule flags this
+   selector directly (nth-child(5) card). The IDENTICAL class combination
+   already exists in bigticket-card.html ("One-time events", nth-child(4),
+   also axe-flagged) and in ~40 other places across web/templates/components/
+   whatif/*.html (grep count). This is the site's established header-hint
+   pattern, not something introduced by T18.
+
+B. Dollar-amount contrast in dark mode: `text-red-400` on `bg-gray-700`
+   (item row) computes to 3.73:1 — below 4.5:1 for normal text (it does pass
+   the 3:1 non-text threshold for the adjacent icon). Identical
+   `text-red-600 dark:text-red-400` amount-display pattern is used verbatim
+   in bigticket-card.html, expense-sources-list.html, healthcare-card.html,
+   and a dozen more sibling components already on this page.
+
+C. Input border contrast: `border-gray-300` on white (no bg set) = 1.47:1,
+   below the 3:1 non-text (1.4.11) threshold for a form control's own
+   boundary. This exact class string (`border-gray-300 dark:border-gray-600
+   ...`) appears 92 times across web/templates/components/whatif/*.html —
+   it is the site-wide input style, copied verbatim into the new card.
+
+D. Error announcement: neither the onetime add-form's error div
+   (#whatif-add-onetime-error, populated via HX-Retarget on 4xx validation
+   failures) nor any sibling add-form's error div on this page carries
+   aria-live/role="alert" (grepped whatif.html + all whatif components: zero
+   hits, versus accounts.html/filemanager.html elsewhere in the app which DO
+   use role="status"/aria-live/role="alert" for the same purpose). This is a
+   real WCAG 4.1.3 gap but is identical across income/expense/healthcare/
+   bigticket/onetime add-forms — none of the five is different from another.
+
+E. Focus loss on remove (destructive): reproduced deterministically —
+   focusing the remove button, clicking it, and confirming a 200 response
+   from DELETE /whatif/onetime/{id} — document.activeElement becomes
+   document.body. This disorients keyboard/AT users (they lose their place).
+   Confirmed the IDENTICAL behavior on the pre-existing bigticket-card
+   "Delete big ticket" button (also lands on <body> after a successful
+   delete) — this is the shared OOB-swap pattern used by every list-item
+   delete button on the page (income sources, expense sources, healthcare
+   persons, big ticket items, one-time expenses), not something T18 added.
+
+F. Separately (functional, flagged for the primary code checker, not scored
+   here as an a11y fail): DELETE /whatif/onetime/{id} intermittently returned
+   500 under concurrent load in the headless-browser session (reproduced 3
+   times), landing on the shared `recalcAndRender`/`runAnalysisWithCache`
+   path used identically by every mutate-and-recalc handler on this page.
+   Because `renderError` for that path is not retargeted and the site's
+   `htmx:beforeSwap` hack only forces a swap for 4xx+HX-Retarget responses,
+   a 500 here is swallowed entirely client-side (console.error only, no
+   visible or AT-announced message) — worth a follow-up ticket, but it is
+   the same infrastructure gap for every delete button on the page, not
+   specific to T18's markup.
+
+Recommendation for the lead: A-E are real WCAG AA gaps but are page-wide
+design-system debt that predates this task and is reproduced identically in
+already-shipped sibling cards (bigticket, income, expense, healthcare). Since
+the task's own standard says pre-existing violations elsewhere on the page
+are notes, and each of these is byte-identical to a violation already present
+on this same page before T18, I am not blocking T18.1 on them. Recommend a
+single cross-cutting follow-up task (not scoped to T18) to: raise the
+gray-400 hint and red-400/red-600 amount colors to AA-passing shades, add
+role="status"/aria-live="polite" to all *-add-*-error divs on the what-if
+page, strengthen input borders to gray-400+/gray-500+, and give the OOB list
+swaps a shared focus-management helper (move focus to the list container or
+an adjacent remaining row after a delete) — fixing all five sibling cards
+together, since fixing only the new one would make it inconsistent with its
+siblings.
+
+Axe summary (full page, for context — not all attributable to T18):
+color-contrast: 55, label: 28, page-has-heading-one: 1, select-name: 11.
+None of the axe-reported selectors reference onetime-list, onetime-item,
+onetime-description/year/amount, or "Roof, car, wedding" — the two
+color-contrast hits nearest the new card are the header-hint span shared
+with bigticket-card (Finding A).

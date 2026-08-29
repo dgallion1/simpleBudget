@@ -83,6 +83,7 @@
                 {{template "whatif-income-card" .}}
                 {{template "whatif-healthcare-card" .}}
                 {{template "whatif-bigticket-card" .}}
+                {{template "whatif-onetime-card" .}}
                 {{template "whatif-expense-card" .}}
             </div>
         </div>
@@ -219,6 +220,7 @@
           {{end}}
         {{else}}{{template "whatif-social-security-results" .}}{{end}}
         {{template "whatif-tax-optimizer-results" .}}
+        {{template "whatif-conversion-sweep" .}}
     </div>
 </div>
 {{end}}
@@ -233,6 +235,7 @@
     <div id="whatif-add-expense-error" hx-swap-oob="true"></div>
     <div id="whatif-add-healthcare-error" hx-swap-oob="true"></div>
     <div id="whatif-add-bigticket-error" hx-swap-oob="true"></div>
+    <div id="whatif-add-onetime-error" hx-swap-oob="true"></div>
     <div id="whatif-portfolio-settings-card" hx-swap-oob="true">
         {{template "whatif-portfolio-settings" .}}
     </div>
@@ -337,6 +340,15 @@
     </div>
 
     {{template "whatif-removed-bigticket" .}}
+
+    {{/* One-time expenses list OOB update */}}
+    <div id="onetime-list" hx-swap-oob="true" class="space-y-2 mb-4">
+        {{range .Settings.OneTimeExpenses}}
+        {{template "whatif-onetime-item" (dict "Settings" $.Settings "Item" .)}}
+        {{else}}
+        <p class="text-sm text-gray-500 dark:text-gray-300 italic">No one-time expenses added</p>
+        {{end}}
+    </div>
 </template>
 {{end}}
 

@@ -1,0 +1,102 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T13
+ATTEMPT: 1
+---
+Attacked every criterion in IMPORT_FIXES_SPEC.md T13; every refutation attempt failed to break the implementation.
+
+1. Row identity (ComputeHash/StableIDFor untouched):
+   `command git diff -- internal/models/transaction.go` shows only an additive
+   field `OriginalDescription string \`json:"original_description,omitempty"\``
+   inserted before DisplayName; no hunk touches ComputeHash or StableIDFor.
+   Read internal/models/transaction.go:105-133 directly: ComputeHash still
+   hashes date|lower(Description)|amount; StableIDFor still takes
+   accountID/date/amountCents/occurrence. Neither references
+   OriginalDescription. `grep -rn "json.Marshal.*[Tt]ransaction"` across
+   internal/ found no non-test marshal call sites that would need updating;
+   the new field is additive+omitempty so it cannot change existing
+   serialized shape for old records.
+
+2. Normalization edge cases (scratch probes in
+   internal/services/dataloader/zzz_adversarial_probe_test.go, deleted after):
+   - Tab + double-space + case variants of the same Original Description ->
+     paired (TestProbe_Normalize_WhitespaceVariants: PASS/expected).
+   - Trailing period ("...AHSQ" vs "...AHSQ.") -> NOT paired
+     (TestProbe_Normalize_TrailingPeriodDiffers: PASS/expected) — confirms
+     normalizeOriginalDescription only lowercases + collapses whitespace,
+     doesn't strip punctuation, matching spec's literal contract.
+
+3. dayDiff boundary: exactly 1 day apart -> paired
+   (TestProbe_DayDiff_ExactlyOneDayPairs: PASS); 2 days apart -> not paired
+   (already covered by required test TestDetect_SameDayReimport_WindowExceeded,
+   reconfirmed via `go test -run` below). dayDiff() (near_duplicates.go:210-217)
+   is the pre-existing shared helper (Unix-seconds abs-diff / 86400,
+   truncating) — unmodified, so the new shape inherits the exact same
+   midnight-crossing semantics as the old shape; no new off-by-one introduced.
+
+4. Interaction with old shape:
+   - A bill-pay/check pair whose OriginalDescription ALSO matches still
+     yields exactly 1 pair (TestProbe_OldShapeAlsoMatchingOriginalDescription:
+     PASS) — isCandidatePair short-circuits on the OR, no double-count.
+   - A same-amount/day/OriginalDescription triplet pairs exactly 2, leaves 1,
+     and the chosen key is identical across two independent runs on the same
+     input (TestProbe_Triplet_PairsTwoLeavesOne: PASS) — greedy determinism
+     holds for the new shape too.
+
+5. False-pair guard: equal OriginalDescription but amount off by one cent ->
+   0 pairs (TestProbe_CentOffAmount_NoPair: PASS) — confirms the cents-bucket
+   partition in detectNearDuplicatePairs (near_duplicates.go:64-65) still
+   gates candidacy before isCandidatePair ever runs; the new shape cannot
+   bypass it.
+
+6. Positive-amount refunds: two identical positive-amount Outflow rows with
+   equal OriginalDescription -> 0 pairs (TestProbe_PositiveOutflowRefunds_NoPair:
+   PASS) — the `if t.Amount >= 0 { continue }` bucket filter
+   (near_duplicates.go:61-63) excludes them before either shape sees them.
+
+7. Transfers: existing TestLoadData_TransferIsNotANearDuplicateCandidate
+   passes (see full-suite run below). Additional probe: two Transfer-typed
+   rows with equal OriginalDescription, same day/amount -> 0 pairs
+   (TestProbe_TransferTypeEqualOriginal_NoPair: PASS) — the
+   `if t.TransactionType != models.Outflow { continue }` filter
+   (near_duplicates.go:58-60) excludes Transfer rows from the byCents index
+   entirely, so the new shape structurally cannot reach them.
+
+8. Suppression/stamping is shape-agnostic: read loader.go:983-1039
+   (applyDuplicateDetection). It iterates `pairs := detectNearDuplicatePairs(txns)`
+   generically and stamps `txns[i].DuplicatePairKey = pair.Key` on both
+   Left.Hash and Right.Hash lookups regardless of which isCandidatePair
+   branch produced the pair — no shape-specific branching at the stamping
+   site.
+
+9. Oracle honesty: ran `bash .swarm/tier3/T13/accept.sh` directly (not via
+   the worker's claim) -> build ok, all 5 named oracle tests
+   (TestDetect_SameDayReimport_{LucidPair,WindowExceeded,
+   DifferentOriginalDescription,EmptyOriginalNotPaired},
+   TestLoadCSVFile_OriginalDescription) reported PASS, invariant tests ok,
+   full `go test ./...` all packages ok, final line "ORACLE PASS", exit 0.
+   Inspected TestDetect_SameDayReimport_LucidPair directly
+   (near_duplicates_test.go): the two rows have DIFFERENT Description
+   ("Lucid BILL PMT ... AHSQ" vs "Lucid Bill a Ahsq"), SAME
+   OriginalDescription, same date/amount/status — a genuine Lucid-shaped
+   pair, not a strawman that only varies OriginalDescription.
+   TestLoadCSVFile_OriginalDescription (loader_test.go) writes a real CSV
+   with an "Original Description" header column and asserts the parsed
+   field on both rows plus a companion absent-column test asserting empty
+   string — matches spec item 1 exactly.
+
+10. Scope: `command git diff --stat -- internal/` shows 7 files touched:
+    transaction.go, loader.go, loader_test.go, near_duplicates.go,
+    near_duplicates_test.go (T13's) plus classifier.go/classifier_test.go
+    (3+7 lines) which the task brief attributes to the separately-verified
+    T12, confirmed by .swarm/manifests/T12.1.files listing exactly those two
+    classifier files and .swarm/manifests/T13.1.files listing exactly the
+    five dataloader/models files with no overlap. .swarm/ledger.tsv is
+    orchestration bookkeeping, not attributable to either task's diff scope.
+    No hunk outside internal/models/ + internal/services/dataloader/ is
+    attributable to T13.
+
+All required named tests plus 8 adversarial scratch probes (deleted after
+use; `git status --short` confirms no leftover scratch files) failed to
+surface a defect. VERDICT: PASS.

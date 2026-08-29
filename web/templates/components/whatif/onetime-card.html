@@ -1,0 +1,90 @@
+{{/* One-Time Expenses Card */}}
+{{/* Expects: .Settings with OneTimeExpenses and StartDate */}}
+{{define "whatif-onetime-card"}}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">One-Time Expenses</h3>
+        <span class="text-xs text-gray-400 dark:text-gray-500">Roof, car, wedding...</span>
+    </div>
+
+    {{template "whatif-onetime-list" .}}
+    {{template "whatif-add-onetime-form" .}}
+</div>
+{{end}}
+
+{{/* One-Time Expenses List */}}
+{{define "whatif-onetime-list"}}
+<div id="onetime-list" class="space-y-2 mb-4">
+    {{range .Settings.OneTimeExpenses}}
+    {{template "whatif-onetime-item" (dict "Settings" $.Settings "Item" .)}}
+    {{else}}
+    <p class="text-sm text-gray-500 dark:text-gray-300 italic">No one-time expenses added</p>
+    {{end}}
+</div>
+{{end}}
+
+{{/* Single One-Time Expense */}}
+{{define "whatif-onetime-item"}}
+<div class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
+    <div class="flex items-center justify-between mb-1">
+        <span class="font-medium dark:text-gray-200">{{.Item.Description}}</span>
+        <div class="flex items-center gap-2">
+            <span class="text-red-600 dark:text-red-400">-${{formatNumber .Item.Amount}}</span>
+            <button type="button" hx-delete="/whatif/onetime/{{.Item.ID}}" hx-target="#whatif-results"
+                class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                aria-label="Remove one-time expense {{.Item.Description}}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+    <div class="text-xs text-gray-600 dark:text-gray-300">
+        Year {{.Item.Year}}{{if .Settings.StartDate}} ({{add (startYear .Settings.StartDate) .Item.Year}}){{end}}
+    </div>
+    {{if ge .Item.Year .Settings.ProjectionYears}}
+    <div class="text-xs text-amber-600 dark:text-amber-400 mt-1">
+        beyond current horizon ({{.Settings.ProjectionYears}} yr) — not counted; edit the year or extend the projection to reactivate it
+    </div>
+    {{end}}
+</div>
+{{end}}
+
+{{/* Add One-Time Expense Form */}}
+{{define "whatif-add-onetime-form"}}
+<div id="whatif-add-onetime-error" class="mb-2"></div>
+<form hx-post="/whatif/onetime" hx-target="#whatif-results" hx-on::after-request="if(event.detail.successful) this.reset()"
+    class="space-y-2 border-t dark:border-gray-700 pt-3">
+    <div>
+        <label for="onetime-description" class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Description</label>
+        <input type="text" id="onetime-description" name="description" placeholder="e.g., New Roof"
+            class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" required>
+    </div>
+    <div class="grid grid-cols-2 gap-2">
+        <div>
+            <label for="onetime-year" class="block text-xs text-gray-500 dark:text-gray-300 mb-1">
+                Projection year (0 = {{if .Settings.StartDate}}{{startYear .Settings.StartDate}}{{else}}first year{{end}})
+            </label>
+            <input type="number" id="onetime-year" name="year"
+                class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0" max="99">
+        </div>
+        <div>
+            <label for="onetime-amount" class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Amount (today's dollars)</label>
+            <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                    <span class="text-gray-500 dark:text-gray-400 text-sm">$</span>
+                </div>
+                <input type="number" id="onetime-amount" name="amount" placeholder="Amount"
+                    class="pl-6 w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" min="0" required>
+            </div>
+        </div>
+    </div>
+    <div class="flex justify-end">
+        <button type="submit"
+            class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+            Add one-time expense
+        </button>
+    </div>
+</form>
+{{end}}

@@ -1,0 +1,170 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T13
+ATTEMPT: 1
+---
+Branch fix/import-dedup-classifier, uncommitted working tree (HEAD 37e8e08).
+Every claim below is backed by a command I ran; nothing is passed on inspection.
+
+C1. models.Transaction gains OriginalDescription; loader maps optional
+    "Original Description" column, trimmed, empty when absent; ComputeHash and
+    StableIDFor UNCHANGED.
+  - `command git diff -U0 internal/models/transaction.go | grep '^@@'` ->
+    exactly ONE hunk: `@@ -34,0 +35,10 @@ type Transaction struct` (+10 -0,
+    pure insertion inside the struct). No other line of the file changed, so
+    ComputeHash (line 106) and StableIDFor (line 131) cannot have moved.
+  - Direct byte-comparison against HEAD:
+    `awk '/ComputeHash/,/^}/' <wt> vs <git show HEAD:...>` + `cmp` ->
+    "ComputeHash IDENTICAL (10 lines)", "StableIDFor IDENTICAL (3 lines)";
+    `grep -c OriginalDescription` on both extracts -> 0.
+  - Field/tag text from the diff:
+    `OriginalDescription string \`json:"original_description,omitempty"\``.
+  - `sed -n '100,200p' internal/services/dataloader/loader.go` shows the new
+    mapping `"Original Description": {"original description",
+    "Original Description", "ORIGINAL DESCRIPTION"}` -- all three spec-required
+    variants; normalizeColumnName matches variants exactly and the string
+    appears in no other mapping list, so no collision with "Description".
+  - Diff of loader.go shows population guarded by
+    `if idx, ok := colIndex["Original Description"]; ok && idx < len(record)`
+    with `strings.TrimSpace(record[idx])` -> absent column leaves "".
+  - Behaviourally: `go test -count=1 -v -run TestLoadCSVFile_OriginalDescription
+    ./internal/services/dataloader/` ->
+    "--- PASS: TestLoadCSVFile_OriginalDescription" and
+    "--- PASS: TestLoadCSVFile_OriginalDescriptionAbsentColumnIsEmpty".
+  - Identity did not move: scratch-worktree probe
+    TestProbe_HashIgnoresOriginalDescription (two rows identical except
+    OriginalDescription) -> PASS, hashes equal.
+  - `go test -count=1 -v -run 'TestStableID|TestResolveByIdentity|TestComputeHash'
+    ./internal/models/ ./internal/services/dataloader/` -> 6 PASS, ok.
+  STATUS: MET.
+
+C2. Second candidate shape OR-ed into isCandidatePair; bucket filter and
+    greedy/deterministic pairing, pair keys, decisions/undo/suppression
+    unchanged.
+  - `command git diff -U0 internal/services/dataloader/near_duplicates.go |
+    grep '^@@'` -> two hunks, both at/after line 131 (isCandidatePair's doc
+    comment and body). Deleted lines are exactly 3: the two old doc-comment
+    lines and `return (aBP && bPC) || (aPC && bBP)`. detectNearDuplicatePairs'
+    body has NO hunk -> bucketing, ordering, tiebreak and DuplicatePair.Key
+    construction are textually unchanged.
+  - `sed -n '55,130p' near_duplicates.go` confirms the surviving bucket filter:
+    `t.TransactionType != models.Outflow -> continue`, `t.Amount >= 0 ->
+    continue`, cents bucket, sorted keys, smallest-dayDiff then
+    `txns[j].Hash < txns[bestJ].Hash` tiebreak, `Key: pairKey(identityKey(i),
+    identityKey(bestJ))`.
+  - New shape (read from the diff): isCandidatePair returns the old shape OR
+    isSameDayReimportPair, which enforces `dayDiff(a,b) > 1 -> false`,
+    `a.OriginalDescription == "" || b.OriginalDescription == "" -> false`, then
+    equality of normalizeOriginalDescription = ToLower+TrimSpace+
+    `regexp \s+ -> " "`. Matches the spec clause for clause.
+  - Whitespace/case folding actually works (not just present): scratch probe
+    TestProbe_WhitespaceAndCaseFolding pairs
+    "LUCID  BILL\tPMT   622400A0AHSQ" with "  lucid bill pmt 622400a0ahsq  "
+    at dayDiff=1 -> PASS.
+  - Sign guard still binds for the new shape: TestProbe_PositiveAmountNotPaired
+    (two +1580.43 Outflows, identical OriginalDescription) -> PASS (0 pairs).
+  - Pair-key/idempotency plumbing: `go test -count=1 -v -run TestDetect_
+    ./internal/services/dataloader/` -> TestDetect_PairKeyIsOrderIndependent
+    PASS, TestDetect_Idempotency PASS, plus all 8 pre-existing TestDetect_*
+    bill-pay/check cases PASS.
+  STATUS: MET.
+
+C3. Transfers stay excluded.
+  - `go test -count=1 -v -run TestLoadData_TransferIsNotANearDuplicateCandidate
+    ./internal/services/dataloader/` -> "--- PASS:
+    TestLoadData_TransferIsNotANearDuplicateCandidate".
+  - Stronger, targeted at the new shape: scratch probe
+    TestProbe_TransferNotPaired -- two models.Transfer rows, same day, same
+    -8571.35, IDENTICAL OriginalDescription "USAA FUNDS TRANSFER CR" (the
+    spec's live USAA rows) -> PASS, 0 pairs. The new shape cannot resurrect
+    transfers.
+  STATUS: MET.
+
+C4. Required tests exist, pass, and assert what their names claim; existing
+    near_duplicates and stable_id tests pass unmodified.
+  - `go test -count=1 -v -run 'TestDetect_SameDayReimport|
+    TestLoadCSVFile_OriginalDescription' ./internal/services/dataloader/` ->
+    all five required names "--- PASS": _LucidPair, _WindowExceeded,
+    _DifferentOriginalDescription, _EmptyOriginalNotPaired, and
+    TestLoadCSVFile_OriginalDescription.
+  - I read the test bodies (diff of near_duplicates_test.go / loader_test.go).
+    They assert what they name:
+    * _LucidPair: two rows, both 2026-08-12, both -1580.43, both status
+      "Posted", Descriptions differing ("Lucid BILL PMT ...622400A0AHSQ" vs
+      "Lucid Bill a Ahsq"), OriginalDescription identical -> asserts exactly 1
+      pair and non-empty Key. makeTx (read at near_duplicates_test.go:10-21)
+      sets TransactionType=models.Outflow and computes Hash, so the bucket
+      filter is genuinely exercised.
+    * _WindowExceeded: 2026-08-12 vs 2026-08-14 (dayDiff 2). NOT vacuous:
+      `grep -rn duplicateWindowDays` -> `duplicateWindowDays = 7`, so the outer
+      window admits these rows and only the new 1-day rule rejects them.
+    * _DifferentOriginalDescription: same day/amount, originals
+      "Lucid BILL PMT 622400A0AHSQ" vs "Some Other Raw Text" -> 0 pairs.
+    * _EmptyOriginalNotPaired: one side "" -> 0 pairs.
+    * TestLoadCSVFile_OriginalDescription: writes the spec's verbatim two-row
+      CSV (header includes "Original Description") and asserts both rows carry
+      the raw text; sibling test asserts "" when the column is absent.
+  - Existing tests unmodified: `command git diff -U0 near_duplicates_test.go
+    loader_test.go | grep '^-[^-]'` -> NO output (zero deleted/changed lines;
+    both test files are pure additions). stable_id_test.go (both
+    internal/models/ and internal/services/dataloader/) does not appear in
+    `command git diff --name-only` at all.
+  - Red -> green demonstrated independently, in a scratch git worktree at HEAD
+    (repo tree untouched; worktree removed afterwards):
+    (a) HEAD sources + new test files -> build failure, "models.Transaction has
+        no field or method OriginalDescription" (7 sites).
+    (b) HEAD near_duplicates.go with the new transaction.go and loader.go
+        ported in -> "--- FAIL: TestDetect_SameDayReimport_LucidPair", the
+        other three detection tests PASS (they are negative controls, so this
+        isolates LucidPair as the discriminating test for the detection change).
+  FINDING (non-blocking, reported for the lead): the spec describes the
+  LucidPair rows as "categories differing", but the unit test leaves Category
+  unset on both rows. The behaviour is nevertheless correct and I verified it
+  rather than assuming: `grep -n Category near_duplicates.go` -> no match
+  (detection never reads Category), and scratch probe
+  TestProbe_LucidPairWithDifferingCategories -- same rows with
+  Category="Category Pending" vs "Bills & Utilities" -- PASSES with 1 pair.
+  The test is therefore weaker than the spec's row description but not wrong,
+  and the loader test does carry the differing categories verbatim.
+  STATUS: MET (with the noted weakening).
+
+C5. Tier-3 oracle exits 0.
+  - `bash .swarm/tier3/T13/accept.sh; echo EXIT=$?` -> prints "== build ==",
+    "== named oracle tests ==", "== invariants preserved ==",
+    "== every consumer: full suite ==", 50 package lines all "ok", then
+    "ORACLE PASS" and "EXIT=0". No FAIL lines. Authoritative.
+  - `go vet ./...` -> no output, VET_EXIT=0.
+  STATUS: MET.
+
+C6. Diff confined to internal/models/ and internal/services/dataloader/.
+  - `command git diff --name-only` -> 8 files. Five are T13's and match
+    .swarm/manifests/T13.1.files EXACTLY (transaction.go, loader.go,
+    loader_test.go, near_duplicates.go, near_duplicates_test.go). The other
+    three are out of T13's remit and belong elsewhere per the brief:
+    internal/services/classifier/{classifier.go,classifier_test.go} (T12) and
+    .swarm/ledger.tsv (lead). No file outside internal/models/ or
+    internal/services/dataloader/ is attributable to T13.
+  - `command git diff --stat internal/models/ internal/services/dataloader/`
+    -> 5 files changed, 188 insertions(+), 3 deletions(-).
+  - critical.globs: `internal/services/dataloader/**` IS listed in
+    .swarm/critical.globs. T13 is Tier 3, which is the tier that permits it,
+    and the spec's own scope column names that directory. Noted, not a breach.
+  STATUS: MET.
+
+FINDING (non-blocking, no acceptance criterion and no repo gate covers it):
+  gofmt regression in internal/models/transaction.go. `gofmt -l internal/models/
+  internal/services/dataloader/` lists it; `gofmt -l` on `git show
+  HEAD:internal/models/transaction.go` lists NOTHING, so HEAD was clean and
+  this change made it unclean. Cause: the new doc comment splits the struct's
+  alignment group, so gofmt wants ID/Date/Amount/Description dealigned and
+  OriginalDescription's tag aligned to the second group (`gofmt -d` output).
+  loader_test.go is also gofmt-unclean but was ALREADY unclean at HEAD, so that
+  one is not a regression. I searched for an enforcing gate
+  (`grep -rn gofmt swarm/ Makefile .github`, and IMPORT_FIXES_SPEC.md) and found
+  none, so this does not fail any written criterion. One `gofmt -w` fixes it.
+
+Scope of my own actions: I edited nothing. The only scratch artefacts were in
+/tmp/.../scratchpad, including a detached git worktree at HEAD which I removed
+(`git worktree remove --force`; `git worktree list` shows only the repo, and
+`git status --porcelain` afterwards shows the same modified set as before).

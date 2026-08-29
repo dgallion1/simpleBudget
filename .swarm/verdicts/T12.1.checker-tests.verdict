@@ -1,157 +1,199 @@
-VERDICT: FAIL
+VERDICT: PASS
 CHECKER: checker-tests
 FAMILY: anthropic
 TASK: T12
 ATTEMPT: 1
 ---
-All verification ran in an isolated `cp -a` copy (.git preserved) at
-.../scratchpad/copy (pristine) and .../scratchpad/mut (mutation probes).
-The app was never started; nothing bound :8080. This verdict file is the ONLY
-write made to the real worktree.
+Repo /home/darrell/bin/ai/budget2, branch fix/import-dedup-classifier
+(`git branch --show-current` -> fix/import-dedup-classifier), work uncommitted
+in the working tree. Every assertion below is backed by a command I ran.
 
-NOTE ON TREE DRIFT: the worktree moved under me mid-check. My snapshot matches
-manifest T12.1.files. A manifest T12.2.files and .swarm/verdicts/
-T12.1.checker-second.verdict (FAIL, adversarial) appeared during my run, and
-internal/handlers/whatif/results_full_test.go has since gained a test. Every
-result below is for the ATTEMPT-1 snapshot, which is what I was asked to judge.
+--------------------------------------------------------------------
+C1. IsInternalTransfer category check: lowercased+trimmed category exactly
+    "transfer" => true, in addition to "credit card payment"; exact match
+    only ("Balance Transfer Fee" and "Transfers" must NOT match).
+--------------------------------------------------------------------
+RESULT: MET (behaviorally demonstrated, not inferred).
 
-=== TABLE STAKES (all green on the pristine attempt-1 copy) ===
-`go version` -> go1.26.6 linux/amd64
-`go build ./...`     -> exit 0 ("Go build: Success")
-`go vet ./...`       -> exit 0 ("Go vet: No issues found")
-`staticcheck ./...`  -> exit 0, no findings
-`go test ./...` (bare, unfiltered, output to fulltest.log) -> TEST EXIT=0;
-  all 50 packages `ok`, incl. internal/handlers/whatif 15.471s and
-  internal/services/retirement 34.658s.
-`gofmt -l $(grep '\.go$' .swarm/manifests/T12.1.files)` -> empty output.
+Code (`git diff internal/services/classifier/` via `rtk proxy`):
+    -	if catLower == "credit card payment" {
+    +	if catLower == "credit card payment" || catLower == "transfer" {
 
-=== SCOPE ===
-`git status --porcelain` in the copy lists exactly the 11 manifest files
-(+ .swarm/ledger.tsv bookkeeping + the untracked brief/manifest/results_full_test.go).
-`git status --porcelain -- internal/services/retirement/engine/` -> EMPTY.
-Cross-checked .swarm/critical.globs (storage, dataloader, retirement/engine,
-transfers, accounts.go, mcpsvc/confirm): none touched.
-`git diff --name-only $(git merge-base master HEAD)` agrees with the manifest.
+Because reading is not verification, I ran a behavioral probe against the
+working-tree classifier.go in a throwaway detached worktree (worktree at HEAD,
+current classifier.go/classifier_test.go copied in, probe_test.go added; both
+worktrees removed afterward, `git worktree list` shows only the repo and
+`git status --porcelain` shows no probe artifacts).
 
-=== CRITERION-BY-CRITERION ===
+Command: `go test ./internal/services/classifier/... -run TestProbe -v`
+Exit 0. Cases that isolate the CATEGORY path (description matches NO transfer
+pattern -- "WALMART GROCERY"), all PASS:
+    PASS TestProbe_CategoryPathIsolated/cat_Transfer_isolated        cat "Transfer"            => true
+    PASS TestProbe_CategoryPathIsolated/cat_transfer_lowercase       cat "transfer"            => true
+    PASS TestProbe_CategoryPathIsolated/cat_Transfer_padded_ws       cat "  Transfer  "        => true
+    PASS TestProbe_CategoryPathIsolated/cat_Transfer_TRIM+UPPER      cat "TRANSFER"            => true
+Exact-match-only (substring must NOT match), all PASS:
+    PASS .../cat_Transfers_plural            cat "Transfers"            => false
+    PASS .../cat_Balance_Transfer_Fee        cat "Balance Transfer Fee" => false
+    PASS .../cat_Transfer_Out                cat "Transfer Out"         => false
+    PASS .../cat_Bank_Transfer               cat "Bank Transfer"        => false
+Preserved behavior "category check is unconditional" (no income escape), PASS:
+    PASS .../cat_Transfer_+_income_kw_+_positive       desc "payroll deposit", cat "Transfer",            amt +5000 => true
+    PASS .../cat_CC_payment_+_income_kw_+_positive     desc "payroll deposit", cat "Credit Card Payment", amt +5000 => true
+The new branch is placed in the same unconditional `if` as the pre-existing
+"credit card payment" branch, and both behave identically under the probe.
 
-1. RunFull output unchanged by the refactor -- PASS.
-   Strongest oracle I ran (not just "suite is green"): wrote a throwaway
-   harness dumping runFullWithSeed(engine.New(), in, 42) as indented JSON, and
-   ran it in TWO copies -- one with internal/services/retirement/orchestrator.go
-   + orchestrator_parallel_test.go checked out from `master`, one at HEAD.
-     both wrote 193397 bytes
-     `cmp` -> "differ: byte 230, line 11"
-     `diff` -> exactly 2 lines, only:  "id": "e53b837a-..." vs "d797aedd-..."
-   CONTROL: ran the master harness a SECOND time -> the same "id" line differs
-   between two master runs ("e53b837a-..." vs "3200b5e6-..."), proving that
-   field is pre-existing per-run UUID nondeterminism, not refactor drift.
-     `grep -v '"id":'` on both, then `cmp` -> IDENTICAL over 5822 lines.
-   Plus TestRunFastMatchesRunFullCheapFields PASS (1.71s) and the whole
-   internal/services/retirement suite ok (34.658s).
+--------------------------------------------------------------------
+C2. "usaa transfer" added to InternalTransferPatterns, subject to the same
+    income-keyword escape as other patterns.
+--------------------------------------------------------------------
+RESULT: MET.
 
-2. Cache-miss mutation render: no RunFull, loader div + skeletons, OOB kept
-   -- BEHAVIOR PASS, TEST DISCRIMINATION FAIL (see FINDING below).
-   TestCalculateCacheMissRendersFastWithLoader PASS; it asserts 200,
-   id="whatif-async-loader", data-wf-pending, absence of the real-MC marker
-   "scenarios with year-by-year", and RunFull count == 0.
-   The OOB clause is asserted by NO worker test, so I wrote my own oracle
-   (temp file in the mut copy, since deleted) POSTing /whatif/calculate cold:
-     hx-swap-oob occurrences: 20 | loader present: true | pending cards: 4
-   MUTATION (mine): renderRecalc reverted to blocking runAnalysisWithCache ->
-     TestCalculateCacheMissRendersFastWithLoader FAILED with 5 assertions
-     incl. "RunFull executed 1 times on a cache miss, want 0". KILLED.
+Raw diff (`rtk proxy git diff -- internal/services/classifier/`) confirms the
+insertion lands inside `var InternalTransferPatterns = []string{` (the hunk
+header names the *preceding* symbol NeverIncomeKeywords, which is misleading;
+the hunk body shows the `InternalTransferPatterns` opening line at context):
+     var InternalTransferPatterns = []string{
+     	// Generic banking / credit-card payments
+     	"usaa funds transfer",
+    +	"usaa transfer",
+     	"internal transfer",
+Confirmed independently by `Read internal/services/classifier/classifier.go`:
+"usaa transfer" is line 57, inside InternalTransferPatterns (lines 54-77);
+NeverIncomeKeywords ends at line 47 and is unmodified.
 
-3. results-full: current hash -> full partial; stale -> 204 pre-compute;
-   settings change during compute -> 204 post-compute -- PASS.
-   TestResultsFullStaleHashNoContent / TestResultsFullRendersFullPartial /
-   TestResultsFullDetectsSettingsChangeDuringCompute all PASS.
-   My oracle on the full partial: status=200 pending=0 loader=false oob=0.
-   MUTATION A (assigned): inverted the pre-compute guard
-     `!= depHash` -> `== depHash`. Full whatif suite FAILED:
-     --- FAIL: TestResultsFullStaleHashNoContent
-     --- FAIL: TestResultsFullRendersFullPartial
-     --- FAIL: TestSingleflightConcurrentCalculateRunsFullAnalysisOnce
-     --- FAIL: TestSingleflightErrorResultNotCached          KILLED.
-   MUTATION B (mine): deleted the post-compute re-check block entirely.
-     Exactly one failure, the test named for it:
-     --- FAIL: TestResultsFullDetectsSettingsChangeDuringCompute   KILLED.
-     (All 10 sibling tests still PASS -> precise, non-overlapping coverage.)
+Probe (`go test ... -run TestProbe -v`), pattern path isolated from category:
+    PASS .../pattern_usaa_transfer                         desc "USAA Transfer",    cat "Category Pending", +8571.35 => true
+    PASS .../pattern_usaa_transfer_negative                desc "usaa transfer xyz", cat "",                 -8571.35 => true
+Income-keyword escape demonstrably applies to the NEW pattern:
+    PASS .../pattern_usaa_transfer_+_income_kw_+_positive  desc "USAA Transfer payroll", amt +8571.35 => false  (escaped)
+    PASS .../pattern_usaa_transfer_+_income_kw_+_negative  desc "USAA Transfer payroll", amt -8571.35 => true   (escape is positive-only, as before)
 
-4. Chart JSON endpoints return on cache miss without RunFull -- PASS.
-   TestChartEndpointsDoNotBlockOnCacheMiss PASS (asserts 200 + valid JSON on
-   both /whatif/chart/projection and /whatif/chart/income, RunFull count 0).
-   MUTATION (mine): both chart handlers reverted to runAnalysisWithCache ->
-     "RunFull executed 1 times for chart endpoints on a cache miss, want 0"
-     --- FAIL: TestChartEndpointsDoNotBlockOnCacheMiss           KILLED.
+--------------------------------------------------------------------
+C3. Preserved: rows already typed models.Transfer are never re-typed by
+    ClassifyTransactions.
+--------------------------------------------------------------------
+RESULT: MET.
 
-5. Cache hit renders full, no loader -- PASS.
-   TestCalculateCacheHitRendersFull PASS (asserts no whatif-async-loader,
-   real MC marker present, RunFull count 0 because the cache is pre-seeded).
+`rtk proxy git diff -- internal/services/classifier/` shows only two hunks in
+classifier.go (pattern insertion, category condition). ClassifyTransactions is
+untouched. Demonstrated behaviorally:
+Command: `go test ./internal/services/classifier/... -run TestProbe -v`
+    PASS TestProbe_ClassifyTransactionsSkipsTransfer
+which feeds a +8571.35 and a -8571.35 row both pre-typed models.Transfer plus a
+PAYROLL row, and asserts the two transfer rows keep TransactionType==Transfer
+AND keep their original signed amounts (no math.Abs normalization), while the
+PAYROLL row still classifies Income.
 
-6. Singleflight coalescing / error-not-cached / panic / ctx-cancel on the new
-   endpoint -- PASS.
-   All four PASS after repointing: ...RunsFullAnalysisOnce (0.21s),
-   ...ErrorResultNotCached (0.01s), ...PanicFailsAllCoalescedRequests (0.10s),
-   ...WaiterHonorsContextCancellation (0.11s). TestMonteCarloRerollCoalesces
-   ...ConcurrentRequests untouched and PASS.
-   I read `git diff internal/handlers/whatif/singleflight_test.go` line by
-   line: the tests were translated from asserting returned `error` values to
-   asserting HTTP status + response body, and every guarded property survives
-   -- RunFull call counts (==1, ==2, still ==1 after cache warm) are
-   unchanged, errAnalysisPanicked and context.Canceled are still asserted
-   (now via strings.Contains on the rendered error body), the 5s
-   "waiter stayed parked" timeout is retained. Nothing weakened or deleted.
-   These tests do exercise real concurrency (8 goroutines + entered/release
-   channels), so they match their names.
+--------------------------------------------------------------------
+C4. Required tests present in classifier_test.go (table-driven), all five.
+--------------------------------------------------------------------
+RESULT: MET (present and passing).
 
-7. gofmt clean / build+vet+test+staticcheck green / manifest written -- PASS.
-   See TABLE STAKES. .swarm/manifests/T12.1.files exists, 11 lines, and
-   matches `git status` exactly.
+Command: `go test ./internal/services/classifier/... -run TestIsInternalTransfer -v`
+Exit 0. I read the table (classifier_test.go lines 255-304; struct fields are
+{name, desc, cat, amount, want} and the loop at line 292-303 calls
+IsInternalTransfer and t.Errorf on mismatch -- the test asserts what its name
+claims). Required rows, each observed PASS by subtest name:
+  1. {Description "USAA Transfer", Category "Transfer", Amount 8571.35} -> true
+     line 273; PASS TestIsInternalTransfer/transfer_category
+  2. {Description "USAA Transfer", Category "Category Pending", 8571.35} -> true
+     line 274; PASS TestIsInternalTransfer/usaa_transfer_pattern
+  3. {Description "Balance Transfer Fee", Category "Fees"} -> false
+     line 280; PASS TestIsInternalTransfer/balance_transfer_fee
+  4. Category "Transfers" plural -> false
+     line 281; PASS TestIsInternalTransfer/transfer_category_plural_not_matched
+  5. Income regression {Description "transfer in from savings", Amount 500} -> false
+     line 289; PASS TestIsInternalTransfer/transfer_in_from_savings_income_keyword
 
-=== FINDING (why this is FAIL) ===
-Criterion 2's test does not discriminate on the loader's hash VALUE, so the
-core mechanism of the feature is unguarded.
+Red -> green demonstrated, not taken on the worker's word. Detached worktree at
+HEAD (pre-change classifier.go confirmed: `grep -n 'catLower == "transfer"\|"usaa transfer"'`
+matched nothing), new classifier_test.go copied in:
+Command: `go test ./internal/services/classifier/... -run TestIsInternalTransfer`
+Exit 1:
+    --- FAIL: TestIsInternalTransfer/transfer_category      IsInternalTransfer() = false, want true
+    --- FAIL: TestIsInternalTransfer/usaa_transfer_pattern  IsInternalTransfer() = false, want true
+The regression row (#5) and the negative rows (#3, #4) pass on BOTH trees,
+which is exactly what "keeps its current classification" requires.
 
-  MUTATION (independently reproduced by me, matching the adversarial
-  checker's finding): in analysisFastOrCached,
-      return a, depHash, nil   ->   return a, depHash + "x", nil
-  This is the "loader div renders with the wrong hash" attack. In production
-  it means the rendered loader's own GET can never match the current dep-hash,
-  so it 204s forever and the pending skeleton hangs permanently -- a silent,
-  total failure of fast-first.
+--------------------------------------------------------------------
+C5. go build ./... passes.
+--------------------------------------------------------------------
+RESULT: MET. Command: `rtk proxy go build ./...` -> exit 0 (run twice: once at
+the start, once after the concurrent T13 worker's dataloader/models edits
+landed; exit 0 both times).
 
-  Ran the FULL attempt-1 package suite against it:
-      go test ./internal/handlers/whatif/ -count=1
-      -> ok  budget2/internal/handlers/whatif  11.442s   (EXIT 0)
-  MUTATION SURVIVED. TestCalculateCacheMissRendersFastWithLoader only checks
-  strings.Contains(body, "/whatif/results-full?hash=") -- a prefix that a
-  corrupted or empty hash still satisfies. TestPollCacheMissRendersPending
-  only checks the div's id. Every results-full test feeds its own
-  independently-computed hash straight to the handler, bypassing the rendered
-  value, so no test ever round-trips render -> endpoint.
+--------------------------------------------------------------------
+C6. go test ./internal/services/classifier/... passes with the new tests present.
+--------------------------------------------------------------------
+RESULT: MET. Command: `rtk proxy go test ./internal/services/classifier/...`
+    ok  	budget2/internal/services/classifier	0.005s   (exit 0)
+`go vet ./internal/services/classifier/...` -> exit 0.
 
-  The shipped attempt-1 code is CORRECT (`return a, depHash, nil`); there is
-  no live user-facing bug. The defect is test discrimination, which is
-  precisely what this check exists to certify, and my instructions gate PASS
-  on mutation probes being killed. One was not.
+--------------------------------------------------------------------
+C7. go test ./internal/services/classifier/... ./internal/services/dataloader/... passes.
+--------------------------------------------------------------------
+RESULT: MET, and the dataloader package is GREEN (not red from the concurrent worker).
+Command: `rtk proxy go test ./internal/services/classifier/... ./internal/services/dataloader/...`
+    ok  	budget2/internal/services/classifier
+    ok  	budget2/internal/services/dataloader	1.422s   (exit 0)
 
-  CONFIRMATION the gap is real and attempt-1-specific: I applied the identical
-  mutation to the current (attempt-2) worktree and it is killed by three
-  tests -- TestCalculateCacheMissRendersFastWithLoader,
-  TestPollCacheMissRendersPending, and the new
-  TestPendingLoaderHashRoundTripsToFullResults. So the remedy is already
-  written; it is simply not part of attempt 1.
+Full suite, spec line 86 ("go test ./... passes, no regressions elsewhere"):
+`rtk proxy go test -count=1 ./...` -> exit 0, zero non-"ok" lines. This was run
+AFTER the concurrent T13 worker's edits to internal/models/transaction.go and
+internal/services/dataloader/{loader,near_duplicates}{,_test}.go had landed, so
+it is a current reading, not a stale one.
 
-WHAT IS MISSING (for the worker, not for me to fix): in
-internal/handlers/whatif/results_full_test.go, extract the hash from the
-rendered loader (regexp on hx-get="/whatif/results-full?hash=([^"]+)") and
-assert EQUALITY with the buildEngineInput dep-hash for the same settings, in
-both TestCalculateCacheMissRendersFastWithLoader and
-TestPollCacheMissRendersPending; and round-trip that extracted hash through
-handleWhatIfResultsFull expecting 200.
+Blast-radius check on the one real downstream consumer: `grep -rn
+"IsInternalTransfer\|InternalTransferPatterns" --include=*.go` shows
+internal/services/transfers/transfers.go:340 calls classifier.IsInternalTransfer
+as a gate on pairing. Command:
+`go test ./internal/services/transfers/... ./internal/services/dataloader/... ./internal/services/classifier/... ./internal/handlers/...`
+-> exit 0, all ok. Nothing in the classifier diff could have broken dataloader:
+the diff adds one slice element and one `||` clause and touches no shared state.
 
-All mutations were applied only in scratch copies. `diff -r` confirmed the
-mut copy was restored to the attempt-1 state after each probe, and the
-pristine copy matches the worktree (web/ IDENTICAL; internal/ differs only by
-the attempt-2 test additions that landed after my snapshot).
+--------------------------------------------------------------------
+C8. git diff internal/services/classifier/ --name-only shows only classifier
+    files; matches manifest .swarm/manifests/T12.1.files.
+--------------------------------------------------------------------
+RESULT: MET.
+
+Command: `rtk proxy git diff --name-only -- internal/services/classifier/`
+    internal/services/classifier/classifier.go
+    internal/services/classifier/classifier_test.go
+(Note: bare `git diff --name-only` under the rtk hook returns a diffstat, not
+names. All git output above was taken through `rtk proxy`.)
+
+`cat .swarm/manifests/T12.1.files` lists exactly those two paths. Diffstat:
+2 files changed, 9 insertions(+), 1 deletion(-).
+
+SCOPE: Tracked files modified tree-wide (`rtk proxy git status --porcelain`)
+are .swarm/ledger.tsv (lead bookkeeping: adds the T12/T13 dispatched rows),
+internal/models/transaction.go and internal/services/dataloader/{loader.go,
+loader_test.go,near_duplicates.go,near_duplicates_test.go} -- all attributable
+to the concurrent T13 worker, none in T12's manifest, explicitly out of my
+verdict's scope. T12 itself touched only internal/services/classifier/**, which
+is NOT listed in .swarm/critical.globs (that file covers storage, dataloader,
+retirement/engine, transfers, accounts.go, mcpsvc/confirm). No critical glob
+touched by T12.
+
+--------------------------------------------------------------------
+FINDING (does not fail a written criterion; flagged for the lead)
+--------------------------------------------------------------------
+The committed test file contains no test that would fail if change #1 (the
+category check) were reverted. Mutation-tested, not guessed: in the HEAD
+worktree I applied ONLY the pattern change ("usaa transfer" inserted, the
+`catLower == "transfer"` clause left absent -- verified by grep showing
+line 156 as `if catLower == "credit card payment" {`) and ran
+`go test ./internal/services/classifier/... -run TestIsInternalTransfer`:
+    ok  	budget2/internal/services/classifier	0.002s   (exit 0)
+The whole suite passes with the category feature removed. Cause: the spec's
+own required row #1 uses Description "USAA Transfer", which also matches the
+newly added "usaa transfer" pattern, so it is satisfied via the pattern path
+and never reaches the category branch. The category feature is therefore
+correct (proved by my C1 probe) but unguarded against future regression.
+Strictly against the written criteria this is a PASS -- the criteria require
+the five listed rows to be present and passing and red->green to be shown, and
+both are demonstrated -- but a one-line addition such as
+    {"transfer category isolated", "WALMART GROCERY", "Transfer", -100, true}
+would close it. Offered as a finding, not a repair; I did not edit any file.

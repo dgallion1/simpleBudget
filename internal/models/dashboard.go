@@ -64,12 +64,29 @@ type DashboardMetrics struct {
 	LivingTargetTotal     float64 `json:"living_target_total"`     // BudgetTarget * MonthsInRange
 	HealthcareTargetTotal float64 `json:"healthcare_target_total"` // HealthcareTarget * MonthsInRange
 
-	// Per-month running cumulative balance for combined Living + Healthcare
-	// against CombinedTarget. Element i = sum_{j<=i} (CombinedTarget -
-	// (LivingTrend[j] + HealthcareTrend[j])). Positive = ahead of budget
-	// (saved), negative = behind (overspent) — opposite sign convention from
-	// CombinedCumulativeDelta, which uses actual−target. Same length as
-	// TrendLabels when HasCombinedTarget; nil otherwise.
+	// Running cumulative balance for combined Living + Healthcare against
+	// CombinedTarget, walked one point per CALENDAR month (not transaction
+	// month — a different basis than TrendLabels/LivingExpensesTrend/
+	// HealthcareTrend above) over [rangeStart, rangeEnd] as passed to
+	// Calculate. Each point adds that calendar month's pro-rated target
+	// accrual (CombinedTarget * the fraction of MonthsInRange the month's
+	// in-range days represent) minus that month's actual outflow spend.
+	// Positive = ahead of budget (saved), negative = behind (overspent) —
+	// opposite sign convention from CombinedCumulativeDelta, which uses
+	// actual−target. Capped to the LAST 6 walked points for display; the
+	// running totals those points carry retain any dropped earlier months'
+	// carry-in.
+	//
+	// Precondition: Calculate's caller must pass a TransactionSet already
+	// filtered to [rangeStart, rangeEnd] — otherwise per-month spend will
+	// not sum to TotalExpenses and the invariant below breaks. All current
+	// callers do this (see metrics.Calculate's doc).
+	//
+	// Invariant: the last element equals -CombinedCumulativeDelta, up to
+	// float64 summation noise (not month-rounding slack) — the per-month
+	// accruals partition the range's days exactly, and the per-month
+	// spends partition TotalExpenses exactly under the precondition above.
+	// Populated only when HasCombinedTarget; nil otherwise.
 	CombinedCumulativeBalance []float64 `json:"combined_cumulative_balance"`
 }
 

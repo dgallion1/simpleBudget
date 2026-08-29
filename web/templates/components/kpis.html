@@ -189,7 +189,8 @@
                 <div id="sparkline-budget" class="h-10 mt-2"
                      data-values="{{toJSON .Metrics.CombinedCumulativeBalance}}"
                      data-color="#6366f1"
-                     data-mode="balance"></div>
+                     data-mode="balance"
+                     data-neutral-band="{{.BudgetVerdict.Eps}}"></div>
                 {{end}}
             </div>
             <div class="p-3 {{if $budgetOver}}bg-rose-100 dark:bg-rose-900/50{{else if $budgetHealthy}}bg-emerald-100 dark:bg-emerald-900/50{{else}}bg-gray-100 dark:bg-gray-700{{end}} rounded-full">

@@ -16,6 +16,12 @@ func TestBuildBudgetVerdict(t *testing.T) {
 		if v.HasTarget {
 			t.Errorf("HasTarget = true, want false")
 		}
+		// Eps is set unconditionally, even on the nil-metrics early return —
+		// the sparkline dead band must match the card's onBudgetEps
+		// regardless of whether a target is configured.
+		if v.Eps != 1.0 {
+			t.Errorf("Eps = %v, want 1.0", v.Eps)
+		}
 	})
 
 	t.Run("no combined target is neutral", func(t *testing.T) {
@@ -53,6 +59,9 @@ func TestBuildBudgetVerdict(t *testing.T) {
 		}
 		if v.TargetTotal != 10000 {
 			t.Errorf("TargetTotal = %v, want 10000", v.TargetTotal)
+		}
+		if v.Eps != 1.0 {
+			t.Errorf("Eps = %v, want 1.0", v.Eps)
 		}
 	})
 

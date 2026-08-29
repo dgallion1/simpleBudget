@@ -67,7 +67,7 @@ func TestWhatIfCalculateAndSync_PreserveActiveScenario(t *testing.T) {
 		handler http.HandlerFunc
 	}{
 		{"calculate", "/whatif/calculate", handleWhatIfCalculate},
-		{"sync", "/whatif/sync", handleWhatIfSync},
+		{"sync-apply", "/whatif/sync/apply", handleWhatIfSyncApply},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -1058,6 +1058,131 @@ func TestPhaseAdjustedMonthlyTarget_StraddlesPhaseTransition(t *testing.T) {
 	}
 }
 
+// --- TargetProvenance ---
+
+func TestTargetProvenance_NilSettings(t *testing.T) {
+	got := TargetProvenance(nil,
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC))
+	if got.Annotate {
+		t.Errorf("Annotate = true, want false for nil settings")
+	}
+	if got != (BudgetTargetProvenance{}) {
+		t.Errorf("TargetProvenance(nil, ...) = %+v, want zero value", got)
+	}
+}
+
+func TestTargetProvenance_ZeroBaseExpenses(t *testing.T) {
+	s := makePhaseSettings(t, 0, "2025-01", 70, true)
+	got := TargetProvenance(s,
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC))
+	if got.Annotate {
+		t.Errorf("Annotate = true, want false when MonthlyLivingExpenses is zero")
+	}
+	if got.Base != 0 {
+		t.Errorf("Base = %v, want 0 (no budget configured sentinel)", got.Base)
+	}
+}
+
+func TestTargetProvenance_PhasesDisabled(t *testing.T) {
+	s := makePhaseSettings(t, 5000, "2025-01", 86, false) // No-Go age, but phases off
+	got := TargetProvenance(s,
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC))
+	if got.Annotate {
+		t.Errorf("Annotate = true, want false when phases are disabled")
+	}
+	if !floatEqual(got.Base, 5000) {
+		t.Errorf("Base = %v, want 5000", got.Base)
+	}
+	if !floatEqual(got.Multiplier, 1.0) {
+		t.Errorf("Multiplier = %v, want 1.0 when phases disabled", got.Multiplier)
+	}
+}
+
+func TestTargetProvenance_NoPhaseConfig(t *testing.T) {
+	s := makePhaseSettings(t, 5000, "2025-01", 86, true)
+	s.SpendingPhaseConfig = nil
+	got := TargetProvenance(s,
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC))
+	if got.Annotate {
+		t.Errorf("Annotate = true, want false when no phase config exists")
+	}
+}
+
+func TestTargetProvenance_GoGoPhase_MultiplierOne_NoAnnotate(t *testing.T) {
+	// Default Go-Go starts at age 0 -> multiplier 1.0. Primary is 60 at
+	// start -> still in Go-Go for the whole 12-month range. Annotating a
+	// 1.0 multiplier adds noise, not information -- must not annotate.
+	s := makePhaseSettings(t, 5000, "2025-01", 60, true)
+	got := TargetProvenance(s,
+		time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC))
+	if got.Annotate {
+		t.Errorf("Annotate = true, want false when effective multiplier is 1.0")
+	}
+	if !floatEqual(got.Multiplier, 1.0) {
+		t.Errorf("Multiplier = %v, want 1.0", got.Multiplier)
+	}
+}
+
+func TestTargetProvenance_SinglePhaseAcrossRange(t *testing.T) {
+	// Primary is 86 at start -> No-Go phase (multiplier 0.65) for the
+	// whole 12-month range: single phase, no straddling.
+	s := makePhaseSettings(t, 5000, "2025-01", 86, true)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC)
+
+	got := TargetProvenance(s, start, end)
+	if !got.Annotate {
+		t.Fatalf("Annotate = false, want true (multiplier 0.65 != 1.0)")
+	}
+	if !floatEqual(got.Base, 5000) {
+		t.Errorf("Base = %v, want 5000", got.Base)
+	}
+	if !floatEqual(got.Multiplier, 0.65) {
+		t.Errorf("Multiplier = %v, want 0.65", got.Multiplier)
+	}
+	if got.PhaseName != "No-Go" {
+		t.Errorf("PhaseName = %q, want %q", got.PhaseName, "No-Go")
+	}
+	if got.Straddles {
+		t.Errorf("Straddles = true, want false (single phase across the whole range)")
+	}
+	// Cross-check: target/base must equal the walk's own multiplier
+	// (the brief requires reading it from the walk, not re-deriving by
+	// division -- this asserts the two never drift apart).
+	target := phaseAdjustedMonthlyTarget(s, start, end)
+	if !floatEqual(target/got.Base, got.Multiplier) {
+		t.Errorf("target/base = %v, want got.Multiplier %v", target/got.Base, got.Multiplier)
+	}
+}
+
+func TestTargetProvenance_StraddlesTransition_WeightedAverage(t *testing.T) {
+	// Primary is 64 at start, range spans Jan 2025 -> Dec 2026 (24
+	// months). Year 1 (age 64) is Go-Go (1.00); year 2 (age 65) is
+	// Active (0.95). Average multiplier = (12*1.00 + 12*0.95)/24 = 0.975.
+	s := makePhaseSettings(t, 5000, "2025-01", 64, true)
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
+
+	got := TargetProvenance(s, start, end)
+	if !got.Annotate {
+		t.Fatalf("Annotate = false, want true")
+	}
+	if !floatEqual(got.Multiplier, 0.975) {
+		t.Errorf("Multiplier = %v, want 0.975 (weighted average)", got.Multiplier)
+	}
+	if !got.Straddles {
+		t.Errorf("Straddles = false, want true (range crosses Go-Go -> Active)")
+	}
+	if got.PhaseName != "Go-Go" {
+		t.Errorf("PhaseName = %q, want %q (phase active at range start)", got.PhaseName, "Go-Go")
+	}
+}
+
 func TestPhaseAdjustedMonthlyTarget_FlowsIntoCalculateMetrics(t *testing.T) {
 	// Verify the full pipeline: phase-adjusted target reaches DashboardMetrics.
 	s := makePhaseSettings(t, 5000, "2025-01", 86, true) // No-Go (0.65)

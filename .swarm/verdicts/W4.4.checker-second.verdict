@@ -1,0 +1,40 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: W4
+ATTEMPT: 4
+---
+Reproduction environment: copy of /home/darrell/bin/ai/budget2 (branch fix/phase-visibility) in scratchpad; no writes made to the real tree except this verdict file.
+
+Baseline (confirmed, matches worker's claim):
+- `.swarm/tier3/W4/accept.sh` -> "ORACLE PASS" (5/5 checks) when re-run against the copy.
+- `go build ./...`, `go vet ./...`, `go test ./internal/handlers/dashboard/` all green.
+- kpis.html now derives $budgetOver/$budgetHealthy from `.BudgetVerdict.IsOver`/`.IsUnder` (not a bare `gt .Metrics.CombinedCumulativeDelta 0.0` literal); the bucket-row wording/color also reads `.BudgetVerdict.Living.Status`/`.Healthcare.Status` instead of a second `gt .Metrics.CumulativeDelta 0.0` comparison. dashboard-verdict-bar.html already used `$v.IsOver`/`$v.IsUnder`. verdict.go is byte-identical to attempt 3 (unchanged), confirming the fix was applied at the template call site the attempt-3 FAIL named.
+- Boundary sweep of Delta/bucket deltas at -1.01/-1.00/-0.99/-0.60/0.60/0.99/1.00/1.01 (traced through classifyBucket/BuildBudgetVerdict and cross-checked against the oracle's own TestOracleW4DeadBandParity cases): tint, headline word, bucket-row wording, and banner severity all read the same IsOver/IsUnder/Status fields, so they cannot disagree with each other — the dead-band is applied exactly once and consumed everywhere. No regression at the old ±1.0 literal boundary either (same strict `>`/`<` semantics as the pre-fix literals).
+- HasTarget=false and single-bucket cases: $budgetOver/$budgetHealthy both require `.BudgetVerdict.HasTarget`; unconfigured buckets render "on target" via classifyBucket's early return. No phantom classification found.
+
+FAIL — a same-figure disagreement survives elsewhere on the same page/card that the ruling requires be eliminated ("PASS only if no same-figure disagreement survives anywhere on the page"):
+
+The Budget KPI card (web/templates/components/kpis.html) embeds a sparkline:
+  <div id="sparkline-budget" ... data-values="{{toJSON .Metrics.CombinedCumulativeBalance}}" data-mode="balance"></div>
+rendered client-side by `renderSparkline(..., {mode:'balance'})` in web/static/js/charts.js (lines ~275-310):
+  const above = values.map(v => v > 0 ? v : 0);   // green fill
+  const below = values.map(v => v < 0 ? v : 0);   // red fill
+This is a bare zero-crossing classification with NO dead-band and NO neutral state — any nonzero value colors red or green.
+
+CombinedCumulativeBalance is not a "distinct labeled series" — it is the SAME cumulative figure BudgetVerdict classifies, just balance-signed (target-actual, opposite convention from Delta=actual-target). The codebase's own test proves this:
+  internal/services/metrics/metrics_test.go:920 TestCalculateMetrics_CombinedCumulativeBalance_LastIsNegationOfCumulativeDelta
+  "Invariant: the last value of CombinedCumulativeBalance must equal the negation of CombinedCumulativeDelta ... If they fail to negate, the chart and the Budget KPI card will show contradictory over/under signs."
+(For whole-calendar-month ranges the two are numerically very close; the test itself only allows ~$100 slack for month-length rounding, not because they are a different figure.)
+
+Consequence: whenever BudgetVerdict.Delta falls in the dead-band ((-1,1), nonzero — the common case, since landing on exactly 0.00 is measure-zero), the card's own classification renders neutral (gray tint, "On budget" headline, gray bucket-row text per Ruling 2026-08-29a) while the sparkline's LAST point (the same total, balance-signed) still gets colored red (if slightly over) or green (if slightly under), because the JS threshold has no dead-band and no neutral branch at all. E.g. Delta = +$0.50 (50 cents over, inside the $1 dead-band): headline says "On budget" / gray tint / gray "on target" bucket rows, but the sparkline-budget widget's last segment is red (below[last] = -0.50 < 0). This is exactly the class of defect the ruling targets (attempt-1's "$0.60 both clean and red"), just relocated from the card's own tint/headline into its embedded chart rather than fixed there.
+
+Why this was not caught: `.swarm/tier3/W4/accept.sh` only renders Go templates to strings (`renderer.RenderToString`) and grep/counts CSS classes and text in the resulting HTML. It never inspects `data-values`/`data-mode` attributes or executes web/static/js/charts.js, so it has zero coverage of the client-side coloring path. The oracle's own comment explicitly carves out "per-month KPI cards ... different figures ... out of scope" (attempt-3 adjudication) — but that carve-out is about the OTHER KPI cards' PerMonthDelta figures, not about this in-card sparkline, which is proven (by the project's own metrics test) to be the same cumulative figure, not a different one.
+
+Independent-classifier grep results (per attack step 2):
+- kpis.html / dashboard-verdict-bar.html: no remaining bare comparisons on CombinedCumulativeDelta/CumulativeDelta/HealthcareCumulativeDelta for classification — the two direct `.Metrics.CombinedCumulativeDelta` references left in kpis.html (lines ~144/146) are display-only (formatMoney inside branches already gated by $budgetOver/$budgetHealthy), not re-classification.
+- buildBudgetVsActualChartData (internal/handlers/dashboard/handlers.go): its cumulative-balance trace uses one fixed indigo line color with no threshold-based coloring at all — genuinely a distinct, non-classifying visualization. Not a defect.
+- web/static/js/charts.js renderSparkline mode=="balance" (used only by sparkline-budget in kpis.html): threshold-based coloring on the SAME figure, no dead-band — this is the defect above.
+- No JS test files exist for charts.js/renderSparkline; nothing guards this path.
+
+Net: three of four "must agree" surfaces (tint, headline, bucket-row wording, banner severity) were correctly unified this attempt and are verified consistent at every boundary tested. The fourth reachable rendering of the same total figure on the same card — its own embedded sparkline — still splits from the classification. Per the ruling's own bar ("no same-figure disagreement survives anywhere on the page"), this is not met.

@@ -1,0 +1,157 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W2
+ATTEMPT: 1
+---
+Scope: git diff master -- web/templates/components/whatif/portfolio-settings.html
+       web/templates/components/whatif/quick-adjust-scripts.html
+Standard: ACCESSIBILITY.md (repo) + WCAG 2.2 AA.
+No automated pipeline (axe-core/CLI) is wired for this Go-template repo (no
+package.json / npm harness present) — audit is manual, tracing the shipped
+JS, per the checker brief's own admission that automated results are
+"necessary but not sufficient" here they are simply absent, so 100% of the
+weight is on the manual walk below.
+
+1. LABEL ASSOCIATION / KEYBOARD OPERABILITY — PASS (pre-existing gap noted)
+   - `<label>` at portfolio-settings.html:53 has no `for=` and does not wrap
+     the input, on both master and this branch — UNCHANGED by this diff.
+     Confirmed via `git show master:...` (identical `<label class="...">
+     Monthly Living Expenses</label>` with no `for`). This is a real
+     ACCESSIBILITY.md #4 / WCAG 4.1.2 gap but it is PRE-EXISTING, not
+     introduced by W2. Not counted against this attempt; flagged as an
+     OBSERVATION for a future task.
+   - The visible `<input type="range" id="monthly_living_expenses_input">`
+     (line 64) keeps no explicit tabindex/disabled changes — still native,
+     still keyboard-operable (arrow keys fire native `input` events exactly
+     as mouse drag does).
+   - Traced the JS path for both mouse and keyboard: range `oninput` →
+     `onMonthlyLivingExpensesInput(this.value)` (portfolio-settings.html
+     line ~182) sets `#monthly_living_expenses_value` (hidden, `name=
+     monthly_living_expenses`) and dispatches a bubbling `input` Event on
+     it → document-level capture listener in quick-adjust-scripts.html
+     (`document.addEventListener('input', ..., true)`) sees
+     `data-quick-adjust-key` on the hidden field → `syncQuickAdjustKey(
+     'monthly_living_expenses')` → updates
+     `#monthly_living_expenses_display` (span, visible) and mirror controls.
+     Keyboard changes DO reach the submitted hidden field and DO reach the
+     visible display. PASS.
+
+2. NOTE TEXT CONTRAST — pre-existing FAIL, not newly introduced
+   New `<p id="living-expenses-phase-note" class="text-xs text-gray-400
+   dark:text-gray-500 mt-1">` (portfolio-settings.html:72) reuses the exact
+   class string already on the untouched caption at line 70 ("In today's
+   dollars...") and lines 83/91 (property-tax captions) — confirmed byte-
+   identical in `git show master:...`.
+   Computed contrast (sRGB relative luminance, WCAG formula):
+     - Light theme: text-gray-400 #9CA3AF on bg-white #FFFFFF → 2.54:1
+       (needs 4.5:1 for this 12px/text-xs text). FAIL against WCAG 1.4.3
+       and ACCESSIBILITY.md #7.
+     - Dark theme: dark:text-gray-500 #6B7280 on dark:bg-gray-800 #1F2937
+       → 3.04:1. Also FAILS 4.5:1. ACCESSIBILITY.md #12 (dark-mode parity)
+       is therefore also unmet, but symmetrically with light mode — no new
+       theme-specific gap.
+   Both ratios are IDENTICAL to the pre-existing caption already shipping
+   on this exact page. This is a real, sitewide AA contrast bug but it is
+   NOT newly introduced by W2 — the new note just inherits it by reusing
+   the class. Not counted as a new failure for this task; flagged as an
+   OBSERVATION (recommend bumping to text-gray-500/dark:text-gray-400, or
+   darker, across all four captions in one follow-up, not scoped here).
+
+3. DYNAMIC UPDATE ANNOUNCEMENT — PASS (consistent with existing pattern)
+   `updateLivingExpensesPhaseNote()` rewrites only `#living-expenses-phase-
+   amount`'s textContent on drag; no `aria-live` region wraps it or any of
+   the page's other quick-adjust display spans (`#monthly_living_expenses_
+   display`, the portfolio-value span, the projection-years span — grepped,
+   none carry aria-live). The one `aria-live="polite"` region in this
+   template family (conversion-sweep.html:43) is for an operation-result
+   status message, a different category. Treating the phase-note figure as
+   a visual-only live preview matches the page's established convention for
+   every other slider readout, so this is not a new deviation and not an
+   ACCESSIBILITY.md #16 violation (no affordance is being hidden from AT —
+   the static sentence structure, phase name, and multiplier are always
+   present in the accessible tree; only the numeral inside updates, exactly
+   like every other slider's display span already does without a live
+   region). OBSERVATION only, not blocking: a11y best practice would still
+   argue for `aria-live="polite" aria-atomic="true"` on figures like this
+   that are not adjacent-in-DOM to the control driving them, but WCAG 2.2 AA
+   does not mandate it and the constitution doesn't either.
+
+4. MULTIPLICATION SIGN / SEMICOLON LINEARIZATION — PASS, OBSERVATION
+   Rendered sentence (from living_expenses_phase_note.go):
+     "Engine spends $8,140.00/mo now (Go-Go ×1.1); ×0.9 from age 70."
+   Linearizes as plain text; no content or order is lost when read
+   serially. The "×" (U+00D7) glyph's pronunciation is screen-reader/
+   verbosity-setting dependent (NVDA symbol dictionary says "times"; some
+   configurations at low symbol-verbosity may elide it), which could
+   collapse "Go-Go ×1.1" to "Go-Go 1.1" — still parseable in context, not a
+   WCAG failure (no SC mandates a specific glyph-to-word mapping), but
+   worth a follow-up to spell out "x" or "times" for robustness. OBSERVATION,
+   non-blocking.
+
+5. HIDDEN INPUT PHANTOM CONTROL — PASS
+   `<input type="hidden" id="monthly_living_expenses_value" ...>` — hidden
+   inputs are categorically excluded from the accessibility tree and the
+   tab order per the HTML AAM; confirmed no other attribute (role, aria-*,
+   tabindex) overrides that here. No phantom control introduced.
+
+6. SLIDER VALUE ANNOUNCEMENT vs DISPLAYED VALUE — FAIL (newly surfaced
+   asymmetry; AA-relevant)
+   Scenario: a saved value off the $100 grid (e.g. 7386, as the phase-
+   visibility work's own snap-trap fix explicitly calls out — "e.g. 7386,
+   from 'Sync from Dashboard'", portfolio-settings.html:57-58).
+   Per the HTML Standard's range-input value sanitization algorithm, an
+   off-step `value` attribute is clamped AND step-snapped to the nearest
+   valid step as soon as the browser parses it — this happens to the
+   range's own DOM `.value` (and therefore its implicit `aria-valuenow`,
+   since `<input type=range>` exposes ARIA state straight from that
+   property) regardless of whether the user ever touches the control.
+   7386 with min=0/step=100 snaps to 7400 (nearest step, 14 away vs 86 away
+   for 7300).
+   - Sighted users see: `#monthly_living_expenses_display` = "$7,386"
+     (server-rendered from the exact float, line 69) and the new phase
+     note computed from that same exact figure.
+   - The saved/submitted value is: exactly 7386.00 (hidden field, never
+     browser-sanitized because type=hidden isn't subject to range
+     sanitization) — this is the whole point of the W2 fix.
+   - What AT gets for the range control itself (role=slider, native
+     aria-valuenow derived from the range's own sanitized `.value`): 7400.
+   This is a real, measurable $14 divergence between what a screen-reader
+   user is told the control holds and what every other channel (visual
+   display, phase note, submitted data) says. It is not raw new math — the
+   underlying browser step-snapping quirk predates this diff — but the
+   CONSEQUENCE changed in a way that matters for the ruling: before W2, the
+   range was also the canonical `name=monthly_living_expenses` field, so
+   the same snap corrupted the submitted/saved value too (that's the
+   "snap trap" being fixed) — sighted and AT users were both told a wrong
+   but AT LEAST mutually consistent number. After W2, sighted users and the
+   saved data are fixed to the correct exact figure, while the range
+   control's own accessible value is left pointing at the old, now-provably
+   wrong, snapped number. The fix introduces a new divergence between the
+   AT channel and every other channel for the exact control a screen reader
+   user is interacting with.
+   Ruling: this is a WCAG 4.1.2 (Name, Role, Value) violation — "value...
+   can be programmatically determined" is met literally (aria-valuenow is
+   present) but not met in the sense that matters: the determined value is
+   wrong relative to the actual, submitted, sighted-visible state of the
+   same control. It is also an ACCESSIBILITY.md #16-style parity gap in
+   spirit (the accessibility tree asserting a number the page itself no
+   longer stands behind), even though #16 is literally scoped to
+   suppression/dismissal rather than value drift — cite 4.1.2 as the
+   binding criterion, #16 as the constitutional principle this rhymes with.
+   FIX REQUIRED: add `aria-valuetext` to the visible range, kept in sync
+   with the exact hidden value (e.g. set alongside the existing
+   `updateLivingExpensesPhaseNote`/`syncQuickAdjustDisplays` calls, and set
+   once server-side at initial render from `.Settings.MonthlyLivingExpenses`
+   so the very-first paint — before any interaction — is also correct for
+   AT, since the snap already applies pre-interaction). Until
+   `aria-valuetext` (or an equivalent live correction) exists, a screen-
+   reader user editing this control never hears the number that is actually
+   saved or shown to sighted users whenever the saved value is off the
+   $100 grid.
+
+Net: five of six checks pass or are pre-existing/non-blocking; check 6 is a
+newly-introduced, citable AA (4.1.2) failure directly caused by decoupling
+the accessible/native range control from the exact value it used to (badly)
+share with the form submission. VERDICT: FAIL. Re-verify after
+`aria-valuetext` (or equivalent) is added and kept live-synced.

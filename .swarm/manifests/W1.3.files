@@ -1,0 +1,6 @@
+internal/models/whatif.go
+internal/services/retirement/analysis/budget_fit.go
+internal/services/retirement/analysis/budget_fit_living_expense_subitems_test.go
+internal/templates/render_budget_analysis_phase_subitems_test.go
+internal/templates/render_budget_analysis_fractional_cent_test.go
+web/templates/components/whatif/budget-analysis.html

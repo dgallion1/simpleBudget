@@ -1,0 +1,152 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W4
+ATTEMPT: 4
+---
+SCOPE: web/templates/components/kpis.html (Budget KPI card) and
+internal/handlers/dashboard/verdict.go, per .swarm/manifests/W4.4.files.
+dashboard-verdict-bar.html is unchanged vs the version already audited at
+attempt 3 (diffed against master — identical decomposition/sentence block,
+no new lines).
+
+METHOD: worked entirely in a `cp -a` copy (`.git` preserved) at
+/tmp/claude-1000/.../scratchpad/budget2; never wrote to the real tree except
+this verdict file. `go build ./...` clean. `make css-verify` confirms the
+committed tailwind.css already contains every class this diff uses (no
+stale-CSS risk). Ran the package's own tests plus a throwaway `_test.go`
+(scratchpad-only) that calls `renderer.RenderToString` with fixtures
+reproducing the boss's three named states, dumped full HTML (real compiled
+tailwind.css linked, `<html class="dark">` for dark), and ran
+`npx @axe-core/cli` (v4.13.0, wcag2a/2aa/21aa/22aa tags) against each.
+Cross-checked every headline contrast pairing by hand (WCAG relative-
+luminance formula) against Tailwind v3 hex values.
+
+DIFF READ (kpis.html vs master): the card's tint variables changed from
+  $budgetOver := and .Metrics.HasCombinedTarget (gt .Metrics.CombinedCumulativeDelta 0.0)
+  $budgetHealthy := and .Metrics.HasCombinedTarget (le .Metrics.CombinedCumulativeDelta 0.0)
+to
+  $budgetOver := and .BudgetVerdict.HasTarget .BudgetVerdict.IsOver
+  $budgetHealthy := and .BudgetVerdict.HasTarget .BudgetVerdict.IsUnder
+and the headline's branch conditions ({{if gt .Metrics.CombinedCumulativeDelta
+1.0}} / {{else if lt ... -1.0}}) were replaced with {{if $budgetOver}} /
+{{else if $budgetHealthy}} — i.e. container tint, headline text, icon
+background, and icon stroke color (kpis.html:136-138,143-149,195-196) all
+now branch on the SAME two booleans, which are themselves the SAME
+dead-banded BudgetVerdict fields the banner uses. Per-bucket row status
+spans also switched from bare-sign comparisons to
+`.BudgetVerdict.{Living,Healthcare}.Status`. No other class-value or
+threshold-literal changes found in the diff.
+
+(1) $0.60-OVER REPRO (attempt-3's exact failing fixture: CombinedCumulative
+Delta=0.60, both buckets configured, dead-band=$1): rendered via
+BuildBudgetVerdict + RenderToString("kpis", ...). Result:
+  <div class="... border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 ...">
+    <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">On budget</p>
+  ...icon: <div class="p-3 bg-gray-100 dark:bg-gray-700 rounded-full">
+           <svg class="... text-gray-500 dark:text-gray-400" ...>
+Neutral tint, neutral icon, "On budget" headline — no contradiction. This
+is the exact defect attempt-3 FAILed on (rose tint + "On budget" text);
+confirmed fixed. Project's own new regression test
+`TestBudgetKPICard_TintMatchesClassification` (verdict_render_test.go:426)
+codifies this and PASSES, alongside pre-existing
+`TestBudgetKPICardAndVerdictBanner_AgreeWithinDeadBand`,
+`TestBudgetKPICard_BucketRowAbsentWhenUnconfigured`, and
+`TestVerdictRender_NoNegativeZero` (all green — see test run below).
+
+(2) THREE-STATE SWEEP (over: delta=+501, under: delta=-501, dead-band:
+delta=+0.60), light AND dark, rendered and axe-scanned:
+  - over:      border-rose-200/bg-rose-50 (dark: rose-800/rose-900/20),
+               headline "text-rose-600 ... $501.00 over", icon
+               bg-rose-100/text-rose-600 (dark variants match) — agree.
+  - under:     border-emerald-200/bg-emerald-50, headline
+               "text-emerald-600 ... $501.00 under", icon
+               bg-emerald-100/text-emerald-600 — agree.
+  - dead-band: border-gray-200/bg-gray-50, headline "text-gray-900 On
+               budget", icon bg-gray-100/text-gray-500 — agree.
+Verified by grepping the rendered class strings directly (not just
+trusting a passing test) for all six page dumps (3 states × 2 themes).
+$budgetOver and $budgetHealthy are read once and reused for the container,
+both headline branches, and both icon-wrapper/icon-stroke conditionals —
+one boolean pair drives every color decision on the card, so no state can
+diverge.
+
+(3) CONTRAST SPOT-CHECK (headline is `text-2xl font-bold` = 24px bold,
+qualifies as WCAG "large text", 3:1 threshold applies, point 7):
+  Light:
+    rose-600  (#e11d48) on rose-50    (#fff1f2): 4.27:1  — PASS (>=3:1; also clears 4.5:1)
+    emerald-600(#059669) on emerald-50 (#ecfdf5): 3.58:1  — PASS (>=3:1 large-text threshold)
+    gray-900  (#111827) on gray-50    (#f9fafb): 16.98:1 — PASS
+  Dark (background = the *-900/20 tint composited over the real body bg
+  dark:bg-gray-900 #111827, per web/templates/layouts/base.html:57 — no
+  intermediate wrapper background between #kpis-container and <body>):
+    rose-400   on rose-900/20   over #111827 -> #29172a:  6.24:1  — PASS
+    emerald-400 on emerald-900/20 over #111827 -> #0f232b: 8.43:1  — PASS
+    gray-100   on gray-800:                                13.34:1 — PASS
+  Hand calculations cross-checked against live axe: axe's color-contrast
+  violation lists for all 6 dumped pages (light/dark × 3 states) never
+  include the headline node (`.text-2xl.font-bold.text-{rose,emerald}-600`
+  or `.text-2xl.font-bold.text-gray-900`) or the card container/icon
+  classes — confirmed by grepping each violation's node-selector list.
+  All flagged nodes are pre-existing, unrelated to this diff: the
+  Total-Income/Monthly-Spending/Monthly-Healthcare tiles' own value/delta
+  text (text-sm text-rose-600/emerald-600 on their own -50 tints,
+  ~3.3-4.5:1, normal-size text, not touched by this diff), the per-bucket
+  "Living:"/"Health:" label wrappers and text-rose-500/emerald-500 status
+  spans (text-xs, same class strings pre-existing attempt-2/3, only the
+  *condition* selecting them changed, not the color values), and a stray
+  `.text-gray-400` caption. This matches attempt-3's own logged
+  OBSERVATIONS verbatim — not re-litigated as a new failure since this
+  diff didn't touch those class strings, only the classification source
+  for a disjoint set of nodes (the card tint/headline/icon).
+
+(4) ATTEMPT-3 PASSING ITEMS UNCHANGED:
+  - On-target row gating: `{{if .BudgetVerdict.Living.Configured}}` /
+    `{{if .BudgetVerdict.Healthcare.Configured}}` still wrap each entire
+    row (kpis.html:160,168); `TestBudgetKPICard_BucketRowAbsentWhenUnconfigured`
+    passes — unconfigured buckets render no row (not a hidden/empty node),
+    so point 16 (client-side suppression parity) still doesn't apply here
+    (server-rendered conditional, no live-region to desync).
+  - Banner (dashboard-verdict-bar.html): byte-identical to the version
+    audited at attempt 3 (`git diff master` shows no new hunks beyond the
+    decomposition/sentence block already reviewed and passed).
+  - Point 8 (color+text pairing): every reachable state still emits the
+    literal word ("over"/"under"/"On budget", "over"/"under"/"on target")
+    alongside its color class in the same span — text channel never
+    dropped.
+
+Go test run (real diff, scratchpad copy):
+  go test ./internal/handlers/dashboard/... -run
+    'TestBudgetKPICard|TestDashboardVerdictBar|TestVerdictRender|TestBuildBudgetVerdict|TestClassify'
+  -> PASS (all 8 top-level tests / 30+ subtests), including the new
+     TestBudgetKPICard_TintMatchesClassification (dead-band/over/under
+     subtests all green).
+
+OBSERVATIONS (non-blocking, pre-existing, not touched by this attempt's
+diff, carried forward verbatim from attempt-3's log):
+- Total Income / Monthly Spending / Monthly Healthcare tiles' text-sm
+  value/delta coloring on their own -50 tints: ~3.3-4.5:1, below the 4.5:1
+  normal-text threshold. Same class strings before and after this diff.
+- Per-bucket "Living:"/"Health:" label wrapper (text-xs text-gray-500) and
+  text-rose-500/emerald-500 status spans: ~2.4-4.4:1 depending on
+  state/theme. Same class strings before and after this diff; only the
+  selecting condition (bare delta -> BudgetVerdict.Status) changed, which
+  is exactly the fix ACCESSIBILITY.md point 8 required and does not touch
+  the color literals themselves.
+- An unrelated diff hunk (kpis.html top, "Target provenance" tooltip
+  annotation with title+aria-label on the Monthly Spending target figure)
+  is present in the working tree but outside this task's described scope;
+  it adds an accessible name via aria-label rather than removing one, so
+  it is not a regression, just noted for the record.
+- My axe harness's synthetic wrapper page lacks <title>/lang (test-harness
+  artifact of dumping a template fragment standalone, not a defect in the
+  real site, which sets both on every real page).
+
+VERDICT RATIONALE: the attempt-3 FAIL (card tint contradicting its own
+headline text) is fixed — both now consume the identical dead-banded
+BudgetVerdict.IsOver/IsUnder classification, verified independently by
+hand-rendering the exact failing fixture plus a full three-state sweep in
+both themes, with axe confirming no new color-contrast violations
+introduced and hand-computed contrast ratios clearing WCAG 2.2 AA's
+large-text 3:1 threshold in every reachable tint/theme combination. No
+other ACCESSIBILITY.md point is implicated by this diff.

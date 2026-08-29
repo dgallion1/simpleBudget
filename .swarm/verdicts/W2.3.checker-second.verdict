@@ -1,0 +1,92 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: W2
+ATTEMPT: 3
+---
+Baseline (not disputed): oracle .swarm/tier3/W2/accept.sh reproduces
+"ORACLE PASS" (8/8 checks) when re-run from a fresh clone of the working
+tree; `go build ./...`, `go vet ./...` exit 0; package test suite green.
+No css-verify script exists in this tree (nothing to check there).
+
+Reachable defect the oracle does not catch — locale-dependent JS overwrite
+fires on EVERY page load, not only on drag:
+
+1. Trace: `document.addEventListener('DOMContentLoaded', ...)` in
+   quick-adjust-scripts.html:223-226 calls `syncAllQuickAdjustControls()`
+   unconditionally. That iterates every non-mirror `[data-quick-adjust-key]`
+   control and calls `syncQuickAdjustKey(key)`. For
+   key === 'monthly_living_expenses' this calls both
+   `syncQuickAdjustDisplays(key, canonicalControl.value)` (→
+   `formatQuickAdjustDisplay` → `formatWholeDollars`, quick-adjust-scripts.html:41)
+   AND `updateLivingExpensesPhaseNote(canonicalControl.value)`
+   (portfolio-settings.html:163, new in this attempt — see git diff below).
+   So on every load (and again after every htmx:afterSwap/oobAfterSwap via
+   scheduleQuickAdjustSync), the server-rendered `$7,386` display span, its
+   aria-valuetext, the quick-adjust mirror display, and the phase note's
+   "Engine spends $X.XX/mo now" figure are all immediately recomputed and
+   overwritten by JS — not merely on drag.
+
+2. Both recomputations route through `Number.prototype.toLocaleString()`
+   called with no explicit locale (`Math.round(v).toLocaleString()` in
+   formatWholeDollars, and `(base*multiplier).toLocaleString(undefined,
+   {minimumFractionDigits:2,maximumFractionDigits:2})` in the brand-new
+   updateLivingExpensesPhaseNote). Per spec, `toLocaleString()` without a
+   locale argument uses the runtime's default locale (browser
+   language/OS setting in production; ICU env in Node). Reproduced directly:
+
+     $ node -e 'console.log((7387).toLocaleString())'
+     7,387
+     $ LANG=de_DE.UTF-8 node -e 'console.log((7387).toLocaleString())'
+     7.387
+
+   For any user whose browser locale is not an en-US-style locale (a very
+   ordinary configuration — most of continental Europe, for one), the exact
+   same numeric value renders as a DIFFERENT string ("$7.387" vs the
+   server's canonical "$7,386") the instant the page loads or any OOB swap
+   settles. Locales with non-Latin digit systems (e.g. ar-EG) would replace
+   the digits entirely, not just the separator.
+
+3. This is precisely the bug class Tier 3 was escalated to kill ("ONE
+   dollar string per value, everywhere" — accept.sh header comment) and
+   that the worker's own code comment claims to guarantee: "SINGLE JS
+   whole-dollar formatter: round half-away-from-zero, thousands
+   separators, leading $" (quick-adjust-scripts.html:7-10). That guarantee
+   is false outside en-US-style locales. It is not a hypothetical: it is
+   demonstrated above, and the DOMContentLoaded trace shows it fires
+   unconditionally, not only under a drag interaction the oracle can't
+   reach.
+
+4. The accept.sh oracle does not catch this because it only (a) renders Go
+   templates directly (never executes the JS) and (b) does structural
+   greps for formatter-count, not locale-safety; accept.sh's own comment on
+   check 04a explicitly carves the `toLocaleString(undefined, {...})` cents
+   call out as "a different, allowed format" — a carve-out about *shape*
+   (2-decimal vs whole-dollar), not about locale independence, and it is
+   this exact carved-out call site that is newly introduced in this attempt
+   and newly locale-unsafe:
+
+     $ git diff master -- web/templates/components/whatif/portfolio-settings.html | grep -n toLocaleString
+     +    amount.textContent = '$' + (base * multiplier).toLocaleString(undefined, {
+
+   (The old code this replaced used unqualified `.toLocaleString()` too, so
+   the locale-hazard is not newly created in the abstract, but this
+   specific call site is new, was written for this task, and was not fixed
+   as part of "the one-string contract" the task claims to now enforce.)
+
+Secondary, lower-confidence note (not required to reach FAIL, offered for
+completeness): `formatWholeDollars` JS negates asymmetrically vs the Go
+`formatWholeDollars`/`formatDollars` for negative inputs — Go emits
+"-$500", JS's `'$' + Math.round(-500).toLocaleString()` emits "$-500" (a
+different string, not just a different locale). The slider/UI cannot
+currently drive MonthlyLivingExpenses negative (range min="0" on both the
+canonical hidden field's paired range and phase-multiplier min="0.30"), so
+I could not confirm this path is reachable through the UI alone; it would
+require a hand-edited settings file. Not load-bearing for this verdict.
+
+Ruling: the locale-drift finding (points 1-4) is a reachable, reproduced,
+same-value/two-different-strings case surviving in this attempt, on a code
+path (DOMContentLoaded → syncAllQuickAdjustControls) that runs unconditionally
+for every user, not an edge-case timing race. Per the dispatch instructions
+("PASS only if no reachable same-value-two-strings case remains") this is a
+FAIL.

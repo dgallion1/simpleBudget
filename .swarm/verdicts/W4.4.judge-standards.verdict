@@ -1,0 +1,73 @@
+VERDICT: OVERRULE
+CHECKER: judge-standards
+FAMILY: adversarial
+TASK: W4
+ATTEMPT: 4
+---
+The contested FAIL is technically accurate about the sparkline (confirmed:
+`git diff master -- web/static/js/charts.js` is empty — the file is
+byte-identical to master, not touched by any commit on this branch;
+`internal/services/metrics/metrics_test.go:920` does assert
+CombinedCumulativeBalance[-1] == -CombinedCumulativeDelta, "within
+month-rounding slack"). But standards-conformance is not just "is the
+technical claim true" — it is "does this claim, as scoped, control
+acceptance of THIS attempt." It does not, on the documents as written.
+
+1. Two rulings are in tension, and the more specific/later one governs.
+   Ruling 2026-08-29a states a general principle at attempt-2 time ("a
+   threshold applied to a figure must live in ONE classification source
+   consumed by every surface that renders the same figure"). Ruling
+   2026-08-29c is the user's own, later, task-specific reopening of W4 for
+   attempt 4, and it is drawn narrowly and explicitly: "the Budget card's
+   container tint AND headline consume the shared BudgetVerdict
+   classification (closing the last two independent classifiers of
+   CombinedCumulativeDelta — an inconsistency that pre-exists on master) +
+   the five kpis.html trim markers. Nothing else." The ruling-writer
+   explicitly flags "pre-exists on master" while still bounding the reopen
+   to two named classifiers — i.e., the user was already aware pre-existing
+   inconsistencies of this general shape exist elsewhere and chose "nothing
+   else" anyway. A later, task-specific, user-authored ruling narrowing an
+   escalated attempt's scope controls over a general principle stated two
+   attempts earlier; ordinary reading of the documents does not let 29a's
+   language silently re-widen a scope 29c just closed with "Nothing else."
+
+2. The checker's hunting brief expands what gets discovered/reported, not
+   the acceptance bar. checker-second's own account says it was "instructed
+   to hunt for any surface still classifying the same deltas independently"
+   — a reasonable adversarial instruction for the FAMILY: adversarial lane.
+   But its sibling checkers, tasked with the same attempt, drew the correct
+   line: checker-tests found a criterion ("zero numeric comparison literals
+   remain") that literally could not be satisfied without breaching 29c's
+   "Nothing else," and explicitly deferred — "I read the ruling as
+   controlling and record the criterion met" — flagging the tension for the
+   lead rather than failing on it. checker-a11y found several pre-existing,
+   untouched-by-this-diff contrast issues and correctly filed them as
+   non-blocking OBSERVATIONS rather than FAILs, on the same reasoning: "Same
+   class strings before and after this diff." checker-second's own hunt
+   should have produced the same disposition — a flagged observation for
+   the lead, not a FAIL — because the item found is (a) not in the
+   `.swarm/manifests/W4.4.files` manifest, (b) unmodified by any commit on
+   `fix/phase-visibility` relative to master, (c) a different rendered
+   figure (CombinedCumulativeBalance, target-actual) from the one 29c named
+   (CombinedCumulativeDelta, actual-target), related only via a codebase
+   invariant test carrying admitted "month-rounding slack," and (d)
+   something the user's own ruling already flagged as a known,
+   deliberately-deferred pre-existing condition.
+
+3. The hard-stop rule's stated purpose is that "escalation never silently
+   loops." W4 already burned a Tier-3 escalation and a user-authorized,
+   narrowly-bounded fourth attempt. Treating "any same-figure surface
+   anywhere on the page, including pre-existing ones outside the manifest
+   and outside every prior ruling's enumeration" as the acceptance bar for
+   attempt 4 means no fourth attempt at the scope the user actually
+   authorized could ever pass — each pass would surface a new pre-existing
+   sibling classifier (the chart today, something else next time), exactly
+   the silent, unbounded loop the hard-stop exists to prevent. The proper
+   channel for a genuinely new, out-of-scope finding at this stage is a
+   reported observation triggering a fresh, separately-scoped task/ruling —
+   not a FAIL that re-litigates a scope the user already closed.
+
+The FAIL does not survive scrutiny against the documents as written: it
+applies a superseded general ruling to override a later, explicit,
+task-specific "Nothing else" bound, on an item outside the attempt's
+manifest and untouched by any commit in this run. OVERRULE.

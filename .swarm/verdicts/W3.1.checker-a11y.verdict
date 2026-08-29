@@ -1,0 +1,102 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W3
+ATTEMPT: 1
+---
+Scope: git diff master -- web/templates/components/kpis.html (fix/phase-visibility, W3).
+Audited in a throwaway copy of /home/darrell/bin/ai/budget2 (cp -a, .git kept). Rendered
+the actual dashboard KPI handler (existing harness: internal/handlers/dashboard/
+handlers_http_test.go TestDashboardKPIs_TargetProvenance_*) with two temporary dump tests
+to capture ground-truth HTML; no project file was edited in the real tree.
+
+Diff under test:
+  <p class="text-sm ...">
+-     Target <span class="num">{{formatMoney .Metrics.BudgetTarget}}</span> · ...
++     <span{{if $prov.Annotate}} title="{{$targetAnnotation}}" aria-label="{{$targetAnnotation}}"{{end}}>
++         Target <span class="num">{{formatMoney .Metrics.BudgetTarget}}</span>
++     </span> · ...
+  where $targetAnnotation = "Target from What-If plan: {formatDollars Base} base ×
+  {formatMultiplier Multiplier} ({PhaseName} phase)" (or the Straddles variant).
+
+CHECK 1 — aria-label vs visible content (2.5.3 / 1.3.1 / 4.1.2): FAIL.
+Rendered output, phase-active fixture (base $2,000/mo, Active phase, multiplier 0.95,
+route /dashboard/kpis?start=2025-01-01&end=2025-01-31):
+
+  <span title="Target from What-If plan: $2,000 base × 0.95 (Active phase)"
+        aria-label="Target from What-If plan: $2,000 base × 0.95 (Active phase)">
+    Target <span class="num">$1,900.00</span>
+  </span> · <span class="num">$427.22</span>/mo under
+
+aria-label on a non-interactive <span> overrides the accessible-name computation for
+its entire subtree (WAI-ARIA accname spec; this is also why ARIA APG explicitly warns
+against aria-label on plain containers). The value actually shown on screen — the
+computed, phase-adjusted target "$1,900.00" — is Metrics.BudgetTarget, which is NOT the
+same number as $prov.Base ("$2,000", pre-multiplier, and formatted with formatDollars
+i.e. no cents, vs. formatMoney's cents). The aria-label string contains neither
+"$1,900.00" nor any equivalent of it. A screen-reader user therefore hears "Target from
+What-If plan: $2,000 base times 0.95, Active phase" and never hears the actual target
+figure that sighted users read directly off the card — the single most important number
+in this UI region is silently dropped for AT users. This is a content loss, not just a
+naming mismatch: 1.3.1 (Info and Relationships) is violated because the
+programmatically-determined text does not carry information present in the visual
+presentation, and 4.1.2 (Name, Role, Value) is violated because the exposed
+"name"/text substitutes for, rather than supplements, the rendered value. (2.5.3 Label
+in Name applies at most by analogy, since this span is not itself an interactive
+control — see Check 3 — but the underlying defect it's meant to catch, an accessible
+name that omits the visible text, is exactly what's happening here.)
+Confirmed by rendering, not just template reading, via a temporary local test
+(`go test ./internal/handlers/dashboard/... -run TestA11yDumpBody`) that hit the same
+route as the project's own TestDashboardKPIs_TargetProvenance_AnnotatesWhenPhaseActive
+(handlers_http_test.go:1521), which only asserts the title/aria-label strings exist —
+it never asserts on the figure that AT users lose, so the existing test suite would not
+catch this regression.
+Fix direction (not prescribing implementation): the aria-label must restate the visible
+target figure, e.g. aria-label="Target $1,900.00 from What-If plan: $2,000 base × 0.95
+(Active phase)", or drop aria-label entirely and let AT read the natural content plus
+title/aria-describedby for the extra provenance without suppressing the child text.
+
+CHECK 2 — title is not the sole channel (1.4.13 / 2.1.1): PASS.
+title and aria-label carry byte-identical strings (see rendered output above and the
+diff: both interpolate the same {{$targetAnnotation}}). The provenance text is
+therefore not title-only; it is exposed to AT via aria-label. (The FAIL in Check 1 is
+about aria-label's content being wrong/incomplete, not about it being absent.)
+OBSERVATION (non-blocking): since the span is non-focusable (Check 3), the native
+title tooltip only ever appears on mouse hover, never on keyboard focus, so
+sighted keyboard-only users never see the provenance breakdown at all. This is not a
+new AA violation (1.4.13 governs content that DOES appear on hover-or-focus; it does
+not mandate parity between the two triggers), but it's worth noting for the lead: the
+provenance is effectively mouse-only for sighted users and screen-reader-only for AT
+users, with keyboard-sighted users getting neither.
+
+CHECK 3 — span not focusable: PASS.
+Diff and rendered markup both show only conditional `title=` / `aria-label=` attributes
+added; no `tabindex` was introduced. A non-interactive <span> with aria-label but no
+tabindex/role is correctly not in the tab order, so there's no separate "focusable
+non-interactive element" violation.
+
+CHECK 4 — annotation genuinely absent in the no-phase case: PASS.
+Ledger: {{if $prov.Annotate}}...{{end}} wraps the entire attribute block, so when
+Annotate is false, the <span> emits no attributes at all (not empty-string title/
+aria-label). Confirmed by rendering the no-phase-config fixture
+(TestDashboardKPIs_TargetProvenance_AbsentWhenNoPhaseConfig's setup,
+monthly_living_expenses only, no spending_phase_config):
+
+  <span>Target <span class="num">$2,000.00</span></span> · <span class="num">$527.22</span>/mo under
+
+No stray title="" / aria-label="" present; matches the project's own byte-identical-
+rendering assertion in that test.
+
+ACCESSIBILITY.md cross-check: no point in the repo's numbered standard names this
+exact pattern verbatim, but point 4 ("aria-label where a visible label is genuinely
+absent by design") and point 13 ("currency amounts include sign semantics in
+accessible text where sign carries meaning", i.e. augment, don't replace, the visible
+figure) both encode the same principle this diff violates: aria-label is meant to
+supply what's visually missing or add semantic nuance, not to erase a rendered
+currency figure. Treating this as a WCAG-grounded FAIL per Check 1's citations
+(1.3.1 / 4.1.2, with 2.5.3's underlying concern applicable by extension).
+
+VERDICT: FAIL — Check 1 is a genuine AA regression: the phase-adjusted target dollar
+figure, visible to sighted users, is unreachable by screen-reader users because
+aria-label replaces it with provenance text that omits it. Checks 2–4 pass as
+specified.

@@ -78,7 +78,7 @@
                         min="0" max="3000" step="50"
                         data-quick-adjust-key="healthcare:{{.ID}}:current_monthly_cost"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
+                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString('en-US')">
                     <span class="text-xs text-red-600 dark:text-red-400 w-16" data-quick-adjust-display="healthcare:{{.ID}}:current_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .CurrentMonthlyCost}}</span>
                 </div>
             </div>
@@ -118,7 +118,7 @@
                         min="0" max="3000" step="50"
                         data-quick-adjust-key="healthcare:{{.ID}}:aca_cost_after_employer"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
+                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString('en-US')">
                     <span class="text-xs text-red-600 dark:text-red-400 w-16" data-quick-adjust-display="healthcare:{{.ID}}:aca_cost_after_employer" data-quick-adjust-display-format="currency">${{formatNumber .ACACostAfterEmployer}}</span>
                 </div>
             </div>
@@ -145,7 +145,7 @@
                         min="0" max="2000" step="50"
                         data-quick-adjust-key="healthcare:{{.ID}}:medicare_monthly_cost"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString()">
+                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString('en-US')">
                     <span class="text-xs text-red-600 dark:text-red-400 w-16" data-quick-adjust-display="healthcare:{{.ID}}:medicare_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .MedicareMonthlyCost}}</span>
                 </div>
             </div>

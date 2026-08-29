@@ -1,0 +1,176 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W1
+ATTEMPT: 2
+---
+All work verified in a copy of the repo (cp -a, .git preserved) at
+/tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/b2w1
+branch fix/phase-visibility, HEAD fa3ee20. Toolchain: `go version` ->
+go1.26.6 linux/amd64. Only write to the real tree is this verdict file.
+Mutant copies: .../scratchpad/mut1 (rounding reverted), .../scratchpad/probe
+(throwaway probe tests). Neither is in the real tree.
+
+C1 — build / vet / full suite / css-verify: PASS
+  `go build ./...`  -> BUILD_EXIT=0 (no output).
+  `go vet ./...`    -> VET_EXIT=0 (no output).
+  `go test ./...`   -> TEST_EXIT=0; 49 lines matching '^ok', zero lines
+                       matching '^(FAIL|--- )'. The branch also carries
+                       W2/W3/W4 work; nothing on it fails.
+  `make css-verify` -> "tailwind.css is up to date", CSSVERIFY_EXIT=0
+                       (tailwindcss 3.4.17 rebuild + cmp against
+                       web/static/css/tailwind.css).
+
+C2 — every W1 test passes by name, none skipped: PASS
+  `go test -count=1 -v -run 'TestBudgetFit_LivingExpensesSubItems_' ./internal/services/retirement/analysis/`
+    --- PASS: TestBudgetFit_LivingExpensesSubItems_PhaseAbove1 (0.00s)
+    --- PASS: TestBudgetFit_LivingExpensesSubItems_PhaseBelow1 (0.00s)
+    --- PASS: TestBudgetFit_LivingExpensesSubItems_AbsentWhenPhasesDisabled (0.00s)
+    --- PASS: TestBudgetFit_LivingExpensesSubItems_AbsentWhenMultiplierIsOne (0.00s)
+    ok  budget2/internal/services/retirement/analysis
+  `go test -count=1 -v -run 'TestRenderBudgetAnalysis' ./internal/templates/`
+    --- PASS: TestRenderBudgetAnalysis_LivingExpenseSubItems_RenderedSumHoldsOnFractionalCentBase (0.01s)
+    --- PASS: TestRenderBudgetAnalysisShowsLivingExpensePhaseSubItems (0.01s)
+    ok  budget2/internal/templates
+  That is the attempt-1 set (4 analysis + 1 render, per W1.1.checker-tests)
+  plus the one new test. Skips:
+  `go test -count=1 -v ./internal/services/retirement/analysis/ ./internal/templates/ | grep -E '^\s*--- SKIP'`
+  -> NO_SKIPS. `grep -n Skip` across the three W1 test files -> NONE.
+  Determinism: `go test -count=20 -run '...RenderedSumHoldsOnFractionalCentBase$' ./internal/templates/`
+  -> ok (0.256s); the test's exact float compare is safe here
+  (python3: 7386.56+738.65 == 8125.21 -> True).
+
+C3 — the fractional-cent test reads RENDERED output and bites: PASS
+  Read in full:
+  /home/darrell/bin/ai/budget2/internal/templates/render_budget_analysis_fractional_cent_test.go
+  It is not a hand-built fixture: L28-39 build real settings
+  (MonthlyLivingExpenses = 7386.555, phases enabled, Go-Go x1.1) and call
+  the production path `analysis.BudgetFit(engine.Input{Prepared:
+  prepare.MustFrom(t, s)}, nil)`; L41-56 load the real embedded templates
+  (web.EmbeddedFS -> NewFromFS) and `RenderToString("whatif-budget-analysis",
+  ...)`; L58-60 pull the three figures OUT OF THE RENDERED HTML string via
+  `extractDollarAfter` (L71-89: strings.Index on the label, then regexp
+  `([+-]?)\$([\d,]+\.\d{2})` on the HTML after it, comma-stripped, sign
+  applied); L62-64 assert rendered base + rendered adjustment == rendered
+  total exactly.
+  Mutation (scratch copy .../scratchpad/mut1, budget_fit.go only):
+    -   base := math.Round(s.MonthlyLivingExpenses*100) / 100
+    -   total := math.Round(livingExpenseAmount*100) / 100
+    -   adjustment := total - base
+    +   base := s.MonthlyLivingExpenses
+    +   adjustment := livingExpenseAmount - base
+  `go test -count=1 -v -run '...RenderedSumHoldsOnFractionalCentBase$' ./internal/templates/`
+  -> MUT_EXIT=1:
+    render_budget_analysis_fractional_cent_test.go:63: rendered base (7386.56)
+      + rendered adjustment (738.66) = 8125.22, want rendered total 8125.21
+    --- FAIL: TestRenderBudgetAnalysis_LivingExpenseSubItems_RenderedSumHoldsOnFractionalCentBase
+  A one-cent mismatch, exactly the defect ruling 2026-08-29b names, and
+  exactly the figures checker-second reported at attempt 1
+  ("7386.56" + "738.66" = "8125.22" vs total "8125.21"). The test bites.
+  Fixed tree, same fixture (probe test, .../scratchpad/probe):
+    STRUCT mle=7386.555 Amount=8125.210500
+      SUB "Base (slider setting)" Amount=7386.56
+      SUB "Go-Go phase x1.1"      Amount=738.6499999999996  -> renders 738.65
+    7386.56 + 738.65 = 8125.21 = rendered total. Identity holds.
+
+C4 — integer-base figures unchanged against the REAL saved plan: PASS
+  Probe test in the copy (since deleted from nothing in the real tree)
+  json.Unmarshal of the actual /home/darrell/bin/ai/budget2/data/settings/whatif.json
+  into models.DefaultWhatIfSettings(), then the real analysis.BudgetFit:
+    loaded: mle=7386 phases_enabled=true ref="older" decline=0
+    phaseRefAge0=65 multiplier=1.1 phaseName="Go-Go"
+    ROW Living Expenses = 8124.6000
+      SUB "Base (slider setting)" = 7386.0000 signed=false
+      SUB "Go-Go phase x1.1"      = 738.6000  signed=true
+  Rendered through the real template, verbatim segment:
+    <span class="text-gray-500 dark:text-gray-400">Living Expenses</span>
+    <span class="text-gray-600 dark:text-gray-300">$8,124.60/mo</span>
+    <div class="flex justify-between py-0.5 pl-8">
+      <span class="text-gray-500 dark:text-gray-300">Base (slider setting)</span>
+      <span class="text-gray-500 dark:text-gray-300">$7,386.00/mo</span>
+    <div class="flex justify-between py-0.5 pl-8">
+      <span class="text-gray-500 dark:text-gray-300">Go-Go phase x1.1</span>
+      <span class="text-gray-500 dark:text-gray-300">+$738.60/mo</span>
+  = 8124.60 / 7386.00 / +738.60, identical to attempt 1's recorded figures.
+  (x above is U+00D7 in the actual output; transcribed ASCII here.)
+
+C5 — diff confined to rounding + guard removal + class swap; engine untouched: PASS
+  Note on method: no attempt-1 snapshot exists in the tree (`git stash list`
+  empty, working tree uncommitted, no .swarm/work/W1 copy), so a literal
+  attempt1<->attempt2 diff CANNOT be produced. I compared attempt 2 against
+  master and against the verbatim quotations in the attempt-1 verdicts.
+  `git diff master --numstat` for W1's three source files:
+    29  0  internal/models/whatif.go
+    30  3  internal/services/retirement/analysis/budget_fit.go
+     8  0  web/templates/components/whatif/budget-analysis.html
+  * models/whatif.go +29/-0 — same size as attempt 1 (W1.1.checker-tests
+    cites "L449-481", W1.1.checker-second cites the same loop) and the body
+    read now is that same GetSpendingPhaseNameAt plus the SubItems/
+    SignedAmount struct fields. Unchanged between attempts.
+  * budget-analysis.html +8/-0 — same +8 as attempt 1 (W1.1.checker-a11y:
+    "lines 33-40, git diff master, +8 lines"). The only content difference
+    is the name span class: attempt 1 (quoted verbatim in that verdict)
+    `<span class="text-gray-400 dark:text-gray-500">{{.Name}}</span>`;
+    now (line 36) `<span class="text-gray-500 dark:text-gray-300">{{.Name}}</span>`.
+    The amount span (line 37) is byte-identical to the attempt-1 quote,
+    including `{{if and .SignedAmount (ge .Amount 0.0)}}+{{end}}`. That is
+    exactly the swap checker-a11y prescribed; the pre-existing tax sub-rows
+    (line 81) still carry the old `text-gray-400 dark:text-gray-500` pair,
+    i.e. the worker did not range beyond the two new rows.
+  * budget_fit.go is the only file whose diff grew (+24/-3 implied at
+    attempt 1 -> +30/-3 now). `grep -n 'math.Abs' budget_fit.go` ->
+    NO_MATH_ABS_GUARD: the tautological guard is gone. The new body is
+    base = math.Round(MonthlyLivingExpenses*100)/100,
+    total = math.Round(livingExpenseAmount*100)/100,
+    adjustment = total - base; the gate
+    (`SpendingPhaseConfig != nil && .Enabled && phaseMultiplier != 1.0`),
+    the phase-name call, the `%s phase x%s` label and the
+    `Amount: engine.LivingExpensesAtMonth(s, 0)` row value are unchanged
+    from the attempt-1 quotes. The remaining +6 lines are the explanatory
+    comment about the ruling. Nothing else in the function changed.
+  * ENGINE UNTOUCHED: `git diff master --name-only | grep -E
+    'retirement/engine/|internal/services/storage/'` -> NONE_ENGINE_OR_STORAGE.
+    The row amount is still `engine.LivingExpensesAtMonth(s, 0)`.
+  * formatMoney unchanged: internal/templates/render.go is modified (W3's
+    file), but its diff vs master adds only `func formatMultiplier`;
+    formatMoney (render.go:425-...) is untouched, so W1's rendering
+    semantics are not affected by the neighbouring task.
+  * The three attempt-1 test files still assert what their names claim:
+    read budget_fit_living_expense_subitems_test.go (absolute figures
+    7386.00 / 738.60 / 8124.60, name "Go-Go phase x1.1", SignedAmount true,
+    sum invariant, and both absence tests asserting `item.SubItems != nil`
+    is an error) and render_budget_analysis_phase_subitems_test.go (asserts
+    the rendered strings "$7,386.00/mo", "+$738.60/mo", "$8,124.60/mo" are
+    present with SubItems and that "Base (slider setting)"/"Go-Go phase"
+    are ABSENT from the render when SubItems is nil). Line numbers match
+    those cited in W1.1.checker-tests (L54-58, L104-107, L127-129), so
+    these files were not weakened between attempts.
+
+OBSERVATIONS (non-blocking, not criteria):
+  O1. The comment added to budget_fit.go cites "Ruling 2026-08-29a"; the
+      applicable ruling is 2026-08-29b (29a is W4's dead-band). Wrong
+      cross-reference in a comment only; no behavioural effect.
+  O2. Consequence of choosing the sum identity (as the ruling directs): on a
+      fractional-cent base the displayed adjustment is no longer exactly
+      displayed-base x (mult-1). Fixture 7386.555: displayed 7386.56 x 0.1 =
+      738.656 -> would display 738.66, but the row shows 738.65 so that
+      7386.56 + 738.65 = 8125.21 = the displayed total. This is the
+      deliberate trade the ruling makes; recorded so the lead knows the
+      residual sub-cent artefact exists.
+  O3. Unchanged from attempt 1 and previously accepted by this lane: the
+      `{{if .SubItems}}` block emits 4 whitespace-only lines for rows
+      without sub-items, so rows without SubItems are identical after
+      whitespace collapse rather than byte-identical (proved at attempt 1
+      by master-vs-branch render comparison; the template diff is
+      unchanged in structure at attempt 2).
+
+SCOPE: `git diff master --name-only` (18 tracked files) plus 6 untracked
+files accounts for every change on the branch. Each maps to exactly one W
+manifest (kpis.html shared by W3/W4); nothing outside the union of
+W1/W2/W3/W4 manifests + .swarm/ledger.tsv + .swarm/W-RUN-SPEC.md +
+.swarm/manifests + .swarm/verdicts is modified. W1.2.files lists six paths
+(internal/models/whatif.go, budget_fit.go + its test, the two
+internal/templates tests, budget-analysis.html); all six are present and
+touched by no other W manifest. `.swarm/critical.globs` (storage,
+dataloader, retirement/engine, transfers, accounts.go, mcpsvc/confirm):
+zero matches against the changed-file list.

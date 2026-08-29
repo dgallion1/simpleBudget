@@ -1,0 +1,101 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W2
+ATTEMPT: 2
+---
+Scope (from .swarm/manifests/W2.2.files): internal/handlers/whatif/handlers.go,
+living_expenses_phase_note.go(+test), living_expenses_snap_trap_test.go,
+web/templates/components/whatif/{portfolio-settings,quick-adjust,quick-adjust-scripts}.html.
+Re-verifying the single attempt-1 FAIL (check 6, WCAG 4.1.2: range's implicit
+aria-valuenow snapped to 7400 while display/saved value was the exact 7386).
+Work done in a copy (cp -a) of /home/darrell/bin/ai/budget2 at
+fix/phase-visibility; only this verdict file was written to the real tree.
+
+1. RENDER WITH THE 7386 FIXTURE — PASS
+   Ran the repo's own test, unmodified:
+   `go test ./internal/handlers/whatif/... -run 'LivingExpenses|SnapTrap' -v`
+   → all PASS, including
+   `TestPortfolioSettingsRender_LivingExpensesPhaseNote/aria-valuetext_carries_the_exact_saved_value,_not_the_step-snapped_one`,
+   which renders "whatif-portfolio-settings" with MonthlyLivingExpenses=7386
+   and asserts `aria-valuetext="$7,386"` is present and `aria-valuetext="$7,400"`
+   is absent. Confirmed independently: added a throwaway test in the copy
+   (deleted after, never touched the real tree) rendering
+   "whatif-quick-adjust-portfolio-content" (the quick-adjust mirror slider's
+   defining block) with the same 7386 fixture:
+     `go test ./internal/handlers/whatif/... -run TestVerifyMirrorAriaValueText_7386 -v`
+     → PASS: `aria-valuetext="$7,386"` present, "$7,400" absent.
+   So both sliders carry the exact value at first paint, matching the display
+   span (`${{formatNumber .Settings.MonthlyLivingExpenses}}` — same helper,
+   same "$7,386" string) — the pre-interaction gap called out in attempt 1
+   ("the snap already applies pre-interaction") is closed on both controls.
+
+2. JS TRACE — every value-changing path updates aria-valuetext — PASS
+   - Primary drag/keyboard: range `oninput="onMonthlyLivingExpensesInput(this.value)"`
+     (portfolio-settings.html) sets the hidden canonical field's `.value` to
+     the raw (browser-snapped, e.g. 7400 while mid-drag — acceptable, see
+     below) value and dispatches a bubbling `input` event on it.
+   - Document-level capture listener (quick-adjust-scripts.html:207,
+     `addEventListener('input', ..., true)`) sees the hidden field's
+     `data-quick-adjust-key` (not a mirror) → `syncQuickAdjustKey(key)`.
+   - `syncQuickAdjustKey('monthly_living_expenses')` (lines ~101-116) computes
+     `exactValueText = '$' + Math.round(Number(canonicalControl.value)||0).toLocaleString()`
+     from the hidden field's own value and calls
+     `primaryRange.setAttribute('aria-valuetext', exactValueText)` AND
+     iterates `getQuickAdjustMirrorControls(key)` setting the same attribute
+     on the mirror. Both controls always get the identical string in one
+     synchronous call — cannot drift from each other.
+   - Mirror drag/keyboard: mirror `input`/`change` → captured, mirror has
+     `data-quick-adjust-mirror` → `proxyQuickAdjustMirrorToCanonical` copies
+     mirror's value onto the canonical hidden field, dispatches on it, then
+     calls `syncQuickAdjustKey` — same update path, same result.
+   - Grepped for every other place `.value =` is assigned on either range or
+     the hidden field in these three files (`syncQuickAdjustMirrorControls`,
+     `proxyQuickAdjustMirrorToCanonical`, `onMonthlyLivingExpensesInput`) —
+     all funnel through `syncQuickAdjustKey`'s branch for this key, either
+     directly or via the capture listener. No path was found that mutates
+     the submitted/displayed value without also running this branch.
+   - Confirmed live: `go build ./...` succeeds and
+     `go test ./internal/handlers/whatif/... ./internal/templates/...`
+     passes in full (22.1s / 0.8s, no failures), so nothing here is only
+     true "on paper."
+
+3. aria-valuetext CONTENT FORMAT — PASS
+   Server: `aria-valuetext="${{formatNumber .Settings.MonthlyLivingExpenses}}"`
+   → "$7,386". Client: `'$' + Math.round(...).toLocaleString()` → "$7,386"
+   (verified the two format functions agree: `node -e "console.log('$'+
+   Math.round(7386).toLocaleString())"` → "$7,386", matching Go's
+   `formatNumber`'s comma-grouped, no-decimal output). It reads as a bare
+   value, not a sentence, on both the primary range and the mirror.
+
+4. NOTHING ELSE MOVED — attempt-1's other five findings re-checked
+   - Check 1 (label association / keyboard operability): unchanged —
+     `<label>` still lacks `for=` (pre-existing, out of W2 scope, still an
+     OBSERVATION not a FAIL); range is still native, unmodified tabindex,
+     still keyboard operable; confirmed by the trace above that keyboard
+     `input` events use the identical code path as drag.
+   - Check 2 (note text contrast): the two pre-existing captions
+     (`text-xs text-gray-400 dark:text-gray-500`) and the new phase-note
+     paragraph that reuses that class string are BYTE-IDENTICAL to what was
+     diffed in attempt 1 — `git diff master -- portfolio-settings.html`
+     shows them as unchanged context lines this attempt too. Still a
+     pre-existing, sitewide AA contrast gap (2.54:1 light / 3.04:1 dark,
+     both below 4.5:1), still not introduced or worsened by W2, still an
+     OBSERVATION for a follow-up task, not a blocker here.
+   - Check 3 (no aria-live on the phase-note figure): unchanged from
+     attempt 1, consistent with every other quick-adjust display span on
+     the page — OBSERVATION, non-blocking, WCAG 2.2 AA does not mandate it.
+   - Check 4 (× sign linearization): note markup/JS unchanged from attempt 1
+     beyond the aria-valuetext addition — same OBSERVATION, non-blocking.
+   - Check 5 (hidden input excluded from a11y tree): the hidden input is
+     still `type="hidden"` with no role/aria-*/tabindex override — still
+     categorically excluded per HTML AAM. PASS, unchanged.
+   - New file quick-adjust.html now also carries a server-rendered
+     `aria-valuetext="${{formatNumber .Settings.MonthlyLivingExpenses}}"` on
+     its mirror range (line 105) — reviewed, correct, no regression.
+
+Net: the WCAG 4.1.2 divergence from attempt 1 is resolved on both the primary
+range and the quick-adjust mirror, at first paint and through every
+value-changing interaction (drag, mirror drag, keyboard, on either control).
+No new failure surfaced; all previously-noted pre-existing/non-blocking
+observations are unchanged in kind and magnitude. VERDICT: PASS.

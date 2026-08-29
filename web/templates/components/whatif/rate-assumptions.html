@@ -831,7 +831,10 @@ function updateSpendingPreview() {
 
     const inflationSlider = document.getElementById('inflation-rate-slider');
     const declineSlider = document.getElementById('spending-decline-slider');
-    const expensesSlider = document.getElementById('monthly_living_expenses_input');
+    // Canonical exact value (hidden field), not the step=100-snapped
+    // visible range — otherwise this preview can be off by up to $50 from
+    // the saved/dragged monthly living expenses figure.
+    const expensesSlider = document.getElementById('monthly_living_expenses_value');
 
     const inflation = parseFloat(inflationSlider.value);
     const decline = parseFloat(declineSlider.value);
@@ -860,7 +863,7 @@ function updateSpendingPreview() {
 
         row.innerHTML = `
             <td class="py-1">Year ${year}</td>
-            <td class="text-right py-1">$${Math.round(spending).toLocaleString()}/mo</td>
+            <td class="text-right py-1">${formatWholeDollars(spending)}/mo</td>
             <td class="text-right py-1 ${colorClass}">${sign}${pctChange.toFixed(0)}%</td>
         `;
         tbody.appendChild(row);

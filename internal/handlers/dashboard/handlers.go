@@ -94,6 +94,11 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	settings := currentBudgetSettings()
 	target, healthTarget := metrics.BudgetTargets(settings, startDate, endDate)
 	dashMetrics := metrics.Calculate(filtered, startDate, endDate, target, healthTarget)
+	// Provenance for the Monthly Living Expenses card's "Target $X" text —
+	// base plan value, effective multiplier, and active phase, so the
+	// number is explained rather than appearing out of nowhere next to the
+	// What-If plan's own figure. See kpis.html.
+	targetProvenance := metrics.TargetProvenance(settings, startDate, endDate)
 
 	// Calculate period comparison if requested
 	var periodComparison *models.PeriodComparison
@@ -127,6 +132,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		"Title":            "Dashboard",
 		"ActiveTab":        "dashboard",
 		"Metrics":          dashMetrics,
+		"TargetProvenance": targetProvenance,
 		"BudgetVerdict":    BuildBudgetVerdict(dashMetrics),
 		"PeriodComparison": periodComparison,
 		"StartDate":        startDate.Format("2006-01-02"),
@@ -172,6 +178,7 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 	settings := currentBudgetSettings()
 	target, healthTarget := metrics.BudgetTargets(settings, startDate, endDate)
 	dashMetrics := metrics.Calculate(filtered, startDate, endDate, target, healthTarget)
+	targetProvenance := metrics.TargetProvenance(settings, startDate, endDate)
 
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
@@ -180,6 +187,7 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 
 	partialData := map[string]interface{}{
 		"Metrics":          dashMetrics,
+		"TargetProvenance": targetProvenance,
 		"BudgetVerdict":    BuildBudgetVerdict(dashMetrics),
 		"PeriodComparison": periodComparison,
 	}

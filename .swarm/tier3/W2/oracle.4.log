@@ -1,0 +1,17 @@
+ok  	budget2/internal/handlers/whatif	0.034s
+CHECK 01-canonical-strings: PASS
+CHECK 02-js-one-formatter-defined: PASS
+CHECK 03-js-single-toLocaleString: PASS
+CHECK 04a-portfolio-no-bare-toLocaleString: PASS
+CHECK 04b-portfolio-uses-shared-formatter: PASS
+CHECK 08-no-bare-toLocaleString-anywhere: PASS
+CHECK 09-no-undefined-locale: PASS
+CHECK 10-rate-assumptions-routes-through-shared-formatter: PASS
+ok  	budget2/internal/handlers/whatif	0.016s
+CHECK 11-spending-phases-label-guarded: PASS
+CHECK 05-package-suite: PASS
+CHECK 06-build: PASS
+CHECK 07-vet: PASS
+---
+passed=12 failed=0
+ORACLE PASS

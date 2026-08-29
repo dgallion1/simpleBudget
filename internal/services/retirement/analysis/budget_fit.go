@@ -3,10 +3,31 @@ package analysis
 import (
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
 )
+
+// centsFromDecimalString derives an integer cent count from v using the
+// EXACT SAME decimal rounding fmt's "%.2f" verb applies — format then parse
+// — rather than a second, independent rounding algorithm (e.g.
+// math.Round(v*100)/100). Templates render dollar figures via formatMoney,
+// which itself formats with "%.2f"; deriving cents any other way can
+// disagree with that rendering at floating-point ties (Ruling 2026-08-29b).
+func centsFromDecimalString(v float64) int64 {
+	negative := v < 0
+	s := fmt.Sprintf("%.2f", math.Abs(v))
+	parts := strings.SplitN(s, ".", 2)
+	whole, _ := strconv.ParseInt(parts[0], 10, 64)
+	frac, _ := strconv.ParseInt(parts[1], 10, 64)
+	cents := whole*100 + frac
+	if negative {
+		cents = -cents
+	}
+	return cents
+}
 
 // BudgetFit analyzes the monthly budget gap (expenses vs. income) at
 // month 0 and at a steady-state month when delayed income sources have
@@ -70,12 +91,43 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 	// when spending phases are disabled.
 	phaseMultiplier := s.GetSpendingMultiplier(s.GetPhaseReferenceAge(0))
 	if s.MonthlyLivingExpenses > 0 {
-		breakdown = append(breakdown, models.ExpenseBreakdownItem{
+		livingExpenseAmount := engine.LivingExpensesAtMonth(s, 0)
+		livingExpenseItem := models.ExpenseBreakdownItem{
 			Name: "Living Expenses",
 			// Use the engine's phase-/decline-adjusted living expense at
 			// month 0, not the raw setting, so this row matches the total.
-			Amount: engine.LivingExpensesAtMonth(s, 0),
-		})
+			Amount: livingExpenseAmount,
+		}
+		// Surface the phase multiplier as indented sub-rows so the panel
+		// doesn't silently apply a multiplier the slider elsewhere doesn't
+		// show. spending_decline_rate never applies alongside phases (see
+		// livingExpensesAtMonth), so gating on SpendingPhaseConfig.Enabled
+		// already keeps decline-only adjustments out of this breakdown.
+		//
+		// Ruling 2026-08-29b "sum must hold" means the RENDERED strings, not
+		// the underlying floats: the template formats base/adjustment/total
+		// independently with %.2f, so a fractional-cent base (e.g. 7386.555,
+		// from Sync-from-Dashboard's totalExpenses/months) can round each
+		// figure separately and visibly fail to add up. Deriving cents from
+		// the SAME "%.2f"-then-parse path the template's formatMoney uses
+		// (centsFromDecimalString), for both operands, then computing the
+		// adjustment as an integer-cent subtraction, makes the displayed
+		// identity hold by construction — even at floating-point ties where
+		// math.Round(v*100)/100 disagrees with "%.2f" of the raw total.
+		if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled && phaseMultiplier != 1.0 {
+			baseCents := centsFromDecimalString(s.MonthlyLivingExpenses)
+			totalCents := centsFromDecimalString(livingExpenseAmount)
+			adjustmentCents := totalCents - baseCents
+			base := float64(baseCents) / 100
+			adjustment := float64(adjustmentCents) / 100
+			phaseName := s.GetSpendingPhaseNameAt(s.GetPhaseReferenceAge(0))
+			multiplierLabel := strconv.FormatFloat(phaseMultiplier, 'g', -1, 64)
+			livingExpenseItem.SubItems = []models.ExpenseBreakdownItem{
+				{Name: "Base (slider setting)", Amount: base},
+				{Name: fmt.Sprintf("%s phase ×%s", phaseName, multiplierLabel), Amount: adjustment, SignedAmount: true},
+			}
+		}
+		breakdown = append(breakdown, livingExpenseItem)
 	}
 	healthcareCost := s.GetTotalHealthcareCost(0)
 	if healthcareCost > 0 {

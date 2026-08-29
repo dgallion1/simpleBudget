@@ -1,0 +1,162 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W2
+ATTEMPT: 1
+---
+Verified in a copy of /home/darrell/bin/ai/budget2 (cp -a, .git kept), branch
+fix/phase-visibility, go1.26.6 linux/amd64. Nothing written to the real tree
+except this verdict file.
+
+NOTE ON TREE STATE: the branch also carries sibling tasks' work (W1/W3/W4).
+Every file changed outside W2's manifest is claimed by W1.1.files, W3.1.files
+or W4.1.files (`for f in .swarm/manifests/W*.files; do cat $f; done` vs
+`git status --porcelain`). No file is changed that no manifest claims.
+
+--- CRITERION 1: build / vet / test / css-verify ---
+CMD: go version && go build ./... && go vet ./...
+OUT: "go version go1.26.6 linux/amd64", BUILD_EXIT=0, VET_EXIT=0, no diagnostics.
+CMD: go test ./...
+OUT: 49 packages, every line "ok", TEST_EXIT=0. No FAIL, no build failures.
+     Includes "ok budget2/internal/handlers/whatif 19.828s".
+CMD: make css-verify
+OUT: "tailwind.css is up to date", CSS_EXIT=0.
+RESULT: MET.
+
+--- CRITERION 2: worker's named tests pass, none skipped ---
+CMD: go test ./internal/handlers/whatif/ -count=1 -v -run \
+  'TestBuildLivingExpensesPhaseNote|TestFormatPhaseMultiplier|TestPortfolioSettingsRender_LivingExpensesPhaseNote|TestHandleWhatIfSettings_LivingExpensesRoundTripsOffGridValue|TestHandleWhatIfSettings_LivingExpensesSnappedValueWouldPersist'
+OUT (EXIT=0), every one "--- PASS", zero "SKIP" lines:
+  --- PASS: TestBuildLivingExpensesPhaseNote_EnabledWithNextTransition
+  --- PASS: TestBuildLivingExpensesPhaseNote_DisabledPhases
+  --- PASS: TestBuildLivingExpensesPhaseNote_NilConfig
+  --- PASS: TestBuildLivingExpensesPhaseNote_MultiplierOne
+  --- PASS: TestBuildLivingExpensesPhaseNote_SinglePhaseOmitsNextClause
+  --- PASS: TestBuildLivingExpensesPhaseNote_NilSettings
+  --- PASS: TestFormatPhaseMultiplier
+  --- PASS: TestPortfolioSettingsRender_LivingExpensesPhaseNote (4 subtests:
+      shown_with_figures_and_next-transition_clause / hidden_when_phases_disabled
+      / hidden_when_multiplier_is_1.0 /
+      hidden_input_carries_the_exact_off-grid_saved_value;_range_has_no_name)
+  --- PASS: TestHandleWhatIfSettings_LivingExpensesRoundTripsOffGridValue
+  --- PASS: TestHandleWhatIfSettings_LivingExpensesSnappedValueWouldPersist
+Test bodies read (living_expenses_phase_note_test.go, living_expenses_snap_trap_test.go):
+assertions match the names. The phase-note tests assert Show/PhaseName/
+Multiplier/MultiplierText/EngineMonth0(=7386*1.1 within 0.005)/NextClause
+("×0.9 from age 70"); the disabled/nil/1.0 cases assert Show==false; the render
+test asserts on real rendered HTML; the snap-trap tests save via rm.Save, POST
+through handleWhatIfSettings and assert via rm.Load.
+RESULT: MET.
+
+--- CRITERION 3: independent round-trip test (checker-authored, deleted) ---
+Scratch test TestChecker_W2_OffGridRoundTripViaRenderedForm did NOT hardcode
+the submitted value. It saved 7386, rendered the real
+"whatif-portfolio-settings" template, regex-extracted every <input> carrying
+name="monthly_living_expenses", posted THAT value plus monthly_property_tax=250
+(the only real change), then read monthly_living_expenses back out of the JSON
+file on disk (not rm.Load) via a glob of the settings dir.
+CMD: go test ./internal/handlers/whatif/ -count=1 -v -run TestChecker_W2_OffGridRoundTripViaRenderedForm
+OUT: --- PASS, with logged evidence:
+  persisted file .../001/whatif.json -> monthly_living_expenses = 7386   (before)
+  inputs submitting monthly_living_expenses: 1
+    tag: <input type="hidden" id="monthly_living_expenses_value" name="monthly_living_expenses" value="7386.00" data-quick-adjust-key="monthly_living_expenses">
+  browser would submit monthly_living_expenses="7386.00" (slider untouched)
+  persisted file .../001/whatif.json -> monthly_living_expenses = 7386   (after)
+Exactly one input submits the field, it is the hidden one, and the on-disk file
+is unchanged. MonthlyPropertyTax==250 asserted (unrelated change did apply).
+Scratch files deleted; `git status --porcelain | grep -c zz_checker` -> 0, and
+the real tree never had them (REAL_TREE_SCRATCH_COUNT=0).
+RESULT: MET.
+
+--- CRITERION 4: template facts by inspection + render, both fixtures ---
+Scratch test TestChecker_W2_TemplateFacts rendered three fixtures. Logged tags:
+  <input type="hidden" id="monthly_living_expenses_value" name="monthly_living_expenses" value="7386.00" data-quick-adjust-key="monthly_living_expenses">
+  <input type="range" id="monthly_living_expenses_input" value="7386" min="0" max="20000" step="100" class="..." oninput="onMonthlyLivingExpensesInput(this.value)">
+Asserted and passed: range has NO ` name=` attribute; range has NO
+data-quick-adjust-key; range is type=range step=100; hidden is type=hidden,
+carries name="monthly_living_expenses" and the exact %.2f value "7386.00".
+On-load display: <span id="monthly_living_expenses_display" ...>$7,386</span>
+(asserted contains "$7,386" and NOT "7,400").
+Note text with tags stripped compared for EXACT equality against the spec
+sentence and matched:
+  "Engine spends $8,124.60/mo now (Go-Go ×1.1); ×0.9 from age 70."
+plus data-phase-multiplier="1.1".
+Phases-disabled fixture: asserted absence of all of "living-expenses-phase-note",
+"living-expenses-phase-amount", "Engine spends", "data-phase-multiplier" — all
+absent, while the hidden input is still present (logged true).
+Multiplier==1.0 fixture: note absent.
+RESULT: MET.
+
+Additionally proven in a real DOM (jsdom 'runScripts: dangerously' over the
+Go-rendered whatif-portfolio-settings + whatif-portfolio-scripts +
+whatif-quick-adjust-scripts fragments; node v24.12.0):
+  PASS hidden input is NOT snapped by the UA: "7386.00"
+  PASS range HAS no name (excluded from submission): false
+  PASS hidden input carries the submission name: "monthly_living_expenses"
+  PASS FormData monthly_living_expenses (untouched): "7386.00"
+  -- simulate drag of the visible slider to 9000 --
+  PASS phase note live-updated to 9000 x 1.1: "$9,900.00"
+  PASS hidden input follows the drag: "9000"
+  PASS FormData after drag: "9000"
+  ALL DOM CHECKS PASSED (exit 0)
+This is the command-based evidence for the brief's "live-updating via the
+quick-adjust sync path" clause: the drag reaches the note only through
+onMonthlyLivingExpensesInput -> hidden.dispatchEvent('input') -> the delegated
+document 'input' listener -> syncQuickAdjustKey('monthly_living_expenses') ->
+updateLivingExpensesPhaseNote(canonicalControl.value).
+
+--- CRITERION 5: non-vacuity by mutation ---
+Second scratch copy; portfolio-settings.html mutated to restore
+name="monthly_living_expenses" on the range and remove it from the hidden input.
+CMD: go test ./internal/handlers/whatif/ -count=1 -v -run '...' (mutated tree)
+OUT: MUT_EXIT=1, with:
+  --- FAIL: TestChecker_W2_OffGridRoundTripViaRenderedForm
+      submitting input is a RANGE (min=0 step=100): browser snaps 7386 -> 7400
+      persisted monthly_living_expenses = 7400
+      PERSISTED monthly_living_expenses = 7400, want 7386 (snap trap)
+  --- FAIL: TestPortfolioSettingsRender_LivingExpensesPhaseNote
+      --- FAIL: .../hidden_input_carries_the_exact_off-grid_saved_value;_range_has_no_name
+The round-trip fails and the value becomes exactly 7400, as specified. The jsdom
+run against the mutated tree independently shows the corruption at the form
+layer: "FAIL FormData monthly_living_expenses (untouched): got \"100\" want
+\"7386.00\"" (the UA sanitizes the named range's value; the exact amount is lost).
+RESULT: MET.
+
+--- CRITERION 6: diff review ---
+CMD: git diff master -- internal/handlers/whatif web/templates/components/whatif/portfolio-settings.html web/templates/components/whatif/quick-adjust-scripts.html
+handlers.go: +18/-16, adding only the map key "LivingExpensesPhaseNote":
+buildLivingExpensesPhaseNote(settings) in buildResultsPartialData and
+handleWhatIf; the rest is gofmt key realignment. No math.
+The note's dollar figure is NOT re-derived:
+  internal/handlers/whatif/living_expenses_phase_note.go:72
+    EngineMonth0:   engine.LivingExpensesAtMonth(s, 0),
+which is engine/loop_helpers.go:28 -> engine/expense.go:17 livingExpensesAtMonth,
+i.e. the projection's own function. The multiplier/phase-age use the same
+exported models accessors the engine uses (s.GetPhaseReferenceAge,
+s.GetSpendingMultiplier — the latter also called by engine's
+RebaseLivingExpensesAtTransition), not a private copy of the rule.
+CMD: git diff --stat master -- internal/services/retirement/engine internal/services/retirement/analysis internal/services/storage internal/services/dataloader internal/services/transfers internal/services/accounts/accounts.go internal/services/mcpsvc/confirm
+OUT: only "internal/services/retirement/analysis/budget_fit.go | 27 ++-".
+internal/services/retirement/engine has ZERO diff vs master — no engine math
+changed. budget_fit.go is listed in .swarm/manifests/W1.1.files, i.e. it belongs
+to sibling task W1, not W2. Every path in .swarm/critical.globs
+(storage, dataloader, retirement/engine, transfers, accounts.go, mcpsvc/confirm)
+is unchanged vs master.
+RESULT: MET.
+
+--- OBSERVATIONS (not criterion failures; for the lead) ---
+O1. The worker's own TestHandleWhatIfSettings_LivingExpensesRoundTripsOffGridValue
+    still PASSES against the mutated template (verified: "--- PASS" in the
+    mutated run). It hardcodes the form value "7386.00" and never consults the
+    render, so by itself it does not guard the snap-trap fix — it is a
+    handler-level guard only. The mutation IS caught by the worker's render
+    subtest "hidden_input_carries_the_exact_off-grid_saved_value; range has no
+    name", so the worker's suite as a whole is non-vacuous, and criterion 5 is
+    satisfied by the checker's render-driven round-trip failing at 7400.
+O2. quick-adjust-scripts.html:54 (formatQuickAdjustDisplay, 'phase-dollar' case)
+    still reads document.getElementById('monthly_living_expenses_input').value —
+    the step=100 range — to compute the phase sub-label dollar amounts, so those
+    labels derive from the UA-snapped figure rather than the exact hidden one.
+    Byte-identical to master (`git show master:...` vs branch, both line 54), so
+    W2 introduces no regression here and it is outside the brief's stated scope;
+    it is the one remaining place the snapped value reaches a display.

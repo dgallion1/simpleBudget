@@ -1,0 +1,123 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: W4
+ATTEMPT: 3
+---
+Oracle (.swarm/tier3/W4/accept.sh) does PASS: ORACLE PASS, all 4 checks
+green (parity/cleanliness, package suite, build, vet), run in an isolated
+`cp -a` copy of the tree at
+/tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/budget2.
+Attempt-3's specific fixes (bucket rows gated on .Configured, on-target
+class text-gray-600 dark:text-gray-400, `room <= 0` clamp, byte-identity
+re-anchor) are all present and verified working as claimed. However the
+oracle is not exhaustive, and a same-page contradiction survives outside
+its coverage.
+
+(1) Phantom-row reproduction (attempt-2 regression): re-ran
+TestOracleW4BucketPresenceParity — living-only and healthcare-only cases
+both correctly omit the unconfigured bucket's row on both surfaces. The
+degenerate "both targets unconfigured but HasCombinedTarget true" case is
+mathematically unreachable through the real metrics.Calculate: hasCombinedTarget
+= (budgetTarget+healthcareTarget) > 0, hasBudgetTarget = budgetTarget > 0,
+hasHealthcareTarget = healthcareTarget > 0 (internal/services/metrics/metrics.go:236,242,251).
+If both individual targets are <= 0, their sum is <= 0, contradicting
+hasCombinedTarget = true. No probe needed beyond the algebra; confirmed no
+code path bypasses this invariant (only caller of Calculate's
+budget/healthcare targets is metrics.BudgetTargets). Not a defect.
+
+(2) SAME-PAGE SWEEP — FOUND A REAL CONTRADICTION, independent of the one
+ruling 2026-08-29a already fixed:
+  web/templates/components/kpis.html:129-142 — the Budget KPI card's own
+  CONTAINER TINT (border/background: rose "over" vs emerald "healthy" vs
+  neutral) is still computed from a bare-sign, un-dead-banded comparison:
+      {{$budgetOver := and .Metrics.HasCombinedTarget (gt .Metrics.CombinedCumulativeDelta 0.0)}}
+      {{$budgetHealthy := and .Metrics.HasCombinedTarget (le .Metrics.CombinedCumulativeDelta 0.0)}}
+  while the card's HEADLINE text three lines below it independently
+  re-implements the $1 dead-band with hardcoded literals instead of
+  consuming .BudgetVerdict.IsOver/.IsUnder/.Health:
+      {{if gt .Metrics.CombinedCumulativeDelta 1.0}} ... over
+      {{else if lt .Metrics.CombinedCumulativeDelta -1.0}} ... under
+      {{else}} On budget {{end}}
+  Reproduced with a planted test (zzMetrics: CombinedCumulativeDelta=0.60,
+  HasCombinedTarget=true, both buckets configured — the exact class of
+  fixture the accept.sh oracle already uses elsewhere): the rendered card
+  is
+      <div class="... border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20" ...>
+        ...>Budget</p>
+        <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">On budget</p>
+        ...Living: $2,000.60 of $2,000.00 ... $0.60 on target
+        ...Health: $300.00 of $300.00 ... $0.00 on target
+  i.e. the card's chrome is an alarming ROSE/RED "over budget" tint while
+  its own headline says "On budget" and both decomposition rows say "on
+  target," for a delta (v.Delta=0.60) that BuildBudgetVerdict classifies
+  as Health=green, IsOver=false, IsUnder=false. This is the SAME figure
+  (CombinedCumulativeDelta == BudgetVerdict.Delta) rendered by TWO
+  independent classifiers on the SAME card: the tint keeps the pre-W4
+  bare-sign rule the ruling condemned, the headline keeps its own
+  hardcoded copy of onBudgetEps=1.0 instead of reading .BudgetVerdict.
+  Ruling 2026-08-29a's own words: "a threshold applied to a figure must
+  live in ONE classification source consumed by every surface that
+  renders the same figure." The card tint is a surface rendering that
+  figure and is not consuming that source. This is not "distinctly
+  labeled" — it's one card, one figure, contradicting itself: a
+  danger-colored container wrapping "on target" text. Attempt 3's fix
+  list (per .swarm/W-RUN-SPEC.md Attempt-3 block) only mentions bucket
+  rows, on-target class, room clamp, and byte-identity anchor — it never
+  touched this pre-existing tint logic, so the defect ruling 29a exists to
+  prevent is still reachable, just moved from the per-bucket rows to the
+  card's own container color vs its own headline/rows.
+  Reachable range: any 0 < CombinedCumulativeDelta <= $1.00 (tint=rose,
+  headline=on budget/neutral) or -$1.00 <= delta < 0 (tint=emerald,
+  headline=on budget — milder, both read as "fine," not flagged as a
+  contradiction here).
+  Not caught by .swarm/tier3/W4/accept.sh because that oracle only
+  greps rendered TEXT (row presence, status words, $-0.00, contrast
+  classes on the decomposition rows) — it never inspects the outer card's
+  border/bg classes.
+
+  Headline vs decomposition (two on-target buckets summing past the
+  headline's own dead-band, e.g. living=-0.99, healthcare=-0.99, total
+  =-1.98): investigated and NOT a defect. IsUnder is computed from the
+  TOTAL v.Delta, decomposition Status is computed per-bucket from
+  independent bucket deltas — these are two different figures, not the
+  same figure rendered twice, so ruling 29a's "same figure, one source"
+  requirement does not apply between them, and the verdict sentence
+  ("$1.98 room") stays numerically consistent with the headline either
+  way. Distinctly labeled, not a violation.
+
+(3) -0.0 hunt: formatMoney (internal/templates/render.go:425) does NOT
+  self-guard against negative zero — `negative := v < 0` is false for
+  IEEE754 -0.0, so an un-abs()'d -0.0 passed to formatMoney prints
+  "-0.00" (verified with a standalone repro: math.Copysign(0,-1) prints
+  "-0.00" via the same "%.2f" pattern formatMoney uses). The W4 sentence
+  path is now safe only because classifyVerdictSentence clamps `room` to
+  literal 0 when <= 0, and every Delta/OverAmount rendered through the
+  templates on this page is wrapped in the `abs` template func
+  (verified: `abs .BudgetVerdict.Living.Delta`, `abs
+  .BudgetVerdict.Healthcare.Delta`, `abs .Metrics.CombinedCumulativeDelta`
+  x2, `abs .Metrics.PerMonthDelta`, `abs .Metrics.HealthcarePerMonthDelta`
+  — grepped every formatMoney call site in kpis.html and
+  dashboard-verdict-bar.html). No unguarded -0.0 escape found on this
+  page today. This is fragile (relies on every call site remembering
+  `abs`, not on formatMoney itself being safe) but not currently
+  reachable, so not failing on it — flagging as residual risk only.
+
+(4) Refund-heavy window (large negative actuals -> "spend up to $X"
+  huge): unchanged from attempt-1 ruling — formatMoney handles arbitrary
+  magnitude and sign correctly for real (non-zero) negatives; no crash,
+  no sign-flip, confirmed by code inspection of formatMoney's negation
+  branch. No new issue found here.
+
+(5) Baseline: `ORACLE PASS` with build/vet/test all green (see accept.sh
+  output above). No css-verify.sh present in this tree/branch to run
+  (searched repo root and swarm/, none found) — not part of this task's
+  file set per manifest, treating as not-applicable rather than a
+  baseline failure.
+
+Net: attempt 3 correctly fixed everything the oracle checks for, but a
+same-card, same-figure tint-vs-text contradiction (item 2) — the exact
+defect class ruling 2026-08-29a was written to eliminate — survives in
+code the worker did not touch. Default-to-FAIL on this ambiguity per the
+adversarial-checker mandate: the ruling's principle is violated even
+though the oracle's specific assertions all pass.

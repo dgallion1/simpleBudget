@@ -1,0 +1,144 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W4
+ATTEMPT: 1
+---
+Verified in a copy of /home/darrell/bin/ai/budget2 (cp -a, .git kept) at
+/tmp/claude-1000/.../scratchpad/w4/repo, branch fix/phase-visibility, go1.26.6.
+The real tree was not written to except this verdict file.
+
+C1 — build / vet / test / css-verify: PASS
+  `go version` -> go version go1.26.6 linux/amd64
+  `go build ./... ; echo BUILD_EXIT=$?` -> BUILD_EXIT=0 (no output)
+  `go vet ./... ; echo VET_EXIT=$?`     -> VET_EXIT=0 (no output)
+  `go test ./...`                       -> all 49 packages "ok", TEST_EXIT=0
+  `make css-verify`                     -> "tailwind.css is up to date", CSSVERIFY_EXIT=0
+
+C2 — named tests, -count=1 -v: PASS (with one count discrepancy, noted)
+  `go test ./internal/handlers/dashboard/ -count=1 -v -run
+   'TestClassifyBucket|TestClassifyVerdictSentence|TestBuildBudgetVerdict|TestDashboardVerdictBar_Render'`
+  -> ok budget2/internal/handlers/dashboard 0.021s; every subtest "--- PASS";
+     zero "--- SKIP" lines in the output.
+  Counts observed: TestClassifyBucket 8/8 PASS; TestClassifyVerdictSentence 5/5 PASS;
+  TestBuildBudgetVerdict 16 subtests PASS, of which 7 are new
+  (`git show master:internal/handlers/dashboard/verdict_test.go | grep -c 't.Run('` -> 9;
+   branch has 16 -> 7 new, matching the brief).
+  TestDashboardVerdictBar_Render has 7 subtests, all PASS, but only 4 are NEW
+  (`git show master:internal/handlers/dashboard/verdict_render_test.go | grep 't.Run'`
+   -> 3 subtests on master; branch has 7). The brief said 5. The fifth is the
+   pre-existing "no target ..." subtest, which the worker extended with new
+   negative assertions rather than adding a fifth new subtest. Factual note, not
+   a failure: all required behaviours (three sentence kinds, single-bucket,
+   no-target absence) are covered and pass.
+  Test bodies read (internal/handlers/dashboard/verdict_test.go,
+  verdict_render_test.go): the assertions match the subtest names — e.g. the
+  "$1 boundary" subtest feeds CumulativeDelta 0.99 and asserts Status=="on target"
+  and Kind==SentenceBothAtOrUnder; the "single bucket configured" render subtest
+  asserts "Living:" present AND "Healthcare:" absent.
+
+C3 — independent $1 boundary probe, both signs: PASS
+  My own scratch probe (zz_probe_boundary_test.go, written into the COPY only and
+  removed after) drives models.DashboardMetrics -> BuildBudgetVerdict -> template
+  render, and asserts on the rendered HTML:
+  `go test ./internal/handlers/dashboard/ -count=1 -v -run TestCheckerProbe_Boundary`
+  --- PASS: TestCheckerProbe_Boundary/+0.99_is_at_target   (renders `Living: <span class="num">$0.99</span> on target`, no "over")
+  --- PASS: TestCheckerProbe_Boundary/+1.01_is_over        (renders `Living: <span class="num">$1.01</span> over`)
+  --- PASS: TestCheckerProbe_Boundary/-0.99_is_at_target   (on target, not "under")
+  --- PASS: TestCheckerProbe_Boundary/-1.01_is_under       (under, not "on target")
+  --- PASS: TestCheckerProbe_Boundary/+1.01_yields_the_mixed_room-comes-from_sentence
+  The +0.99 case also asserts the mixed sentence is ABSENT, so the boundary drives
+  sentence selection, not just the decomposition wording.
+
+C4 — no-target byte-identity vs master: FAIL
+  Probe zz_probe_notarget_test.go builds the view from the metrics sentinel
+  (models.DashboardMetrics{HasCombinedTarget:false, LivingTargetTotal:0,
+  HealthcareTargetTotal:0}) via BuildBudgetVerdict and renders
+  "dashboard-verdict-bar" to a file. Run in the branch copy and in a `git worktree
+  add ... master` checkout of the same repo copy:
+    branch: wrote 1007 bytes    master: wrote 998 bytes
+    `cmp branch.html master.html` -> "differ: byte 651, line 12"
+    md5: 802a82223232712eb5e0fa1fe09c51dc (branch) vs c2313cc5f1b09c7cae09be70687a17fc (master)
+  `diff -u master.html branch.html | cat -A` shows exactly one added line:
+      @@ -9,6 +9,7 @@
+                   </div>$
+      +        $
+           </div>$
+  i.e. the branch emits 9 extra bytes (8 spaces + newline) in the no-target case.
+  Cause: web/templates/components/dashboard-verdict-bar.html lines 25 and 42 add
+  `{{if $v.HasTarget}}` / `{{end}}` on their own source lines with no whitespace
+  trim markers, so the surrounding newline+indent survives when the branch is not
+  taken. No text/markup difference — whitespace only, no visual effect — but the
+  written criterion (brief C4; W-RUN-SPEC W4 requirement 4, "the banner is
+  byte-identical to today") is not met, and the command above demonstrates it.
+  To fix: trim markers on those two actions (e.g. `{{if $v.HasTarget}}` ->
+  `{{- if $v.HasTarget}}` and `{{end}}` -> `{{- end}}`) so the false branch emits
+  nothing. Note also that the worker's own "no target ..." render subtest asserts
+  only the ABSENCE of the new strings; it does not assert byte-identity, so it
+  cannot catch this.
+
+C5 — non-vacuity by mutation: PASS
+  In a separate scratch copy (mutant/, worker probe files removed) I inverted the
+  mixed-case selection in classifyVerdictSentence:
+    `case living.Configured && living.Status == "over":`      -> `== "under"`
+    `case healthcare.Configured && healthcare.Status == "over":` -> `== "under"`
+  `go test ./internal/handlers/dashboard/ -count=1 -run
+   'TestBuildBudgetVerdict|TestClassifyVerdictSentence|TestDashboardVerdictBar_Render'`
+  -> FAIL, including:
+    --- FAIL: TestBuildBudgetVerdict/headroom_decomposition:_live_case,_living_over_masked_by_healthcare_under
+    --- FAIL: TestBuildBudgetVerdict/headroom_decomposition:_mirrored_mixed_case,_healthcare_over_masked_by_living_under
+    --- FAIL: TestClassifyVerdictSentence/living_over_while_total_is_under_names_living_as_the_over_bucket
+    --- FAIL: TestClassifyVerdictSentence/healthcare_over_while_total_is_under_names_healthcare_as_the_over_bucket
+  The mixed-case tests are non-vacuous.
+
+C6 — live-data sanity: PASS
+  Probe TestCheckerProbe_LiveData calls classifyVerdictSentence directly with
+  classifyBucket(1804.41,true), classifyBucket(-11464.60,true), totalIsOver=false,
+  totalDelta=-9660.18 (the live CombinedCumulativeDelta):
+    sentence = {Kind:mixed UnderRoom:9660.18 UnderBucket:healthcare
+                OverAmount:1804.41 OverBucket:living}
+  and the rendered banner (logged in full by the probe) contains:
+    Living: <span class="num">$1,804.41</span> over · Healthcare: <span class="num">$11,464.60</span> under
+    Your <span class="num">$9,660.18</span> of room comes from healthcare running under plan — living spending is already <span class="num">$1,804.41</span> over its target.
+  `go test ... -run TestCheckerProbe_LiveData` -> --- PASS.
+
+C7 — diff review: PASS
+  `git diff master --numstat -- internal/handlers/dashboard/verdict.go
+   web/templates/components/dashboard-verdict-bar.html`
+  -> `102  0  internal/handlers/dashboard/verdict.go`
+     ` 18  0  web/templates/components/dashboard-verdict-bar.html`
+  Zero deleted lines in both files, so by construction the existing headline
+  markup (template lines 9-24) and every pre-existing line of verdict.go are
+  untouched. Confirmed by grep on both sides: master and branch both carry
+  `const overAmberPct = 0.10`, `const onBudgetEps = 1.0`, and the identical
+  severity switch (`v.TargetTotal <= 0 || v.Delta/v.TargetTotal > overAmberPct`
+  -> HealthRed else HealthAmber; else HealthGreen).
+  The added template block uses only `formatMoney` and the pre-existing `abs`
+  helper (`git diff master -- internal/templates/render.go` shows `"abs": abs,`
+  as unchanged context) — sign/abs formatting only, no arithmetic; all figures
+  come from BudgetVerdictView fields populated in BuildBudgetVerdict from
+  models.DashboardMetrics (CumulativeDelta, HealthcareCumulativeDelta,
+  HasBudgetTarget, HasHealthcareTarget, CombinedCumulativeDelta).
+  Selection logic is in Go: classifyBucket / classifyVerdictSentence
+  (verdict.go:53 and :101); the template only switches on
+  `$v.Sentence.Kind` and `.Configured`.
+  Single-bucket rule verified in code and by test: classifyBucket returns
+  BucketFigure{Status:"on target"} with zero Delta and Configured=false when
+  !configured (verdict.go:54-56), and classifyVerdictSentence guards each mixed
+  branch with `.Configured`.
+
+SCOPE
+  `git diff master --stat` limited to W4's manifest
+  (.swarm/manifests/W4.1.files = verdict.go, verdict_test.go,
+  verdict_render_test.go, dashboard-verdict-bar.html) shows exactly those four
+  files, 563 insertions / 0 deletions. All other modified paths in the working
+  tree (dashboard/handlers.go, handlers_http_test.go, metrics/*, templates/render.go,
+  kpis.html, whatif/*, models/whatif.go, retirement/analysis/budget_fit.go)
+  are listed in the W1/W2/W3 manifests, not W4's.
+  Nothing under .swarm/critical.globs (services/storage, services/dataloader,
+  retirement/engine, services/transfers, services/accounts/accounts.go,
+  mcpsvc/confirm) is touched by any of the four W4 files.
+  Worker did not commit: HEAD == master == fa3ee20.
+
+SUMMARY: 6 of 7 criteria proven by command. C4 fails on a 9-byte whitespace-only
+divergence in the no-target render; every other requirement holds.

@@ -1,0 +1,90 @@
+VERDICT: OVERRULE
+CHECKER: judge-claude
+FAMILY: anthropic
+TASK: W4
+ATTEMPT: 4
+---
+LENS: correctness. I verified the contested verdict's factual claims mechanically in a
+`cp -a` copy of the tree (scratchpad); no writes to /home/darrell/bin/ai/budget2 except
+this file.
+
+WHAT THE CHECKER GOT RIGHT
+- The sparkline exists on the Budget card and is coloured by bare sign:
+  web/templates/components/kpis.html:189-192 emits `#sparkline-budget` with
+  `data-values="{{toJSON .Metrics.CombinedCumulativeBalance}}" data-mode="balance"`, and
+  web/static/js/charts.js:281-282 does `values.map(v => v > 0 ? v : 0)` /
+  `v < 0 ? v : 0` with no dead band and no neutral branch. Accurate.
+- The attempt's own fix list is complete and correct. The contested verdict concedes this
+  ("tint/headline/bucket-row/banner cannot disagree anymore"), and both other lanes
+  independently confirm it (W4.4.checker-tests, W4.4.checker-a11y).
+
+WHERE THE CHECKER IS FACTUALLY WRONG — THE "SAME FIGURE" PREMISE FAILS
+The FAIL rests on one load-bearing claim: that the sparkline's last point IS the figure
+BudgetVerdict classifies (balance-signed), so a dead-band delta produces "On budget" next
+to a red last segment. That is not what the code computes.
+
+  balanceTail = combinedTarget * len(trendMonths) - totalSpend      (metrics.go:308-311)
+  delta       = totalSpend - combinedTarget * MonthsBetween(start,end)  (metrics.go:250)
+  => balanceTail = -delta + combinedTarget * (len(trendMonths) - MonthsInRange)
+
+MonthsBetween (metrics.go:25-31) is days/30.44 — never an integer for a calendar range —
+while the balance series steps in whole transaction-months, and is truncated to the LAST
+SIX months (metrics.go:277-279). The offset term is therefore systematically nonzero and
+scales with the target. Measured, at a live-scale combined target (living 8124.60 +
+healthcare 575), spend tuned so delta = +$0.50 (inside the dead band):
+
+  one 31-day month (Jan)      MonthsInRange=1.0185  delta=+0.50  balanceTail= -161.27  RED
+  three months Jan-Mar (90d)  MonthsInRange=2.9569  delta=+0.50  balanceTail= +374.64  GREEN
+  one 28-day month (Feb)      MonthsInRange=0.9199  delta=+0.50  balanceTail= +696.18  GREEN
+
+The verdict's worked example — "below[last] = -0.50 < 0" — does not occur. And the
+disagreement is not a dead-band phenomenon at all. Sweeping delta on the Jan-Mar range:
+
+  delta   +0.00  card "On budget"      balanceTail  +375.14  sparkline GREEN
+  delta +100.00  card "$100.00 over"   balanceTail  +275.14  sparkline GREEN
+  delta +300.00  card "$300.00 over"   balanceTail   +75.14  sparkline GREEN
+  delta +374.00  card "$374.00 over"   balanceTail    +1.14  sparkline GREEN
+  delta +376.00  card "$376.00 over"   balanceTail    -0.86  sparkline RED
+
+The sparkline's zero crossing sits at delta ~= +$375 here, not at 0 and not at +/-$1. The
+project's own cited test is the evidence AGAINST the checker, not for it:
+internal/services/metrics/metrics_test.go:942-951 allows $100 of slack at a $1,550 target
+precisely because the two quantities are computed on different bases; that slack scales to
+hundreds of dollars at live targets. On the run spec's own live case (7.8 months) the
+6-month truncation makes the series a different aggregate outright.
+
+CONSEQUENCE FOR RULING 2026-08-29a
+29a's predicate is "every surface that renders the SAME figure". The sparkline renders a
+different aggregate (whole-month basis, <=6-month window, per-month running series), and
+applies no W4 threshold at all — a chart baseline at zero, not the $1 dead band. The
+predicate is not met. Worse, the remedy the FAIL implies is wrong on the merits: piping
+BudgetVerdict.IsOver/IsUnder into renderSparkline would NOT reconcile the two, because the
+gap is a basis mismatch, not a missing dead band. Accepting this FAIL would send the
+worker to apply a fix that does not fix the thing.
+
+SCOPE
+- charts.js is byte-identical to master (`git diff master -- web/static/js/charts.js` and
+  `git diff -- web/static/js/charts.js` both empty); `git show master:web/static/js/charts.js`
+  contains the identical `v > 0`/`v < 0` block, and master's kpis.html already carries the
+  same `sparkline-budget` div with `data-mode="balance"`. Pre-existing, introduced by no W
+  attempt.
+- charts.js appears in no manifest under .swarm/manifests/ at all, and not in
+  .swarm/manifests/W4.4.files (five paths, all Go/dashboard templates).
+- Ruling 2026-08-29c (user, later and more specific than 29a) reopened attempt 4 for
+  "the Budget card's container tint AND headline consume the shared BudgetVerdict
+  classification ... + the five kpis.html trim markers. Nothing else." Every named item is
+  done and verified by all three lanes, including the objector.
+
+RULING
+The finding is not correct as stated (wrong figure identity, wrong worked example, wrong
+causal account), and the surface it names is pre-existing, out of the attempt's written
+scope, and would not be repaired by the remedy the FAIL implies. It does not render this
+attempt's work a failure. OVERRULE.
+
+Record for backlog (a real defect, correctly re-characterised): the Budget card's
+sparkline can contradict the card's own headline by hundreds of dollars in either
+direction — green tail while the card reads "$300 over", green tail at delta 0 — because
+CombinedCumulativeBalance uses whole transaction-months capped at six while
+CombinedCumulativeDelta uses fractional MonthsInRange over the selected range. That is a
+metrics-basis bug in a separate file (metrics.go / charts.js), materially bigger than the
+$1 dead band, and it deserves its own task rather than a fifth W4 attempt.

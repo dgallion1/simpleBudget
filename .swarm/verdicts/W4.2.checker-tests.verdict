@@ -1,0 +1,211 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W4
+ATTEMPT: 2
+---
+Verified in a copy of /home/darrell/bin/ai/budget2 (cp -a, .git kept) at
+.../scratchpad/w4a2/repo, branch fix/phase-visibility, go version go1.26.6
+linux/amd64. A `git worktree add .../w4a2/master master` checkout of the same
+copy supplied the master baseline. Two throwaway mutants (.../w4a2/mutant,
+.../w4a2/mutant2) were used for non-vacuity. The real tree was not written to
+except this verdict file; all probe files were created in the copies only and
+removed afterwards (`ls internal/handlers/dashboard/ | grep zz_probe` ->
+"probes removed").
+
+C1 — build / vet / full test suite / css-verify: PASS
+  `go build ./... ; echo BUILD_EXIT=$?`   -> BUILD_EXIT=0
+  `go vet ./... ; echo VET_EXIT=$?`       -> VET_EXIT=0
+  `go test ./...`                         -> TEST_EXIT=0; `grep -c "^ok"` -> 49;
+      `grep -v "^ok"` -> empty (no FAIL, no "no test files", no build errors).
+  `make css-verify`                       -> "tailwind.css is up to date",
+      CSSVERIFY_EXIT=0.
+
+C2 — every W4 test passes by name, none skipped: PASS
+  `go test ./internal/handlers/dashboard/ -count=1 -v -run
+   'TestClassifyBucket|TestClassifyVerdictSentence|TestBuildBudgetVerdict|
+    TestDashboardVerdictBar_Render|TestBudgetKPICardAndVerdictBanner_AgreeWithinDeadBand'`
+  -> ok budget2/internal/handlers/dashboard 0.031s
+     `grep -c -- "--- PASS"` -> 41   `grep -c -- "--- SKIP"` -> 0
+  Breakdown from the -v output: TestClassifyBucket 8/8 PASS;
+  TestClassifyVerdictSentence 5/5 PASS; TestBuildBudgetVerdict 16/16 PASS;
+  TestDashboardVerdictBar_Render 7/7 PASS; and the new
+  --- PASS: TestBudgetKPICardAndVerdictBanner_AgreeWithinDeadBand (0.01s).
+  The attempt-1 set is intact (same subtest names as attempt 1) plus the
+  consistency test.
+  Test body read (verdict_render_test.go:186-237): the consistency test builds a
+  models.DashboardMetrics with CumulativeDelta 0.60, calls BuildBudgetVerdict
+  ONCE, renders BOTH "dashboard-verdict-bar" and "kpis" from that one verdict,
+  and asserts the banner reads `Living: <span class="num">$0.60</span> on target`
+  while the card contains "on target" and contains neither `$0.60</span> over`
+  nor `$0.60</span> under`. It asserts what its name claims, and it is
+  non-vacuous (see C4 mutation).
+
+C3 — THE fixed criterion: no-target byte-identity vs master: PASS
+  Same probe as attempt 1 (zz_probe_notarget_test.go: builds
+  models.DashboardMetrics{HasCombinedTarget:false, HasBudgetTarget:false,
+  HasHealthcareTarget:false, LivingTargetTotal:0, HealthcareTargetTotal:0}
+  -> BuildBudgetVerdict -> RenderToString("dashboard-verdict-bar") -> file),
+  copied byte-for-byte into BOTH the branch copy and the master worktree.
+    branch: "wrote 998 bytes"      master: "wrote 998 bytes"
+    `cmp branch.html master.html ; echo CMP_EXIT=$?`  -> CMP_EXIT=0 (no output)
+    `md5sum branch.html master.html` ->
+      c2313cc5f1b09c7cae09be70687a17fc  branch.html
+      c2313cc5f1b09c7cae09be70687a17fc  master.html
+  At attempt 1 this was `differ: byte 651, line 12`, 1007 vs 998 bytes, branch
+  md5 802a8222... Both files now hash to master's attempt-1 md5
+  (c2313cc5...), i.e. the branch reproduces master's no-target render exactly.
+  Cause of the fix, read in the source: dashboard-verdict-bar.html now opens the
+  block with `{{- if $v.HasTarget}}` (left trim), so the newline+8 spaces
+  preceding it are consumed and the false branch emits nothing.
+  Non-vacuity of my own probe: in mutant2 (trim marker removed, one character)
+  the same probe gives `differ: byte 651, line 12`, MUTANT_CMP_EXIT=1 — the
+  probe does detect the attempt-1 defect.
+
+C4 — single source for the dead band (ruling 2026-08-29a): PASS
+  Source read, `sed -n '146,172p' web/templates/components/kpis.html`: the two
+  per-bucket rows select wording AND color solely from
+  `{{if eq .BudgetVerdict.Living.Status "over"}} ... {{else if eq
+   .BudgetVerdict.Living.Status "under"}} ... {{else}} ...` and emit
+  `{{.BudgetVerdict.Living.Status}}` / `{{formatMoney (abs
+   .BudgetVerdict.Living.Delta)}}` (same for Healthcare). No `gt`/`lt`/`ge`/`le`
+  and no numeric literal appears in either row — the only two hits from
+  `grep -nE '\b(gt|lt|ge|le)\b|[0-9]+\.[0-9]'` over that range are the wrapper
+  div's `space-y-0.5` class and the pre-existing, unrelated PeriodComparison
+  line (`ge .PeriodComparison.CumulativeDeltaChange 0.0`), which is on master
+  unchanged and renders a different figure.
+  Live-fixture proof — my probe drives ONE BuildBudgetVerdict into the FULL kpis
+  render using the same data-map shape handleKPIsPartial builds (Metrics,
+  TargetProvenance, BudgetVerdict, PeriodComparison), then extracts the Budget
+  card's Living row by regexp:
+  `go test ./internal/handlers/dashboard/ -count=1 -v -run
+   TestCheckerProbe_KpisBannerAgreement`  -> all 4 subtests PASS:
+    +0.60 over: banner `Living: <span class="num">$0.60</span> on target`
+      card row logged verbatim:
+        <span class="text-gray-500 dark:text-gray-400">
+            <span class="num">$0.60</span> on target
+      (asserted: no text-rose-500, no text-emerald-500, no "$0.60</span> over",
+       no "$0.60</span> under")
+    +1.01 over: banner `Living: <span class="num">$1.01</span> over`
+      card row logged verbatim:
+        <span class="text-rose-500 dark:text-rose-400">
+            <span class="num">$1.01</span> over
+      (asserted: card row does NOT contain "on target")
+    -0.60: both surfaces "on target".   -1.01: both surfaces "under", card
+      colored text-emerald-500.
+  Non-vacuity by mutation (.../w4a2/mutant): I reverted ONLY the Living row of
+  kpis.html to master's bare `{{if gt .Metrics.CumulativeDelta 0.0}}` form and
+  re-ran:
+    --- FAIL: TestBudgetKPICardAndVerdictBanner_AgreeWithinDeadBand
+    --- FAIL: TestCheckerProbe_KpisBannerAgreement/+0.60_over:_BOTH_surfaces_say_on_target
+    --- FAIL: TestCheckerProbe_KpisBannerAgreement/-0.60_under:_BOTH_surfaces_say_on_target
+  So both the worker's consistency test and my probe genuinely detect the
+  divergence checker-second reported at attempt 1.
+  Wiring confirmed: handlers.go:136 and :191 both put
+  "BudgetVerdict": BuildBudgetVerdict(dashMetrics) into the page data and the
+  /dashboard/kpis partial data, so the card gets the same value the banner does
+  on both render paths.
+
+C5 — regression: non-dead-band card renders unchanged vs master: PASS
+  Probe dumps the full kpis render for 13 fixtures on BOTH trees, then diffs the
+  extracted per-bucket rows block.
+  Living-delta fixtures (`diff -u dump_master/kpis_X.html dump_branch/kpis_X.html`):
+    clearly_over (+$500):  the Living row is IDENTICAL on both sides
+      (`<span class="text-rose-500...">$500.00 over`) — the diff for that fixture
+      contains no -/+ line inside the Living row.
+    clearly_under (-$750): Living row identical (`text-emerald-500 ... $750.00 under`).
+    boundary_p101 / boundary_m101: Living row identical to master.
+  Healthcare-delta fixtures (per-bucket rows block extracted and diffed):
+    hc_both_clearly_over (+400/+250)      -> PER-BUCKET ROWS IDENTICAL TO MASTER
+    hc_both_clearly_under (-400/-250)     -> PER-BUCKET ROWS IDENTICAL TO MASTER
+    hc_over_living_under (-9000/+250)     -> PER-BUCKET ROWS IDENTICAL TO MASTER
+    hc_under_living_over (live figures
+      +1804.41 / -11464.60)               -> PER-BUCKET ROWS IDENTICAL TO MASTER
+  The ONLY rows that differ from master anywhere in the 13 fixtures are rows
+  whose delta is inside the dead band (|delta| <= $1.00): master rendered them
+  `text-emerald-500 ... under`, the branch renders them
+  `text-gray-500 ... on target`. That is precisely the change ruling
+  2026-08-29a requires, and it is confined to the dead band.
+  Attempt-1 probes still hold:
+    boundary, both signs — covered by the C4 probe above (+0.99-class case at
+    +0.60/-0.60 -> "on target"; +/-1.01 -> over/under) and by
+    TestBuildBudgetVerdict/headroom_decomposition:_living_exactly_at_the_$1_boundary...
+    live data — `go test -run TestCheckerProbe_LiveData` -> --- PASS, logging
+      sentence = {Kind:mixed UnderRoom:9660.18 UnderBucket:healthcare
+                  OverAmount:1804.41 OverBucket:living}
+      and rendering
+      `Living: <span class="num">$1,804.41</span> over`,
+      `Healthcare: <span class="num">$11,464.60</span> under`,
+      `Your <span class="num">$9,660.18</span> of room comes from healthcare
+       running under plan — living spending is already <span
+       class="num">$1,804.41</span> over its target.`
+  Banner light-text class change confirmed in the diff:
+  `<div class="text-sm text-gray-600 dark:text-gray-400 mt-1 space-y-0.5">`.
+
+FINDINGS (defects proven by command; NOT among the five criteria above — the
+lead adjudicates whether they block acceptance)
+
+  F1 — the worker's own byte-identity regression guard is VACUOUS.
+    verdict_render_test.go:71-81 carries the comment "Byte-identity regression
+    (W4 fix 4a) ... Assert the exact master fragment is reproduced with no such
+    artifact in between", but the assertion is
+      strings.Contains(out, "</div>\n\n    <div class=\"flex items-center gap-6 ml-auto\">")
+    which sits at a DIFFERENT boundary than the artifact. The attempt-1 artifact
+    was a bare-spaces line between the headline `</div>` and the enclosing
+    `    </div>`, one level earlier.
+    Proof (mutant2 = branch with the single `{{- if` trim marker reverted to `{{if`):
+      `go test ./internal/handlers/dashboard/ -count=1 -v -run
+       'TestDashboardVerdictBar_Render/no_target'`
+      -> --- PASS: TestDashboardVerdictBar_Render/no_target_shows_neutral_band_and_a_link_to_set_a_budget
+      while on the same mutant my C3 cmp reports `differ: byte 651, line 12`.
+      `sed -n '8,14p' mutant2.html | cat -A` shows the reintroduced artifact:
+              </div>$
+              $          <- 8 spaces, master has no such line
+          </div>$
+    Consequence: the exact defect that failed attempt 1 would regress silently.
+    The behaviour is correct today (C3 proves it by command); it is the guard,
+    not the behaviour, that is missing. A one-line fix to that assertion (anchor
+    on "</div>\n    </div>" instead) would close it.
+
+  F2 — negative zero reaches the rendered sentence.
+    verdict.go:106-109: `room := -totalDelta; if room < 0 { room = 0 }`. For
+    totalDelta == +0.0 exactly, `-totalDelta` is -0.0 and `-0.0 < 0` is false
+    (IEEE), so the clamp does not fire.
+    `go test -run TestCheckerProbe_ExactZeroNegativeZero` ->
+      zz_probe_live_test.go:48: UnderRoom = -0  (signbit-negative-zero? true)
+      --- FAIL: BANNER RENDERS NEGATIVE ZERO
+    and the regression dump for the exact_zero fixture contains, verbatim:
+      <div>You could spend up to <span class="num">$-0.00</span> extra this
+       period and stay on plan.</div>
+    Spec requirement 2 specifies "$<total>"; "$-0.00" is not that. Reachability
+    requires CombinedCumulativeDelta to be exactly 0.00, which is uncommon on
+    real ledgers but is not guarded anywhere and is not covered by any test.
+
+SCOPE — clean
+  `git diff master --numstat -- $(cat .swarm/manifests/W4.2.files)` ->
+     102  0  internal/handlers/dashboard/verdict.go
+     170  0  internal/handlers/dashboard/verdict_render_test.go
+     235  0  internal/handlers/dashboard/verdict_test.go
+      18  0  web/templates/components/dashboard-verdict-bar.html
+      21  5  web/templates/components/kpis.html
+  Exactly the five files the W4.2 manifest declares, and nothing else in the
+  branch belongs to W4: the remaining modified paths in `git diff master --stat`
+  (handlers.go, handlers_http_test.go, metrics.go, metrics_test.go,
+  templates/render.go, whatif/*, models/whatif.go, budget_fit.go) are all
+  declared by the W1/W2/W3 manifests. kpis.html is legitimately shared — it is
+  listed in BOTH .swarm/manifests/W3.2.files and W4.2.files, and the two hunks
+  are separable: the Target-provenance annotation hunk (lines ~60-74) is W3's,
+  the per-bucket rows hunk (lines ~146-170) is W4's.
+  `cat .swarm/critical.globs` -> internal/services/storage/**,
+  internal/services/dataloader/**, internal/services/retirement/engine/**,
+  internal/services/transfers/**, internal/services/accounts/accounts.go,
+  internal/services/mcpsvc/confirm/**. None of the five W4 files matches any of
+  these globs; the full branch diff touches none of them either.
+  Worker did not commit: `git rev-parse HEAD` == `git rev-parse master` ==
+  fa3ee202381da837f8a40b8dacae77955fdbc595.
+
+SUMMARY: all five criteria in the brief are proven met by command, including the
+attempt-1 blocker (C3 cmp exit 0, md5 match with master). Two defects outside
+those five criteria are recorded as F1 (vacuous byte-identity guard, proven by
+mutation) and F2 ($-0.00 rendered on an exactly-zero combined delta, proven by
+probe and by the regression dump).

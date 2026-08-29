@@ -371,11 +371,12 @@ func buildResultsPartialData(settings *models.WhatIfSettings, analysis *models.W
 		activeFilename = retirementMgr.ActiveFilename()
 	}
 	return map[string]interface{}{
-		"Settings":       settings,
-		"Analysis":       analysis,
-		"Verdict":        BuildVerdict(analysis, settings),
-		"ActiveFilename": activeFilename,
-		"Findings":       findings,
+		"Settings":                settings,
+		"Analysis":                analysis,
+		"Verdict":                 BuildVerdict(analysis, settings),
+		"ActiveFilename":          activeFilename,
+		"Findings":                findings,
+		"LivingExpensesPhaseNote": buildLivingExpensesPhaseNote(settings),
 	}
 }
 
@@ -881,17 +882,18 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 	findings := completeness.Check(settings)
 
 	pageData := map[string]interface{}{
-		"Title":           "What-If Analysis",
-		"ActiveTab":       "whatif",
-		"Settings":        settings,
-		"Analysis":        analysis,
-		"Verdict":         BuildVerdict(analysis, settings),
-		"Scenarios":       scenarios,
-		"ActiveScenario":  activeScenario,
-		"ActiveFilename":  activeFilename,
-		"Findings":        findings,
-		"AnalysisPending": pendingHash != "",
-		"AsyncHash":       pendingHash,
+		"Title":                   "What-If Analysis",
+		"ActiveTab":               "whatif",
+		"Settings":                settings,
+		"Analysis":                analysis,
+		"Verdict":                 BuildVerdict(analysis, settings),
+		"Scenarios":               scenarios,
+		"ActiveScenario":          activeScenario,
+		"ActiveFilename":          activeFilename,
+		"Findings":                findings,
+		"AnalysisPending":         pendingHash != "",
+		"AsyncHash":               pendingHash,
+		"LivingExpensesPhaseNote": buildLivingExpensesPhaseNote(settings),
 	}
 
 	templates.AttachDuplicateCount(pageData, loader)

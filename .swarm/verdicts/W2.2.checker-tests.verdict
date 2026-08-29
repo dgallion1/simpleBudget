@@ -1,0 +1,141 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W2
+ATTEMPT: 2
+---
+Verified in a `cp -a` copy of /home/darrell/bin/ai/budget2 @ fix/phase-visibility
+(scratch tree confirmed byte-identical to the real tree for internal/ and web/
+via `diff -rq` before the final run). go1.26.6 linux/amd64. No file in the real
+tree was modified except this verdict.
+
+CRITERION 1 — build / vet / test / css-verify.  MET.
+  $ go build ./... && go vet ./...        -> BUILD_EXIT=0, VET_EXIT=0, no output
+  $ go test ./...                         -> TEST_EXIT=0; all 49 packages "ok",
+                                             zero FAIL lines
+    (internal/handlers/whatif 21.382s ok; internal/templates 0.838s ok)
+  $ make css-verify                       -> "tailwind.css is up to date", CSS_EXIT=0
+  Final re-run on the pristine tree: BUILD_VET_CLEAN, FULL_SUITE_EXIT=0.
+
+CRITERION 2 — all W2 tests pass by name, none skipped.  MET.
+  $ go test ./internal/handlers/whatif/ -run \
+      'LivingExpenses|PhaseNote|FormatPhaseMultiplier|PortfolioSettingsRender' -v
+  10 top-level PASS lines, 0 SKIP, 0 FAIL:
+    --- PASS: TestBuildLivingExpensesPhaseNote_EnabledWithNextTransition
+    --- PASS: TestBuildLivingExpensesPhaseNote_DisabledPhases
+    --- PASS: TestBuildLivingExpensesPhaseNote_NilConfig
+    --- PASS: TestBuildLivingExpensesPhaseNote_MultiplierOne
+    --- PASS: TestBuildLivingExpensesPhaseNote_SinglePhaseOmitsNextClause
+    --- PASS: TestBuildLivingExpensesPhaseNote_NilSettings
+    --- PASS: TestFormatPhaseMultiplier
+    --- PASS: TestPortfolioSettingsRender_LivingExpensesPhaseNote (5 subtests,
+        incl. the new "aria-valuetext carries the exact saved value, not the
+        step-snapped one")
+    --- PASS: TestHandleWhatIfSettings_LivingExpensesRoundTripsOffGridValue
+    --- PASS: TestHandleWhatIfSettings_LivingExpensesSnappedValueWouldPersist
+  I read living_expenses_phase_note_test.go and living_expenses_snap_trap_test.go
+  in full. The names match the assertions: the round-trip test really saves 7386,
+  POSTs monthly_living_expenses=7386.00 + monthly_property_tax=250, reloads from
+  the manager and asserts 7386 AND 250. The new aria subtest really asserts
+  strings.Contains(out, `aria-valuetext="$7,386"`) and NOT Contains `"$7,400"`.
+
+CRITERION 3 — independent round-trip re-check (attempt-1 core invariant). MET.
+  I wrote my own throwaway test (scratch only, deleted afterwards) that renders
+  the REAL page via handleWhatIf (not just the component), scans every <input>
+  tag with a regex, and drives the POST from whatever the page actually emits:
+    CHECKER: name-carrying inputs = 1
+    CHECKER: named[0] = <input type="hidden" id="monthly_living_expenses_value"
+             name="monthly_living_expenses" value="7386.00"
+             data-quick-adjust-key="monthly_living_expenses">
+    CHECKER: submitted value from page = "7386.00"
+    CHECKER: on-disk MonthlyLivingExpenses after unrelated POST = 7386
+    --- PASS: TestCHECKER_FullPageRoundTrip_OffGridValueSurvives
+  Exactly one submitted input, it carries the exact saved figure, and an
+  unrelated change round-trips 7386 unchanged while monthly_property_tax=250
+  applies. The visible range carries no name= (confirmed in the tag dump).
+
+CRITERION 4 — render facts on BOTH ranges + sync path in both drag directions.
+  MET, with a defect reported below.
+  (a) Static render, full page, from my own test:
+      CHECKER primary range: <input type="range" id="monthly_living_expenses_input"
+        value="7386" aria-valuetext="$7,386" min="0" max="20000" step="100" ...>
+      CHECKER mirror  range: <input type="range" value="7386"
+        aria-valuetext="$7,386" ... data-quick-adjust-mirror="true" ...>
+      Both == "$7,386"; neither contains "$7,400".  formatNumber (render.go:546)
+      rounds to whole dollars, so aria-valuetext is byte-identical to the visible
+      display span text — the correct WCAG 4.1.2 parity.
+  (b) Both drag directions proven by EXECUTING the page's own JS, not by reading
+      it: I dumped the rendered page and drove it under jsdom 29.1.1
+      (scratchpad/jsdomtest/drive.js), dispatching real input events.
+        AFTER LOAD:  primary aria=$7,386  hidden=7386.00  display=$7,386
+                     mirror=7386.00/$7,386  phase note=$8,124.60
+        DRAG PRIMARY to 7900: primary.value=7900 aria=$7,900 hidden=7900
+                     display=$7,900 mirror=7900/$7,900 note=$8,690.00
+        DRAG MIRROR to 6500:  aria(primary)=$6,500 hidden=6500 display=$6,500
+                     mirror=6500/$6,500 note=$7,150.00
+      aria-valuetext is updated on BOTH controls in BOTH directions, in the same
+      syncQuickAdjustKey pass that updates the display span. Criterion met.
+
+      DEFECT (reported, not a criterion failure): in the mirror-drag direction
+      the primary range's own .value is NOT updated — jsdom output line
+      "primary.value = 7900" while "primary aria-valuetext = $6,500". Nothing in
+      the tree ever writes that element's value (grep for an assignment to
+      #monthly_living_expenses_input returns nothing; it lost
+      data-quick-adjust-key in attempt 1, so syncQuickAdjustMirrorControls no
+      longer reaches it). Consequence: after a quick-adjust drag, the primary
+      slider's thumb/implicit aria-valuenow says 7900 while its aria-valuetext
+      announces $6,500, and arrowing that slider jumps back to ~8000. This is
+      structural from attempt 1 (which this lane passed); attempt 2 did not cause
+      the stale thumb but its new aria-valuetext write makes the disagreement
+      audible. Outside criteria 1-5 as written; flagged for the lead /
+      checker-a11y / checker-second.
+
+CRITERION 5 — bite test.  Executed; result is a COVERAGE NOTE, per the brief.
+  Bite A: deleted the 6-line aria-valuetext block from syncQuickAdjustKey
+  (quick-adjust-scripts.html) -> `go test ./...` still exits 0, zero failures.
+  No Go test can reach that line; the package has no JS harness. The static
+  attribute IS guarded — Bite B: deleted the aria-valuetext line from
+  portfolio-settings.html ->
+    --- FAIL: TestPortfolioSettingsRender_LivingExpensesPhaseNote/aria-valuetext_...
+        living_expenses_phase_note_test.go:222: expected aria-valuetext="$7,386"
+  so the initial-render assertion has real teeth on the primary range.
+  Bite C (extra, mine): deleted the aria-valuetext line from the quick-adjust
+  MIRROR (quick-adjust.html) -> `go test ./...` exits 0, NOTHING fails. The
+  mirror's static attribute has no regression guard at all; the worker's new
+  render test covers only whatif-portfolio-settings. The package's own
+  conventions could reach it (a render test on "whatif-quick-adjust" would),
+  so this is a reachable gap, not an inherent one. Weighed per the criteria as
+  written: criterion 4 asks that the attribute be PRESENT with the exact value,
+  which I proved by command; it does not require a test. Coverage note, not a
+  failure. All bite mutations were reverted and the tree re-diffed against the
+  real tree before the final run.
+
+OBSERVATIONS (no criterion, reported for the lead)
+  - Pre-existing, not a W2 regression: the phase-dollar labels in
+    spending-phases.html / quick-adjust-scripts.html:54 and updateSpendingPreview
+    (rate-assumptions.html:834) still read the SNAPPED visible range value. Server
+    renders "$8125/mo" (7386x1.1); after DOMContentLoaded the sync recomputes it
+    from the range. Executed evidence with the range forced to a real browser's
+    snapped 7400 and the hidden input at the exact 7386:
+      phase-dollar[0] text="$8,140/mo"   (correct value is $8,125/mo)
+      display span = $7,386              (this one is right)
+    Same behaviour existed before W2 (the range was canonical then too), so W2
+    neither caused nor fixed it. It is the same class of bug the W run exists to
+    kill, on a surface the spec did not name.
+  - Spec W2 Part B item 5 asks that JS behaviour unreachable by tests be
+    "documented in the manifest task notes". .swarm/manifests/W2.2.files is a
+    bare file list, as are all eight manifests in this run — the run has no notes
+    convention. Documentation gap, lead's to resolve; no behavioural impact.
+
+SCOPE
+  - Files changed in the working tree that belong to W2 are exactly the seven in
+    .swarm/manifests/W2.2.files (handlers.go, living_expenses_phase_note.go,
+    living_expenses_phase_note_test.go, living_expenses_snap_trap_test.go,
+    portfolio-settings.html, quick-adjust-scripts.html, quick-adjust.html).
+    Other modified paths on the branch (dashboard/*, metrics/*, kpis.html,
+    budget-analysis.html, models/whatif.go, budget_fit.go, templates/render.go)
+    are W1/W3/W4 work sharing the branch, not W2.
+  - `cat .swarm/critical.globs` lists storage/**, dataloader/**,
+    retirement/engine/**, transfers/**, accounts.go, mcpsvc/confirm/**. Cross-
+    checked against `git status --porcelain`: NONE of these is touched.
+  - Worker committed nothing (git log head is still fa3ee20, the pre-run merge).

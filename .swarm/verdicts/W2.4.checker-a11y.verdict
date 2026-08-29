@@ -1,0 +1,132 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W2
+ATTEMPT: 4
+---
+Scope (manifest .swarm/manifests/W2.4.files): internal/handlers/whatif/handlers.go,
+living_expenses_phase_note.go(+test), living_expenses_snap_trap_test.go,
+monthly_living_expenses_rounding_test.go, spending_phases_render_test.go (new),
+internal/templates/render_spending_preview_test.go,
+web/templates/components/whatif/{portfolio-settings,quick-adjust,quick-adjust-scripts,
+spending-phases,rate-assumptions,healthcare-person}.html. Verified in a `cp -a` copy
+of /home/darrell/bin/ai/budget2 (branch fix/phase-visibility, HEAD fa3ee20); only this
+verdict file was written to the real tree.
+
+Tier-3 task. Independently re-ran `.swarm/tier3/W2/accept.sh` in the copy: 12/12 PASS
+(oracle.4 adds checks 08-11 to attempt-3's 8; matches the copy's
+`.swarm/tier3/W2/oracle.4.log`). `go build ./...` 0, `go vet ./...` 0, `go test ./...`
+all packages ok (including the full retirement/storage suites). Isolated the actual
+attempt-4 delta by file mtime against the oracle.3/oracle.4 log timestamps (14:10 /
+14:52): files touched only before 14:10 (handlers.go, living_expenses_phase_note.go+test,
+living_expenses_snap_trap_test.go, monthly_living_expenses_rounding_test.go,
+quick-adjust.html, spending-phases.html) are unchanged carryover from the
+already-PASSed attempt 3 (confirmed byte-for-byte against the prose in
+.swarm/verdicts/W2.3.checker-a11y.verdict, which already describes their aria-valuetext
+blocks, hidden-field split, and formatDollars usage verbatim). The real attempt-4 delta
+is: quick-adjust-scripts.html, portfolio-settings.html, rate-assumptions.html,
+healthcare-person.html (all touched 14:44-14:44:55), plus two new/updated Go tests
+(spending_phases_render_test.go, render_spending_preview_test.go).
+
+(1) CHANGE SHAPE — formatting-call-only, confirmed — PASS
+`git diff master -- <manifest files>` (418 lines total) grepped for every added line
+containing `aria-|class=|<label|role=`: every hit traces to code already present in
+attempt 3 (aria-valuetext block in quick-adjust-scripts.html's syncQuickAdjustKey, the
+hidden-field/aria-valuetext markup in portfolio-settings.html and quick-adjust.html) —
+none of it is new text, it only re-appears in the master-diff because the file's mtime
+(and therefore its position in the same diff) moved when an unrelated line nearby was
+edited. The lines that are actually new in the attempt-4 window are exclusively RHS
+formatting-expression edits:
+  - quick-adjust-scripts.html:12 `Math.round(v).toLocaleString()` -> `toLocaleString('en-US')`
+    inside `formatWholeDollars` (the one and only toLocaleString call left in the file —
+    grep count is 1, matching oracle CHECK 03; CHECK 02 confirms exactly one
+    `function formatWholeDollars(` definition).
+  - quick-adjust-scripts.html:41 `'$' + numericValue.toLocaleString()` (bare, 'currency'
+    case) -> `formatWholeDollars(numericValue)`.
+  - quick-adjust-scripts.html:63 phase-dollar case: same bare-toLocaleString ->
+    formatWholeDollars(...) swap.
+  - rate-assumptions.html:866 `Math.round(spending).toLocaleString()` (bare, the exact
+    OBSERVATION flagged non-blocking in the W2.3 verdict) -> `formatWholeDollars(spending)`.
+    Confirmed zero remaining `toLocaleString` occurrences anywhere in this file (oracle
+    CHECK 10, `grep -c toLocaleString rate-assumptions.html` == 0) — full route-through.
+  - healthcare-person.html:81/121/148 three identical bare
+    `Number(this.value).toLocaleString()` -> `.toLocaleString('en-US')` (oninput handlers
+    on the three healthcare sliders — current_monthly_cost, aca_cost_after_employer,
+    medicare_monthly_cost). No other change to these three attributes; the surrounding
+    `min=/max=/step=/data-quick-adjust-key=/class=` are byte-identical.
+  - portfolio-settings.html: same shape (bare toLocaleString -> pinned/shared-formatter
+    calls; the file's one already-'en-US'-pinned cents call,
+    `updateLivingExpensesPhaseNote`'s `.toLocaleString('en-US', {minimumFractionDigits:2,
+    ...})`, is untouched attempt-3 content, confirmed unchanged against the W2.3-era
+    description).
+Repo-wide: `grep -rn toLocaleString web/templates/` now shows exactly 5 call sites, every
+one carrying an explicit `'en-US'` argument (oracle CHECK 08 = 0 bare calls, CHECK 09 = 0
+`toLocaleString(undefined` calls). No attribute, class, label, role, or DOM-structure
+diff anywhere in the 418-line master-diff beyond what attempt 3 already added. Confirmed.
+
+(2) 4.1.2 CONSISTENCY ACROSS BROWSER LOCALES — PASS
+The divergence this attempt closes: `aria-valuetext` and the Go-rendered display span are
+built server-side by hand-rolled `formatNumber`/`formatDollars` (internal/templates/
+render.go:546, a manual digit-grouping loop with a hardcoded `,` — no OS/browser locale
+input at all, so it always emits "7,387"-style grouping regardless of server locale).
+Before this attempt, the JS-side re-computation on every value change called bare
+`.toLocaleString()`, which resolves to the *browser's* locale — on a de-DE or fr-FR
+browser this would render "7.387" or "7 387", producing a live divergence between what
+the aria-valuetext announces (always the en-US-style string, since aria-valuetext is set
+from the same JS `formatWholeDollars` — after this fix, always 'en-US' — but before this
+fix, if a stray path used a locale-default call, the two could visibly disagree) and what
+the display span shows on non-US browsers. Now every JS call in scope routes through one
+of: `formatWholeDollars` (single definition, quick-adjust-scripts.html:10-12, pinned
+`'en-US'`) or a directly-pinned `.toLocaleString('en-US', ...)`. Since the primary
+control's aria-valuetext (portfolio-settings.html:181, quick-adjust.html mirror) and its
+live-sync value (quick-adjust-scripts.html's syncQuickAdjustKey, `exactValueText =
+formatWholeDollars(...)`) both go through the same now-pinned function, they agree
+byte-for-byte REGARDLESS of the browser's locale — a browser set to de-DE, ar-EG, or any
+other locale now produces the identical "$7,387" string an en-US browser would, matching
+the server's initial paint exactly. Re-ran `TestMonthlyLivingExpensesWholeDollarRounding_
+HalfAwayFromZeroTie` (unaffected by locale — Node's `toLocaleString('en-US')` doesn't vary
+with the test-runner's OS locale) — still PASS at the .50 tie, confirming the fix didn't
+regress the rounding rule itself, only pinned the digit-grouping/decimal-separator choice.
+
+(3) HEALTHCARE-PERSON HANDLERS — locale pin only, no AT-announcement change in default
+locale — PASS
+These three range inputs (current_monthly_cost, aca_cost_after_employer,
+medicare_monthly_cost) carry no `aria-valuetext` (confirmed: grep for aria-valuetext in
+healthcare-person.html returns nothing) — their AT-exposed value is the native implicit
+aria-valuenow, read straight off the `value` attribute (an integer set server-side via
+`value="{{printf ...}}"`, never touched by JS or by any toLocaleString call). The
+oninput-updated sibling `<span data-quick-adjust-display=...>` is plain sighted/AT-visible
+text but is not wired to the control via aria-describedby/aria-labelledby — it was already
+an OBSERVATION-level gap (label association) at attempt 3, unchanged here, out of scope
+for W2. Because Go's `formatNumber` is always en-US-style grouping and the JS call is now
+pinned to `'en-US'` too, the string produced for a `toLocaleString('en-US')` call is
+mathematically identical to the previous bare `toLocaleString()` call FOR A BROWSER
+ALREADY RUNNING IN en-US — a locale environment guaranteed identical output before and
+after, so there is zero change in what any locale-en-US session (screen reader or sighted)
+sees or is announced for these three fields. The only behavior change is for non-en-US
+browsers, where the display now matches the server-rendered figure it previously could
+diverge from — a fix, not a regression. Re-verified `go build`/`go vet`/full `go test`
+green (above) confirms no server-side handler logic changed for these fields (handlers.go
+diff for this attempt's window shows no touch to healthcare handling; the handlers.go
+edit under this manifest is entirely attempt-<=3 content per the mtime split above).
+
+(4) ATTEMPT-3 CONCLUSIONS RE-CONFIRMED — PASS
+Re-ran `go test ./internal/handlers/whatif/... -run 'LivingExpenses|SnapTrap|Rounding|
+SpendingPhasesRender|PhaseNote' -v`: all PASS, including
+`TestMonthlyLivingExpensesWholeDollarRounding_HalfAwayFromZeroTie` (both
+portfolio-settings and quick-adjust-mirror subtests, plus the phase-dollar preview label
+subtest) and the new `TestSpendingPhasesRender_PhaseDollarLabel` (7386 x 1.25 = 9232.50 ->
+"$9,233/mo", guarding the attempt-4 oracle addition CHECK 11). Thumb parity
+(quick-adjust-scripts.html's `primaryRange.value = canonicalControl.value;` inside
+syncQuickAdjustKey) is byte-identical to the attempt-3 code the prior verdict traced —
+confirmed via the master-diff, this block carries no attempt-4 edits. Tie-rounding and
+thumb-parity conclusions both stand, unregressed.
+
+Net: attempt 4 is exactly what it claims — a locale pin (`'en-US'`) closing a real
+WCAG 4.1.2 risk (server strings and JS-recomputed strings could diverge for any
+non-en-US browser locale, even though both were internally "correct" by their own
+formatter) plus a DRY cleanup routing rate-assumptions.html through the shared formatter
+(closing the W2.3 OBSERVATION). No markup, class, label, role, or DOM-structure change
+anywhere in the manifest; no regression to the tie-rounding or thumb-parity behavior
+verified at attempt 3; the three healthcare-person sliders see zero behavior change for
+en-US sessions and a real bug-fix for everyone else. VERDICT: PASS.

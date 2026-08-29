@@ -1,0 +1,11 @@
+internal/handlers/whatif/handlers.go
+internal/handlers/whatif/living_expenses_phase_note.go
+internal/handlers/whatif/living_expenses_phase_note_test.go
+internal/handlers/whatif/living_expenses_snap_trap_test.go
+internal/handlers/whatif/monthly_living_expenses_rounding_test.go
+internal/templates/render_spending_preview_test.go
+web/templates/components/whatif/portfolio-settings.html
+web/templates/components/whatif/quick-adjust-scripts.html
+web/templates/components/whatif/quick-adjust.html
+web/templates/components/whatif/spending-phases.html
+web/templates/components/whatif/rate-assumptions.html

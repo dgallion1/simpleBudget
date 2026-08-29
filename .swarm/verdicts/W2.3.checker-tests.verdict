@@ -1,0 +1,238 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W2
+ATTEMPT: 3
+---
+Environment: go1.26.6 linux/amd64, node v24.12.0, jsdom 28.x installed into
+scratchpad. All commands run against `cp -a` copies of
+/home/darrell/bin/ai/budget2 @ fix/phase-visibility fa3ee20 (worktree state,
+.git preserved). The only write to the real tree is this verdict file.
+Copies used: scratchpad/b2copy (working copy), scratchpad/clean (pristine
+final re-run), scratchpad/bite, bite2, bite3 (mutation probes).
+
+=== CRITERION 1 — oracle ends ORACLE PASS ===
+PASS.
+  cmd: cd scratchpad/clean && bash .swarm/tier3/W2/accept.sh
+  out: CHECK 01-canonical-strings: PASS
+       CHECK 02-js-one-formatter-defined: PASS
+       CHECK 03-js-single-toLocaleString: PASS
+       CHECK 04a-portfolio-no-bare-toLocaleString: PASS
+       CHECK 04b-portfolio-uses-shared-formatter: PASS
+       CHECK 05-package-suite: PASS
+       CHECK 06-build: PASS
+       CHECK 07-vet: PASS
+       passed=8 failed=0
+       ORACLE PASS
+  cmd: bash .swarm/tier3/W2/accept.sh >/dev/null 2>&1; echo $?
+  out: CLEAN_ORACLE_EXIT=0
+  (Same result independently reproduced earlier in scratchpad/b2copy.)
+
+=== CRITERION 2 — build / vet / test / css-verify ===
+PASS.
+  cmd: go build ./... ; go vet ./...    (scratchpad/clean)
+  out: BUILD ok / VET ok  (exit 0 each)
+  cmd: go test ./... 2>&1 | grep -Ev "^ok|no test files"
+  out: (no lines)  FULL_TEST_EXIT=0   -- no FAIL, no build-failure lines
+  cmd: make css-verify                 (scratchpad/b2copy)
+  out: "tailwind.css is up to date"    CSS_EXIT=0
+
+=== CRITERION 3 — all W2 tests by name, none skipped ===
+PASS.
+  cmd: go test -count=1 -v ./internal/handlers/whatif/ \
+         -run 'LivingExpenses|Rounding|SnapTrap|PhaseNote|MonthlyLiving'
+  out (all --- PASS, no SKIP):
+    TestBuildLivingExpensesPhaseNote_EnabledWithNextTransition
+    TestBuildLivingExpensesPhaseNote_DisabledPhases
+    TestBuildLivingExpensesPhaseNote_NilConfig
+    TestBuildLivingExpensesPhaseNote_MultiplierOne
+    TestBuildLivingExpensesPhaseNote_SinglePhaseOmitsNextClause
+    TestBuildLivingExpensesPhaseNote_NilSettings
+    TestPortfolioSettingsRender_LivingExpensesPhaseNote (5 subtests, all PASS)
+    TestHandleWhatIfSettings_LivingExpensesRoundTripsOffGridValue
+    TestHandleWhatIfSettings_LivingExpensesSnappedValueWouldPersist
+    TestMonthlyLivingExpensesWholeDollarRounding_HalfAwayFromZeroTie
+      /portfolio-settings:_aria-valuetext_and_display_span            PASS
+      /quick-adjust_mirror:_aria-valuetext_and_display_span           PASS
+      /phase-dollar_preview_label_rounds_the_tie_the_same_way         PASS
+  cmd: go test -count=1 -v ./internal/templates/ -run \
+       'TestRenderRateAssumptions_PhasesEnabledOmitsPreviewPanel|TestUpdateSpendingPreview_NoPanelDoesNotThrow'
+  out: both --- PASS (subtests panel_absent, panel_visible)
+  cmd: go test -count=1 -v ./internal/handlers/whatif/ ./internal/templates/ | grep SKIP
+  out: (empty) -- nothing skipped in either package.
+
+  Content check of the NEW test (read
+  internal/handlers/whatif/monthly_living_expenses_rounding_test.go):
+  it sets MonthlyLivingExpenses = 7386.50 and asserts the POSITIVE
+  `aria-valuetext="$7,387"` AND the NEGATIVE `aria-valuetext="$7,386"` must
+  be absent, on both whatif-portfolio-settings and
+  whatif-quick-adjust-portfolio-content, plus both display spans and the
+  phase-dollar label ($8,125/mo). It asserts the half-away-from-zero tie its
+  name claims; %.0f half-even would produce $7,386 and fail it (confirmed
+  live under criterion 6, bite 1).
+
+=== CRITERION 4 — independent round-trip (my own harness) ===
+PASS.
+  Planted internal/handlers/whatif/zz_checker_roundtrip_test.go in
+  scratchpad/b2copy (checker-authored, NOT the worker's test; it does not
+  hard-code the posted string the way
+  living_expenses_snap_trap_test.go:39 does). It renders the REAL page via
+  handleWhatIf(GET /whatif), regex-extracts every
+  `<input ... name="monthly_living_expenses" ...>`, asserts there is EXACTLY
+  ONE, posts that input's own value attribute to handleWhatIfSettings along
+  with an unrelated monthly_property_tax=250, then reads
+  <settingsDir>/whatif.json off disk and unmarshals it.
+  cmd: go test -count=1 -v -run TestZZCheckerLivingExpensesRoundTripFromRenderedForm ./internal/handlers/whatif/
+  out: /7386      PASS -- submitted field:
+         <input type="hidden" id="monthly_living_expenses_value"
+          name="monthly_living_expenses" value="7386.00"
+          data-quick-adjust-key="monthly_living_expenses">
+       /7386.55   PASS -- same field, value="7386.55"
+       (on-disk monthly_living_expenses == 7386 and == 7386.55 respectively;
+        monthly_property_tax == 250 in both)
+  Exactly-one-named-input also confirmed statically:
+  cmd: grep -rn 'name="monthly_living_expenses"' web/templates/
+  out: single hit, portfolio-settings.html:61 (the hidden exact-value input);
+       the visible range #monthly_living_expenses_input carries no name.
+
+=== CRITERION 5 — jsdom: initial paint, primary drag, mirror drag, thumb
+    parity, phase-dollar from the exact value ===
+PASS.
+  Page produced by a checker-planted dump test (zz_checker_dump_test.go):
+  handleWhatIf(GET /whatif) for a saved plan of 7386, phases enabled
+  Go-Go x1.1 @0 / Slow-Go x0.9 @70 -> scratchpad/page.html (178139 bytes).
+  Harness: scratchpad/harness.js (JSDOM runScripts:'dangerously',
+  pretendToBeVisual).
+
+  cmd: node harness.js page.html   -> passes=28 fails=0
+  A. INITIAL PAINT (after DOMContentLoaded -> syncAllQuickAdjustControls):
+     A1 hidden #monthly_living_expenses_value = "7386.00"
+     A2 primary range aria-valuetext = "$7,386"
+     A3 mirror aria-valuetext = "$7,386"
+     A4 both displays (n=2) textContent = "$7,386"
+     A5 both phase:0 dollar nodes = "$8,125/mo"
+     A6 neither is "$8,140/mo" (the snapped-7400 figure)
+  C. PRIMARY DRAG (primary.value='7500'; dispatch input):
+     C1 hidden exact -> "7500"
+     C2 primary aria-valuetext -> "$7,500"
+     C3 mirror aria-valuetext -> "$7,500"
+     C4 mirror .value -> "7500"
+     C5 both displays -> "$7,500"
+     C6 both phase:0 dollar nodes -> "$8,250/mo"
+  D. MIRROR DRAG (mirror.value='9100'; dispatch input) -- THUMB PARITY:
+     D1 hidden exact -> "9100"
+     D2 primary range .value -> "9100"   <-- primary .value updated by a
+        MIRROR drag (the attempt-2 gap)
+     D3 primary .value != its pre-drag value ("9100" != "7500")
+     D4 primary aria-valuetext -> "$9,100"
+     D5 mirror aria-valuetext -> "$9,100"
+     D6 both displays -> "$9,100"
+     D7 both phase:0 dollar nodes -> "$10,010/mo"
+
+  Discriminating run (scratchpad/harness2.js) -- jsdom does NOT step-snap
+  range inputs, so the browser snap was simulated explicitly: primary.value
+  and mirror.value forced to '7400' while the hidden field still held
+  "7386.00". Every JS whole-dollar path must then still read 7386.
+  cmd: node harness2.js page.html   -> passes=10 fails=0
+     E0  exact still "7386.00"; E0b primary shows "7400"
+     E1  updatePhaseSliderLabel(p0) -> both nodes "$8,125/mo" (not $8,140)
+     E2  after wiping the labels, syncQuickAdjustDisplays('phase:0:multiplier')
+         (the formatQuickAdjustDisplay 'phase-dollar' branch) -> "$8,125/mo"
+     E3  after wiping aria-valuetext, syncQuickAdjustKey(...) -> "$7,386"
+     E4  both displays -> "$7,386"
+     E5  updateSpendingPreview() does not throw when the panel is omitted
+  updateSpendingPreview with the panel PRESENT (second dump, phases disabled,
+  scratchpad/page_nophase.html + harness3.js), primary range forced to '7400',
+  inflation=0 decline=0 so every projected year equals the base:
+  cmd: node harness3.js page_nophase.html  -> passes=6 fails=0
+     first preview row = "Year 5 $7,386/mo +0%"
+     F3 row contains 7,386  /  F4 row does NOT contain 7,400
+
+=== CRITERION 6 — bite (mutation) ===
+PASS.
+  BITE 1 (scratchpad/bite, fresh copy): portfolio-settings.html
+  aria-valuetext {{formatDollars ...}} -> ${{formatNumber ...}}
+    oracle: CHECK 01-canonical-strings FAIL
+            ("v=7386.5: portfolio-settings aria-valuetext = \"$7,386\", want \"$7,387\"")
+            CHECK 05-package-suite FAIL; passed=6 failed=2; exit 1
+    new tie test: --- FAIL: TestMonthlyLivingExpensesWholeDollarRounding_
+            HalfAwayFromZeroTie/portfolio-settings:_aria-valuetext_and_display_span
+  BITE 2 (scratchpad/bite2, fresh copy): quick-adjust.html phase-dollar label
+  {{formatDollars (mul ...)}} -> ${{formatNumber (mul ...)}}
+    oracle: CHECK 01 FAIL ("phase-dollar label: want \"$9,233/mo\"" -- %.0f
+            renders 9,232 for the 9232.50 tie); passed=6 failed=2; exit 1
+
+=== SCOPE ===
+Clean.
+  cmd: cat .swarm/manifests/W2.3.files  -> 11 files
+    internal/handlers/whatif/{handlers.go, living_expenses_phase_note.go,
+      living_expenses_phase_note_test.go, living_expenses_snap_trap_test.go,
+      monthly_living_expenses_rounding_test.go}
+    internal/templates/render_spending_preview_test.go
+    web/templates/components/whatif/{portfolio-settings.html,
+      quick-adjust-scripts.html, quick-adjust.html, spending-phases.html,
+      rate-assumptions.html}
+  cmd: git status --porcelain
+  Every other dirty path is claimed by another manifest (W1.3/W3.2/W4.3/
+  X2.1/X3.1) or was pre-declared as concurrent-run background
+  (internal/services/retirement/{settings.go,settings_test.go,
+  settings_load_copy_test.go}, retirement/overrides/**, swarm/t7-coverage.sh);
+  .swarm/ledger.tsv is the lead's. No W2 manifest file matches any line in
+  .swarm/critical.globs (storage/**, dataloader/**, retirement/engine/**,
+  transfers/**, accounts/accounts.go, mcpsvc/confirm/**).
+  cmd: git show HEAD:internal/templates/render.go | grep -n '"formatDollars"'
+  out: 73: "formatDollars": formatWholeDollars   -- the alias is pre-existing;
+       the working-tree render.go change is W3's formatMultiplier, not W2's.
+  cmd: git diff -- internal/handlers/whatif/handlers.go
+  out: two map literals gain "LivingExpensesPhaseNote":
+       buildLivingExpensesPhaseNote(settings) plus gofmt realignment. No
+       engine math touched anywhere in the W2 diff.
+
+=== NON-BLOCKING FINDINGS (reported, not grounds for FAIL) ===
+N1 (coverage gap, criterion 6 probe). BITE 3 (scratchpad/bite3, fresh copy):
+   mutating the OTHER phase-dollar call site --
+   spending-phases.html:78 {{formatDollars (mul $phase.Multiplier
+   $.Settings.MonthlyLivingExpenses)}} -> ${{formatNumber (mul ...)}} --
+   leaves the oracle GREEN (passed=8 failed=0, ORACLE PASS, exit 0) and the
+   whole suite green (`go test ./internal/handlers/whatif/
+   ./internal/templates/` -> ok). The oracle's TestOracleW2PhaseDollarLabels
+   and the worker's tie test both render "whatif-quick-adjust-phases-content"
+   only; nothing renders "whatif-spending-phases" and asserts its
+   .phase-dollar-label. The shipped code is nonetheless CORRECT there --
+   checker-planted zz_checker_sp_test.go renders "whatif-spending-phases"
+   with 7386 x 1.25 and gets phase-dollar-label = "$9,233/mo" (canonical,
+   not %.0f's $9,232). So the criterion "server uses formatDollars on
+   phase-dollar labels in spending-phases.html" is met by direct
+   observation; only its regression guard is missing. Criterion 6 as written
+   ("revert one server call site ... must FAIL") is satisfied by bites 1
+   and 2.
+N2 (structural, no behavioral divergence). rate-assumptions.html:866 still
+   formats a whole-dollar figure inline:
+     <td ...>$${Math.round(spending).toLocaleString()}/mo</td>
+   rather than calling formatWholeDollars. This is a second whole-dollar
+   formatting expression, at odds with the spec's "used by all JS
+   whole-dollar recomputations"; the oracle's check 03 is scoped to
+   quick-adjust-scripts.html and cannot see it. It is however byte-identical
+   to formatWholeDollars ('$' + Math.round(v).toLocaleString()):
+   cmd: node -e '<compare both over 7386, 7386.5, 7386.55, 8124.6, 9232.5,
+        0, 0.5, 1234567.5, 10000/7>'  -> divergences=0
+   and harness3 proved the rendered row is the canonical "$7,386/mo" from
+   the exact base. The brief's own enumeration for criterion (5)/(3)
+   ("currency/phase-dollar/aria paths and portfolio-settings' inline code")
+   does not list this path, so I do not fail on it. Exactly one
+   `function formatWholeDollars` exists across web/templates (grep -rn).
+   The three remaining bare .toLocaleString() calls in
+   healthcare-person.html format healthcare premiums, not
+   MonthlyLivingExpenses, and are outside W2's value scope.
+N3 (harness limitation, disclosed). jsdom does not apply a range input's
+   step sanitisation, so it reported primary.value === "7386.00" at load
+   where a real browser would show 7400. Real-browser snapping was NOT
+   directly observed by any command I ran; I compensated by forcing
+   primary.value='7400' by hand (harness2 E0b) before exercising every JS
+   read path. The server-side half of the snap trap is covered by the
+   on-disk round-trip under criterion 4.
+N4 (noise). Under jsdom an unrelated inline script threw
+   "window.matchMedia is not a function" (dark-mode init). It is a jsdom
+   API gap, not a page defect, and it did not prevent the quick-adjust /
+   phase / preview scripts from running -- all 44 harness assertions across
+   the three harnesses passed.

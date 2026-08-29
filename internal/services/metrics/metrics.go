@@ -47,6 +47,87 @@ func currentHealthcareTarget(s *models.WhatIfSettings) float64 {
 	return s.GetTotalHealthcareCost(0)
 }
 
+// phaseNameAt returns the spending-phase name active at calendar instant
+// t, mirroring the "last phase with StartAge <= age" rule
+// WhatIfSettings.GetSpendingMultiplier applies internally. That method
+// (and SpendingMultiplierAt, its calendar-aware wrapper) only returns the
+// numeric multiplier, not the phase name, and both are unexported/private
+// logic inside the models package that this task may not modify -- so the
+// age-resolution step (ParseYearMonth + GetPhaseReferenceAge, both
+// exported by models) is necessarily re-derived here. This duplicates only
+// that single age lookup, not the calendar walk itself, which lives solely
+// in phaseWalk below. Returns "" when phases are disabled/unconfigured or
+// StartDate can't be parsed.
+func phaseNameAt(s *models.WhatIfSettings, t time.Time) string {
+	config := s.SpendingPhaseConfig
+	if config == nil || !config.Enabled || len(config.Phases) == 0 {
+		return ""
+	}
+	sd, err := models.ParseYearMonth(s.StartDate)
+	if err != nil {
+		return ""
+	}
+	monthsFromStart := (t.Year()-sd.Year())*12 + int(t.Month()) - int(sd.Month())
+	yearsElapsed := monthsFromStart / 12
+	if monthsFromStart < 0 && monthsFromStart%12 != 0 {
+		yearsElapsed--
+	}
+	age := s.GetPhaseReferenceAge(yearsElapsed)
+
+	name := ""
+	for _, phase := range config.Phases {
+		if age >= phase.StartAge {
+			name = phase.Name
+		}
+	}
+	return name
+}
+
+// phaseWalk performs the single calendar-month walk over [rangeStart,
+// rangeEnd] that both phaseAdjustedMonthlyTarget and TargetProvenance
+// need: it visits each whole calendar month in the range, reads
+// SpendingMultiplierAt for each, and reports the averaged multiplier
+// alongside the phase name active at rangeStart and whether more than one
+// distinct multiplier was seen (a straddled phase transition, where the
+// averaged multiplier is a weighted average rather than one phase's flat
+// value). Neither caller re-walks the range on its own.
+//
+// Precondition: callers gate on s.SpendingPhaseConfig being enabled with
+// at least one phase before calling.
+func phaseWalk(s *models.WhatIfSettings, rangeStart, rangeEnd time.Time) (avgMultiplier float64, phaseName string, straddles bool) {
+	cur := time.Date(rangeStart.Year(), rangeStart.Month(), 1, 0, 0, 0, 0, rangeStart.Location())
+	end := time.Date(rangeEnd.Year(), rangeEnd.Month(), 1, 0, 0, 0, 0, rangeEnd.Location())
+	phaseName = phaseNameAt(s, cur)
+
+	if end.Before(cur) {
+		return s.SpendingMultiplierAt(cur), phaseName, false
+	}
+
+	var sum float64
+	count := 0
+	first := true
+	var firstMult float64
+	for m := cur; !m.After(end); m = m.AddDate(0, 1, 0) {
+		mult := s.SpendingMultiplierAt(m)
+		if first {
+			firstMult = mult
+			first = false
+		} else if mult != firstMult {
+			straddles = true
+		}
+		sum += mult
+		count++
+	}
+	if count == 0 {
+		// Unreachable: end >= cur (checked above) means the loop always
+		// runs at least once. Kept as a defensive fallback matching the
+		// pre-refactor behavior of returning the base unmultiplied
+		// (multiplier 1.0).
+		return 1.0, phaseName, false
+	}
+	return sum / float64(count), phaseName, straddles
+}
+
 // phaseAdjustedMonthlyTarget returns the phase-adjusted monthly living
 // expense target averaged across [rangeStart, rangeEnd]. When phases
 // are disabled or unavailable, returns settings.MonthlyLivingExpenses
@@ -65,24 +146,51 @@ func phaseAdjustedMonthlyTarget(s *models.WhatIfSettings, rangeStart, rangeEnd t
 	if s.SpendingPhaseConfig == nil || !s.SpendingPhaseConfig.Enabled || len(s.SpendingPhaseConfig.Phases) == 0 {
 		return base
 	}
+	avgMultiplier, _, _ := phaseWalk(s, rangeStart, rangeEnd)
+	return base * avgMultiplier
+}
 
-	cur := time.Date(rangeStart.Year(), rangeStart.Month(), 1, 0, 0, 0, 0, rangeStart.Location())
-	end := time.Date(rangeEnd.Year(), rangeEnd.Month(), 1, 0, 0, 0, 0, rangeEnd.Location())
-	if end.Before(cur) {
-		return base * s.SpendingMultiplierAt(cur)
-	}
+// BudgetTargetProvenance carries the "why" behind the phase-adjusted
+// monthly living-expense target the dashboard shows as "Target $X" -- the
+// unadjusted plan base, the multiplier actually applied over the range
+// (read from the same phaseWalk that phaseAdjustedMonthlyTarget performs,
+// not re-derived by dividing target/base), the phase active at the range
+// start, and whether the range straddles a phase transition (in which
+// case Multiplier is a weighted average across the walked months, not one
+// phase's flat value).
+//
+// Annotate is false when there's nothing worth surfacing: nil settings,
+// zero MonthlyLivingExpenses, phases disabled/unconfigured, or an
+// effective multiplier of exactly 1.0 (the target equals the base, so
+// noting a multiplier would only add noise).
+type BudgetTargetProvenance struct {
+	Base       float64
+	Multiplier float64
+	PhaseName  string
+	Straddles  bool
+	Annotate   bool
+}
 
-	var sum float64
-	count := 0
-	for !cur.After(end) {
-		sum += s.SpendingMultiplierAt(cur)
-		count++
-		cur = cur.AddDate(0, 1, 0)
+// TargetProvenance computes BudgetTargetProvenance for the living-expense
+// target over [rangeStart, rangeEnd]. Shares phaseWalk with
+// phaseAdjustedMonthlyTarget so there is exactly one phase-walk
+// implementation, not two independently-maintained copies.
+func TargetProvenance(s *models.WhatIfSettings, rangeStart, rangeEnd time.Time) BudgetTargetProvenance {
+	if s == nil || s.MonthlyLivingExpenses <= 0 {
+		return BudgetTargetProvenance{}
 	}
-	if count == 0 {
-		return base
+	base := s.MonthlyLivingExpenses
+	if s.SpendingPhaseConfig == nil || !s.SpendingPhaseConfig.Enabled || len(s.SpendingPhaseConfig.Phases) == 0 {
+		return BudgetTargetProvenance{Base: base, Multiplier: 1.0}
 	}
-	return base * (sum / float64(count))
+	mult, name, straddles := phaseWalk(s, rangeStart, rangeEnd)
+	return BudgetTargetProvenance{
+		Base:       base,
+		Multiplier: mult,
+		PhaseName:  name,
+		Straddles:  straddles,
+		Annotate:   mult != 1.0,
+	}
 }
 
 // BudgetTargets returns the monthly living-expense and healthcare targets a

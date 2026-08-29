@@ -1,0 +1,109 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W1
+ATTEMPT: 2
+---
+SCOPE: web/templates/components/whatif/budget-analysis.html, lines 33-40
+(the "Base (slider setting)" / "<Phase> phase ×<mult>" sub-rows under Living
+Expenses). Standard: /home/darrell/bin/ai/budget2/ACCESSIBILITY.md points +
+WCAG 2.2 AA. Worked in a scratch copy
+(/tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/w1-a11y/budget2,
+cp -a, .git intact); only write is this verdict file in the real tree.
+
+FIX UNDER TEST: both sub-row spans (Name and Amount, lines 36-37) now use
+`text-gray-500 dark:text-gray-300`, replacing attempt‑1's
+`text-gray-400 dark:text-gray-500` (Name span) /
+`text-gray-500 dark:text-gray-300` (Amount span, already-passing pair).
+
+1. CONTRAST — PASS, computed against actual hex + panel background chain.
+   Panel bg: budget-analysis.html:4 `bg-white dark:bg-gray-800` → light
+   #ffffff, dark #1f2937 (stock Tailwind gray-800; tailwind.config.js has
+   `theme: { extend: {} }`, no color overrides — confirmed by reading the
+   config).
+   sRGB relative-luminance computation (python, standard WCAG formula):
+     - text-gray-500 #6b7280 on #ffffff (light, NEW pair)   → 4.83:1  PASS (≥4.5:1)
+     - dark:text-gray-300 #d1d5db on #1f2937 (dark, NEW pair) → 9.96:1 PASS (≥4.5:1)
+   Container is `text-sm` (line 19), no size/weight override on the sub-row
+   spans → 14px normal weight, WCAG 1.4.3 normal-text threshold (4.5:1)
+   applies; both themes clear it. Parity holds: visible and compliant in
+   both themes (constitution point on light/dark parity satisfied).
+   For reference, recomputed attempt‑1's failing pair too, to make sure I'm
+   diffing the right numbers: text-gray-400/#ffffff = 2.54:1,
+   text-gray-500/#1f2937 = 3.04:1 — matches attempt‑1's verdict exactly, so
+   the new numbers above are a like-for-like fix, not a different metric.
+
+2. AUTOMATED RE-CHECK — PASS, new sub-rows no longer flagged.
+   Rebuilt the same harness as attempt 1: throwaway
+   cmd/a11yrender/main.go calling the real internal/templates.NewFromFS +
+   RenderToString with the exact fixture from
+   internal/templates/render_budget_analysis_phase_subitems_test.go
+   (unchanged file — confirmed identical to what attempt‑1 cited), producing
+   byte-real HTML for "Base (slider setting)" / "Go-Go phase ×1.1". Rendered
+   HTML confirms both spans now carry `text-gray-500 dark:text-gray-300`
+   (grep of panel.html). Wrapped in light.html and dark.html (`class="dark"`)
+   loading the real built web/static/css/tailwind.css, ran
+   `npx @axe-core/cli` (wcag2a/wcag2aa/wcag21aa/wcag22aa tags):
+     light.html: "color-contrast" now 3 occurrences (down from 5 in
+       attempt‑1's run) — remaining selectors are
+       `.text-green-600.dark\:text-green-400.font-semibold` (line 47,
+       MonthlyIncome — pre-existing, untouched by this diff, confirmed via
+       `git diff master` showing no green-600 changes) and two
+       `div:nth-child(1/2) > .text-gray-400.dark\:text-gray-500.text-xs`
+       (the same pre-existing tax-caption elements attempt‑1 already flagged
+       as out-of-scope). Neither of the two NEW sub-row spans appears in the
+       violation list.
+     dark.html: "color-contrast" now 2 occurrences, both the same
+       pre-existing `text-gray-400 dark:text-gray-500 text-xs` elements —
+       again, neither new sub-row span flagged.
+     document-title / html-has-lang violations are harness artifacts (no
+       <title>/lang on the bare test page), not app defects, same as
+       attempt‑1's run.
+
+3. PRE-EXISTING CHECKS RE-CONFIRMED ON CURRENT DIFF — PASS.
+   - Real-text sign check: "+" is literal template text
+     (budget-analysis.html:37 `{{if and .SignedAmount (ge .Amount 0.0)}}+
+     {{end}}`); "-" comes from formatMoney() (internal/templates/render.go),
+     literal string concatenation, not CSS content — both announce to
+     screen readers. Unchanged by this diff.
+   - Multiplier character: internal/services/retirement/analysis/
+     budget_fit.go, `fmt.Sprintf("%s phase ×%s", phaseName,
+     multiplierLabel)` — byte-checked, still U+00D7 MULTIPLICATION SIGN
+     (0xD7), not ASCII "x". `git diff master` on this file shows only the
+     sub-item-construction lines added; the Sprintf line itself is
+     unmodified.
+   - DOM adjacency: rendered panel.html still places both new sub-row
+     `<div>`s as immediate next-siblings of the "Living Expenses" row's
+     `<div>`, before the next breakdown item — same structure as attempt‑1.
+   - Color-alone: the amount span's color is static regardless of sign
+     (`text-gray-500 dark:text-gray-300` in both branches of the
+     if/else-less span at line 37); sign is conveyed by literal "+"/"-"
+     text, not by color switching. No color-only information introduced.
+
+4. NO OTHER REGRESSION IN THIS TEMPLATE — PASS.
+   `git diff master -- web/templates/components/whatif/budget-analysis.html`
+   shows exactly one hunk: the 8-line block at lines 33-40 (the two new
+   sub-row divs), entirely additive relative to master. No other class,
+   attribute, or markup in this file differs from master. Cross-checked
+   against .swarm/manifests/W1.2.files: budget-analysis.html is the only
+   template file in this task's manifest; the other listed files
+   (whatif.go, budget_fit.go, and three *_test.go files) are Go source/tests,
+   not markup, and were spot-checked above only for the sign/multiplier
+   claims that feed this template's rendered text.
+
+RAW EVIDENCE (scratch copy only):
+  /tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/w1-a11y/panel.html
+  /tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/w1-a11y/light.html
+  /tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/w1-a11y/dark.html
+  /tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/w1-a11y/budget2/cmd/a11yrender/main.go
+
+VERDICT: PASS — the specific violation from attempt‑1 (new sub-row Name
+spans at 2.54:1 light / 3.04:1 dark) is gone; both new sub-row spans now
+clear 4.5:1 in both themes (4.83:1 light, 9.96:1 dark), axe no longer flags
+either one in a real render against the built CSS, no other markup in this
+template changed, and every other attempt‑1 passing check (sign text,
+U+00D7, DOM adjacency, no color-only info) still holds. The remaining axe
+findings (text-green-600 MonthlyIncome span, two text-gray-400/500 tax
+captions) are pre-existing, untouched by this diff, and out of W1's scope —
+flagged as an OBSERVATION for a future dedicated contrast sweep, not a
+blocker here.

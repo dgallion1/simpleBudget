@@ -1,0 +1,139 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W2
+ATTEMPT: 3
+---
+Scope (manifest .swarm/manifests/W2.3.files): internal/handlers/whatif/handlers.go,
+living_expenses_phase_note.go(+test), living_expenses_snap_trap_test.go,
+monthly_living_expenses_rounding_test.go, internal/templates/render_spending_preview_test.go,
+web/templates/components/whatif/{portfolio-settings,quick-adjust,quick-adjust-scripts,
+spending-phases,rate-assumptions}.html. Verified in a `cp -a` copy of
+/home/darrell/bin/ai/budget2 (branch fix/phase-visibility); only this verdict file was
+written to the real tree.
+
+This is a Tier-3 task (ledger: W2 tier=3, escalated-tier3-two-consecutive-fails). The
+oracle (.swarm/tier3/W2/accept.sh) already PASSED for attempt 3 (.swarm/tier3/W2/oracle.3.log,
+8/8 checks incl. build/vet/package suite and the pinned half-away-from-zero canonical-string
+tests at 7386, 7386.50, 44319/6, 7386.555, 10000/7). Re-ran it independently in the copy —
+same result, `go test -run TestOracleW2 ./internal/handlers/whatif/` -> PASS, `go build ./...`
+-> 0, `go vet ./...` -> 0, `go test ./...` -> all packages ok, no failures. This verdict adds
+the a11y-specific ruling the oracle doesn't make.
+
+1. ARIA-VALUETEXT PRESENT ON BOTH SLIDERS, EQUAL TO THE VISIBLE DISPLAY, INCLUDING THE
+   .50-TIE FIXTURE — PASS
+   Ran `go test ./internal/handlers/whatif/... -run 'LivingExpenses|SnapTrap|Rounding' -v`:
+   all PASS, including
+   `TestMonthlyLivingExpensesWholeDollarRounding_HalfAwayFromZeroTie` with
+   MonthlyLivingExpenses=7386.50, which asserts BOTH `whatif-portfolio-settings` and
+   `whatif-quick-adjust-portfolio-content` render `aria-valuetext="$7,387"` (never
+   "$7,386") and that the display span/mirror display span read the same "$7,387" — no
+   sighted/AT divergence at the tie. Independently confirmed the two formatters actually
+   agree at the source: Go `formatWholeDollars` (int64(v+0.5) round-half-up, aliased as
+   template func `formatDollars`, used for both the aria-valuetext and the display span in
+   portfolio-settings.html:73/77 and quick-adjust.html's mirror) and the JS
+   `formatWholeDollars` (quick-adjust-scripts.html:11-13, `Math.round(v).toLocaleString()`)
+   both round 7386.50 -> "$7,387" (checked live: `go run` a throwaway snippet of the exact
+   Go func body -> 7387; `node -e "Math.round(7386.50)"` -> 7387). This closes the exact
+   defect `checker-second` FAILed on at attempt 2 (three formatters, three different
+   strings for one value) — there is now one Go func and one JS func, and they agree at
+   the tie.
+   Also confirmed: aria-valuetext is a bare value ("$7,387"), not a sentence, on both
+   controls — same as attempt 2's finding, unchanged.
+
+2. THUMB PARITY — mirror drag keeps primary .value / aria-valuetext / display in sync —
+   PASS (JS trace; jsdom execution is the tests lane's job, this is the a11y ruling on the
+   trace)
+   New code, quick-adjust-scripts.html:128-136, inside `syncQuickAdjustKey` for key ==
+   'monthly_living_expenses', immediately after setting aria-valuetext on the primary
+   range:
+     primaryRange.value = canonicalControl.value;
+   Traced the full mirror-drag path: mirror `input`/`change` -> document capture listener
+   (line 228/240, `true` capture) sees `data-quick-adjust-mirror` -> `proxyQuickAdjustMirrorToCanonical`
+   -> sets the canonical hidden field's `.value` to the mirror's value, dispatches
+   input/change on it, then calls `syncQuickAdjustKey('monthly_living_expenses')` directly
+   (and the dispatched event re-enters the same function via the capture listener on the
+   hidden field — redundant but idempotent, not a defect). Inside that one synchronous
+   call: mirror's own aria-valuetext, the primary range's aria-valuetext, the primary
+   range's `.value`, and every display span/mirror all get set from the same
+   `canonicalControl.value` in one pass — none can drift from another because they're all
+   derived from a single read in a single function body. Grepped for every other
+   `.value =` assignment on either range or the hidden field across all three touched
+   files — every path (primary drag/keyboard via `onMonthlyLivingExpensesInput`, mirror
+   drag/keyboard via `proxyQuickAdjustMirrorToCanonical`, DOMContentLoaded/HTMX-swap sync
+   via `syncAllQuickAdjustControls`) funnels through this same `syncQuickAdjustKey` branch.
+   This is a real fix, not cosmetic: before this attempt, a mirror drag updated the hidden
+   canonical field and both aria-valuetexts but left the primary range's own `.value`
+   (and thus its thumb position / implicit aria-valuenow, which a screen reader can still
+   read via the native role even with aria-valuetext present) pointing at the pre-drag
+   figure — the attempt-2 verdict's trace only walked the "set aria-valuetext" step and
+   didn't check `.value`, which is the gap this attempt closes.
+   Both sliders share min=0/max=20000/step=100, so a value arriving via drag is always
+   grid-aligned; the only source of a genuine off-grid figure is the server (Sync from
+   Dashboard writing an exact non-multiple-of-100 average into the hidden field). In that
+   case the range's raw `value` attribute is still subject to HTML's step-snapping on
+   parse/assignment — thumb position can visually land up to $50 off the true figure. This
+   is the same pre-existing, explicitly-commented, accepted quirk from attempt 2
+   ("browser snaps this assignment to the nearest step, which is fine for a range
+   control's visual thumb position") — not new, not a regression, and not a WCAG 4.1.2
+   violation on its own since aria-valuetext (which the SC actually cares about) overrides
+   the native announcement and is always exact.
+
+3. RE-POINTED PHASE-DOLLAR/PREVIEW READS — no new aria issues, values consistent with
+   what's announced — PASS
+   - spending-phases.html: both `updatePhaseSliderLabel` paths (quick-adjust-key branch
+     and legacy-markup fallback) now read `monthly_living_expenses_value` (the exact
+     hidden field) instead of `monthly_living_expenses_input` (the snapped visible range),
+     and format via the single JS `formatWholeDollars`. Server-side initial render
+     (spending-phases.html:78, quick-adjust.html's phase mirror) switched from
+     `${{printf "%.0f" ...}}` (Go's %.0f, round-half-to-even — the exact bug class this
+     task exists to kill) to `{{formatDollars ...}}` (the canonical half-away-from-zero
+     func). Verified via `TestMonthlyLivingExpensesWholeDollarRounding_HalfAwayFromZeroTie`
+     subtest "phase-dollar preview label rounds the tie the same way" and the oracle's
+     `TestOracleW2PhaseDollarLabels` (7386 × 1.25 = 9232.50 -> must round away to
+     "$9,233") — both PASS.
+   - quick-adjust-scripts.html's `formatQuickAdjustDisplay` 'phase-dollar' case: same
+     re-point to the hidden field, same shared formatter.
+   - rate-assumptions.html's `updateSpendingPreview`: `expensesSlider` re-pointed from
+     `monthly_living_expenses_input` to `monthly_living_expenses_value` (comment explains
+     the up-to-$50 divergence this closes). This preview table (`spending-preview-body`)
+     is plain rendered text in a normal table, not an ARIA-valued control and not behind
+     any aria-hidden/live split — sighted and AT users read the identical DOM text node,
+     so there is no 4.1.2-style channel divergence to rule on here regardless of rounding
+     rule.
+   None of these three files' phase/preview labels carry their own aria-valuetext (the
+   phase-multiplier range and the preview table have never had one) — unchanged from
+   before this attempt, so no new divergence was introduced; still out of this task's
+   scope (W2 is specifically the monthly_living_expenses control).
+   OBSERVATION (non-blocking): rate-assumptions.html:866 still computes
+   `Math.round(spending).toLocaleString()` inline rather than calling the shared JS
+   `formatWholeDollars`. Output is mathematically identical (same rounding rule, same
+   grouping) so this is not a defect, but it sits outside the single-formatter contract
+   the code comments in quick-adjust-scripts.html assert ("do not add another bare
+   locale-string call") — worth a follow-up cleanup, not a blocker.
+
+4. ATTEMPT-2 PASSING CHECKS RE-CONFIRMED — PASS, all unchanged
+   - Label association / keyboard operability: range still has no `for=`-linked `<label>`
+     (pre-existing, out of W2 scope, still an OBSERVATION not a FAIL, unchanged in kind
+     across all three attempts); both sliders remain native `<input type=range>`, fully
+     keyboard operable (arrow keys fire the same `input` event path traced above).
+   - Hidden input exclusion: `#monthly_living_expenses_value` is still `type="hidden"`
+     with no role/aria-*/tabindex override — categorically excluded from the
+     accessibility tree per HTML AAM, unaffected by this attempt's changes. PASS.
+   - Note text contrast (ACCESSIBILITY.md #7/#12): the pre-existing captions and the
+     phase-note paragraph still use the byte-identical `text-xs text-gray-400
+     dark:text-gray-500` class string measured at attempt 2 (2.54:1 light / 3.04:1 dark,
+     both below the 4.5:1 AA threshold) — confirmed via `git diff master --
+     portfolio-settings.html`, this class string is unchanged context in this attempt's
+     diff too. Still a pre-existing, sitewide gap, not introduced or worsened by W2 —
+     OBSERVATION for a follow-up task, not a blocker here.
+   - No aria-live on the phase-note figure or the phase-dollar/preview labels: unchanged
+     from every prior attempt, consistent with the rest of the page's non-live display
+     spans — OBSERVATION, non-blocking, WCAG 2.2 AA does not mandate it.
+
+Net: the WCAG 4.1.2 story for the monthly-living-expenses control is now fully consistent
+across every channel (server initial paint, JS live-sync, the .50-tie edge case, and
+thumb position after a mirror drag) and across every consumer that reads its value
+(display spans, mirror, phase-dollar labels, spending preview table). No new failure
+surfaced; all previously-noted observations are unchanged in kind and magnitude, plus one
+new non-blocking DRY observation (rate-assumptions.html:866). VERDICT: PASS.

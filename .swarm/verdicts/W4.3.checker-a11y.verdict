@@ -1,0 +1,212 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W4
+ATTEMPT: 3
+---
+SCOPE: web/templates/components/dashboard-verdict-bar.html and
+web/templates/components/kpis.html (per .swarm/manifests/W4.3.files; the
+touched .go files in that manifest — verdict.go/verdict_test.go/
+verdict_render_test.go — carry no template/markup surface).
+
+METHOD: worked entirely in a `cp -a` copy (`.git` preserved) at
+/tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/budget2-w4-3;
+never touched the real tree except this verdict file. `go build ./cmd/server`
+succeeds; `make css-verify` confirms the committed tailwind.css already
+contains every class this diff uses (bg-rose-50/amber-50/emerald-50,
+text-gray-600, dark:text-gray-400, etc.) — no stale-CSS risk. Rather than
+standing up the full HTTP server against synthetic CSVs (attempt-2's
+method), I added a throwaway `_test.go` in the package (scratchpad copy
+only, deleted with the copy, never in the real tree) that calls the same
+`renderer.RenderToString` the project's own `verdict_render_test.go`/
+`handlers_http_test.go` use against the REAL template files, with
+`BudgetVerdictView`/`DashboardMetrics` fixtures built to hit exactly the
+reachable states in question. Dumped full HTML pages (real compiled
+tailwind.css linked, `<html class="dark">` for dark theme) and ran
+`npx @axe-core/cli` (v4.13.0, tags wcag2a/wcag2aa/wcag21aa/wcag22aa)
+against each as file:// URLs. Cross-checked every contrast number by hand
+(WCAG relative-luminance formula, computed via a short Python script) using
+the exact Tailwind v3 hex values.
+
+(1) CONTRAST RECOMPUTATION for text-gray-600 / dark:text-gray-400 (the
+Budget KPI card's and banner's on-target class) — traced which tints each
+surface can actually reach first:
+  - dashboard-verdict-bar.html: Health ∈ {green, amber, red, neutral} ->
+    band bg ∈ {emerald-50, amber-50, rose-50, gray-50}. The gray-600
+    decomposition line (lines 26-33) is wrapped in `{{if $v.HasTarget}}`,
+    and HasTarget=false is exactly the Neutral/gray-50 case, so this line
+    is only ever reachable on emerald-50/amber-50/rose-50. All three
+    apply.
+  - kpis.html Budget card: `$budgetOver`/`$budgetHealthy` are mutually
+    exclusive and exhaustive whenever `HasCombinedTarget` is true (over:
+    `gt Delta 0.0`; healthy: `le Delta 0.0`) and the gray-50 `else` branch
+    only fires when `HasCombinedTarget` is false — but
+    `BudgetVerdict.{Living,Healthcare}.Configured` (which gates whether a
+    per-bucket row renders at all) is only ever true when
+    `HasCombinedTarget` is true too (see `BuildBudgetVerdict`: it returns
+    early with both buckets unclassified if `!m.HasCombinedTarget`). So
+    the per-bucket "on target" text-gray-600 span on the KPI card is only
+    ever reachable on bg-rose-50 or bg-emerald-50 — amber-50 is
+    architecturally unreachable for this specific card (confirmed by
+    reading the template's own conditionals, not just testing).
+
+  Hand-computed (relative-luminance formula), light theme:
+    gray-600 (#4b5563) on bg-rose-50    (#fff1f2): 6.879:1  PASS
+    gray-600 (#4b5563) on bg-amber-50   (#fffbeb): 7.288:1  PASS (banner only; KPI card can't reach this tint, see above)
+    gray-600 (#4b5563) on bg-emerald-50 (#ecfdf5): 7.174:1  PASS
+  Dark theme, composited against the real background (bg-*-900/20 over
+  body bg-gray-900 #111827; Tailwind v3 rose-900=#881337,
+  amber-900=#78350f, emerald-900=#064e3b):
+    rose-900/20 on gray-900    -> #29172a -> dark:text-gray-400 (#9ca3af): 6.616:1  PASS
+    amber-900/20 on gray-900   -> #261e22 -> 6.406:1  PASS (banner only)
+    emerald-900/20 on gray-900 -> #0f232b -> 6.384:1  PASS
+  All figures match attempt-2's cited numbers exactly (this attempt did
+  not touch these classes on the banner, and applied the identical pair to
+  the KPI card). All six pairings clear 4.5:1 (ACCESSIBILITY.md point 7 /
+  WCAG 2.2 SC 1.4.3) with wide margin, in both themes (point 12).
+
+(2) LIVE AXE, ON-TARGET CASE, RED-TINTED, LIGHT THEME FORCED: built a
+fixture reproducing the exact defect class attempt-2 failed on — Living
+heavily over ($8,328.54/mo over, drives `$budgetOver`=true, card and band
+both rose/red-tinted) while Healthcare sits exactly on target ($0.00
+delta, Configured=true). Rendered both `kpis` and `dashboard-verdict-bar`
+templates, ran axe against the built page:
+  - kpi-over-light: 24 color-contrast nodes flagged. NONE is the on-target
+    span: verified by full JSON node dump (target selectors + node HTML).
+    The two rows' *label* spans (`Living: $X of $Y` / `Health: $X of $Y`,
+    the outer `text-xs text-gray-500 dark:text-gray-400` wrapper,
+    unchanged by this diff) and the Living row's `text-rose-500` "over"
+    status span are flagged — all pre-existing, all logged already in
+    attempt-2's OBSERVATIONS (4.4:1 and 3.34:1 respectively, same class
+    strings, unchanged by this diff). The Healthcare row's on-target
+    `text-gray-600 dark:text-gray-400` span does not appear anywhere in
+    the violation list.
+  - kpi-over-dark: 1 hit, on `.text-gray-400` = the pre-existing
+    "Category: Health Insurance" caption on the separate Healthcare KPI
+    tile (3.47:1) — confirmed via node HTML, unrelated to the Budget
+    card entirely.
+  - banner-over-light / -dark: same story — pre-existing font-normal
+    "over N months" / 10px uppercase label / value-color hits only; 0
+    dark-theme violations.
+  Also swept the emerald ("under") and amber tints for completeness
+  (Living on-target inside an emerald-tinted card, and a fresh amber
+  banner fixture forcing `Health=amber` with Healthcare on-target): same
+  result — the on-target node never appears in any violation list, in
+  either theme, on any of the three reachable tints. Confirmed via
+  `TestBudgetKPICardAndVerdictBanner_AgreeWithinDeadBand` (project's own
+  test) passing and the axe JSON dumps.
+  ITEM (2): PASS — the originally-failed violation is gone, and the
+  specific reproduction the boss asked for is clean.
+
+(3) ROW GATING — no regression: confirmed against the actual diff
+(kpis.html:156-171) that each bucket's entire row `<div>` (label span +
+status span together) is now wrapped in
+`{{if .BudgetVerdict.{Living,Healthcare}.Configured}}...{{end}}` — an
+unconfigured bucket renders NO markup at all, not an empty/hidden node
+(grep for the row's class strings confirms zero occurrences beyond the
+banner's own copy in the project's own
+`TestBudgetKPICard_BucketRowAbsentWhenUnconfigured`, which I re-ran and
+which passes). This is server-rendered Go-template conditional inclusion,
+not a client-side suppression that leaves an AT-visible remnant, so
+ACCESSIBILITY.md point 16 (client-side suppression parity) does not apply
+here — there is no live-region/aria-state to desync in the first place.
+The literal words "over" / "under" / "on target" are still emitted
+alongside (not instead of) the color classes in every reachable state
+(re-verified live in all fixtures above plus the project's own
+`TestDashboardVerdictBar_Render` suite, all passing) — point 8's
+color-is-not-the-only-channel requirement is met for the per-bucket status
+color itself. (See FAILURE below for a *different* point-8-adjacent defect
+in the surrounding card, not in this gating.)
+
+(4) ATTEMPT-2 BANNER FINDINGS STILL HOLD: `git diff master --
+web/templates/components/dashboard-verdict-bar.html` shows the entire
+decomposition/sentence block (added across attempts 1-3, no separate
+per-attempt commits on this branch) is byte-identical to what attempt-2
+audited — this attempt's diff only touched kpis.html's per-bucket status
+class/condition and verdict.go/tests. Recomputed contrast (item 1 above)
+reproduces attempt-2's exact cited ratios (6.879/7.288/7.174 light,
+6.62/6.41/6.38 dark), and the live axe re-run (item 2) finds nothing new
+on the banner. Confirmed. All of attempt-2's logged pre-existing
+OBSERVATIONS (font-normal "over N months" 4.4:1, KPI Spent/Target/
+Net-Savings 10px labels 4.4:1, value-color figures on rose-50 4.27-4.49:1,
+"Category: Health Insurance" caption 2.31/3.47:1, unnamed date-range
+inputs/select) reappear unchanged and are not re-litigated here.
+
+FAILURES:
+
+- ACCESSIBILITY.md point 8 (status conveyed by color must not mislead;
+  read together with the recorded ruling 2026-08-29a: "a threshold applied
+  to a figure must live in ONE classification source consumed by every
+  surface that renders it") — web/templates/components/kpis.html:129-145.
+  The Budget KPI card's own CONTAINER TINT is computed from a bare-sign
+  comparison with no dead-band:
+      {{$budgetOver := and .Metrics.HasCombinedTarget (gt .Metrics.CombinedCumulativeDelta 0.0)}}
+      {{$budgetHealthy := and .Metrics.HasCombinedTarget (le .Metrics.CombinedCumulativeDelta 0.0)}}
+  while the SAME card's headline three lines below re-implements the $1
+  dead-band with its own hardcoded literals instead of reading
+  `.BudgetVerdict.IsOver`/`.IsUnder`/`.Health`:
+      {{if gt .Metrics.CombinedCumulativeDelta 1.0}} ... over
+      {{else if lt .Metrics.CombinedCumulativeDelta -1.0}} ... under
+      {{else}} On budget {{end}}
+  Independently reproduced (own fixture, not copied from checker-second):
+  CombinedCumulativeDelta=0.60, HasCombinedTarget=true, both buckets
+  configured (BuildBudgetVerdict classifies this as Health=green,
+  IsOver=false, IsUnder=false — i.e. neutral/fine). Rendered `kpis`
+  output:
+      <div class="... border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20" ...>
+        <p ...>Budget</p>
+        <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">On budget</p>
+        ...Living: $2,000.60 of $2,000.00 ... <span class="num">$0.60</span> on target
+        ...Health: $300.00 of $300.00 ... <span class="num">$0.00</span> on target
+  A danger-colored (rose/red) card chrome wraps a headline reading
+  "On budget" and two rows both reading "on target" — for the identical
+  figure (CombinedCumulativeDelta == BudgetVerdict.Delta) two independent,
+  disagreeing classifiers render on the same card. This is not "color
+  conveys meaning alone" in the narrowest textual sense — text is present
+  — but the color and text channels actively contradict each other on the
+  same data point, which defeats the purpose of point 8's own
+  color+text pairing requirement: a sighted user scanning the tint as the
+  fast signal (exactly what point 8's pairing is meant to support) is told
+  "over/danger," while the text says "fine." Reachable whenever
+  0 < CombinedCumulativeDelta <= $1.00 (rose tint / neutral text) or
+  -$1.00 <= CombinedCumulativeDelta < 0 (emerald tint / neutral text, a
+  milder but same-shaped mismatch). Confirms checker-second's
+  independently-filed W4.3 FAIL (same file/lines, same root cause); I
+  reproduced it myself from scratch rather than taking that verdict on
+  faith, and get the same rendered contradiction. Not caught by the boss's
+  four-item recheck list because none of items (1)-(4) inspect the card's
+  own outer border/bg classes against its own headline/rows — but it is
+  squarely inside ACCESSIBILITY.md's scope for this diff's files, and it
+  is the same defect FAMILY (bare-sign vs. dead-banded classification of
+  one figure, two surfaces) this very task exists to eliminate, just
+  un-fixed on the card's tint rather than its rows.
+
+  Fix should have the card's tint consume `.BudgetVerdict.Health` (or
+  `.IsOver`/`.IsUnder`) instead of re-deriving `$budgetOver`/
+  `$budgetHealthy` from `.Metrics.CombinedCumulativeDelta` directly, the
+  same way this attempt already made the per-bucket rows consume
+  `.BudgetVerdict.{Living,Healthcare}` instead of re-deriving from
+  `.Metrics.{Cumulative,Healthcare}Delta`.
+
+OBSERVATIONS (non-blocking, pre-existing, unchanged by this attempt, same
+provenance as attempt-2's log — not re-litigated in detail):
+- dashboard-verdict-bar.html "over N months" span / Spent-Target-Net
+  Savings 10px labels — 4.4:1 on bg-rose-50.
+- kpis.html outer `text-xs text-gray-500 dark:text-gray-400` label
+  wrapper ("Living: $X of $Y") — 4.4:1 on bg-rose-50; predates this diff
+  (only the nested status span was touched).
+- text-rose-500/emerald-500 per-bucket "over"/"under" value coloring —
+  3.34:1 (rose) / 2.4-3.43:1 (emerald) on tinted backgrounds; same class
+  strings as before this diff, only the selecting condition changed.
+- "Category: Health Insurance" caption (Healthcare KPI tile, untouched by
+  this diff) — 2.31:1 light / 3.47:1 dark.
+- Site-wide, unrelated to W4: unnamed date-range inputs/comparison
+  select — already logged by attempt-1/attempt-2.
+
+Net: the four items the boss asked me to recheck all PASS — the
+originally-failed on-target contrast defect is gone in both files, in
+both themes, on every tint each surface can actually reach, and the row
+gating introduces no AT-visible regression. But a same-card color-vs-text
+contradiction in kpis.html's Budget tile (pre-existing, not touched by
+this attempt, but squarely the defect family this task exists to close)
+is independently reproducible and unresolved. PASS is withheld: FAIL.

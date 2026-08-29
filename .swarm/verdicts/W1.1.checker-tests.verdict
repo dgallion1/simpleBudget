@@ -1,0 +1,125 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W1
+ATTEMPT: 1
+---
+All work verified in a copy of the repo at
+/tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/w1/repo
+(cp -a, .git preserved, branch fix/phase-visibility). Toolchain: `go version` ->
+go1.26.6 linux/amd64, matching the go.mod pin.
+
+C1 — build / vet / full test suite: PASS
+  `go build ./...` -> BUILD_EXIT=0; `go vet ./...` -> VET_EXIT=0.
+  `go test ./...` -> EXIT=0, 49 packages reporting "ok", zero lines matching
+  "FAIL|panic". The branch also carries W2/W3/W4 work; nothing on it fails.
+
+C2 — worker's new tests pass by name, none skipped: PASS
+  `go test -count=1 -v -run 'TestBudgetFit_LivingExpensesSubItems_(PhaseAbove1|PhaseBelow1|AbsentWhenPhasesDisabled|AbsentWhenMultiplierIsOne)$' ./internal/services/retirement/analysis/`
+    --- PASS: TestBudgetFit_LivingExpensesSubItems_PhaseAbove1
+    --- PASS: TestBudgetFit_LivingExpensesSubItems_PhaseBelow1
+    --- PASS: TestBudgetFit_LivingExpensesSubItems_AbsentWhenPhasesDisabled
+    --- PASS: TestBudgetFit_LivingExpensesSubItems_AbsentWhenMultiplierIsOne
+  `go test -count=1 -v -run 'TestRenderBudgetAnalysisShowsLivingExpensePhaseSubItems$' ./internal/templates/`
+    --- PASS: TestRenderBudgetAnalysisShowsLivingExpensePhaseSubItems
+  `go test -count=1 -v ./internal/services/retirement/analysis/ ./internal/templates/ | grep '^--- SKIP'`
+  produced no output: no skips in either W1 package. (The full-repo suite has 11
+  pre-existing SKIPs, none in these two packages.)
+
+C3 — non-vacuity by mutation (scratch copies mutA/mutB): PASS
+  (a) mutA: `base := s.MonthlyLivingExpenses` -> `base := livingExpenseAmount`.
+      `go test -count=1 -run 'TestBudgetFit_LivingExpensesSubItems_' ./internal/services/retirement/analysis/`
+      -> exit 1:
+        FAIL PhaseAbove1: "base amount = 8124.60, want 7386.00";
+                          "adjustment amount = 0.00, want 738.60"
+        FAIL PhaseBelow1: "adjustment amount = 0.00, want -738.60"
+      (Figure assertions kill the mutant. The sum-invariant assertion alone does
+      not — see FINDING 1.)
+  (b) mutB: dropped `&& phaseMultiplier != 1.0` from the gate. Same command ->
+      FAIL AbsentWhenMultiplierIsOne: "expected no sub-items when the multiplier
+      is 1.0, got [{Name:Base (slider setting) Amount:7386 ...} {Name:Go-Go phase
+      ×1 Amount:0 ... SignedAmount:true}]".
+
+C4 — sum invariant to the cent; absence assertions: PASS (with FINDING 1)
+  Read /home/darrell/bin/ai/budget2/internal/services/retirement/analysis/budget_fit_living_expense_subitems_test.go:
+    L54-58: `math.Abs(base.Amount+adj.Amount-item.Amount) > 0.005` -> agreement
+    when rounded to cents. Absolute figures also pinned: base 7386.00,
+    adjustment 738.60, Amount 8124.60 (PhaseAbove1); -738.60 / 6647.40
+    (PhaseBelow1).
+    L104-107 (AbsentWhenPhasesDisabled, with SpendingDeclineRate=1.0) and
+    L127-129 (AbsentWhenMultiplierIsOne) both assert `item.SubItems != nil` is an
+    error, i.e. ABSENCE (nil-or-empty is not accepted as "close enough": a
+    non-nil empty slice would also fail).
+
+C5 — diff review: PASS
+  `git diff master --stat -- internal/models internal/services/retirement/analysis web/templates/components/whatif/budget-analysis.html`
+  -> exactly 3 files, +61/-3. Full diff read via `rtk proxy git diff master -- ...`.
+  * No engine math changed: `git diff master --name-only | grep -E 'internal/services/retirement/engine/|internal/services/storage/|internal/services/dataloader/|internal/services/transfers/|internal/services/accounts/accounts.go|internal/services/mcpsvc/confirm/'`
+    -> NONE. The Living Expenses Amount is still `engine.LivingExpensesAtMonth(s,0)`,
+    unchanged from master; only the surrounding struct literal was refactored.
+  * Other breakdown rows' rendering unchanged — proved by byte comparison, not
+    inspection: rendered "whatif-budget-analysis" with a 4-row ExpenseBreakdown
+    (incl. a Note row and a zero-amount row), a 2-row IncomeBreakdown and
+    RMD/taxes/IRMAA, in the branch copy and in a `git worktree` of master, using
+    the same test source. `diff master.html branch.html` -> only 4 added lines,
+    each pure whitespace (`cat -A` shows "            $"); 5887 -> 5939 bytes =
+    4 x 13 bytes of indentation. `diff <(tr -s ' \n\t' ' ' <master.html) <(tr -s
+    ' \n\t' ' ' <branch.html)` -> IDENTICAL_AFTER_WS_COLLAPSE. No rendered text,
+    attribute or element changed for rows without SubItems.
+  * GetSpendingPhaseNameAt mirrors GetSpendingMultiplier: read
+    internal/models/whatif.go L449-481. Both take the same guard
+    (`config == nil || !config.Enabled || len(config.Phases) == 0`) and the same
+    "last phase whose StartAge <= age wins, in slice order" loop. Only divergence:
+    when no phase matches, GetSpendingMultiplier falls back to 1.0 while
+    GetSpendingPhaseNameAt falls back to Phases[0].Name — unreachable in the
+    rendered path, because that case is exactly multiplier == 1.0, which the gate
+    suppresses (mutB above shows the gate is live).
+  * Signed rendering verified by rendering, not by reading the template: a
+    SignedAmount sub-item of -738.60 renders
+    `<span class="text-gray-500 dark:text-gray-300">-$738.60/mo</span>`; +738.60
+    renders `+$738.60/mo`. Base row renders `$7,386.00/mo` with no sign.
+
+C6 — live-data sanity: PASS
+  data/settings/whatif.json: monthly_living_expenses = 7386,
+  spending_phase_config.enabled = true, phases Go-Go(start_age 0, x1.1) /
+  Slow-Go(70, x0.9) / No-Go(85, x0.8), spending_decline_rate = 0,
+  phase_age_reference = "older".
+  Ran BudgetFit against those real settings (temporary test in the copy only,
+  since deleted): currentAge=65 phaseRefAge0=65 mult=1.1 mle=7386.00 ->
+    ROW Living Expenses = 8124.60
+      SUB "Base (slider setting)" = 7386.00 signed=false
+      SUB "Go-Go phase ×1.1"      = 738.60  signed=true
+  Identical to the figures and labels the tests fixture-pin (8124.60 / +738.60 /
+  "Go-Go phase ×1.1").
+
+FINDING 1 (non-blocking, reported for the lead): the in-code guard
+`math.Abs(base+adjustment-livingExpenseAmount) < 0.005` in budget_fit.go is inert.
+`adjustment` is defined as `livingExpenseAmount - base` one line earlier, so the
+condition is algebraically always true and can never suppress anything.
+Demonstrated: mutation C replaced it with `if true {` and
+`go test -count=1 ./internal/services/retirement/analysis/ ./internal/templates/`
+still exits 0 (both "ok"). The brief's "suppressed when the identity doesn't hold
+(decline-rate cases)" is nonetheless satisfied, by a different mechanism: read
+internal/services/retirement/engine/expense.go L17-26 — when SpendingPhaseConfig
+is enabled the decline rate is not applied at all (phase branch returns
+`MonthlyLivingExpenses * multiplier * inflationFactor`), and
+`compoundedFactorFromPercent(rate, 0) == 1.0` (math.go L30-35), so at month 0 the
+identity holds exactly whenever sub-items are emitted. The decline-rate path is
+covered by TestBudgetFit_LivingExpensesSubItems_AbsentWhenPhasesDisabled, which
+sets SpendingDeclineRate=1.0 and asserts absence. The guard is dead code, not a
+correctness gap.
+
+FINDING 2 (non-blocking): the sum-invariant assertion is tautological given the
+implementation (mutA changed base and the sum still balanced). Non-vacuity of the
+tests rests on the absolute-figure assertions, which did kill mutA.
+
+SCOPE: `git diff master --name-only` plus untracked files accounts for every
+change. W1's five manifest files (internal/models/whatif.go,
+internal/services/retirement/analysis/budget_fit.go, its new test,
+internal/templates/render_budget_analysis_phase_subitems_test.go,
+web/templates/components/whatif/budget-analysis.html) are touched by no other
+W-task manifest; all other modified files map 1:1 to the W2/W3/W4 manifests, plus
+.swarm/ledger.tsv and .swarm/W-RUN-SPEC.md. No path in .swarm/critical.globs was
+modified (grep of the changed-file list against all six globs -> NONE). My only
+write to the real tree is this verdict file; the real tree's `git status` shows
+none of my scratch files.

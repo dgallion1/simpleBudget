@@ -463,6 +463,25 @@ func (s *WhatIfSettings) GetSpendingMultiplier(age int) float64 {
 	return multiplier
 }
 
+// GetSpendingPhaseNameAt returns the name of the spending phase active at
+// the given reference age, using the same selection rule as
+// GetSpendingMultiplier (phases considered in slice order; the last one
+// whose StartAge <= age wins, so Phases must be sorted ascending by
+// StartAge). Returns "" when phases are disabled or unconfigured.
+func (s *WhatIfSettings) GetSpendingPhaseNameAt(age int) string {
+	config := s.SpendingPhaseConfig
+	if config == nil || !config.Enabled || len(config.Phases) == 0 {
+		return ""
+	}
+	name := config.Phases[0].Name
+	for _, phase := range config.Phases {
+		if age >= phase.StartAge {
+			name = phase.Name
+		}
+	}
+	return name
+}
+
 // SpendingMultiplierAt returns the phase multiplier for a calendar
 // instant t, using the same phase-age reference (older/younger/primary/
 // spouse) the projection uses. Returns 1.0 when phases are disabled or
@@ -991,6 +1010,16 @@ type ExpenseBreakdownItem struct {
 	Name   string  `json:"name"`
 	Amount float64 `json:"amount"`
 	Note   string  `json:"note,omitempty"` // e.g., "employer covered", "ends year 3"
+
+	// SubItems optionally decomposes Amount into indented detail rows
+	// (e.g., a base value plus a spending-phase adjustment). Nil/empty
+	// renders nothing, so every row without SubItems is unaffected.
+	SubItems []ExpenseBreakdownItem `json:"sub_items,omitempty"`
+	// SignedAmount marks a sub-item whose Amount should render with an
+	// explicit "+" prefix when non-negative (negative amounts already
+	// render with a "-" via formatMoney). Used for adjustments shown on
+	// top of a base value.
+	SignedAmount bool `json:"signed_amount,omitempty"`
 }
 
 // BudgetFitAnalysis shows monthly gap and required rates

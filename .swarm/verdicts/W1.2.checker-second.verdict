@@ -1,0 +1,75 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: W1
+ATTEMPT: 2
+---
+Ruling 2026-08-29b fix (budget_fit.go: round base and total to cents first,
+adjustment := roundedTotal - roundedBase) makes the SUB-ITEM pair (Base,
+Adjustment) sum correctly among themselves, but it does NOT fix the identity
+this task requires: the displayed Living-Expenses row TOTAL vs the displayed
+sub-items. livingExpenseItem.Amount is still set to the raw, unrounded
+engine.LivingExpensesAtMonth(s,0) value and is rendered independently via
+{{formatMoney .Amount}} in web/templates/components/whatif/budget-analysis.html,
+using Go's %.2f (correct decimal rounding of the exact float). The sub-items'
+`total` variable used to derive `adjustment` is computed by a DIFFERENT
+rounding path: math.Round(livingExpenseAmount*100)/100 (round-half-away-from-
+zero on an intermediately-rescaled float). These two "round to nearest cent"
+algorithms disagree at floating-point tie boundaries, so the same class of
+bug that attempt 1 caught (rendered sub-rows not summing to the rendered
+total) still reaches the user — it just moved from base/total to
+sub-item-sum/row-total.
+
+Reproduced against the CURRENT code (not a synthetic float comparison): built
+a test that drives the real analysis.BudgetFit + the real
+whatif-budget-analysis template (same harness pattern as the worker's own new
+render_budget_analysis_fractional_cent_test.go) and parses the three
+DISPLAYED dollar strings.
+
+Toy counterexample (isolates the mechanism):
+  MonthlyLivingExpenses = 0.01, phase multiplier = 1.5
+  displayed Base = $0.01, displayed adjustment = +$0.01 (sum = $0.02)
+  displayed Living Expenses total = $0.01   <-- does not match $0.02
+
+Realistic counterexample (plausible Sync-from-Dashboard + a common phase
+multiplier, not a contrived toy value):
+  Sync-from-Dashboard base = 9999.99 / 7 months = 1428.5700000000...
+  Phase multiplier = 0.5 (a normal "Slow-Go"/retrenchment phase)
+  displayed Base (slider setting) = $1428.57
+  displayed "Go-Go phase ×0.5"    = -$714.28
+  displayed Living Expenses total = $714.28
+  base + adjustment as DISPLAYED   = $714.29   <-- 1-cent mismatch, visible
+                                                    to the user exactly like
+                                                    the attempt-1 defect.
+
+Found via a sweep across 15 bases x 10 multipliers (1 mismatch: the toy
+0.01/1.5 case) and a realistic-combos sweep across 9 Sync-from-Dashboard-style
+bases x 15 UI-plausible phase multipliers (1 mismatch: 9999.99/7 @ 0.5x, out
+of 135 combos) run against the live template/engine, not a hand simulation.
+A pure-random 20,000-trial sweep over generic doubles found 0 mismatches,
+confirming the defect is a real but narrow floating-point tie hazard, not
+universal — but it is reachable with ordinary user inputs (a plain integer
+total-expenses figure divided by a plain integer month count, times a
+round-number phase multiplier), which is the same reachability bar the
+ruling itself used to justify the fix (Sync-from-Dashboard producing
+fractional-cent bases).
+
+Item 3 (decline-rate guard hole): PASS. Confirmed via
+TestBudgetFit_LivingExpensesSubItems_AbsentWhenPhasesDisabled (existing) and
+an added probe with SpendingPhaseConfig present but Enabled=false plus
+SpendingDeclineRate=2.0 — no sub-items render in either case. The guard
+`s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled &&
+phaseMultiplier != 1.0` correctly excludes all disabled-phase configurations
+regardless of decline rate.
+
+Baseline: go build ./... and go vet ./... both exit 0. go test ./... is
+green (all packages ok, including internal/templates,
+internal/services/retirement/analysis, internal/handlers/whatif).
+
+Conclusion: the rendered-sum defect class is not eliminated, only relocated
+from (base, total) to (sub-item-derived-total, row-total). Root cause: the
+row's top-level Amount is never re-derived from the same rounded `total` used
+to compute the adjustment sub-item; it is formatted from the raw float via a
+separate rounding path. FAIL — do not accept at Tier 2 without also rounding
+livingExpenseItem.Amount (or otherwise unifying the rounding path so all
+three displayed figures derive from one rounded value).

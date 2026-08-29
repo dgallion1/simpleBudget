@@ -1,0 +1,154 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W3
+ATTEMPT: 1
+---
+All verification run in a `cp -a` copy at
+/tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/b2
+(branch fix/phase-visibility, go1.26.6). All scratch probes deleted before the
+final suite run; `find . -name "zzz_probe*" | wc -l` = 0.
+
+C1. BUILD / VET / TEST / CSS-VERIFY -- MET
+  `go version` -> go1.26.6 linux/amd64
+  `go build ./...` -> exit 0, no output.
+  `go vet ./...` -> VET_EXIT=0, no output.
+  `go test ./... -count=1` -> FINAL_EXIT=0; 49 "ok" package lines; zero lines
+    matching FAIL|SKIP.
+  `make css-verify` -> "tailwind.css is up to date", CSSVERIFY_EXIT=0.
+
+C2. WORKER'S NAMED TESTS -- MET
+  `go test ./internal/services/metrics/ -count=1 -v -run 'TestTargetProvenance_'`
+    -> 7/7 PASS, none SKIP: _NilSettings, _ZeroBaseExpenses, _PhasesDisabled,
+    _NoPhaseConfig, _GoGoPhase_MultiplierOne_NoAnnotate, _SinglePhaseAcrossRange,
+    _StraddlesTransition_WeightedAverage.  "ok budget2/internal/services/metrics"
+  `go test ./internal/handlers/dashboard/ -count=1 -v -run 'TestDashboardKPIs_TargetProvenance'`
+    -> 2/2 PASS, none SKIP: _AnnotatesWhenPhaseActive, _AbsentWhenNoPhaseConfig.
+  Read the test bodies (metrics_test.go:1063-1184, handlers_http_test.go:1519-1616):
+  they assert what their names claim. _StraddlesTransition asserts Multiplier
+  0.975, Straddles true and PhaseName "Go-Go" (phase at range start), not just
+  a non-error. _AnnotatesWhenPhaseActive asserts both `title="..."` and
+  `aria-label="..."` contain the exact string
+  "Target from What-If plan: $2,000 base x 0.95 (Active phase)".
+  _AbsentWhenNoPhaseConfig asserts "Target" still present AND
+  "Target from What-If plan:" absent AND no `aria-label="Target`.
+
+C3. REFACTOR EQUIVALENCE -- MET
+  (a) Pre-existing coverage intact and green.
+    `rtk proxy git diff HEAD -- internal/services/metrics/metrics_test.go | grep "^-"`
+      -> zero deletion lines; no pre-existing test was removed or edited.
+    `go test ./internal/services/metrics/ -count=1 -v -run 'TestPhaseAdjustedMonthlyTarget_|TestBudgetTargets_'`
+      -> 9/9 PASS (NilSettings, ZeroBaseExpenses, PhasesDisabled_PassesBaseThrough,
+      GoGoPhase_NoChange, NoGoPhase_AppliesMultiplier, StraddlesPhaseTransition,
+      FlowsIntoCalculateMetrics, BudgetTargets_NilSettingsReturnsZero,
+      BudgetTargets_WrapsPhaseAndHealthcareHelpers).
+  (b) Differential probe old-vs-new. Copied HEAD's phaseAdjustedMonthlyTarget
+      verbatim (via `git show HEAD:internal/services/metrics/metrics.go`) into a
+      scratch in-package test as oldPhaseAdjustedMonthlyTarget and compared
+      against the refactored function across a grid: bases {0, 1, 5000, 7386.42}
+      x ages {0,40,59,60,64,65,66,74,75,76,84,85,86,100} x start months
+      {2020-01, 2025-01, 2025-07, 2030-12} x config variants {enabled, disabled,
+      nil-config, empty-phases} x ranges {single-month, same-day, 12mo,
+      24mo-straddle, reversed (end<start), reversed-1mo, before-plan-start,
+      40-year, zero time.Time} x locations {UTC, UTC-7}, plus nil settings.
+      Output: "PROBE: compared 16128 (settings,range) pairs, 0 mismatches"
+      (tolerance 1e-12, NaN-parity checked). Test PASS.
+
+C4. MULTIPLIER FROM THE WALK, NOT DIVISION -- MET
+  Read diff (`rtk proxy git diff HEAD -- internal/services/metrics/metrics.go`):
+  TargetProvenance calls `mult, name, straddles := phaseWalk(s, rangeStart, rangeEnd)`
+  and stores mult directly; there is no target/base division anywhere in the file.
+  phaseAdjustedMonthlyTarget is now `avgMultiplier, _, _ := phaseWalk(...); return
+  base * avgMultiplier` -- one walk implementation, two callers.
+  Zero-base sentinel probe output:
+    "PROBE zero-base: target=0 provenance={Base:0 Multiplier:0 PhaseName:
+     Straddles:false Annotate:false}"
+    "PROBE zero-base: target/base (division approach) = NaN ; walk multiplier = 0"
+  i.e. no division by zero, Multiplier finite, Annotate false (not annotated).
+  Straddle probe (base 7386, ages 64/74/84, 24-month range) confirms
+  Base*Multiplier == phaseAdjustedMonthlyTarget to 1e-9 in every case, e.g.
+  "{Base:7386 Multiplier:0.9749999999999996 PhaseName:Go-Go Straddles:true
+   Annotate:true} target=7201.349999999998".
+  BudgetTargets signature unchanged: HEAD and working tree both
+  `func BudgetTargets(s *models.WhatIfSettings, rangeStart, rangeEnd time.Time) (living, healthcare float64)`
+  (compared via `git show HEAD:... | grep` vs `grep`).
+
+C5. formatMultiplier -- MET
+  Scratch in-package unit test (internal/templates), output:
+    formatMultiplier(1.1) = "1.1"   [required]
+    formatMultiplier(1.15) = "1.15" [required]
+    formatMultiplier(1) = "1"       [required, from 1.0]
+    formatMultiplier(1.1) = "1.1"   [required, from the literal 1.10]
+    formatMultiplier(0.95) = "0.95", (0.65) = "0.65", (0.975) = "0.97",
+    (0.9749999999999996) = "0.97", (0.9000000000000002) = "0.9", (2) = "2"
+  All 10 matched expectation; test PASS. Also asserted "formatMultiplier" is
+  present in getFuncMap() -- it is (render.go:78).
+  NOTE (not a criterion failure): the worker committed no test for
+  formatMultiplier; the only coverage in the repo is indirect, through the two
+  dashboard render tests. The brief permitted a scratch test, which is what
+  produced the evidence above.
+
+C6. RENDER FACTS -- MET
+  Probes drove the real handlers through chi + the real template dir.
+  (a) Enabled, single phase, brief's own example (base 7386, phase "Go-Go"
+      multiplier 1.1, one-month range):
+      "PROBE A title present: true" / "PROBE A aria-label present: true"
+      for the exact string
+      `Target from What-If plan: $7,386 base x 1.1 (Go-Go phase)`
+      (x = U+00D7 multiplication sign, rendered unescaped).
+  (b) Straddling (base 7386, age 64, phases 1.1 -> 1.0 at 65, Jan2025-Dec2026,
+      avg 1.05): "PROBE straddle title present: true" / "aria-label present: true"
+      for `Target from What-If plan: $7,386 base x avg 1.05 (crosses phase change)`.
+  (c) Full page path, not just the partial: GET /dashboard with the same settings
+      -> "PROBE /dashboard status=200", title present true, aria-label present
+      true, no template-execution error text. Both consumers of the "kpis"
+      template are covered (pages/dashboard.html:131 and RenderPartial "kpis" at
+      handlers.go:196); handlers.go sets "TargetProvenance" on both data maps
+      (lines 135 and 190).
+  (d) Disabled / no phase config: `strings.Contains(body, "Target from What-If plan")`
+      false; no `title="Target` / `aria-label="Target`.
+  (e) multiplier == 1.0 (Go-Go start_age 0 multiplier 1.0, age 60):
+      "PROBE multiplier==1 annotation absent: true".
+  (f) Visible text vs master. Rendered the same request twice -- once with the
+      working tree's kpis.html, once with a template dir whose kpis.html is
+      `git show HEAD:web/templates/components/kpis.html` -- and compared after
+      stripping tags and collapsing whitespace:
+      "PROBE disabled-case visible text identical: true"
+      visible text both sides: "... Monthly Living Expenses $1,472.78 Target
+      $2,000.00 · $527.22 /mo under ..."
+      Same equality asserted for the multiplier==1 case.
+  OBSERVATION on "byte-identical visible card": the raw HTML is NOT byte-identical
+  in the unannotated case. `diff -u old.html new.html` shows exactly two changes
+  inside the Monthly Living Expenses card:
+      +                 (three blank lines from the new {{if}} template actions)
+      -  Target <span class="num">$2,000.00</span> ...
+      +  <span>Target <span class="num">$2,000.00</span></span> ...
+  i.e. an attribute-less wrapper <span> is emitted even when Annotate is false
+  (kpis.html only makes title/aria-label conditional, not the span itself).
+  A bare inline <span> with no attributes and no CSS carries no visual or
+  assistive-tech effect, and criterion 6 as written tests *visible text*, which
+  is byte-identical. Recorded here so the lead can judge whether the brief's
+  "byte-identical visible card" was meant more strictly than that.
+
+SCOPE
+  W3 manifest (.swarm/manifests/W3.1.files): internal/services/metrics/metrics.go,
+  internal/services/metrics/metrics_test.go, internal/templates/render.go,
+  internal/handlers/dashboard/handlers.go,
+  internal/handlers/dashboard/handlers_http_test.go,
+  web/templates/components/kpis.html. All six modified; diffstat
+  "6 files changed, 378 insertions(+), 15 deletions(-)".
+  `grep -rn "TargetProvenance|formatMultiplier|phaseWalk|phaseNameAt"` over all
+  .go/.html finds non-test references only inside those six files -- W3 did not
+  spill outside its manifest.
+  The branch also carries changes to 11 other files (whatif handlers/models,
+  retirement/analysis/budget_fit.go, verdict*.go, several whatif templates,
+  .swarm/ledger.tsv) plus new files under internal/handlers/whatif and
+  internal/services/retirement/analysis. Those match the sibling manifests
+  W1.1/W2.1/W4.1 present in .swarm/manifests and are outside W3's scope; I did
+  not verify them.
+  .swarm/critical.globs (storage/**, dataloader/**, retirement/engine/**,
+  transfers/**, accounts/accounts.go, mcpsvc/confirm/**): none of the six W3
+  files matches any pattern. retirement/analysis/budget_fit.go is
+  .../retirement/analysis/, not .../retirement/engine/, so it is not critical
+  either -- and it is not a W3 file.
+  I wrote nothing to the real tree except this verdict file.

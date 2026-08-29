@@ -194,6 +194,91 @@ func TestHandleBackupEmptyDir(t *testing.T) {
 	}
 }
 
+// TestHandleBackup_SkipsSymlinkedDirectory pins the V2 fix at the manual
+// download path: filepath.Walk uses Lstat, so a symlink whose target is a
+// directory surfaces as a non-dir entry and must be skipped rather than
+// opened (which would fail EISDIR mid-stream and truncate the zip whose
+// headers are already sent).
+func TestHandleBackup_SkipsSymlinkedDirectory(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	realDir := filepath.Join(tmpDir, "real")
+	if err := os.MkdirAll(realDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeCSVFile(t, realDir, "inner.csv", "a,b\n1,2\n")
+	if err := os.Symlink(realDir, filepath.Join(tmpDir, "link")); err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/backup", nil)
+	HandleBackup(w, r)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("response body is not a well-formed zip: %v", err)
+	}
+
+	if len(zr.File) != 1 {
+		t.Fatalf("want 1 zip entry, got %d: %v", len(zr.File), zr.File)
+	}
+	fileNames := make(map[string]bool)
+	for _, f := range zr.File {
+		fileNames[f.Name] = true
+	}
+	if !fileNames["real/inner.csv"] {
+		t.Error("real/inner.csv missing from backup")
+	}
+	for name := range fileNames {
+		if strings.HasPrefix(name, "link/") || name == "link" {
+			t.Errorf("symlinked directory must not appear in backup, found %q", name)
+		}
+	}
+}
+
+// TestHandleBackup_SkipsDanglingSymlink pins the other half of the V2 fix at
+// the manual download path: a symlink with no resolvable target must be
+// skipped, not treated as a read failure (ENOENT) that truncates the zip.
+func TestHandleBackup_SkipsDanglingSymlink(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeCSVFile(t, tmpDir, "keep.csv", "a,b\n1,2\n")
+	if err := os.Symlink(filepath.Join(tmpDir, "does-not-exist"), filepath.Join(tmpDir, "dangling")); err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/backup", nil)
+	HandleBackup(w, r)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("response body is not a well-formed zip: %v", err)
+	}
+
+	if len(zr.File) != 1 {
+		t.Fatalf("want 1 zip entry, got %d: %v", len(zr.File), zr.File)
+	}
+	if zr.File[0].Name != "keep.csv" {
+		t.Errorf("want keep.csv, got %q", zr.File[0].Name)
+	}
+}
+
 // createZipBuffer creates an in-memory zip file with the given files.
 func createZipBuffer(t *testing.T, files map[string]string) *bytes.Buffer {
 	t.Helper()
@@ -1837,6 +1922,108 @@ func TestHandleBackupPlaintext_DecryptsWithCorrectPassword(t *testing.T) {
 	}
 	if storage.IsAgeEncryptedData(got) {
 		t.Errorf("zip entry is still age-encrypted; break-glass failed to decrypt")
+	}
+}
+
+// TestHandleBackupPlaintext_SkipsSymlinkedDirectory mirrors
+// TestHandleBackup_SkipsSymlinkedDirectory at the plaintext ("break-glass")
+// download path (handlers.go:383): its filepath.Walk uses the same
+// ArchiveEntry/SkipPredicate logic as HandleBackup, so a symlink whose
+// target is a directory must be skipped here too, not opened via
+// store.OpenFile (which would fail mid-stream and truncate the zip whose
+// headers are already sent).
+func TestHandleBackupPlaintext_SkipsSymlinkedDirectory(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	realDir := filepath.Join(tmpDir, "real")
+	if err := os.MkdirAll(realDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeCSVFile(t, realDir, "inner.csv", "a,b\n1,2\n")
+	if err := os.Symlink(realDir, filepath.Join(tmpDir, "link")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.EnableEncryption("correct-password-1"); err != nil {
+		t.Fatalf("EnableEncryption: %v", err)
+	}
+
+	form := url.Values{"password": {"correct-password-1"}}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/backup/plaintext", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	HandleBackupPlaintext(w, r)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("response body is not a well-formed zip: %v", err)
+	}
+
+	if len(zr.File) != 1 {
+		t.Fatalf("want 1 zip entry, got %d: %v", len(zr.File), zr.File)
+	}
+	fileNames := make(map[string]bool)
+	for _, f := range zr.File {
+		fileNames[f.Name] = true
+	}
+	if !fileNames["real/inner.csv"] {
+		t.Error("real/inner.csv missing from backup")
+	}
+	for name := range fileNames {
+		if strings.HasPrefix(name, "link/") || name == "link" {
+			t.Errorf("symlinked directory must not appear in backup, found %q", name)
+		}
+	}
+}
+
+// TestHandleBackupPlaintext_SkipsDanglingSymlink mirrors
+// TestHandleBackup_SkipsDanglingSymlink at the plaintext download path: a
+// symlink with no resolvable target must be skipped, not treated as a read
+// failure (ENOENT) that truncates the zip.
+func TestHandleBackupPlaintext_SkipsDanglingSymlink(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeCSVFile(t, tmpDir, "keep.csv", "a,b\n1,2\n")
+	if err := os.Symlink(filepath.Join(tmpDir, "does-not-exist"), filepath.Join(tmpDir, "dangling")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.EnableEncryption("correct-password-1"); err != nil {
+		t.Fatalf("EnableEncryption: %v", err)
+	}
+
+	form := url.Values{"password": {"correct-password-1"}}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/backup/plaintext", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	HandleBackupPlaintext(w, r)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("response body is not a well-formed zip: %v", err)
+	}
+
+	if len(zr.File) != 1 {
+		t.Fatalf("want 1 zip entry, got %d: %v", len(zr.File), zr.File)
+	}
+	if zr.File[0].Name != "keep.csv" {
+		t.Errorf("want keep.csv, got %q", zr.File[0].Name)
 	}
 }
 

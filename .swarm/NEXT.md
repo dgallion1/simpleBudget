@@ -282,3 +282,29 @@ each branch cut from the then-current master.
   atomicWrite sites") that don't match a fresh grep; the underlying
   invariant was re-verified directly (see F4.1 verdicts). Stale prose, not a
   defect.
+
+## V run — DONE 2026-08-29 (branch fix/undo-alias-backup-symlink)
+
+All three tasks accepted, `gate.sh done` exits 0. Spec: `.swarm/V-RUN-SPEC.md`.
+
+- **V1** (tier 3, attempt 1) — `undo_resolve` now pre-checks via
+  `dataloader.LookupDuplicateDecision`, which applies the same legacy-alias
+  set as `ClearDuplicateDecision`. Oracle `.swarm/tier3/V1/accept.sh`
+  validated at both ends before dispatch (fails on master at the undo
+  refusal; passed 4/4 on a discarded prototype). Dual-lane PASS.
+- **V2** (tier 2, attempt 1) — symlinked-dir / dangling-symlink entries no
+  longer abort any of the THREE backup walks (buildZip + both manual
+  download handlers); decision centralized in exported
+  `backupsvc.ArchiveEntry` next to `SkipPredicate`. Symlink-to-regular-file
+  archiving behavior preserved. Dual-lane PASS; adversarial lane also
+  proved ELOOP, double-indirection, unreadable-target, and race
+  cleanliness.
+- **V3** (tier 1, attempt 1) — test-only follow-up pinning the three
+  behaviors the V1/V2 checkers verified with throwaway probes: lookup
+  exact-key-over-alias precedence, legacy-alias kept_both undo, and
+  plaintext-handler symlink skips. Checker re-applied all three mutations
+  itself; every new test bites.
+
+Escalate-scan note for future runs: V3's test-only edit under
+`dataloader/**` did NOT trigger escalation — the gate escalates on the
+diff, not the path (agents2 31e9954).

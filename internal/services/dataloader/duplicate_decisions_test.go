@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"budget2/internal/models"
 )
 
 func TestDuplicateDecisionsPath(t *testing.T) {
@@ -174,6 +176,158 @@ func TestClearDuplicateDecision(t *testing.T) {
 	}
 	if _, ok := got["k2"]; !ok {
 		t.Error("k2 should remain")
+	}
+}
+
+func TestLookupDuplicateDecision_ExactKey(t *testing.T) {
+	_, loader, cleanup := setupTestDir(t, nil)
+	defer cleanup()
+	dec := DuplicateDecision{
+		KeptHash:       "h1",
+		SuppressedHash: "h2",
+		Outcome:        DuplicateOutcomeKeptWinner,
+		DecidedAt:      time.Now().UTC(),
+	}
+	if err := loader.SaveDuplicateDecision("pairA", dec); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	got, ok, err := loader.LookupDuplicateDecision("pairA")
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ok=true for an exact-keyed entry")
+	}
+	if got.Outcome != DuplicateOutcomeKeptWinner {
+		t.Errorf("outcome = %q, want %q", got.Outcome, DuplicateOutcomeKeptWinner)
+	}
+}
+
+// TestLookupDuplicateDecision_LegacyAlias reuses the fixture recipe of
+// TestApplyDuplicateDetection_LegacyPairKeyStillResolves (stable_id_test.go):
+// a decision filed under the pair's pre-StableID content-hash key must still
+// be found by a lookup keyed on the current StableID-derived key, via the
+// alias index a load publishes.
+func TestLookupDuplicateDecision_LegacyAlias(t *testing.T) {
+	billPay := makeTx("2026-03-19", -1580.43, "Lucid", "Scheduled Bill Pay")
+	check := makeTx("2026-03-20", -1580.43, "Check #996583", "Posted")
+	billPay.AccountID = "usaa-checking"
+	check.AccountID = "usaa-checking"
+	billPay.StableID = models.StableIDFor("usaa-checking", billPay.Date, -158043, 0)
+	check.StableID = models.StableIDFor("usaa-checking", check.Date, -158043, 0)
+
+	legacyKey := pairKey(billPay.Hash, check.Hash)
+	doc := duplicateDecisionsDoc{Decisions: map[string]DuplicateDecision{
+		legacyKey: {
+			KeptHash:       billPay.Hash,
+			SuppressedHash: check.Hash,
+			Outcome:        DuplicateOutcomeKeptWinner,
+			DecidedAt:      time.Now().UTC(),
+		},
+	}}
+	data, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"duplicate_decisions.json": string(data),
+	})
+	defer cleanup()
+
+	// Populate the alias index the same way a real load does.
+	loader.applyDuplicateDetection([]models.Transaction{billPay, check})
+
+	currentKey := pairKey(billPay.StableID, check.StableID)
+	if currentKey == legacyKey {
+		t.Fatal("fixture is degenerate: the StableID key equals the legacy key")
+	}
+
+	got, ok, err := loader.LookupDuplicateDecision(currentKey)
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ok=true for a legacy-keyed entry reached via its current key")
+	}
+	if got.Outcome != DuplicateOutcomeKeptWinner {
+		t.Errorf("outcome = %q, want %q", got.Outcome, DuplicateOutcomeKeptWinner)
+	}
+}
+
+// TestLookupDuplicateDecision_PrefersExactOverLegacy reuses the fixture
+// recipe of TestApplyDuplicateDetection_LegacyPairKeyStillResolves
+// (stable_id_test.go:362). When the decisions file holds entries under BOTH
+// the pair's current (StableID-derived) key and its legacy (content-hash-
+// derived) key, the exact-key entry must win: LookupDuplicateDecision checks
+// the exact key before ranging over legacy aliases, so reversing that order
+// would return the legacy entry instead.
+func TestLookupDuplicateDecision_PrefersExactOverLegacy(t *testing.T) {
+	billPay := makeTx("2026-03-19", -1580.43, "Lucid", "Scheduled Bill Pay")
+	check := makeTx("2026-03-20", -1580.43, "Check #996583", "Posted")
+	billPay.AccountID = "usaa-checking"
+	check.AccountID = "usaa-checking"
+	billPay.StableID = models.StableIDFor("usaa-checking", billPay.Date, -158043, 0)
+	check.StableID = models.StableIDFor("usaa-checking", check.Date, -158043, 0)
+
+	legacyKey := pairKey(billPay.Hash, check.Hash)
+	currentKey := pairKey(billPay.StableID, check.StableID)
+	if currentKey == legacyKey {
+		t.Fatal("fixture is degenerate: the StableID key equals the legacy key")
+	}
+
+	doc := duplicateDecisionsDoc{Decisions: map[string]DuplicateDecision{
+		currentKey: {
+			Outcome:   DuplicateOutcomeKeptBoth,
+			DecidedAt: time.Now().UTC(),
+		},
+		legacyKey: {
+			KeptHash:       billPay.Hash,
+			SuppressedHash: check.Hash,
+			Outcome:        DuplicateOutcomeKeptWinner,
+			DecidedAt:      time.Now().UTC(),
+		},
+	}}
+	data, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	_, loader, cleanup := setupTestDir(t, map[string]string{
+		"duplicate_decisions.json": string(data),
+	})
+	defer cleanup()
+
+	// Populate the alias index the same way a real load does.
+	loader.applyDuplicateDetection([]models.Transaction{billPay, check})
+
+	got, ok, err := loader.LookupDuplicateDecision(currentKey)
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected ok=true for the current-keyed entry")
+	}
+	if got.Outcome != DuplicateOutcomeKeptBoth {
+		t.Errorf("outcome = %q, want %q (the current-key entry, not the legacy-key entry)",
+			got.Outcome, DuplicateOutcomeKeptBoth)
+	}
+}
+
+func TestLookupDuplicateDecision_NotFound(t *testing.T) {
+	_, loader, cleanup := setupTestDir(t, nil)
+	defer cleanup()
+	if err := loader.SaveDuplicateDecision("someOtherPair", DuplicateDecision{
+		Outcome: DuplicateOutcomeKeptBoth, DecidedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	got, ok, err := loader.LookupDuplicateDecision("never-saved")
+	if err != nil {
+		t.Fatalf("lookup should not error for an absent key, got: %v", err)
+	}
+	if ok {
+		t.Fatalf("expected ok=false, got decision %+v", got)
 	}
 }
 

@@ -280,6 +280,9 @@ func HandleBackup(w http.ResponseWriter, r *http.Request) {
 		if skip(path, false) {
 			return nil
 		}
+		if !backupsvc.ArchiveEntry(path, info) {
+			return nil
+		}
 
 		relPath, err := filepath.Rel(dataDir, path)
 		if err != nil {
@@ -388,6 +391,9 @@ func HandleBackupPlaintext(w http.ResponseWriter, r *http.Request) {
 			return nil
 		}
 		if skip(path, false) {
+			return nil
+		}
+		if !backupsvc.ArchiveEntry(path, info) {
 			return nil
 		}
 

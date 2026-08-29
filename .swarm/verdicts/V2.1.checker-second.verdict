@@ -1,0 +1,81 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: V2
+ATTEMPT: 1
+---
+Setup: copied /home/darrell/bin/ai/budget2 -> scratchpad/v2-second (kept .git), all commands run there.
+Confirmed git status shows the V2 diff as uncommitted working-tree changes on
+branch fix/undo-alias-backup-symlink (HEAD == master); used `git diff HEAD --
+<paths>` instead of `master...HEAD` (which was empty because nothing is
+committed yet).
+
+Scope check (required: restore/storage untouched):
+  git diff HEAD -- internal/services/restore internal/services/storage -> 0 lines. PASS.
+  git diff HEAD -- internal/services/backup internal/handlers/backup -> 336 lines (the only touched files, matching .swarm/manifests/V2.1.files exactly).
+
+Single source of truth: grep for ModeSymlink/Lstat/IsSymlink across
+backup/handlers/restore/storage packages shows the only symlink-classifying
+logic is backup.ArchiveEntry; SkipPredicate has no duplicated symlink checks.
+Both handlers.go call sites (HandleBackup line ~283, HandleBackupPlaintext
+line ~396) and snapshot.go buildZip call ArchiveEntry, not their own logic.
+
+Attacks run (all in my copy, none touched the real tree except the verdict file):
+
+1. THIRD WALK, the handler the worker did NOT write a symlink test for
+   (HandleBackupPlaintext, break-glass/decrypt path). Added
+   TestAdversarial_HandleBackupPlaintext_SymlinkedDirAndDangling: encrypted
+   store, POST with correct password, data dir containing a real file, a
+   symlinked directory with a file inside, and a dangling symlink.
+   Result: 200 OK, well-formed zip, entries = {keep.csv, real/inner.csv},
+   nothing under link/ or dangling. PASS — functionally correct even though
+   untested by the worker. (Note: V-RUN-SPEC.md's "Tests required" section
+   explicitly only requires "the snapshot-path tests repeated for one
+   handler download path" (singular), so the worker not writing a plaintext-
+   specific symlink test is not itself a spec violation — I closed the gap
+   myself and it held.)
+
+2. Byte-identical invariant across walks. Built a single mixed fixture (real
+   file, symlinked dir w/ file inside, symlink-to-regular-file, dangling
+   symlink) and ran it through both HandleBackup (handler walk) and
+   Service.Snapshot/buildZip (service walk) against the SAME DataDir.
+   Result: both produced entry name lists [keep.csv real/inner.csv
+   shortcut.csv] — identical. PASS.
+
+3. Symlink to a regular file that exists but is UNREADABLE (chmod 000,
+   confirmed non-root via `id -u` = 1000 first). ArchiveEntry's os.Stat
+   succeeds (permission bits don't block stat), so it's classified
+   "archive"; the subsequent os.ReadFile then fails with permission denied
+   and Snapshot() returns a non-nil error (observed:
+   "backup: build zip: open .../link-to-secret: permission denied").
+   Confirms the abort path for real read failures still fires even when
+   reached via a symlink. PASS.
+
+4. Symlink LOOP (A -> B -> A, ELOOP). os.Stat fails -> ArchiveEntry returns
+   false -> entry skipped, not aborted. Snapshot() succeeded, archive
+   contained only keep.csv, neither loop-a nor loop-b appeared. PASS.
+
+5. Symlink to a symlink to a directory (double indirection). os.Stat follows
+   the whole chain; classified skip. Snapshot succeeded, outer-link and
+   inner-link excluded, real/inner.csv present. PASS.
+
+6. Vacuous-test check: worker's own zip-entry tests assert exact entry
+   counts (`len(zr.File) != 1` / `len(got) != 1` / `len(got) != 2`) BEFORE
+   iterating/asserting names — not vacuous.
+
+Baseline in my copy:
+  go build ./...                          -> clean, exit 0
+  go vet ./...                            -> clean, exit 0
+  go test ./...                           -> all 45 packages ok (full log captured)
+  go test -race -count=1 ./internal/services/backup/... ./internal/handlers/backup/...
+                                           -> both ok (backup 1.565s, handlers/backup 164.837s), no race reports
+
+No functional defect found despite deliberately trying dangling links,
+symlinked dirs, symlink loops, double-indirect symlinks-to-symlinks-to-dirs,
+unreadable real targets, cross-walk entry-name divergence, and the
+handler path the worker's own tests skipped. The required behavior
+("skip dir-symlinks and dangling symlinks without error in all three walks
+identically; keep symlink-to-file behavior; real read failures still abort;
+skipped symlinks excluded from counts/totals; single exported helper") holds
+under adversarial pressure in this copy. Cleaned up all my adversarial test
+files before finishing (git status in my copy shows no zzz_* files remaining).

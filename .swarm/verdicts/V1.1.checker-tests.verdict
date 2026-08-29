@@ -1,0 +1,145 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: V1
+ATTEMPT: 1
+---
+All work verified in a private copy of the tree:
+  cp -a /home/darrell/bin/ai/budget2 <scratch>/v1-tests   (branch fix/undo-alias-backup-symlink, HEAD 010f1aa, V1 work uncommitted in the working tree)
+The only write made to the real tree is this verdict file.
+
+CRITERION 1 — tier-3 oracle exits 0, last line ORACLE PASS
+  $ cd <scratch>/v1-tests && bash .swarm/tier3/V1/accept.sh
+    CHECK 01-oracle-e2e: PASS
+    CHECK 02-package-suites: PASS
+    CHECK 03-build: PASS
+    CHECK 04-vet: PASS
+    ---
+    passed=4 failed=0
+    ORACLE PASS
+    ORACLE_EXIT=0
+    LAST_LINE=[ORACLE PASS]
+  Oracle cleaned up its planted files (git status --porcelain internal/ afterwards
+  shows only the 9 worker-modified files, no zz_oracle_* residue).
+  RESULT: PASS
+
+CRITERION 2 — go build ./... and go vet ./... clean
+  $ cd <scratch>/v1-tests && rtk proxy go build ./...   -> no output, BUILD_EXIT=0
+  $ cd <scratch>/v1-tests && rtk proxy go vet ./...     -> no output, VET_EXIT=0
+  RESULT: PASS
+
+CRITERION 3 — go test ./... fully green
+  $ cd <scratch>/v1-tests && rtk proxy go test -count=1 ./...
+    ... 49 packages, every line "ok", including
+    ok  budget2/internal/services/dataloader        1.758s
+    ok  budget2/internal/services/mcpsvc/admin      4.526s
+    TEST_EXIT=0
+  RESULT: PASS
+
+CRITERION 4 — the worker's new tests exist, are named for what they assert, and pass
+  $ rtk proxy go test -count=1 -v -run 'TestLookupDuplicateDecision_ExactKey|TestLookupDuplicateDecision_LegacyAlias|TestLookupDuplicateDecision_NotFound' ./internal/services/dataloader/
+    --- PASS: TestLookupDuplicateDecision_ExactKey (0.01s)
+    --- PASS: TestLookupDuplicateDecision_LegacyAlias (0.00s)
+    --- PASS: TestLookupDuplicateDecision_NotFound (0.00s)
+    EXIT=0
+  $ rtk proxy go test -count=1 -v -run 'TestUndoResolveReachesALegacyKeyedDecision|TestUndoResolveRefusesAPairWithNoDecision|TestUndoResolveRestoresThePairToTheQueue|TestUndoResolveOfKeptBoth' ./internal/services/mcpsvc/admin/
+    --- PASS: TestUndoResolveRestoresThePairToTheQueue (0.02s)
+    --- PASS: TestUndoResolveOfKeptBothOnlyRequeuesNothingWasEverSuppressed (0.01s)
+    --- PASS: TestUndoResolveReachesALegacyKeyedDecision (0.01s)
+    --- PASS: TestUndoResolveRefusesAPairWithNoDecision (0.00s)
+    EXIT=0
+  I read all four new/affected tests (duplicate_decisions_test.go:182-274,
+  undo_test.go:132-200). They assert what their names claim: _LegacyAlias files
+  the decision under pairKey(billPay.Hash, check.Hash), populates the alias index
+  via applyDuplicateDetection, guards against a degenerate fixture
+  (legacyKey == currentKey -> t.Fatal), then looks up by the StableID key;
+  the admin test is a real end-to-end run (newLiveDeps + connect + CallTool over
+  list_duplicates / undo_resolve) that writes the legacy-keyed JSON to disk and
+  asserts previous_outcome, unresolved_remaining, and that NEITHER key form
+  survives in duplicate_decisions.json afterwards.
+  Non-vacuity proved by mutation, not by reading:
+    Mutation A (alias loop deleted from LookupDuplicateDecision, separate copy):
+      --- FAIL: TestLookupDuplicateDecision_LegacyAlias
+      --- FAIL: TestUndoResolveReachesALegacyKeyedDecision
+      accept.sh -> CHECK 01-oracle-e2e: FAIL, CHECK 02-package-suites: FAIL, passed=2 failed=2
+  RESULT: PASS
+
+CRITERION 5 — behavior points 1-4 hold as written
+  Diff read: `git diff HEAD -- internal/services/dataloader internal/services/mcpsvc/admin`
+  (the work is uncommitted, so master...HEAD is empty; HEAD == master == 010f1aa).
+  Changed in scope: duplicate_decisions.go (+26), duplicate_decisions_test.go (+95),
+  register.go (+5), undo.go (+8/-7... net 2 lines of logic), undo_test.go (+90).
+
+  5.1 point 1 (exact key OR legacy alias, exact first):
+      Alias reach proved by the criterion-4 tests + Mutation A above.
+      Exact-key PRECEDENCE is implemented at duplicate_decisions.go:101-108
+      (exact map hit returns before the legacyPairKeysFor loop) but NO test in the
+      delivered work and NO oracle check covers it. Proved separately:
+        Mutation C (loop moved ahead of the exact-key check): the whole dataloader
+        and admin suites still pass and accept.sh still prints ORACLE PASS
+        -- i.e. the delivered suite does not detect a precedence inversion.
+        Checker probe (my own throwaway test in a scratch copy, both keys present
+        with different outcomes):
+          --- PASS: TestCheckerProbe_ExactKeyBeatsLegacyAlias   (on the real work)
+          --- FAIL: TestCheckerProbe_ExactKeyBeatsLegacyAlias   (on Mutation C)
+            "outcome = \"kept_winner\", want \"kept_both\" (exact key must take
+             precedence over the legacy alias)"
+      So the behavior holds and is command-proved; the coverage gap is a finding,
+      not a criterion failure (criterion 4 did not require a precedence test).
+  5.2 point 2 (previous_outcome reports the entry actually found):
+      undo.go:56,76 -- prior comes from LookupDuplicateDecision, PreviousOutcome:
+      prior.Outcome. Asserted by TestUndoResolveReachesALegacyKeyedDecision
+      (previous_outcome == "kept_winner" for an entry filed only under the legacy
+      key) and by the oracle's 01 check; Mutation A makes it fail.
+  5.3 point 3 (refusal survives; does not trust Clear's silent no-op):
+      undo.go:60-63 still returns the "has no decision recorded against it" error
+      on !ok, before ensureDecisionsSnapshot and before ClearDuplicateDecision.
+      Proved by Mutation B (refusal block replaced with `_ = ok`, separate copy):
+        --- FAIL: TestUndoResolveRefusesAPairWithNoDecision   EXIT=1
+      LookupDuplicateDecision returns (zero, false, nil) for an absent key and errors
+      only on a parse failure, so the refusal is driven by the lookup, not by Clear.
+  5.4 point 4 (snapshot + post-undo reload unchanged):
+      ensureDecisionsSnapshot lives in internal/services/mcpsvc/admin/resolve.go:60,
+      which does not appear in `git diff HEAD --name-only`. The call ordering in
+      undo.go is unchanged (pre-check -> ensureDecisionsSnapshot -> Clear -> deps.load()
+      -> UnresolvedDuplicateCount); the diff's only hunk in undo.go is the pre-check.
+      TestUndoResolveRestoresThePairToTheQueue (asserts a genuine .bak was produced)
+      passes, as does the whole admin suite.
+  5.5 design constraint / Clear+Save semantics untouched:
+      LookupDuplicateDecision uses dl.beginWrite() + dl.loadDuplicateDecisionsLocked(tx)
+      -- byte-for-byte the same locking path as LoadDuplicateDecisions (56-60),
+      SaveDuplicateDecision (122-124) and ClearDuplicateDecision (151-153), and calls
+      dl.legacyPairKeysFor inside that sequence exactly as Clear/Save do.
+      The diff contains no hunk inside SaveDuplicateDecision, ClearDuplicateDecision,
+      writeDecisionsLocked or writeDecisionsRawLocked.
+      DecisionStore gained the method (register.go:63); the only wiring sites are
+      mcpsvc/server.go:237 (Decisions: deps.Loader) and admin/register_test.go:60
+      (Decisions: loader) -- both the real *dataloader.DataLoader, so there is no
+      test fake stubbing the new method.
+  RESULT: PASS
+
+SCOPE
+  `git diff HEAD --name-only` lists 11 files. The 5 in the V1 manifest match exactly:
+    internal/services/dataloader/duplicate_decisions.go
+    internal/services/dataloader/duplicate_decisions_test.go
+    internal/services/mcpsvc/admin/register.go
+    internal/services/mcpsvc/admin/undo.go
+    internal/services/mcpsvc/admin/undo_test.go
+  Nothing else inside internal/services/dataloader or internal/services/mcpsvc/admin
+  was touched. The other 6 (.gitignore, .swarm/ledger.tsv, internal/handlers/backup/*,
+  internal/services/backup/*) are the sibling task V2 sharing this branch -- outside
+  V1's manifest, reported to the lead as a fact, not attributed to V1.
+  .swarm/critical.globs lists internal/services/dataloader/** ; V1 modifies that
+  package, which is consistent with its Tier-3 assignment. No other critical glob
+  (storage, retirement/engine, transfers, accounts.go, mcpsvc/confirm) was touched.
+
+FINDINGS FOR THE LEAD (neither is a criterion failure)
+  F1. Coverage gap: no delivered test or oracle check detects an exact-key/alias
+      precedence inversion (Mutation C passes everything). The behavior is correct
+      today; it is simply unguarded against regression.
+  F2. The worker's TestUndoResolveReachesALegacyKeyedDecision in
+      internal/services/mcpsvc/admin/undo_test.go is near-identical to the oracle's
+      planted TestOracleV1UndoReachesLegacyKeyedDecision (same fixture, same
+      legacyPairKey helper, same assertions minus the unresolved_count==0 pre-check).
+      It is a real, non-vacuous test (Mutation A fails it), but it adds little
+      independent signal beyond the oracle it was written against.

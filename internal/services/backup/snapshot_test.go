@@ -382,6 +382,150 @@ func TestSnapshotAndHold_SerializesUntilRelease(t *testing.T) {
 	}
 }
 
+// TestSnapshot_SkipsSymlinkedDirectory pins the V2 fix: filepath.Walk uses
+// Lstat, so a symlink whose target is a directory surfaces as a non-dir
+// entry and must be classified by ArchiveEntry rather than read as a file
+// (which would fail EISDIR and abort the whole backup). The real files under
+// the target are still reached and archived via their real path; nothing
+// appears under the link's own name, and the skipped link does not inflate
+// the reported count/total.
+func TestSnapshot_SkipsSymlinkedDirectory(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := t.TempDir()
+	seedDataDir(t, dataDir, map[string][]byte{
+		"real/inner.csv": []byte("a,b\n1,2\n"),
+	})
+	if err := os.Symlink(filepath.Join(dataDir, "real"), filepath.Join(dataDir, "link")); err != nil {
+		t.Fatal(err)
+	}
+
+	svc, err := New(Config{BackupDir: backupDir, DataDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Snapshot(context.Background()); err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+
+	zips, _ := filepath.Glob(filepath.Join(backupDir, "budget_backup_*.zip"))
+	if len(zips) != 1 {
+		t.Fatalf("want 1 zip, got %d (%v)", len(zips), zips)
+	}
+	got := zipEntries(t, zips[0])
+	if len(got) != 1 {
+		t.Fatalf("want 1 archived entry, got %d: %v", len(got), got)
+	}
+	if !bytes.Equal(got["real/inner.csv"], []byte("a,b\n1,2\n")) {
+		t.Errorf("real/inner.csv missing or wrong content: %q", got["real/inner.csv"])
+	}
+	for name := range got {
+		if strings.HasPrefix(name, "link/") || name == "link" {
+			t.Errorf("symlinked directory must not appear in the archive, found %q", name)
+		}
+	}
+
+	meta, err := svc.Meta()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.FileCount != 1 {
+		t.Errorf("meta.FileCount = %d, want 1 (the symlink must not be counted)", meta.FileCount)
+	}
+	if meta.TotalBytes != int64(len("a,b\n1,2\n")) {
+		t.Errorf("meta.TotalBytes = %d, want %d", meta.TotalBytes, len("a,b\n1,2\n"))
+	}
+}
+
+// TestSnapshot_SkipsDanglingSymlink pins the other half of the V2 fix: a
+// symlink with no resolvable target must be skipped like a symlinked
+// directory, not treated as a read failure (ENOENT) that aborts the backup.
+func TestSnapshot_SkipsDanglingSymlink(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := t.TempDir()
+	seedDataDir(t, dataDir, map[string][]byte{
+		"keep.csv": []byte("keep"),
+	})
+	if err := os.Symlink(filepath.Join(dataDir, "does-not-exist"), filepath.Join(dataDir, "dangling")); err != nil {
+		t.Fatal(err)
+	}
+
+	svc, err := New(Config{BackupDir: backupDir, DataDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Snapshot(context.Background()); err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+
+	zips, _ := filepath.Glob(filepath.Join(backupDir, "budget_backup_*.zip"))
+	if len(zips) != 1 {
+		t.Fatalf("want 1 zip, got %d (%v)", len(zips), zips)
+	}
+	got := zipEntries(t, zips[0])
+	if len(got) != 1 {
+		t.Fatalf("want 1 archived entry, got %d: %v", len(got), got)
+	}
+	if _, ok := got["dangling"]; ok {
+		t.Errorf("dangling symlink must not appear in the archive")
+	}
+	if !bytes.Equal(got["keep.csv"], []byte("keep")) {
+		t.Errorf("keep.csv missing or wrong content: %q", got["keep.csv"])
+	}
+
+	meta, err := svc.Meta()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.FileCount != 1 {
+		t.Errorf("meta.FileCount = %d, want 1 (the dangling symlink must not be counted)", meta.FileCount)
+	}
+}
+
+// TestSnapshot_ArchivesSymlinkToRegularFile is a regression guard: a symlink
+// whose target is a regular file must keep its pre-V2 behavior — content
+// read through and archived under the link's own relative name.
+func TestSnapshot_ArchivesSymlinkToRegularFile(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := t.TempDir()
+	seedDataDir(t, dataDir, map[string][]byte{
+		"real.csv": []byte("a,b\n1,2\n"),
+	})
+	if err := os.Symlink(filepath.Join(dataDir, "real.csv"), filepath.Join(dataDir, "shortcut.csv")); err != nil {
+		t.Fatal(err)
+	}
+
+	svc, err := New(Config{BackupDir: backupDir, DataDir: dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Snapshot(context.Background()); err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+
+	zips, _ := filepath.Glob(filepath.Join(backupDir, "budget_backup_*.zip"))
+	if len(zips) != 1 {
+		t.Fatalf("want 1 zip, got %d (%v)", len(zips), zips)
+	}
+	got := zipEntries(t, zips[0])
+	if len(got) != 2 {
+		t.Fatalf("want 2 archived entries, got %d: %v", len(got), got)
+	}
+	if !bytes.Equal(got["real.csv"], []byte("a,b\n1,2\n")) {
+		t.Errorf("real.csv missing or wrong content: %q", got["real.csv"])
+	}
+	if !bytes.Equal(got["shortcut.csv"], []byte("a,b\n1,2\n")) {
+		t.Errorf("shortcut.csv missing or wrong content: %q", got["shortcut.csv"])
+	}
+
+	meta, err := svc.Meta()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.FileCount != 2 {
+		t.Errorf("meta.FileCount = %d, want 2 (symlink-to-file is archived like a regular file)", meta.FileCount)
+	}
+}
+
 func TestSnapshotAndHold_ReleasesLockOnSnapshotFailure(t *testing.T) {
 	dataDir := t.TempDir()
 	// BackupDir is a file, so MkdirAll inside the snapshot fails.

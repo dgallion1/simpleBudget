@@ -68,6 +68,11 @@ type DecisionStore interface {
 	LoadDuplicateDecisions() (map[string]dataloader.DuplicateDecision, error)
 	SaveDuplicateDecision(string, dataloader.DuplicateDecision) error
 	ClearDuplicateDecision(string) error
+
+	// LookupDuplicateDecision finds the decision filed for a pair key,
+	// checking legacy pre-StableID aliases when the current key itself
+	// carries nothing. See the dataloader implementation's doc comment.
+	LookupDuplicateDecision(string) (dataloader.DuplicateDecision, bool, error)
 }
 
 // SettingsSource reports the retirement planner's state.

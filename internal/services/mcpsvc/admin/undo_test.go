@@ -1,11 +1,30 @@
 package admin
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"budget2/internal/services/dataloader"
 )
+
+// legacyPairKey mirrors dataloader's unexported pairKey: sorted pair,
+// sha256, first 8 bytes hex. Kept independent of the package under test so a
+// change to key derivation on one side would be caught here rather than the
+// test silently tracking the implementation.
+func legacyPairKey(a, b string) string {
+	lo, hi := a, b
+	if hi < lo {
+		lo, hi = hi, lo
+	}
+	sum := sha256.Sum256([]byte(lo + "|" + hi))
+	return hex.EncodeToString(sum[:8])
+}
 
 // TestUndoResolveRestoresThePairToTheQueue also asserts a genuine .bak was
 // produced -- not merely that SnapshotPaths is non-empty. Unlike
@@ -107,6 +126,147 @@ func TestUndoResolveOfKeptBothOnlyRequeuesNothingWasEverSuppressed(t *testing.T)
 	restored := after.Unresolved[0]
 	if restored.Left.Hash == "" || restored.Right.Hash == "" {
 		t.Errorf("re-flagged pair is missing a side: %+v", restored)
+	}
+}
+
+// TestUndoResolveReachesALegacyKeyedDecision covers the defect this task
+// fixes: a decision recorded before StableID existed is filed on disk under
+// the pair's old content-hash key, while list_duplicates (and every other
+// caller) hands back the current StableID-derived key. undo_resolve must
+// still reach it. The count assertion on list_duplicates precedes the
+// index-0 probe below so it cannot pass vacuously (package convention).
+func TestUndoResolveReachesALegacyKeyedDecision(t *testing.T) {
+	deps, dir := newLiveDeps(t)
+	cs := connect(t, deps)
+	currentKey, kept, suppressed := pendingPairKey(t, cs)
+
+	legacyKey := legacyPairKey(kept, suppressed)
+	if legacyKey == currentKey {
+		t.Fatal("fixture is degenerate: the legacy key equals the current key")
+	}
+
+	doc := struct {
+		Decisions map[string]dataloader.DuplicateDecision `json:"decisions"`
+	}{Decisions: map[string]dataloader.DuplicateDecision{
+		legacyKey: {
+			KeptHash:       kept,
+			SuppressedHash: suppressed,
+			Outcome:        dataloader.DuplicateOutcomeKeptWinner,
+			DecidedAt:      time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC),
+		},
+	}}
+	data, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	decisionsPath := filepath.Join(dir, "duplicate_decisions.json")
+	if err := os.WriteFile(decisionsPath, data, 0o644); err != nil {
+		t.Fatalf("write decisions file: %v", err)
+	}
+
+	listed := decodeToolResult[duplicatesOutput](t, call(t, cs, "list_duplicates", map[string]any{"include_resolved": true}))
+	if listed.ResolvedCount != 1 {
+		t.Fatalf("resolved_count = %d, want 1 (the legacy-keyed decision must resolve the pair)", listed.ResolvedCount)
+	}
+	if listed.Resolved[0].PairKey != currentKey {
+		t.Fatalf("resolved pair_key = %q, want the current key %q", listed.Resolved[0].PairKey, currentKey)
+	}
+
+	out := decodeToolResult[undoOutput](t, call(t, cs, "undo_resolve", map[string]any{"pair_key": currentKey}))
+	if out.PreviousOutcome != "kept_winner" {
+		t.Errorf("previous_outcome = %q, want kept_winner (must come from the aliased entry)", out.PreviousOutcome)
+	}
+	if out.UnresolvedRemaining != 1 {
+		t.Errorf("unresolved_remaining = %d, want 1", out.UnresolvedRemaining)
+	}
+
+	after, err := os.ReadFile(decisionsPath)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read decisions after undo: %v", err)
+	}
+	if strings.Contains(string(after), legacyKey) {
+		t.Errorf("legacy key %q survived the undo; it would resurrect the decision on the next load", legacyKey)
+	}
+	if strings.Contains(string(after), currentKey) {
+		t.Errorf("current key %q present after undo; nothing should be filed under it", currentKey)
+	}
+
+	relisted := decodeToolResult[duplicatesOutput](t, call(t, cs, "list_duplicates", map[string]any{"include_resolved": true}))
+	if relisted.UnresolvedCount != 1 {
+		t.Errorf("unresolved_count = %d after undo, want 1", relisted.UnresolvedCount)
+	}
+	if relisted.ResolvedCount != 0 {
+		t.Errorf("resolved_count = %d after undo, want 0", relisted.ResolvedCount)
+	}
+}
+
+// TestUndoResolveReachesALegacyKeyedKeptBothDecision is the kept_both
+// variant of TestUndoResolveReachesALegacyKeyedDecision above: the decision
+// is filed ONLY under the legacy key (kept_both never suppresses a hash --
+// see TestUndoResolveOfKeptBothOnlyRequeuesNothingWasEverSuppressed -- so
+// KeptHash/SuppressedHash are left empty here too), and undo_resolve called
+// with the current key must still reach it, report kept_both, and leave
+// neither key form on disk afterward.
+func TestUndoResolveReachesALegacyKeyedKeptBothDecision(t *testing.T) {
+	deps, dir := newLiveDeps(t)
+	cs := connect(t, deps)
+	currentKey, kept, suppressed := pendingPairKey(t, cs)
+
+	legacyKey := legacyPairKey(kept, suppressed)
+	if legacyKey == currentKey {
+		t.Fatal("fixture is degenerate: the legacy key equals the current key")
+	}
+
+	doc := struct {
+		Decisions map[string]dataloader.DuplicateDecision `json:"decisions"`
+	}{Decisions: map[string]dataloader.DuplicateDecision{
+		legacyKey: {
+			Outcome:   dataloader.DuplicateOutcomeKeptBoth,
+			DecidedAt: time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC),
+		},
+	}}
+	data, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	decisionsPath := filepath.Join(dir, "duplicate_decisions.json")
+	if err := os.WriteFile(decisionsPath, data, 0o644); err != nil {
+		t.Fatalf("write decisions file: %v", err)
+	}
+
+	listed := decodeToolResult[duplicatesOutput](t, call(t, cs, "list_duplicates", map[string]any{"include_resolved": true}))
+	if listed.KeptBothCount != 1 {
+		t.Fatalf("kept_both_count = %d, want 1 (the legacy-keyed kept_both decision must resolve the pair)", listed.KeptBothCount)
+	}
+	if listed.KeptBoth[0].PairKey != currentKey {
+		t.Fatalf("kept_both pair_key = %q, want the current key %q", listed.KeptBoth[0].PairKey, currentKey)
+	}
+
+	out := decodeToolResult[undoOutput](t, call(t, cs, "undo_resolve", map[string]any{"pair_key": currentKey}))
+	if out.PreviousOutcome != "kept_both" {
+		t.Errorf("previous_outcome = %q, want kept_both (must come from the aliased entry)", out.PreviousOutcome)
+	}
+	if out.UnresolvedRemaining != 1 {
+		t.Errorf("unresolved_remaining = %d, want 1", out.UnresolvedRemaining)
+	}
+
+	after, err := os.ReadFile(decisionsPath)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read decisions after undo: %v", err)
+	}
+	if strings.Contains(string(after), legacyKey) {
+		t.Errorf("legacy key %q survived the undo; it would resurrect the decision on the next load", legacyKey)
+	}
+	if strings.Contains(string(after), currentKey) {
+		t.Errorf("current key %q present after undo; nothing should be filed under it", currentKey)
+	}
+
+	relisted := decodeToolResult[duplicatesOutput](t, call(t, cs, "list_duplicates", map[string]any{"include_resolved": true}))
+	if relisted.UnresolvedCount != 1 {
+		t.Errorf("unresolved_count = %d after undo, want 1", relisted.UnresolvedCount)
+	}
+	if relisted.ResolvedCount != 0 {
+		t.Errorf("resolved_count = %d after undo, want 0", relisted.ResolvedCount)
 	}
 }
 

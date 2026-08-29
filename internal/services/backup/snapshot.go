@@ -165,10 +165,12 @@ func (s *Service) buildZip(ctx context.Context, tmpPath string) (int, int64, err
 	skip := s.skipPredicate()
 
 	// filepath.Walk uses Lstat, so a symlink is a non-dir entry regardless of
-	// its target: a symlinked file is read through by os.ReadFile below and
-	// archived under the link's relative name, while a symlinked directory's
-	// contents are not walked here. Matches the data directory's contract
-	// (see storage.atomicWrite): symlinks there are not honoured.
+	// its target: ArchiveEntry decides what happens to it. A symlinked file is
+	// read through by os.ReadFile below and archived under the link's
+	// relative name (matches historical behavior); a symlink to a directory,
+	// or a dangling symlink, is skipped without error and without being
+	// descended into. Matches the data directory's contract (see
+	// storage.atomicWrite): symlinks there are not honoured.
 	err = filepath.Walk(s.cfg.DataDir, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -185,6 +187,9 @@ func (s *Service) buildZip(ctx context.Context, tmpPath string) (int, int64, err
 			return nil
 		}
 		if skip(path, false) {
+			return nil
+		}
+		if !ArchiveEntry(path, info) {
 			return nil
 		}
 		rel, err := filepath.Rel(s.cfg.DataDir, path)
@@ -281,6 +286,29 @@ func SkipPredicate(dataDir, backupDir string) func(path string, isDir bool) bool
 		}
 		return storage.IsEncryptionStateFile(base)
 	}
+}
+
+// ArchiveEntry reports whether a non-directory entry encountered while
+// walking DataDir should be read and written into the archive. info must
+// come from Lstat (filepath.Walk's default), so every symlink — including
+// one whose target is a directory — surfaces here rather than being
+// recursed into. A symlink whose target is a directory, and a symlink with
+// no resolvable target (dangling, or e.g. a loop), report false: the caller
+// must skip it — not archive it, not descend into it, not treat the failed
+// target lookup as an error. A symlink to a regular file, and any
+// non-symlink entry, report true and are archived exactly as before. This is
+// the single source of truth for that decision; snapshot.buildZip and both
+// manual backup download handlers call it rather than re-deriving symlink
+// handling.
+func ArchiveEntry(path string, info os.FileInfo) bool {
+	if info.Mode()&os.ModeSymlink == 0 {
+		return true
+	}
+	target, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !target.IsDir()
 }
 
 func verifyZip(path string) error {

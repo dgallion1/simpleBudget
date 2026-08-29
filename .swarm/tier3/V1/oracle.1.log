@@ -1,0 +1,8 @@
+ok  	budget2/internal/services/mcpsvc/admin	0.018s
+CHECK 01-oracle-e2e: PASS
+CHECK 02-package-suites: PASS
+CHECK 03-build: PASS
+CHECK 04-vet: PASS
+---
+passed=4 failed=0
+ORACLE PASS

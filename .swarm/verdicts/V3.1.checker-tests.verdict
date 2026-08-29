@@ -1,0 +1,151 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: V3
+ATTEMPT: 1
+---
+All work verified in a copy: /tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/v3-tests
+(cp -a of /home/darrell/bin/ai/budget2, .git retained). Mutation testing done in a
+second copy .../scratchpad/v3-mutate. The only write to the real tree is this file.
+`diff -r -q /home/darrell/bin/ai/budget2/internal <copy>/internal` -> "REAL_TREE_MATCHES_COPY"
+(no drift between the tree I tested and the tree under review).
+
+CRITERION 1 — Test-only scope, restoration verified: PASS
+  $ git diff master --name-only
+    .gitignore
+    .swarm/ledger.tsv
+    internal/handlers/backup/handlers.go
+    internal/handlers/backup/handlers_test.go
+    internal/services/backup/snapshot.go
+    internal/services/backup/snapshot_test.go
+    internal/services/dataloader/duplicate_decisions.go
+    internal/services/dataloader/duplicate_decisions_test.go
+    internal/services/mcpsvc/admin/register.go
+    internal/services/mcpsvc/admin/undo.go
+    internal/services/mcpsvc/admin/undo_test.go
+  That is exactly the union of V1.1.files (5) + V2.1.files (4) = 9 source files,
+  plus .gitignore and .swarm/ledger.tsv. Nothing else. V3.1.files (3 test files)
+  is a subset of that union.
+
+  $ git status --porcelain
+    the same 11 " M" entries plus untracked .swarm/ bookkeeping only
+    (.swarm/V-RUN-SPEC.md, .swarm/manifests/V{1,2,3}.1.files, .swarm/tier3/V1/,
+     .swarm/verdicts/V{1,2}.1.checker-{tests,second}.verdict).
+  $ git ls-files --others --exclude-standard | grep -E '\.(bak|orig|backup|save)$|~$'
+    -> exit 1 (no matches: no backup leftovers)
+  $ git ls-files --others | grep -iE 'bak|orig|backup|copy|save|~|tmp'
+    -> only pre-existing tmp/ artifacts (axe json, build-errors.log, tailwindcss),
+       no *.bak anywhere. (This search includes gitignored files, so a .bak hidden
+       behind the .gitignore edit would have shown.)
+  $ git diff master -- .gitignore
+    only "+# Dev-server output at repo root" / "+/server.log" — permitted by the brief.
+
+  PRODUCTION-FILE HUNK REVIEW (read in full, no V3 residue):
+  $ git diff master -- internal/services/dataloader/duplicate_decisions.go \
+      internal/services/mcpsvc/admin/register.go internal/services/mcpsvc/admin/undo.go
+    - duplicate_decisions.go: only the added LookupDuplicateDecision + doc comment.
+      Order is CORRECT/restored: `if d, found := decisions[pairKey]` (exact) comes
+      FIRST, then `for _, legacy := range dl.legacyPairKeysFor(pairKey)`.
+    - register.go: only the LookupDuplicateDecision method added to DecisionStore.
+    - undo.go: only the LoadDuplicateDecisions()[key] -> LookupDuplicateDecision(key)
+      swap in the pre-check. No stray probe code.
+  $ git diff master -- internal/services/backup/snapshot.go internal/handlers/backup/handlers.go
+    - snapshot.go: ArchiveEntry is intact/restored, NOT neutered — it returns true
+      for non-symlinks, false when os.Stat fails (dangling), and !target.IsDir()
+      otherwise; plus the buildZip call site and the reworded walk comment.
+    - handlers.go: the two `if !backupsvc.ArchiveEntry(path, info) { return nil }`
+      guards in HandleBackup and HandleBackupPlaintext. Nothing else.
+  No reordered lookup, no neutered ArchiveEntry, no stray comments or backup files.
+
+CRITERION 2 — The four new tests exist and pass by name: PASS
+  $ go test -count=1 -v -run TestLookupDuplicateDecision_PrefersExactOverLegacy ./internal/services/dataloader/
+    --- PASS: TestLookupDuplicateDecision_PrefersExactOverLegacy (0.00s)
+    ok  	budget2/internal/services/dataloader	0.003s
+  $ go test -count=1 -v -run TestUndoResolveReachesALegacyKeyedKeptBothDecision ./internal/services/mcpsvc/admin/
+    --- PASS: TestUndoResolveReachesALegacyKeyedKeptBothDecision (0.01s)
+    ok  	budget2/internal/services/mcpsvc/admin	0.013s
+  $ go test -count=1 -v -run 'TestHandleBackupPlaintext_SkipsSymlinkedDirectory|TestHandleBackupPlaintext_SkipsDanglingSymlink' ./internal/handlers/backup/
+    --- PASS: TestHandleBackupPlaintext_SkipsSymlinkedDirectory (1.78s)
+    --- PASS: TestHandleBackupPlaintext_SkipsDanglingSymlink (1.63s)
+    ok  	budget2/internal/handlers/backup	3.461s
+  All four ran (=== RUN emitted for each); no --- SKIP lines in any of the three runs.
+
+CRITERION 3 — The tests bite (mutations re-done independently in .../v3-mutate): PASS
+  (a) Reversed the exact-vs-legacy order inside LookupDuplicateDecision (legacy loop
+      moved above the exact-key lookup, verbatim block swap asserted on the anchor):
+      $ go test -count=1 -run TestLookupDuplicateDecision ./internal/services/dataloader/
+        --- FAIL: TestLookupDuplicateDecision_PrefersExactOverLegacy (0.00s)
+            duplicate_decisions_test.go:312: outcome = "kept_winner", want "kept_both"
+                (the current-key entry, not the legacy-key entry)
+        FAIL	budget2/internal/services/dataloader	0.011s
+      Only the precedence test failed; the other Lookup tests still passed, i.e. it is
+      that test specifically that catches the regression.
+  (b) Replaced ArchiveEntry's body with `return true` (guard removed):
+      $ go test -count=1 -run 'TestHandleBackupPlaintext_SkipsSymlinkedDirectory|TestHandleBackupPlaintext_SkipsDanglingSymlink' ./internal/handlers/backup/
+        --- FAIL: TestHandleBackupPlaintext_SkipsSymlinkedDirectory (1.35s)
+            handlers_test.go:1978: real/inner.csv missing from backup
+            handlers_test.go:1982: symlinked directory must not appear in backup, found "link"
+        --- FAIL: TestHandleBackupPlaintext_SkipsDanglingSymlink (1.22s)
+            handlers_test.go:2026: want keep.csv, got "dangling"
+        FAIL	budget2/internal/handlers/backup	2.614s
+      (walk logs confirm the real failure mode: "error during walk: read .../link: is a
+       directory" and "stat .../dangling: no such file or directory")
+  (c) Restored the old alias-blind pre-check in undo.go
+      (`decisions, err := deps.Decisions.LoadDuplicateDecisions()` + `prior, ok := decisions[key]`):
+      $ go test -count=1 -run TestUndoResolveReachesALegacyKeyedKeptBothDecision ./internal/services/mcpsvc/admin/
+        --- FAIL: TestUndoResolveReachesALegacyKeyedKeptBothDecision (0.00s)
+            undo_test.go:245: tool call returned an error result
+        FAIL	budget2/internal/services/mcpsvc/admin	0.008s
+  Each mutation was reverted from the pristine copy afterwards; final
+  `diff -r -q v3-tests/internal v3-mutate/internal` -> "MUTATE_TREE_RESTORED_IDENTICAL"
+  (no output), proving the three mutations were the only difference at each step.
+
+CRITERION 4 — Assertions non-vacuous and correct-field: PASS (read, cited by line)
+  - duplicate_decisions_test.go:265-315 (PrefersExactOverLegacy): fixture writes BOTH
+    key forms with DIFFERENT outcomes (currentKey -> kept_both, legacyKey -> kept_winner),
+    guards against a degenerate fixture (line 275 `if currentKey == legacyKey { t.Fatal }`),
+    calls applyDuplicateDetection to publish the alias index, then asserts ok==true and
+    got.Outcome == DuplicateOutcomeKeptBoth. Non-vacuous: mutation (a) flips it.
+  - undo_test.go:210-271 (kept_both variant): asserts
+      line 238  listed.KeptBothCount != 1  -> t.Fatalf  (kept_both_count, NOT resolved_count)
+      line 241  listed.KeptBoth[0].PairKey == currentKey  (count assertion precedes the
+                index-0 probe, so the probe cannot pass vacuously)
+      line 246  out.PreviousOutcome != "kept_both"
+      line 249  out.UnresolvedRemaining != 1
+      lines 257/260  neither legacyKey nor currentKey may appear in the decisions file on disk
+      lines 265/268  post-undo relist: unresolved_count == 1, resolved_count == 0
+    Field choice matches duplicates.go:34-46, whose doc comment states "resolved_count is
+    kept_winner only ... kept_both_count is settled-but-changed-nothing".
+  - handlers_test.go:1935-1985 (SkipsSymlinkedDirectory): exact entry count asserted
+    BEFORE the loop — line 1970 `if len(zr.File) != 1 { t.Fatalf }` — then real/inner.csv
+    present and no "link"/"link/" prefix entry.
+  - handlers_test.go:1991-2028 (SkipsDanglingSymlink): line 2022 `if len(zr.File) != 1
+    { t.Fatalf }` before the index-0 name check at line 2025.
+  $ grep -n 't.Skip' on the three test files: no t.Skip inside any of the four new tests
+    (the hits are pre-existing YubiKey/ssh-keygen/mkfifo tests elsewhere in the file).
+
+CRITERION 5 — Suites green: PASS
+  $ go build ./...   -> BUILD_EXIT=0 (no output)
+  $ go vet ./...     -> VET_EXIT=0 (no output)
+  $ go test -count=1 ./internal/services/dataloader/ ./internal/services/mcpsvc/admin/ ./internal/handlers/backup/
+    ok  	budget2/internal/services/dataloader	1.398s
+    ok  	budget2/internal/services/mcpsvc/admin	3.971s
+    ok  	budget2/internal/handlers/backup	28.091s
+  $ go test -count=1 ./... 2>&1 | grep -vE '^ok |no test files'
+    (no output)  FULL_TEST_EXIT=0
+  $ bash .swarm/tier3/V1/accept.sh
+    CHECK 01-oracle-e2e: PASS
+    CHECK 02-package-suites: PASS
+    CHECK 03-build: PASS
+    CHECK 04-vet: PASS
+    passed=4 failed=0
+    ORACLE PASS   (ORACLE_EXIT=0)
+
+SCOPE NOTES (facts for the lead, not findings against the criteria):
+  - .swarm/critical.globs lists `internal/services/dataloader/**`. V3 (ledger tier 1)
+    modified internal/services/dataloader/duplicate_decisions_test.go, which falls under
+    that glob. Whether that trips escalate-scan is the gate's call; I could not run it
+    here (`swarm/gate.sh` does not exist in this repo — swarm/ contains only
+    t7-coverage.sh; the gate lives in the agents2 tree).
+  - The V1/V2/V3 work is uncommitted in the working tree (git status shows " M"),
+    so `git diff master` compares worktree to master. That is what criterion 1 asked for.

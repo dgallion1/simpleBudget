@@ -65,3 +65,4 @@ T13	3	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-oracle-pass-dual-la
 T14	2	tests,second	accepted	2	worker-coder	gate-ok-attempt-2-judges-overrule-3-0-swap-gap-followup
 T15	2	tests,second	accepted	2	worker-coder	gate-ok-attempt-2-real-dollars-and-css-fixed
 T16	2	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-dual-lane-pass
+T17	2	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-dual-lane-pass

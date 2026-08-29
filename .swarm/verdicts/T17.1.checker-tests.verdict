@@ -1,0 +1,156 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: T17
+ATTEMPT: 1
+---
+Method: all behavioural claims re-proved with MY OWN probe tests written into an
+rsync copy of the repo at
+/tmp/claude-1000/-home-darrell-work-agents2/aa3ecb2f-8ec6-4544-a8f1-c4282f4662f9/scratchpad/t15copy
+(files zz_checker_probe_test.go, zz_checker_schema_test.go, zz_checker_writable_test.go).
+Non-vacuity of the worker's tests proved by four mutations of overrides.go in that
+copy. The real working tree was never written to; only read-only git, go build,
+go vet and go test ran there.
+
+CRITERION 1 — go build ./... passes
+  cmd: cd /home/darrell/bin/ai/budget2 && go build ./... ; BUILD_EXIT=$?
+  out: BUILD_EXIT=0   (no diagnostics)
+  Also `go vet ./...` -> VET_EXIT=0.
+  PASS
+
+CRITERION 2 — full go test ./... passes
+  cmd: go test ./...  (filtered to non-ok lines)
+  out: TEST_EXIT=0, zero non-"ok"/"no test files" lines. Whole-repo suite green.
+  PASS
+
+CRITERION 3 — behaviour verified by RUNNING (my probe, not the worker's tests)
+  cmd: go test ./internal/services/retirement/overrides/ -run TestCHK -v   (in rsync copy)
+  (a) proportional distribution — TestCHK_a_ProportionalDistribution:
+      "(a) persons after: 1066.6666666666665 / 533.3333333333333"; asserted within
+      0.01 of 1066.67/533.33 and sum==1600. PASS
+  (b) equal split when existing total 0 — TestCHK_b_EqualSplitWhenTotalZero:
+      "(b) 500 / 500" for override 1000 across two zero-cost persons. PASS
+  (c) legacy scalar with no persons — TestCHK_c_LegacyScalarNoPersons:
+      "(c) MonthlyHealthcare=777". PASS
+  (d) Medicare-era fields untouched by (a) — asserted inside TestCHK_a for both
+      persons: MedicareMonthlyCost (400/350), ACACostAfterEmployer (900/800),
+      Pre/PostMedicareInflation, plus settings-level HealthcareInflation==6 and
+      legacy MonthlyHealthcare==42 (untouched when persons exist). No errors
+      reported -> all held. PASS
+  (e) FRABenefit/SpouseFRABenefit set with config present — TestCHK_e_FRABenefits:
+      "(e) FRA=3100 SpouseFRA=1450"; ClaimAge/SpouseClaimAge undisturbed. PASS
+  (f) nil SocialSecurity -> error for each SS field — TestCHK_f_NilSocialSecurityErrors,
+      three sub-cases (fra / spouse / both), each logged:
+      "scenario has no social_security configuration to override: configure Social
+      Security in the UI first". No fabricated config (error returned, nil result). PASS
+  (g) negatives rejected for all three — TestCHK_g_NegativesRejected:
+      "healthcare_monthly_cost must be >= 0, got -1",
+      "social_security_fra_benefit must be >= 0, got -0.01",
+      "spouse_fra_benefit must be >= 0, got -500";
+      each additionally asserted errors.As(*ValidationError) so handlers map to 400,
+      and 0 is still accepted for all three. PASS
+  (h) base byte-unchanged after Apply — json.Marshal(base) captured before and
+      compared after, in two independent cases:
+      "(h) base JSON byte-identical after Apply (1317 bytes)"  [HealthcarePersons slice path]
+      "(h/e) base JSON byte-identical after SS Apply"          [*SocialSecurity pointer path]
+      The pointer case matters: prepare.DeepCopy round-trips through JSON, so
+      s.SocialSecurity is a fresh allocation and the write does not alias base.
+      PASS
+  CRITERION 3 PASS (all eight sub-points).
+
+CRITERION 4 — fields reach the MCP schema
+  Schema path: internal/services/mcpsvc/plan/overrides.go:16 `type Overrides = overrides.Overrides`
+  (a true alias, so the go-sdk's jsonschema reflection over runInput.Overrides /
+  applyChangesInput.Overrides sees the new struct fields directly).
+  Evidence is NOT inspection: TestCHK_SchemaExposesNewOverrideFields builds a real
+  mcp.NewServer, calls the production Register(srv, Deps{}), connects an in-memory
+  client and issues ListTools — i.e. the exact JSON an MCP host receives.
+  cmd: go test ./internal/services/mcpsvc/plan/ -run TestCHK_SchemaExposes -v
+  out: 6/6 (tool,field) hits, all logged:
+      FOUND healthcare_monthly_cost / social_security_fra_benefit / spouse_fra_benefit
+      in apply_changes input schema
+      FOUND the same three in run_scenario input schema
+      Schema snippets confirm the jsonschema descriptions carry the semantics:
+        "...CURRENT total monthly healthcare cost ... not the Medicare-era cost;
+         ...distributed across them proportionally... (split equally if those are
+         all currently zero)..."
+        "...GROSS monthly Social Security benefit at full retirement age (FRA) —
+         before Medicare premium deductions and tax withholding..."
+      apply_changes Description (asserted to contain healthcare_monthly_cost,
+      social_security_fra_benefit, spouse_fra_benefit and "GROSS") printed in full
+      and matched.
+  Savability through apply_changes additionally proved: TestCHK_NewFieldsAreWritable
+  shows Overrides.ValidateWritable() accepts all three (they are not in the
+  refuse-to-persist set), and the persistence path is
+  register.go -> deps.Settings.ApplyOverrides (settings.go:1148) -> overrides.Apply
+  (settings.go:1178).
+  PASS
+
+CRITERION 5 — worker's tests assert what they claim (mutation-tested, not read-and-agreed)
+  Read the bodies of the 8 new tests in overrides/overrides_test.go, the 3 new
+  subtests in TestApply_EachFieldChangesOnlyItsDestination, and the 1 new test in
+  mcpsvc/plan/overrides_test.go. Then killed the feature four ways in the rsync copy:
+
+  M1 (feature reverted: both Apply blocks and all three validate blocks deleted,
+      struct fields kept so it still compiles) ->
+    cmd: go test ./internal/services/retirement/overrides/ ./internal/services/mcpsvc/plan/
+    FAILED: TestApply_EachFieldChangesOnlyItsDestination/{HealthcareMonthlyCost,
+    SocialSecurityFRABenefit,SpouseFRABenefit}, TestApply_HealthcareMonthlyCost_
+    NoPersons_SetsLegacyScalar, _DistributesProportionally, _SplitsEquallyWhenExisting
+    TotalIsZero, TestApply_SocialSecurityFRABenefits, TestApply_SocialSecurityFRABenefit_
+    NilConfigErrors, TestApply_SpouseFRABenefit_NilConfigErrors,
+    TestApply_RejectsNegativeHealthcareAndSSValues (all 3 subtests), and
+    TestRunWithOverrides_HealthcareMonthlyCostMeasurablyChangesAnalysis.
+    Every feature-claiming worker test dies with the feature. Not vacuous.
+  M2 (`if total == 0` -> `if true`, i.e. always equal-split) ->
+    TestApply_HealthcareMonthlyCost_DistributesProportionally FAILS
+    ("person a CurrentMonthlyCost = 800, want ~1066.67"). The proportionality claim
+    is genuinely load-bearing, not satisfied by any even split.
+  M3 (equal-split share loses the /len divisor) ->
+    TestApply_HealthcareMonthlyCost_SplitsEquallyWhenExistingTotalIsZero FAILS.
+  M4 (nil SocialSecurity fabricates &models.SocialSecurityConfig{} instead of erroring) ->
+    TestApply_SocialSecurityFRABenefit_NilConfigErrors and
+    TestApply_SpouseFRABenefit_NilConfigErrors both FAIL. The "error, not silent
+    no-op, not fabricated config" requirement is actually enforced by the tests.
+  overrides.go restored from .orig after each mutation; final
+  `go test ./internal/services/retirement/overrides/` -> ok.
+  The plan-package test is also honest about its own scope: its comment states the
+  base scenario has no HealthcarePersons so it exercises the legacy-scalar branch
+  through a full engine run, and it asserts a real engine effect
+  (FinalBalance at $5000/mo healthcare < FinalBalance at $200/mo).
+  PASS
+
+  NOTE (not a criterion failure, recorded for the lead): the ninth new test,
+  TestApply_HealthcareAndSocialSecurityFieldsSurviveJSONRoundTrip, is the one test
+  that SURVIVED mutation M1 — it compares `roundTripped` against `got` rather than
+  against expected values, so with the feature reverted it still passes. Its name
+  claims only "survive JSON round trip", which is literally what it asserts, so it
+  is not mislabelled; but it is close to a tautology (float64 marshal/unmarshal)
+  and contributes no feature coverage. Every substantive claim is covered elsewhere.
+
+CRITERION 6 — diff confined / manifest matches
+  cmd: git status --porcelain  (start and end of run, identical modulo the other lane)
+  Modified: .claude/skills/budget2-mcp/references/retirement-plan.md,
+            internal/services/mcpsvc/plan/{overrides_test.go,register.go},
+            internal/services/retirement/overrides/{overrides.go,overrides_test.go}
+  Plus .swarm/ledger.tsv (lead's edit, expected), untracked .swarm/manifests/T15.1.files
+  (this task's manifest), and .swarm/verdicts/T15.1.checker-second.verdict which
+  appeared mid-run (the adversarial lane writing concurrently, not the worker).
+  cmd: diff <(sort .swarm/manifests/T15.1.files) <(git diff --name-only | grep -v '^\.swarm/' | sort)
+  out: MANIFEST_MATCHES_EXACTLY_CODE_AND_DOCS  (exit 0, no differences)
+  Worker's claim about settings_test.go verified, not taken on trust:
+  cmd: git diff --stat -- internal/services/retirement/settings_test.go -> empty output,
+  and the file does not appear in `git diff --name-only`. It is byte-identical to HEAD.
+  Nothing outside the authorized five files (plus the lead's ledger) was changed.
+  PASS
+
+PRE-EXISTING ISSUE (explicitly NOT attributed to T15): `gofmt -l
+internal/services/mcpsvc/plan/register.go` flags the file, but the same command
+against `git show HEAD:.../register.go` also flags it — the misordered
+`_ "embed"` import predates this task. `gofmt -l internal/services/retirement/overrides/`
+is clean.
+
+ALSO OBSERVED (lead's call, not a code finding): .swarm/ledger.tsv now contains two
+rows with task_id T15 — an older accepted T15 ("real-dollars-and-css-fixed",
+attempt 2) and this run's pending T15 ("mcp-override-healthcare-ss-fields",
+attempt 1). A duplicate key may confuse gate.sh's lookup.

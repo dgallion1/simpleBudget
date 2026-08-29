@@ -1,0 +1,92 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: T17
+ATTEMPT: 1
+---
+Scope: `git diff HEAD --stat` shows exactly the 5 manifest files (overrides.go,
+overrides_test.go x2, register.go, retirement-plan.md) plus .swarm/ledger.tsv
+(the lead's, per instructions). settings_test.go is untouched (not in diff at
+all). No scope creep.
+
+Build/test: `go build ./...` clean; `go test ./...` all green (full suite,
+not just the touched packages). `go vet ./...` clean.
+
+Attack 1 — distribution math (rounding/sum drift): proportional 1500/750 split
+of an 1600 override gives 1066.666.../533.333..., sum == 1600 to the cent
+(existing test, confirmed). Probed further: single person → full override;
+garbage-in negative+positive costs summing to 0 → falls into the zero-total
+equal-split branch (500/500, sum=1000), no NaN/panic; zero override with
+nonzero existing total → both persons become exactly 0 (0 is correctly a
+"set" value, distinguishable from omitted since the pointer itself signals
+presence); three persons with one at zero → the zero person gets 0 (0/total *
+override), others split the total proportionally, sum matches exactly; a
+1e308 override does not produce Inf (5e307 per person, finite). All probes
+run via temp _test.go files added and removed, tree restored, no residue.
+
+Attack 2 — engine consumption: `GetTotalHealthcareCost`/`GetMonthlyCostAt`
+(models/healthcare.go, models/whatif.go) read HealthcarePersons[].
+CurrentMonthlyCost / MonthlyHealthcare directly — confirmed by reading source,
+and confirmed empirically by the worker's own
+TestRunWithOverrides_HealthcareMonthlyCostMeasurablyChangesAnalysis, which
+runs a real RunWithOverrides and shows FinalBalance differs (verified: test
+passes in the full suite). For FRABenefit — the worker did NOT ship an
+equivalent end-to-end engine test for social_security_fra_benefit/
+spouse_fra_benefit (only struct-level Apply assertions exist; grep for
+FRABenefit in mcpsvc/plan/overrides_test.go returns nothing). This is a real,
+asymmetric test-coverage gap. I closed it myself with a probe
+(TestProbe_FRABenefitOverrideChangesAnalysis, added then removed) using
+RunWithOverrides on a base scenario with SocialSecurity configured: FRA=500
+gives FinalBalance=1.678994e+06, FRA=5000 gives FinalBalance=1.860121e+06 —
+materially different and directionally correct (higher benefit → higher final
+balance). So the "silent no-op via income_sources" attack fails in practice,
+even though the shipped test suite doesn't itself prove it. Flagging the gap
+as a finding, not grounds for FAIL, since I independently verified the actual
+behavior is correct.
+
+Attack 3 — mutation-of-base: DeepCopy (prepare/prepare.go:80) is a full
+JSON marshal/unmarshal round-trip, which by construction cannot share a
+backing array with base for the HealthcarePersons slice. Confirmed by
+reverting just the Apply-body additions (HealthcareMonthlyCost/FRA blocks,
+kept struct fields and validate() so it still compiles) via a scratch-copy
+edit: this makes every new test fail with the expected "unchanged" values
+(MonthlyHealthcare stayed 500, FRABenefit stayed 2500, distribution stayed
+1500/750 instead of the requested split, zero-total split gave 0/0 instead of
+800/800, nil-SS error tests failed to error) — confirms the tests are not
+vacuous and genuinely exercise the new code. File restored from backup;
+sha256sum before/after identical; `git status --porcelain` at the end matches
+the start exactly.
+
+Attack 4 — validate()-before-copy / cheap rejection: Apply calls o.validate()
+(line 44) before prepare.DeepCopy (line 48), so negative healthcare/FRA/
+spouse-FRA values are rejected before any copy work, as claimed. Confirmed by
+reading source directly (not by trusting test names).
+
+Attack 5 — nil-SocialSecurity error path: reachable through the real MCP path
+(Apply is called by both run_scenario's RunWithOverrides and apply_changes'
+write path in settings.go; no other gate intercepts it first). Error message
+contains "social_security" per test
+(TestApply_SocialSecurityFRABenefit_NilConfigErrors /
+TestApply_SpouseFRABenefit_NilConfigErrors), confirmed passing in the full
+suite.
+
+Attack 6 — docs/description honesty: retirement-plan.md's stated behaviors
+(current vs Medicare-era cost, never touches Medicare/ACA/inflation fields,
+proportional distribution with equal-split-at-zero, legacy scalar fallback,
+gross FRA benefit before Medicare/tax deductions, nil-SS error rather than
+fabrication) all match the implementation as read and probed above.
+register.go's apply_changes description update names all three fields
+correctly and does not contradict the jsonschema tags on the struct.
+ValidateWritable (overrides.go:251) does not block persisting either new
+field — confirmed by reading it directly — so apply_changes can actually save
+them as claimed.
+
+Attack 7 (would-be, closed): distributed values surviving the JSON round-trip
+that settings.go's persistence path uses — already covered by the worker's
+own TestApply_HealthcareAndSocialSecurityFieldsSurviveJSONRoundTrip, verified
+passing.
+
+No refutation succeeded. One coverage gap found (SS FRA benefit lacks an
+end-to-end engine test, asymmetric with the healthcare field) but the
+underlying behavior was independently verified correct via probe, so it does
+not rise to a functional defect against the stated acceptance criteria.

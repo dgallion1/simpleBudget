@@ -75,7 +75,7 @@
                             class="flex-1 h-2 bg-gray-200 dark:bg-gray-500 rounded-lg appearance-none cursor-pointer"
                             oninput="updatePhaseSliderLabel(this)">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-200 w-10 text-right" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-percent">{{printf "%.0f" (mul $phase.Multiplier 100)}}%</span>
-                        <span class="text-xs text-gray-500 dark:text-gray-400 w-20 text-right phase-dollar-label" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">${{printf "%.0f" (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400 w-20 text-right phase-dollar-label" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">{{formatDollars (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo</span>
                     </div>
                 </div>
             </div>
@@ -212,8 +212,10 @@ function updatePhaseSliderLabel(slider) {
 
         var dollarLabels = document.querySelectorAll('[data-quick-adjust-display="' + key + '"][data-quick-adjust-display-format="phase-dollar"]');
         if (dollarLabels.length > 0) {
-            var baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_input')?.value || '0');
-            var formatted = '$' + Math.round(slider.value * baseExpenses).toLocaleString() + '/mo';
+            // Canonical exact value (hidden field), not the step=100-snapped
+            // visible range.
+            var baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_value')?.value || '0');
+            var formatted = formatWholeDollars(slider.value * baseExpenses) + '/mo';
             dollarLabels.forEach(function(label) {
                 label.textContent = formatted;
             });
@@ -228,8 +230,8 @@ function updatePhaseSliderLabel(slider) {
 
     var dollarLabel = pctLabel.nextElementSibling;
     if (dollarLabel && dollarLabel.classList.contains('phase-dollar-label')) {
-        var baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_input')?.value || '0');
-        dollarLabel.textContent = '$' + Math.round(slider.value * baseExpenses).toLocaleString() + '/mo';
+        var baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_value')?.value || '0');
+        dollarLabel.textContent = formatWholeDollars(slider.value * baseExpenses) + '/mo';
     }
 }
 

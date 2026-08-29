@@ -1,0 +1,24 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: W1
+ATTEMPT: 3
+---
+Repo copied to scratchpad (cp -a, .git retained), verified on branch fix/phase-visibility, go1.26.6.
+
+Re-ran both prior counterexample classes plus oracle's own suite:
+- `bash .swarm/tier3/W1/accept.sh` -> ORACLE PASS (01-displayed-identity, 02-package-suites, 03-build, 04-vet all PASS).
+- attempt-1 class (7386.555 unrounded-adjustment) and attempt-2 class (9999.99/7 FP tie) are baked into the oracle's TestOracleW1KnownCounterexamples and pass.
+
+Independent hostile sweeps (different seeds/ranges than oracle's seed 20260829/400-case sweep), planted as a throwaway _test.go in internal/templates, run against the real BudgetFit + template render, parsing all three DISPLAYED dollar strings and asserting integer-cent sum:
+1. TestAdvW1HugeBasesSweep: 500 cases, seed 999331, bases up to $99,999,999.99, multipliers {0.975, 1.333333, 2.5, 0.6, 1.4, 0.33, 1.666667} — PASS (after removing an accidental mult==1.0 from my own list, which correctly exercises the intentional sub-row-absence gate, not a defect).
+2. TestAdvW1TieBoundarySweep: 14 hand-constructed FP-tie-adjacent cases (0.005 ties, 1234567.005, 9999999.995, 50000000.125, 99999999.99 x {0.5, 1.999999}, etc.) — PASS.
+3. TestAdvW1NegativeAdjustmentSweep: 300 cases, seed 20260830, discount-phase multipliers <1 (0.05..0.99999) up to $5,000,000 base, exercising the "+"/"-" sign-rendering path in the template (`{{if and .SignedAmount (ge .Amount 0.0)}}+{{end}}`) — PASS, confirms negative-adjustment display parses and sums correctly.
+4. TestAdvW1ZeroAdjustmentEdge: multiplier values engineered so the total rounds back to the same cents as base (displayed adjustment "+$0.00") — PASS.
+5. Direct centsFromDecimalString brute force (20M random int64 cents, standalone Go program, not the package's algorithm assumed correct): round-trip float64(cents)/100 -> %.2f -> reparse holds for all magnitudes up to ~$1 trillion/month; only fails above ~$100 trillion/month (float64 mantissa exhaustion near 2^53), many orders of magnitude outside any realistic household budget input and outside the oracle's own domain ($1-$200,000/month). Documented as a theoretical residual, not treated as a failing case given the app's domain (personal retirement/budget planner).
+6. Consumer sweep: grepped all consumers of models.ExpenseBreakdownItem/SubItems (`grep -rln "ExpenseBreakdown"`) — only web/templates/components/whatif/budget-analysis.html renders SubItems, via the same formatMoney used for the total; engine.CalculateExpenseBreakdown / monte_carlo.go use an unrelated Essential/Discretionary/Total struct with no phase sub-rows; charts.js's renderMajorExpenseBreakdown is a same-named-but-unrelated JS chart function. No second consumer to diverge.
+7. centsFromDecimalString parsing robustness: v=0 and v=-0.0 both yield 0 (int64 has no negative zero, confirmed); no scientific notation possible from %.2f (only %e/%g produce it in Go); whole-part string never carries a sign since math.Abs is applied before formatting.
+
+Baseline: `go build ./...` and `go vet ./...` clean; `go test ./...` all packages ok, no failures (the shared-tree uncommitted edits in whatifmcp/retirement/settings/overrides/t7-coverage.sh noted in the dispatch are untouched and out of scope, confirmed not to affect this package's tests).
+
+Could not construct a displayed-identity counterexample within the realistic input domain. PASS.

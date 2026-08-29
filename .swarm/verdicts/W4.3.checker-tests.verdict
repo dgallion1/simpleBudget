@@ -1,0 +1,148 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W4
+ATTEMPT: 3
+---
+Verified in a copy at /tmp/.../scratchpad/w4a3 (cp -a of the real tree, .git kept).
+Master baseline = fresh clone checked out at fa3ee20 (scratchpad/mastertree).
+Toolchain note: the only go on PATH is go1.26.3 (`go version` -> go1.26.3
+linux/amd64); the brief said go1.26.6. go.mod declares `go 1.26`. All results
+below are from go1.26.3. Flagging as an environment deviation, not a defect.
+
+(1) ORACLE — PASS
+    `bash .swarm/tier3/W4/accept.sh` (cwd = scratchpad/w4a3), exit captured:
+      ORACLE_EXIT=0
+      CHECK 01-parity-and-cleanliness: PASS
+      CHECK 02-package-suite: PASS
+      CHECK 03-build: PASS
+      CHECK 04-vet: PASS
+      passed=4 failed=0
+      ORACLE PASS
+
+(2) BUILD / VET / TEST / CSS — PASS
+    `go build ./...`            -> BUILD_EXIT=0
+    `go vet ./...`              -> VET_EXIT=0
+    `go test ./...`             -> TEST_EXIT=0; 49 "ok" package lines; grep for
+                                   any line that is neither "^ok" nor "no test
+                                   files" returned nothing (no FAIL lines).
+    `make css-verify`           -> "tailwind.css is up to date", CSSVERIFY_EXIT=0
+
+(3) W4 TESTS BY NAME, NONE SKIPPED — PASS
+    `go test -count=1 -v -run '<all seven>' ./internal/handlers/dashboard/`
+    --- PASS: TestDashboardVerdictBar_Render (7 subtests, all PASS)
+    --- PASS: TestBudgetKPICardAndVerdictBanner_AgreeWithinDeadBand
+    --- PASS: TestBudgetKPICard_BucketRowAbsentWhenUnconfigured (living-only,
+              healthcare-only, both PASS)
+    --- PASS: TestVerdictRender_NoNegativeZero
+    --- PASS: TestBuildBudgetVerdict (16 subtests, all PASS)
+    --- PASS: TestClassifyBucket (8 subtests, all PASS)
+    --- PASS: TestClassifyVerdictSentence (6 subtests, all PASS, incl.
+              "both_buckets_exactly_on_target_never_yields_a_negative-zero_UnderRoom")
+    `... | grep -c SKIP` -> 0. Final line: ok budget2/internal/handlers/dashboard.
+    Read the test bodies: verdict_test.go:373-386 does assert math.Signbit on
+    UnderRoom (not merely == 0); verdict_render_test.go:280-341 renders both
+    templates and does the banner-subtraction occurrence count it claims;
+    verdict_render_test.go:346-388 asserts absence of "$-0.00" in both renders.
+    Names match assertions.
+
+(4) BYTE-IDENTITY PROBE, no-target banner, branch vs master — PASS
+    Planted an identical dump test in both trees rendering
+    dashboard-verdict-bar with {Health: neutral, HasTarget: false,
+    NetSavings: 500}; both dumps exit 0.
+      notarget.mastertree.html  998 bytes
+      notarget.w4a3.html        998 bytes
+      `cmp` -> CMP: IDENTICAL
+
+(5) MUTATION BITES — PASS (all three bite)
+    (a) scratchpad/bite_a, verdict.go `if room <= 0` -> `if room < 0`:
+        --- FAIL: TestClassifyVerdictSentence/both_buckets_exactly_on_target...
+            verdict_test.go:384: UnderRoom is negative zero (-0.0)
+        --- FAIL: TestVerdictRender_NoNegativeZero
+        oracle under bite_a: CHECK 01 FAIL, CHECK 02 FAIL, passed=2 failed=2
+    (b) scratchpad/bite_b, kpis.html Health-row
+        `{{if .BudgetVerdict.Healthcare.Configured}}`/`{{end}}` removed:
+        --- FAIL: TestBudgetKPICard_BucketRowAbsentWhenUnconfigured/living-only
+            verdict_render_test.go:336: did not expect a phantom card Health row
+        oracle under bite_b: zz_oracle_w4_test.go:91 "living-only: card Health
+            rows = 1, want 0"; CHECK 01 FAIL, CHECK 02 FAIL, passed=2 failed=2
+    (c) scratchpad/bite_c, dashboard-verdict-bar.html
+        `{{- if $v.HasTarget}}` -> `{{if $v.HasTarget}}`:
+        --- FAIL: TestDashboardVerdictBar_Render/no_target_shows_neutral_band...
+            verdict_render_test.go:85 (the re-anchored guard)
+        Artifact confirmed independently: dump of the no-target render under
+        bite_c is 1007 bytes vs master's 998; `diff | cat -A` shows exactly one
+        added whitespace-only line ("11a12 > <8 spaces>").
+        Vacuity of the attempt-2 anchor proven directly: against that same
+        artifact-bearing render,
+          attempt-2 anchor '</div>\n\n    <div class="flex items-center...' -> present (True)
+          attempt-3 anchor '</div>\n    </div>\n\n    <div class="flex items-center...' -> absent (False)
+        i.e. the old guard passed with the defect present; the new one does not.
+
+(6) REGRESSION — FAIL (second clause)
+    6a dead-band consistency: PASS.
+       TestBudgetKPICardAndVerdictBanner_AgreeWithinDeadBand PASSes (see (3)).
+    6b "non-dead-band card rows byte-identical to master for clearly-over /
+       clearly-under fixtures": FAIL.
+       Method: planted an identical dump test in scratchpad/w4a3 and
+       scratchpad/mastertree rendering the "kpis" template for two fixtures
+       (living +500 / healthcare +200 over 3 mo; and -500 / -200), both buckets
+       configured, both well outside the $1 dead-band. Extracted the Budget
+       card's bucket-rows region (from `space-y-0.5 leading-snug">` through the
+       close of that container) from each render.
+         over : bucket-rows region byte-identical to master = False (master 799B, branch 883B)
+         under: bucket-rows region byte-identical to master = False (master 811B, branch 895B)
+       Character of the difference (measured, not inferred):
+         - identical after dropping whitespace-only lines = True (both fixtures)
+         - the two `<div class="flex justify-between gap-2">...</div>` row
+           elements are themselves byte-identical (regex extraction:
+           "master rows=2 branch rows=2 rowwise-identical=True", both fixtures)
+         - branch introduces 4 whitespace-only lines of 20 spaces INSIDE the
+           container (master: 0), plus 1 more of 16 spaces immediately BEFORE
+           it, for 5 new whitespace-only lines per render.
+       Cause, located: web/templates/components/kpis.html leaves five template
+       actions untrimmed — line 149 (`{{/* Ruling 2026-08-29a: ... */}}`),
+       line 156 (`{{if .BudgetVerdict.Living.Configured}}`), line 163
+       (`{{end}}`), line 164 (`{{if .BudgetVerdict.Healthcare.Configured}}`),
+       line 171 (`{{end}}`). This is the same artifact class the attempt-3 fix
+       removed from the sibling template via `{{- if $v.HasTarget}}`, and which
+       criterion 5(c) requires to be a failing mutant.
+       Fix confirmed constructively: in scratchpad/probe_trim, adding `{{- ` /
+       `{{- /*` trims at exactly those five lines and re-running the same dump
+       yields
+         over : with-trim region byte-identical to master = True
+         under: with-trim region byte-identical to master = True
+       So the miss is precisely those five trim markers and nothing else; no
+       semantic change is required.
+
+    Secondary (not a criterion, recorded for the lead): the comment at
+    verdict_render_test.go:81-83 claims the guard will "generally reject any
+    whitespace-only line anywhere in the output". It does not — the assertion
+    at :84 is a single strings.Contains anchor on one boundary. The claim is
+    also false in fact for the sibling surface: the branch's kpis render
+    contains the five whitespace-only lines documented above. The assertion
+    itself is sound and bites (proven in 5c); only its stated scope overreaches.
+
+SCOPE
+    Files changed vs fa3ee20 that belong to W4's manifest (.swarm/manifests/
+    W4.3.files) — all five present, none missing:
+      internal/handlers/dashboard/verdict.go
+      internal/handlers/dashboard/verdict_test.go
+      internal/handlers/dashboard/verdict_render_test.go
+      web/templates/components/dashboard-verdict-bar.html
+      web/templates/components/kpis.html
+    critical.globs: iterated every path in `git diff --name-only fa3ee20`
+    against all six patterns in .swarm/critical.globs — zero matches, so no
+    critical path is touched by anything in the tree, W4 included.
+    kpis.html also carries an unrelated `$prov`/TargetProvenance block
+    (lines 63-74) from a concurrent W-run task; it is correctly trimmed and is
+    out of W4's scope. The remaining modified files in this shared tree
+    (whatifmcp, retirement settings/overrides, metrics, whatif handlers/models,
+    templates/render.go, swarm/t7-coverage.sh, the whatif templates) are the
+    declared concurrent-run edits — background, not attributable to W4.
+
+BOTTOM LINE
+    Criteria 1, 2, 3, 4, 5 and 6a are met, each by a command cited above.
+    Criterion 6b is not met: the Budget card's bucket-rows region is not
+    byte-identical to master for the clearly-over and clearly-under fixtures.
+    Near-miss — five trim markers in kpis.html (149, 156, 163, 164, 171).

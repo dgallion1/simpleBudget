@@ -99,10 +99,11 @@
     <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
             <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Monthly Living Expenses</label>
-            <span class="text-xs font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="monthly_living_expenses" data-quick-adjust-display-format="currency">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
+            <span class="text-xs font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="monthly_living_expenses" data-quick-adjust-display-format="currency">{{formatDollars .Settings.MonthlyLivingExpenses}}</span>
         </div>
         <input type="range"
             value="{{printf "%.0f" .Settings.MonthlyLivingExpenses}}"
+            aria-valuetext="{{formatDollars .Settings.MonthlyLivingExpenses}}"
             min="0" max="20000" step="100"
             data-quick-adjust-key="monthly_living_expenses"
             data-quick-adjust-mirror="true"
@@ -216,7 +217,7 @@
             data-quick-adjust-mirror="true"
             class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
         <div class="text-right text-[11px] text-gray-500 dark:text-gray-400" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">
-            ${{printf "%.0f" (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo
+            {{formatDollars (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo
         </div>
     </div>
     {{end}}

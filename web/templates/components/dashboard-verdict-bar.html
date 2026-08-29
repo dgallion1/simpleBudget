@@ -22,6 +22,24 @@
             <span class="text-sm font-normal text-gray-500 dark:text-gray-400">over {{printf "%.1f" $v.Months}} months</span>
             {{end}}
         </div>
+        {{- if $v.HasTarget}}
+        <div class="text-sm text-gray-600 dark:text-gray-400 mt-1 space-y-0.5">
+            {{if or $v.Living.Configured $v.Healthcare.Configured}}
+            <div>
+                {{if $v.Living.Configured}}Living: <span class="num">{{formatMoney (abs $v.Living.Delta)}}</span> {{$v.Living.Status}}{{end}}
+                {{if and $v.Living.Configured $v.Healthcare.Configured}} · {{end}}
+                {{if $v.Healthcare.Configured}}Healthcare: <span class="num">{{formatMoney (abs $v.Healthcare.Delta)}}</span> {{$v.Healthcare.Status}}{{end}}
+            </div>
+            {{end}}
+            {{if eq $v.Sentence.Kind "both"}}
+            <div>You could spend up to <span class="num">{{formatMoney $v.Sentence.UnderRoom}}</span> extra this period and stay on plan.</div>
+            {{else if eq $v.Sentence.Kind "mixed"}}
+            <div>Your <span class="num">{{formatMoney $v.Sentence.UnderRoom}}</span> of room comes from {{$v.Sentence.UnderBucket}} running under plan — {{$v.Sentence.OverBucket}} spending is already <span class="num">{{formatMoney $v.Sentence.OverAmount}}</span> over its target.</div>
+            {{else if eq $v.Sentence.Kind "over"}}
+            <div>No headroom — <span class="num">{{formatMoney $v.Sentence.OverAmount}}</span> over plan for this period.</div>
+            {{end}}
+        </div>
+        {{end}}
     </div>
 
     <div class="flex items-center gap-6 ml-auto">

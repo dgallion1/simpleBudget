@@ -4,6 +4,14 @@ window.quickAdjustState = window.quickAdjustState || {
     activeTab: 'portfolio'
 };
 
+// formatWholeDollars is the SINGLE JS whole-dollar formatter: round
+// half-away-from-zero, thousands separators, leading $. Every JS
+// recomputation of a whole-dollar figure must route through this — do not
+// add another bare locale-string call or a second Math.round formatter.
+function formatWholeDollars(v) {
+    return '$' + Math.round(v).toLocaleString('en-US');
+}
+
 function getQuickAdjustControlsByKey(key, mirror) {
     return Array.from(document.querySelectorAll('[data-quick-adjust-key]')).filter(function(control) {
         return control.dataset.quickAdjustKey === key && control.hasAttribute('data-quick-adjust-mirror') === mirror;
@@ -30,7 +38,7 @@ function formatQuickAdjustDisplay(node, value) {
 
     switch (format) {
         case 'currency':
-            node.textContent = '$' + numericValue.toLocaleString();
+            node.textContent = formatWholeDollars(numericValue);
             return;
         case 'years':
             node.textContent = Math.round(numericValue) + ' years';
@@ -51,8 +59,11 @@ function formatQuickAdjustDisplay(node, value) {
             node.textContent = Math.round(numericValue * 100) + '%';
             return;
         case 'phase-dollar': {
-            const baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_input')?.value || '0');
-            node.textContent = '$' + Math.round(numericValue * baseExpenses).toLocaleString() + '/mo';
+            // Read the canonical exact value (the hidden field), not the
+            // step=100-snapped visible range — the snapped value can be off
+            // by up to $50 from the saved/dragged figure.
+            const baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_value')?.value || '0');
+            node.textContent = formatWholeDollars(numericValue * baseExpenses) + '/mo';
             return;
         }
         case 'investment-return':
@@ -98,6 +109,34 @@ function syncQuickAdjustKey(key) {
     }
 
     if (key === 'monthly_living_expenses') {
+        // Keyed off canonicalControl.value (the hidden exact-value input, not
+        // the step=100 range) so this always reflects the true saved/dragged
+        // amount, whether the change came from the primary slider or its
+        // quick-adjust mirror.
+        if (typeof updateLivingExpensesPhaseNote === 'function') {
+            updateLivingExpensesPhaseNote(canonicalControl.value);
+        }
+        // aria-valuetext must always carry the exact value (e.g. "$7,386"),
+        // never the browser-snapped step=100 grid value the range's implicit
+        // aria-valuenow would report — WCAG 4.1.2. Updated here, in the same
+        // sync path that updates the visible display span, so it can never
+        // drift from what's shown/saved.
+        const exactValueText = formatWholeDollars(Number(canonicalControl.value) || 0);
+        const primaryRange = document.getElementById('monthly_living_expenses_input');
+        if (primaryRange) {
+            primaryRange.setAttribute('aria-valuetext', exactValueText);
+            // Thumb parity: a mirror drag proxies into the canonical hidden
+            // field (see proxyQuickAdjustMirrorToCanonical), but the primary
+            // range's own .value never followed — leaving its thumb position
+            // (and implicit aria-valuenow) contradicting the announced
+            // aria-valuetext. Setting it here keeps both directions in sync;
+            // the browser snaps this assignment to the nearest step, which is
+            // fine for a range control's visual thumb position.
+            primaryRange.value = canonicalControl.value;
+        }
+        getQuickAdjustMirrorControls(key).forEach(function(mirrorControl) {
+            mirrorControl.setAttribute('aria-valuetext', exactValueText);
+        });
         Array.from(document.querySelectorAll('[data-quick-adjust-key]')).forEach(function(control) {
             if (!control.hasAttribute('data-quick-adjust-mirror') && control.dataset.quickAdjustKey.indexOf('phase:') === 0) {
                 syncQuickAdjustDisplays(control.dataset.quickAdjustKey, control.value);

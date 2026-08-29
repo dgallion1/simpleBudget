@@ -1,0 +1,37 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: W2
+ATTEMPT: 1
+---
+Attacked both claims by constructing adversarial inputs/orderings and running them against a `cp -a` copy of the repo (branch fix/phase-visibility). Found no defect that breaks either claim.
+
+Baseline (all green, exit 0):
+- `go build ./...`, `go vet ./...`, `go test ./...` (full suite, all 48 packages ok)
+- `make static` (staticcheck ./..., silent/clean)
+- `make css-verify` -> "tailwind.css is up to date"
+
+Claim A (phase note):
+- buildLivingExpensesPhaseNote (internal/handlers/whatif/living_expenses_phase_note.go) correctly gates Show on nil settings, nil/disabled SpendingPhaseConfig, empty Phases, and multiplier==1.0.
+- Constructed and ran (not in worker's test file) two edge cases the attack surface specifically named:
+  - empty Phases slice with Enabled=true -> Show=false (no panic). PASS.
+  - 3-phase config where the reference age has passed every transition (age 90 vs StartAges 0/70/80) -> Show=true, PhaseName="No-Go" (last active phase), NextClause="" (no false "next" transition manufactured). PASS.
+  - formatPhaseMultiplier(1.15) -> "1.15" (two-decimal case named in the brief). PASS.
+- Cross-check vs budget_fit.go: both the note (handlers.go's buildResultsPartialData/handleWhatIf) and analysis/budget_fit.go's "Living Expenses" row call the same engine.LivingExpensesAtMonth(s, 0). budget_fit.go's `s` comes from `in.Prepared.Settings()`, the note's from the raw handler settings that fed `buildEngineInput`; these are the same settings at month 0 (no chain transition has occurred yet), so the two figures are structurally guaranteed to agree in the tested scenarios. I did not find or construct a case where they diverge.
+- Wiring: LivingExpensesPhaseNote is present in both handleWhatIf's full-page pageData and buildResultsPartialData (used by every settings-form POST and by /whatif/sync's OOB re-render), so the note stays live across both the initial load and every subsequent partial swap; grepped every render call site of "whatif-portfolio-settings" (whatif.html:82, :240) and both supply the key — no missing-key template panic path found.
+
+Claim B (snap trap):
+- Confirmed exactly one element in the DOM carries `name="monthly_living_expenses"` (the hidden input) — grepped the whole web/templates tree.
+- Ran the worker's own round-trip tests (living_expenses_snap_trap_test.go): untouched off-grid value 7386 survives an unrelated field's POST; a client that still posts a snapped 7400 persists 7400 (documented, accepted limitation — client-side fix only, cannot defend against a stale/tampered client, and the test says so explicitly).
+- Wrote and ran an additional adversarial test (not present in the manifest) posting a cents value (7386.55, matching the brief's Sync-from-Dashboard scenario) through the real handler end-to-end: round-trips to 7386.55 exactly. PASS.
+- form_spec.go (unchanged by this task) already has generic, pre-existing protection against a POST that omits monthly_living_expenses entirely: `fieldFloat` returns `included=false` when raw=="" and v==0, leaving the key out of `updates`, so an absent field is never persisted as a silent zero. Covered by pre-existing `TestApplyFieldSpec_FloatAbsentSkipped` (generic, not field-specific, but monthly_living_expenses uses the same fieldFloat kind with no override) — this is adequate but is reused/pre-existing evidence, not a new field-specific test the worker added; flagging as a minor gap, not a failure.
+- htmx trigger reasoning (hx-trigger="change delay:500ms, input delay:500ms from:find input[type=number]"): the visible range and the hidden field are both non-number types, so their native/synthetic 'input' events never match the restricted "input...type=number" trigger; only a single 'change' event (on drag release, or the mirror's synthetic dispatched change) can submit. The hidden field's synthetic 'input' dispatch (used to drive the quick-adjust sync machinery) is therefore inert with respect to double-submission and cannot fire a submit mid-drag with a half-updated value. Traced this through for both the primary slider and the quick-adjust mirror slider (quick-adjust.html / quick-adjust-scripts.html) — same conclusion holds for both paths.
+- Every other identified consumer of `monthly_living_expenses_input` by id (quick-adjust-scripts.html:54 phase-dollar format, spending-phases.html:215/231, rate-assumptions.html:834 spending-preview table) reads the visible range's value for display-only computations (a preview table / a phase-dollar estimate), never writes it to a submitted field, and — checked against master — this snapped-value read pattern predates this task (these files are untouched by the diff), so it is not a regression this fix introduced.
+- Sync-from-Dashboard (`handleWhatIfSync` -> `syncSettingsFromDashboard` -> `saveAndRecalc` -> `renderRecalc` -> `renderWhatIfResults` -> template "whatif-results-with-oob") fully re-renders the `#whatif-portfolio-settings-card` OOB with the freshly-saved (possibly-cents) settings, so the hidden field, visible range, and phase note are never left stale on the page after a sync — verified by tracing the actual call chain in handlers.go/handlers_rates.go, not just reading the worker's claim.
+
+Findings noted but not treated as blocking for this Tier-2 lane:
+- No task-added test explicitly names "monthly_living_expenses" in the omitted-field case; coverage of that path currently rests on a generic, unmodified form_spec_test.go test plus code inspection.
+- No explicit test asserts note.EngineMonth0 numerically equals a BudgetFit "Living Expenses" row for the same settings in one test — the equality is structural (same function, same effective input) but unverified by an integration test.
+- ACCESSIBILITY.md point 10 (focus restoration after an HTMX swap that replaces the focused element): the `#whatif-portfolio-settings-card` OOB swap on every settings POST would drop keyboard focus from the dragged control, but I found no focus-restoration hook for this card anywhere in the templates. This predates W2 (identical OOB-swap-the-whole-card architecture already existed for portfolio_value etc.) and is not worsened by this task's diff, so I am not failing W2 on it — but it is a pre-existing sitewide gap the final a11y pass should catch.
+
+No defect found that contradicts claim A or claim B. Baseline green. PASS.

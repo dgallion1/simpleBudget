@@ -56,6 +56,12 @@ func TestRenderRateAssumptions_PhasesEnabledOmitsPreviewPanel(t *testing.T) {
 // template. The block contains no template actions, so it runs as-is.
 var scriptSourceRE = regexp.MustCompile(`(?s)\{\{define "whatif-spending-preview-scripts"\}\}\s*<script>(.*?)</script>\s*\{\{end\}\}`)
 
+// quickAdjustScriptSourceRE pulls the static JS out of
+// whatif-quick-adjust-scripts.html — the real page loads this alongside
+// whatif-spending-preview-scripts, and (W2 fix) updateSpendingPreview's
+// table rows now route through the shared formatWholeDollars() it defines.
+var quickAdjustScriptSourceRE = regexp.MustCompile(`(?s)\{\{define "whatif-quick-adjust-scripts"\}\}\s*<script>(.*?)</script>\s*\{\{end\}\}`)
+
 // TestUpdateSpendingPreview_NoPanelDoesNotThrow executes the real
 // updateSpendingPreview against a DOM that omits the preview panel — the
 // phases-enabled render. Before the null guard this threw
@@ -80,9 +86,22 @@ func TestUpdateSpendingPreview_NoPanelDoesNotThrow(t *testing.T) {
 		t.Fatal("could not extract whatif-spending-preview-scripts source")
 	}
 
+	qaRaw, err := fs.ReadFile(templatesFS, "components/whatif/quick-adjust-scripts.html")
+	if err != nil {
+		t.Fatalf("ReadFile(quick-adjust-scripts.html) error: %v", err)
+	}
+	qa := quickAdjustScriptSourceRE.FindSubmatch(qaRaw)
+	if qa == nil {
+		t.Fatal("could not extract whatif-quick-adjust-scripts source")
+	}
+
 	dir := t.TempDir()
 	scriptPath := filepath.Join(dir, "script.js")
-	if err := os.WriteFile(scriptPath, m[1], 0o600); err != nil {
+	// formatWholeDollars (defined in quick-adjust-scripts.html) first, then
+	// the spending-preview script that calls it — the same load order as the
+	// real page.
+	combined := append(append([]byte{}, qa[1]...), m[1]...)
+	if err := os.WriteFile(scriptPath, combined, 0o600); err != nil {
 		t.Fatalf("WriteFile(script) error: %v", err)
 	}
 	harnessPath := filepath.Join(dir, "harness.js")
@@ -142,7 +161,9 @@ function makeEl(value, hidden) {
 
 const present = {
   'inflation-rate-slider': makeEl('2.5'),
-  'monthly_living_expenses_input': makeEl('5000'),
+  // updateSpendingPreview reads the canonical exact value (the hidden
+  // field), not the step=100-snapped visible range (W2 fix).
+  'monthly_living_expenses_value': makeEl('5000'),
 };
 if (mode === 'visible') {
   present['spending-preview-panel'] = makeEl('', false);
@@ -156,6 +177,9 @@ const document = {
   querySelectorAll: () => [],
   createElement: () => makeEl(''),
   addEventListener: () => {},
+  // quick-adjust-scripts.html (loaded alongside this script on the real
+  // page, per the W2 fix) wires two document.body listeners at load time.
+  body: { addEventListener: () => {} },
 };
 
 const sandbox = { document, window: {}, console };

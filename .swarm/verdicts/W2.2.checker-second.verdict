@@ -1,0 +1,105 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: W2
+ATTEMPT: 2
+---
+Scope: delta since W2.1 (aria-valuetext added to portfolio-settings.html's
+canonical range, quick-adjust.html's mirror range, synced via
+quick-adjust-scripts.html's syncQuickAdjustKey). Verified on a `cp -a` copy
+of /home/darrell/bin/ai/budget2, branch fix/phase-visibility.
+
+BASELINE (green):
+- `go build ./...` -> exit 0
+- `go vet ./...` -> exit 0
+- `go test ./...` -> all packages ok, no FAIL
+- `make css-verify` -> "tailwind.css is up to date"
+
+REGRESSION SWEEP of attempt-1 attack surfaces (all still hold):
+- Single name-carrier invariant intact: `grep -rn 'name="monthly_living_expenses"' web/templates/`
+  returns exactly one hit, the hidden input (portfolio-settings.html:61).
+  The visible range and the quick-adjust mirror (quick-adjust.html:106) both
+  carry no `name` attribute.
+- hx-trigger on the settings form is byte-identical to attempt 1
+  (`change delay:500ms, input delay:500ms from:find input[type=number]`) —
+  the range/hidden/mirror controls are still non-number types, so the
+  restricted number-input trigger still cannot fire mid-drag.
+- Cents/off-grid round-trip: `go test ./internal/handlers/whatif/...` (which
+  includes living_expenses_snap_trap_test.go) still green.
+
+NEW DEFECT — aria-valuetext format drift (FAIL, WCAG 4.1.2, directly
+contradicts the worker's own stated invariant):
+
+The fix adds two independent code paths that both compute aria-valuetext
+from the *same* underlying exact value, but with two different rounding
+rules that visibly disagree on ordinary inputs:
+
+1. Server-side initial render (portfolio-settings.html:73, and
+   quick-adjust.html:106):
+     aria-valuetext="${{formatNumber .Settings.MonthlyLivingExpenses}}"
+   `formatNumber` (internal/templates/render.go:546) computes
+   `fmt.Sprintf("%.0f", v)`, which Go implements with round-half-to-even.
+
+2. JS re-sync (quick-adjust-scripts.html, syncQuickAdjustKey, key ==
+   'monthly_living_expenses'):
+     const exactValueText = '$' + Math.round(Number(canonicalControl.value) || 0).toLocaleString();
+   `Math.round` rounds half-away-from-zero (ties round up), not
+   half-to-even.
+
+For any settings value whose cents are exactly .50 — which is not a
+contrived edge case: handlers.go:1206 computes
+`settings.MonthlyLivingExpenses = totalExpenses / months` for the
+Sync-from-Dashboard path with no rounding, and totalExpenses/months lands on
+an exact .50 for perfectly ordinary inputs (e.g. $44,319.00 / 6 = 7386.50)
+— the two paths disagree by $1:
+
+  Reproduced directly against the code in this branch:
+    $ go run a Go snippet: fmt.Sprintf("%.0f", 7386.50) -> "7386"
+    $ node -e 'console.log(Math.round(7386.50))'        -> 7387
+
+  So for MonthlyLivingExpenses == 7386.50:
+    - Initial paint (server, formatNumber):        aria-valuetext="$7,386"
+    - Immediately after DOMContentLoaded fires:
+      `syncAllQuickAdjustControls()` (quick-adjust-scripts.html:202-205)
+      unconditionally calls `syncQuickAdjustKey('monthly_living_expenses')`
+      for the canonical hidden control on every page load — with NO drag,
+      NO OOB swap, nothing but the page finishing loading — which
+      overwrites the same attribute to aria-valuetext="$7,387".
+    - The same overwrite reoccurs on every `/whatif/sync` OOB swap
+      (htmx:oobAfterSwap -> scheduleQuickAdjustSync -> syncAllQuickAdjustControls),
+      i.e. the server re-renders "$7,386" into the OOB fragment and the JS
+      handler immediately flips it back to "$7,387".
+    - The visible display span (formatQuickAdjustDisplay, 'currency' case,
+      unchanged pre-existing code) renders `'$' + Number(value).toLocaleString()`
+      with no rounding at all: "$7,386.5" — a third, still different string.
+
+This directly falsifies the worker's own claim in the code comments: "kept
+in sync... so it can never drift" and "aria-valuetext always carries the
+exact saved/dragged dollar figure" — it demonstrably drifts by $1 between
+the two code paths that are supposed to agree, on a value the feature's own
+comments elsewhere call out as the realistic case ("e.g. 7386, from 'Sync
+from Dashboard'"), and a screen-reader user tabbing into the control
+immediately after page load will hear the JS-computed figure, not the
+server one that briefly existed pre-DOMContentLoaded — so the claim that
+"the very-first paint... is also correct for AT" does not hold either: for
+a .50-cent value the first paint is already about to be overwritten to a
+different number within the same event loop turn.
+
+This is a genuine desync introduced by attempt 2's own new code (the JS
+Math.round expression is new in this diff; git diff master confirms the
+`if (key === 'monthly_living_expenses')` block including the aria-valuetext
+lines did not exist before this attempt), not a pre-existing, already-
+excused gap. It sits squarely in the attack surface this checker was asked
+to hunt: "server renders the initial aria-valuetext with one formatter, JS
+updates it with another — can they disagree."
+
+No test in living_expenses_phase_note_test.go, living_expenses_snap_trap_test.go,
+or elsewhere in the manifest exercises a .50-cent MonthlyLivingExpenses value
+through either formatter, so nothing in the existing suite catches this.
+
+Ruling: FAIL. Fix requires the JS and Go rounding rules to agree (e.g. have
+the JS path also round-half-to-even, or have both round using the same
+explicit rule, or avoid rounding to whole dollars at all on the JS side —
+e.g. render the exact figure with cents like the display formatter would if
+it were fixed, or share one formatting convention end-to-end) before this
+can be reverified.

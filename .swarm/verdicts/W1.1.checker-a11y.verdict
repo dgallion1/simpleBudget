@@ -1,0 +1,138 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W1
+ATTEMPT: 1
+---
+SCOPE: web/templates/components/whatif/budget-analysis.html, lines 33-40
+(git diff master, +8 lines) — two new indented sub-rows under the Living
+Expenses row: "Base (slider setting)" and "<Phase> phase ×<mult>". Standard:
+/home/darrell/bin/ai/budget2/ACCESSIBILITY.md (numbered points cited below)
+plus WCAG 2.2 AA.
+
+Method: copied repo to a scratch worktree (git left untouched), added a
+throwaway cmd/a11yrender/main.go that calls the real renderer
+(internal/templates.NewFromFS + RenderToString) with the exact fixture from
+the shipped test (internal/templates/render_budget_analysis_phase_subitems_
+test.go), producing byte-real HTML for the new sub-rows. Wrapped that HTML in
+a light-mode page and a `class="dark"` page, both loading the real built
+web/static/css/tailwind.css (no synthetic markup, no hand-picked colors), and
+ran `npx @axe-core/cli` (wcag2a/wcag2aa/wcag21aa/wcag22aa tags) against both.
+
+1. CONTRAST (point 7, point 12) — FAIL, confirmed automated + manual.
+
+   Panel background chain: budget-analysis.html:4
+   `<div class="bg-white dark:bg-gray-800 ...">` → light bg #ffffff,
+   dark bg #1f2937 (Tailwind default gray-800; tailwind.config.js has no
+   color overrides — `theme: { extend: {} }`).
+
+   New sub-row markup (line 35-38):
+     <span class="text-gray-400 dark:text-gray-500">{{.Name}}</span>
+     <span class="text-gray-500 dark:text-gray-300">...amount...</span>
+
+   Rendered fixture output (Base/Go-Go sub-rows), verified in
+   /tmp/.../scratchpad/panel.html:
+
+   axe-core, light.html:
+     Violation "color-contrast" (5 occurrences) includes:
+       .pl-8.py-0\.5.flex:nth-child(3) > .text-gray-400.dark\:text-gray-500
+       .pl-8.py-0\.5.flex:nth-child(4) > .text-gray-400.dark\:text-gray-500
+     — these ARE the new "Base (slider setting)" and "Go-Go phase ×1.1"
+     name spans.
+
+   axe-core, dark.html:
+     Violation "color-contrast" (4 occurrences) includes the same two
+     selectors again.
+
+   Manual WCAG ratio computation (sRGB relative-luminance formula) confirms
+   and explains the axe result:
+     - Name span, light: #9ca3af (gray-400) on #ffffff → 2.54:1
+     - Name span, dark:  #6b7280 (gray-500) on #1f2937 → 3.04:1
+     - Amount span, light: #6b7280 (gray-500) on #ffffff → 4.83:1 (passes)
+     - Amount span, dark:  #d1d5db (gray-300) on #1f2937 → 9.96:1 (passes)
+
+   Container is `text-sm` (line 19, `<div class="mb-4 text-sm">`) with no
+   size/weight override on the sub-row — 14px normal weight, not "large
+   text" under WCAG 1.4.3, so the 4.5:1 threshold applies, not 3:1. Both
+   2.54:1 and 3.04:1 fail it. This fails in BOTH themes (not just one), so
+   point 12's "parity" requirement is also violated — parity failing to hold
+   in either theme is not compliance.
+
+   PRE-EXISTING vs NEW: the failing class pair `text-gray-400
+   dark:text-gray-500` is reused verbatim from this same file's existing tax
+   sub-rows (e.g. "Includes State Tax" / "Includes NIIT" at lines 81/87/99,
+   and the "Surplus"/"Additional withdrawal" captions at lines 114/122/153/
+   214/225/245/249/260/262/271/277) — axe independently flagged two of those
+   same pre-existing elements in both runs (`div:nth-child(1)/(2) >
+   .text-gray-400.dark\:text-gray-500.text-xs`), confirming the underlying
+   contrast defect already existed in this file before this diff and was not
+   introduced by task W1. However, task W1 copied that already-failing class
+   combination onto two brand-new text nodes ("Base (slider setting)",
+   "<Phase> phase ×<mult>") that did not exist before this change. Per the
+   audit brief, a pre-existing failure replicated into new content is still
+   a reportable finding: this diff adds two more instances of an AA
+   violation, and per the constitution's own words ("Applies to every page a
+   task touches") a task that touches a panel and adds new failing text
+   is not shielded by the defect already existing next door. RULING: FAIL,
+   not a mechanical bypass of a known pre-existing bug — worker should reuse
+   the passing pair already used one line up (`text-gray-500
+   dark:text-gray-300`, 4.83:1 / 9.96:1) for the new Name spans instead of
+   the failing pair, which would fix both the new instances without having
+   to touch the older ones (those are out of scope for W1 but should be
+   flagged separately for a dedicated contrast-sweep task).
+
+2. STRUCTURE / semantics (point 2 n/a — no table here; general AT
+   association) — PASS, with one observation.
+   Rendered DOM (verified in panel.html) places both sub-row `<div>`s as
+   immediate next-siblings of the "Living Expenses" row's `<div>`, before
+   the next top-level breakdown item — genuine reading-order adjacency:
+     <div class="flex justify-between py-0.5 pl-4 ">Living Expenses ...</div>
+     <div class="flex justify-between py-0.5 pl-8">Base (slider setting)...
+     <div class="flex justify-between py-0.5 pl-8">Go-Go phase ×1.1...
+   The whole panel is div/flex-row based, not a table or list anywhere
+   (including the pre-existing tax sub-rows), so no table/list semantics are
+   broken by this change — consistent with the file's existing pattern.
+   OBSERVATION (non-blocking): association is by visual indentation +
+   DOM-order only, no `<dl>/<dt>/<dd>`, `role="group"`, or `aria-owns` tying
+   sub-row to parent; a screen-reader user gets correct linear reading order
+   but no explicit "this is a sub-item of Living Expenses" semantic. This is
+   identical to the pre-existing tax sub-row pattern (not a regression
+   introduced by W1), so it is not scored as a new failure.
+
+   Sign character check (point 13, "no CSS-content text"): confirmed real
+   text in both directions —
+     - "+" comes from literal template text: budget-analysis.html:37
+       `{{if and .SignedAmount (ge .Amount 0.0)}}+{{end}}`
+     - "-" comes from formatMoney() (internal/templates/render.go:449-451),
+       which returns the literal string "-$" + amount — not CSS
+       `content:`, not `::before`. Screen readers will announce both.
+       PASS.
+
+3. MULTIPLIER CHARACTER — PASS.
+   Source: internal/services/retirement/analysis/budget_fit.go:95
+   `fmt.Sprintf("%s phase ×%s", phaseName, multiplierLabel)`. Byte-level
+   check of the source file confirms the character is U+00D7 MULTIPLICATION
+   SIGN (codepoint 0xD7 / decimal 215, i.e. the real multiplication glyph),
+   not the ASCII letter "x". It is literal text inside the row's Name span,
+   so it linearizes meaningfully for a screen reader, e.g. "Go-Go phase
+   times 1.1" or equivalent AT pronunciation — not silent, not gibberish.
+
+4. COLOR-ALONE CHECK (point 8) — PASS.
+   The new amount span's color is static (`text-gray-500 dark:text-gray-300`)
+   regardless of whether the adjustment is positive or negative — sign is
+   conveyed by the literal "+"/"-" text (see #2), not by switching to
+   red/green. No information in the new rows is color-only.
+
+RAW EVIDENCE FILES (scratch copy only, no writes to the real tree other than
+this verdict):
+  /tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/panel.html
+  /tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/light.html
+  /tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/dark.html
+  /tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/b2copy/cmd/a11yrender/main.go
+
+VERDICT: FAIL — new sub-row label text ("Base (slider setting)", "<Phase>
+phase ×<mult>") fails WCAG 1.4.3 / ACCESSIBILITY.md point 7 in both light
+(2.54:1) and dark (3.04:1) themes, confirmed by axe-core and manual
+contrast computation against the actual template chain and built CSS. Fix:
+use the already-passing `text-gray-500 dark:text-gray-300` pair (or
+equivalent ≥4.5:1 combo) for the Name spans in the two new sub-rows.

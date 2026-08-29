@@ -1,0 +1,114 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: W4
+ATTEMPT: 2
+---
+Baseline (green, not decisive on its own):
+- go build ./...  : exit 0
+- go vet ./...    : exit 0
+- go test ./...   : all packages ok (full suite, ~40 packages, incl. new
+  internal/handlers/dashboard tests added for this attempt)
+- make css-verify : "tailwind.css is up to date"
+
+Attempt-1 defect: CONFIRMED FIXED for the case it was reported on.
+kpis.html's per-bucket Living/Health rows (web/templates/components/kpis.html
+lines 155-168) now render `.BudgetVerdict.Living.Status` /
+`.BudgetVerdict.Healthcare.Status` — the same BucketFigure the banner
+consumes — instead of a bare `gt/lt 0.0` comparison on the raw metrics
+field. Reproduced the exact attempt-1 fixture (HealthcareCumulativeDelta =
+0.60, CumulativeDelta = -3000, CombinedCumulativeDelta = -2999.40) via a
+custom test driving BuildBudgetVerdict + RenderToString for both
+"dashboard-verdict-bar" and "kpis": banner says "Healthcare: $0.60 on
+target", card's Health row now also says "$0.60 on target" (gray), not "over"
+(rose). Boundary sweep at 0.99/1.00/1.01 and -0.99/-1.00/-1.01 on each bucket
+independently, banner vs card, all agree at every point (both use the
+`onBudgetEps` = 1.0 inclusive boundary via the shared classifyBucket). The
+project's own new test, TestBudgetKPICardAndVerdictBanner_AgreeWithinDeadBand,
+and the byte-identity regression test for the HasTarget=false path, both
+pass and are not vacuous — verified they fail against a manual revert of the
+kpis.html classification to bare `gt .Metrics.CumulativeDelta 0.0`.
+
+Other-figure attack surface: PerMonthDelta / HealthcarePerMonthDelta on the
+Monthly Living Expenses / Monthly Healthcare KPI cards (kpis.html lines
+73-74, 107-108) use a bare `gt/lt 0.0` with NO dead-band, same as before this
+task. This is a genuinely different figure (per-month average vs. cumulative
+total-period delta) rendered on different, distinctly-labeled cards ("$X/mo
+over" vs. the Budget card's "over budget"/banner's "over N.N months"). Per
+the task's own framing this is a different-figure case, not a same-figure
+disagreement — noted, not failed. The MCP summarize_spending tool
+(internal/services/mcpsvc/spend/summary.go) only echoes raw
+living_monthly_delta/healthcare_monthly_delta/combined_cumulative_delta
+numbers with no over/under/on-target verdict string at all, so it cannot
+contradict the banner's classification — no defect there.
+
+REAL DEFECT FOUND — phantom "on target" row for an unconfigured bucket,
+exactly the failure mode the dispatch asked to rule out under point (4).
+
+kpis.html's Living/Health rows (lines 155-168) are NOT gated on
+`.Metrics.HasBudgetTarget` / `.Metrics.HasHealthcareTarget` (or on
+`.BudgetVerdict.Living.Configured` / `.Healthcare.Configured`) the way the
+banner's decomposition line is (dashboard-verdict-bar.html: `{{if
+$v.Living.Configured}}...{{end}}` / `{{if $v.Healthcare.Configured}}...{{end}}`,
+each independently gated). The two rows in kpis.html render unconditionally
+whenever the *outer* `{{if .Metrics.HasCombinedTarget}}` block is entered —
+and `HasCombinedTarget` is true whenever `budgetTarget + healthcareTarget >
+0` (internal/services/metrics/metrics.go line ~244), i.e. it is true even
+when only ONE of the two targets is configured. This is not a contrived
+state: it is the ordinary case of a user who has set a living budget but no
+healthcare target (or vice versa).
+
+Reproduced with the real production code path (metrics.Calculate, not a
+hand-built struct): budgetTarget=1000, healthcareTarget=0, one $500 grocery
+transaction.
+  m := metrics.Calculate(ts, start, end, 1000, 0)
+  m.HasCombinedTarget == true, m.HasHealthcareTarget == false
+  v := BuildBudgetVerdict(m); v.Healthcare.Configured == false
+
+Banner output (correct): only "Living: $500.00... under" — no "Healthcare:"
+line at all, per the banner's per-field `{{if ... .Configured}}` guards.
+
+Budget KPI card output (same page, same data), unconditionally renders:
+  <span>Health: <span class="num">$0.00</span> of <span class="num">$0.00</span></span>
+  <span class="text-gray-500 ...">
+      <span class="num">$0.00</span> on target
+  </span>
+
+The card fabricates a "Health: $0.00 of $0.00 — $0.00 on target" line for a
+bucket that has no target at all, while the banner directly above correctly
+omits any mention of healthcare. A user reading the page sees the card
+assert healthcare spending is tracked and compliant ("on target") when in
+fact nothing was ever budgeted for it — the same misleading-headroom concern
+the whole task exists to close, just via omission-vs-fabrication instead of
+via a numeric mismatch. This exactly matches the scenario the dispatch
+explicitly asked to check under item (4) ("no phantom 'on target' row for an
+unconfigured bucket") and it is present. The `classifyBucket`
+unconfigured-bucket path is not itself buggy (it correctly forces
+Status="on target"/Delta=0 rather than exposing a raw comparison over a
+degenerate value) — the bug is that kpis.html doesn't gate the two card rows
+on Configured at all, so an unconfigured bucket's forced-neutral BucketFigure
+still gets a visible line instead of being suppressed like the banner
+suppresses it.
+
+This is inherited from kpis.html's pre-existing (pre-task) structure — the
+Living/Health `<div>` rows were unconditional in master too — so it is not a
+new regression introduced by this specific diff. But the task's own inline
+comment added by this fix ("no bare >0/<0 comparison here, so the same delta
+can never render 'on target' in one surface and 'over' in the other") and
+the ruling's framing both claim the card is now fully consistent with the
+banner, and the boss's dispatch explicitly asked this attempt to be checked
+against precisely this case. It is not consistent: the banner and card
+disagree about whether healthcare is being tracked at all for the identical
+underlying DashboardMetrics.
+
+Both defect-reproduction tests were written against the real templates/real
+metrics.Calculate output (not a hand-authored struct asserting its own
+premise) and fail on the current attempt-2 tree; boundary-sweep and the
+attempt-1 exact-repro tests pass, isolating the failure to the
+unconfigured-bucket path specifically.
+
+Verdict: FAIL. The $0.60-dead-band contradiction from attempt 1 is fixed.
+A new (or rather, previously-latent and now explicitly back in scope)
+same-page contradiction survives for any user with only one budget bucket
+configured: the banner omits the unconfigured bucket, the adjacent KPI card
+fabricates an "on target" line for it.

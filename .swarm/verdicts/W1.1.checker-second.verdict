@@ -1,0 +1,65 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: W1
+ATTEMPT: 1
+---
+Baseline (go build ./... && go vet ./... && go test ./...) is green in a
+clean copy of fix/phase-visibility. Model-layer drift check clears:
+GetSpendingPhaseNameAt and GetSpendingMultiplier (internal/models/whatif.go)
+use byte-for-byte the same iteration/selection loop, called with the same
+`s.GetPhaseReferenceAge(0)` argument in budget_fit.go, so name and
+multiplier cannot come from different phases. Decline-rate/phase mutual
+exclusion confirmed in engine/expense.go:livingExpensesAtMonth — phases and
+spending_decline_rate are already mutually exclusive at the engine level, so
+gating sub-items on SpendingPhaseConfig.Enabled is sufficient; no
+decline-rate leak found. Only the Living Expenses row gets SubItems in
+budget_fit.go; ExpenseBreakdown has exactly one consumer (this panel), no
+future-year/steady-state reuse found.
+
+FAIL — criterion 3 ("base + adjustment == Amount to the cent... guarded")
+is violated for values reachable through an existing, real code path.
+
+1. internal/services/retirement/analysis/budget_fit.go computes
+   `adjustment := livingExpenseAmount - base` and then "guards" with
+   `math.Abs(base+adjustment-livingExpenseAmount) < 0.005`. This is
+   tautological: since adjustment is defined as livingExpenseAmount-base,
+   base+adjustment-livingExpenseAmount is algebraically 0 (modulo float
+   epsilon, ~1e-12), so the guard can NEVER trip. It does not protect
+   anything; the "guarded — suppressed if the identity fails" framing in
+   the claim is false in practice.
+
+2. The real, visible identity users see is the one produced by
+   web/templates/components/whatif/budget-analysis.html, which calls
+   formatMoney (internal/templates/render.go:425, plain %.2f, independent
+   per value) on base, adjustment, and Amount SEPARATELY. When base has a
+   fractional-cent component, independent rounding of base/adjustment/total
+   does not sum, and the panel visibly shows two sub-rows that do not add up
+   to the row's own total.
+
+3. This is not a contrived corner case: MonthlyLivingExpenses is set to
+   `totalExpenses / months` by the "Sync from Dashboard" feature
+   (internal/handlers/whatif/handlers.go:1206, syncSettingsFromDashboard),
+   which is essentially never a round-cent value in real data.
+
+Reproduced against the ACTUAL project code (not reimplemented arithmetic):
+added a temporary test in internal/services/retirement/analysis calling the
+real BudgetFit()/engineInput()/livingExpensesItem() helpers already in the
+suite, with base=7386.555 mult=1.1 and base=7386.005 mult=0.9 (both
+plausible sync-from-dashboard outputs):
+
+  go test ./internal/services/retirement/analysis/... -run TestAdversarialProbe -v
+  VISIBLE MISMATCH base=7386.555 mult=1.1: displayed "7386.56" + "738.66" = "8125.22", but displayed total is "8125.21"
+  VISIBLE MISMATCH base=7386.005 mult=0.9: displayed "7386.01" + "-738.60" = "6647.41", but displayed total is "6647.40"
+
+(test file removed after confirming; not left in the tree — this was run in
+a throwaway copy per instructions, real tree untouched except this verdict.)
+
+None of the worker's added tests
+(budget_fit_living_expense_subitems_test.go,
+render_budget_analysis_phase_subitems_test.go) use a fractional-cent base;
+all use MonthlyLivingExpenses = 7386 exactly, and the sum-invariant
+assertions in those tests compare raw float64 values, not the %.2f strings
+the template actually renders — so the suite cannot catch this class of
+bug. Per SPEC W1 requirement 3 ("base + adjustment == Amount to the cent")
+this is read as the observable, rendered identity, which fails.

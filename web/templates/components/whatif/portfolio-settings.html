@@ -45,20 +45,40 @@
                 min="0" max="20000000" step="100000"
                 data-quick-adjust-key="portfolio_value"
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString(); if(typeof updateAccountAmounts === 'function') updateAccountAmounts();">
+                oninput="this.nextElementSibling.textContent = formatWholeDollars(Number(this.value)); if(typeof updateAccountAmounts === 'function') updateAccountAmounts();">
             <span class="text-sm text-gray-500 dark:text-gray-300" data-quick-adjust-display="portfolio_value" data-quick-adjust-display-format="currency">${{formatNumber .Settings.PortfolioValue}}</span>
         </div>
 
         <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Monthly Living Expenses</label>
-            <input type="range" id="monthly_living_expenses_input" name="monthly_living_expenses"
+            {{/* Hidden input carries the exact saved value and is the only
+                 one submitted with the form. The visible range below keeps
+                 step=100 for drag feel but has no name — assigning its
+                 value snaps off-grid saved amounts (e.g. 7386, from "Sync
+                 from Dashboard") to the nearest $100, which would otherwise
+                 both mis-display and silently overwrite the saved value on
+                 the next unrelated form submit. */}}
+            <input type="hidden" id="monthly_living_expenses_value" name="monthly_living_expenses"
+                value="{{printf "%.2f" .Settings.MonthlyLivingExpenses}}"
+                data-quick-adjust-key="monthly_living_expenses">
+            {{/* aria-valuetext always carries the exact saved/dragged dollar
+                 figure (e.g. "$7,386"), not the browser-snapped step=100
+                 value the implicit aria-valuenow would report (e.g.
+                 "$7,400") — WCAG 4.1.2. Kept in sync by
+                 onMonthlyLivingExpensesInput / syncQuickAdjustKey in
+                 quick-adjust-scripts.html, the same path that updates the
+                 visible display span. */}}
+            <input type="range" id="monthly_living_expenses_input"
                 value="{{printf "%.0f" .Settings.MonthlyLivingExpenses}}"
+                aria-valuetext="{{formatDollars .Settings.MonthlyLivingExpenses}}"
                 min="0" max="20000" step="100"
-                data-quick-adjust-key="monthly_living_expenses"
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString(); if(typeof updateSpendingPreview === 'function') updateSpendingPreview();">
-            <span id="monthly_living_expenses_display" class="text-sm text-gray-500 dark:text-gray-300" data-quick-adjust-display="monthly_living_expenses" data-quick-adjust-display-format="currency">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
+                oninput="onMonthlyLivingExpensesInput(this.value)">
+            <span id="monthly_living_expenses_display" class="text-sm text-gray-500 dark:text-gray-300" data-quick-adjust-display="monthly_living_expenses" data-quick-adjust-display-format="currency">{{formatDollars .Settings.MonthlyLivingExpenses}}</span>
             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">In today's dollars. Inflation is applied during projection.</p>
+            {{if .LivingExpensesPhaseNote.Show}}
+            <p id="living-expenses-phase-note" class="text-xs text-gray-400 dark:text-gray-500 mt-1" data-phase-multiplier="{{.LivingExpensesPhaseNote.Multiplier}}">Engine spends <span id="living-expenses-phase-amount">{{formatMoney .LivingExpensesPhaseNote.EngineMonth0}}</span>/mo now ({{.LivingExpensesPhaseNote.PhaseName}} ×{{.LivingExpensesPhaseNote.MultiplierText}}){{if .LivingExpensesPhaseNote.NextClause}}; {{.LivingExpensesPhaseNote.NextClause}}{{end}}.</p>
+            {{end}}
         </div>
 
         <div class="grid grid-cols-2 gap-3">
@@ -112,7 +132,7 @@ function updatePortfolioRange(rangeStr, options) {
     if (currentVal < min) slider.value = min;
     else if (currentVal > max) slider.value = max;
     // Update display
-    slider.nextElementSibling.textContent = '$' + Number(slider.value).toLocaleString();
+    slider.nextElementSibling.textContent = formatWholeDollars(Number(slider.value));
     const select = document.getElementById('portfolio-range');
     if (select && select.value !== rangeStr) select.value = rangeStr;
     const mirrorSelect = document.getElementById('quick-adjust-portfolio-range');
@@ -132,6 +152,48 @@ function initializePortfolioRange() {
     const select = document.getElementById('portfolio-range');
     if (!select) return;
     updatePortfolioRange(select.value, { triggerChange: false });
+}
+
+// updateLivingExpensesPhaseNote recomputes the phase note's dollar figure
+// (the "Engine spends $X/mo now" text) as value × the current-phase
+// multiplier stashed on the note's data-phase-multiplier attribute. The
+// phase name and next-transition clause are static text set server-side —
+// they don't change while dragging a single slider — only the dollar
+// amount needs a live update.
+function updateLivingExpensesPhaseNote(value) {
+    const note = document.getElementById('living-expenses-phase-note');
+    const amount = document.getElementById('living-expenses-phase-amount');
+    if (!note || !amount) return;
+    const multiplier = parseFloat(note.dataset.phaseMultiplier);
+    if (!isFinite(multiplier)) return;
+    const base = parseFloat(value) || 0;
+    amount.textContent = '$' + (base * multiplier).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+// onMonthlyLivingExpensesInput handles the visible living-expenses range's
+// oninput event. The range itself is not submitted (no name attribute) and
+// snaps to $100 increments while dragging, which is fine for drag feel; the
+// exact value only needs to be exact once dragging actually changes it. The
+// hidden #monthly_living_expenses_value input is the one the form submits,
+// and it is otherwise left untouched at its saved value (never
+// browser-snapped, since hidden inputs aren't subject to range step
+// sanitization) — this is what fixes the snap trap: an unrelated form
+// submit with no drag on this slider round-trips the saved value exactly.
+//
+// Dispatching 'input' on the hidden field re-uses the existing quick-adjust
+// sync machinery (quick-adjust-scripts.html) to update the display span,
+// the quick-adjust mirror slider, and the phase note in one path — whether
+// the change originated here or from a drag on the mirror slider.
+function onMonthlyLivingExpensesInput(rawValue) {
+    const exact = document.getElementById('monthly_living_expenses_value');
+    if (exact) {
+        exact.value = rawValue;
+        exact.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    if (typeof updateSpendingPreview === 'function') updateSpendingPreview();
 }
 
 document.addEventListener('DOMContentLoaded', function() {

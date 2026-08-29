@@ -1,0 +1,6 @@
+internal/services/metrics/metrics.go
+internal/services/metrics/metrics_test.go
+internal/templates/render.go
+internal/handlers/dashboard/handlers.go
+internal/handlers/dashboard/handlers_http_test.go
+web/templates/components/kpis.html

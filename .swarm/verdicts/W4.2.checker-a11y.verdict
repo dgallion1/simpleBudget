@@ -1,0 +1,184 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W4
+ATTEMPT: 2
+---
+SCOPE: `git diff master` on
+web/templates/components/dashboard-verdict-bar.html and
+web/templates/components/kpis.html (per .swarm/manifests/W4.2.files; also
+touches internal/handlers/dashboard/verdict.go, verdict_test.go,
+verdict_render_test.go — no template/markup surface there).
+
+Method: worked in a copy (`cp -a`, .git preserved), never touched the real
+tree except the verdict file. Built the branch (`go build ./cmd/server`).
+Ran the real embedded-asset binary (not httptest) against four isolated
+temp fixture dirs (`BUDGET_DATA_DIR`/`BUDGET2_BACKUP_DIR`/
+`BUDGET2_IMPORT_DIR` all pointed under /tmp, never at the repo's real
+`data/` directory) with CSVs tuned to force red/amber/green/mixed overall
+verdicts and, on a 5th fixture, an exact-$0.00 "on target" bucket while the
+overall verdict stayed "over" (rose-50). Audited each live-rendered
+`/dashboard` page with axe-core (Playwright/Chromium, forcing `colorScheme`
++ seeding `localStorage.theme` pre-navigation, since this app's Tailwind
+`darkMode: 'class'` only reacts to the `dark` class the page's own inline
+script sets from localStorage/matchMedia — confirmed `html.classList`
+actually flipped for both requests). Cross-checked every ratio by hand
+(WCAG relative-luminance formula) against the exact Tailwind v3 hex values
+(caught and corrected one transcription slip in my own hand-check: used
+rose-950 instead of rose-900 for the dark composite on the first pass,
+re-derived from the palette table and got 6.62:1, matching axe/attempt-1's
+figure). All servers bound to 127.0.0.1 only, killed after the audit.
+
+(1) CONTRAST RECOMPUTATION — dashboard-verdict-bar.html's fix:
+
+  Light, text-gray-600 (#4b5563):
+    bg-rose-50    (#fff1f2): 6.879:1  PASS
+    bg-amber-50   (#fffbeb): 7.288:1  PASS
+    bg-emerald-50 (#ecfdf5): 7.174:1  PASS
+  All three match the worker's claimed 6.88/7.29/7.17 exactly. All clear
+  4.5:1 with wide margin (WCAG 2.2 SC 1.4.3 / point 7).
+
+  Dark, dark:text-gray-400 (#9ca3af) against the REAL composited
+  background (bg-*-900/20 over body bg-gray-900 #111827; Tailwind v3
+  rose-900=#881337, amber-900=#78350f, emerald-900=#064e3b):
+    rose-900/20 on gray-900    -> #29172a -> 6.62:1  PASS
+    amber-900/20 on gray-900   -> #261e22 -> 6.41:1  PASS
+    emerald-900/20 on gray-900 -> #0f232b -> 6.38:1  PASS
+  Full dark-theme parity across all three health states (point 12).
+
+  Live axe-core against the built page, red state, light theme forced:
+  0 color-contrast hits on the new decomposition `<div>` or "No headroom"
+  sentence `<div>` (both under `text-sm text-gray-600 dark:text-gray-400`).
+  Confirmed by reading the rendered HTML directly (class is
+  `text-gray-600 dark:text-gray-400`, not `text-gray-500`) and by the full
+  axe violation list below, which contains no node under that wrapper.
+  Attempt-1's cited FAIL is closed. ATTEMPT-1 ITEM (1)/(2): PASS.
+
+(2) LIVE AXE, RED STATE, LIGHT THEME — full violation list (26 nodes / 1
+  rule for color-contrast), all pre-existing and unrelated to this diff's
+  two new lines:
+    - `.font-normal` "over N months" span (line 22, unchanged) — 4.4:1,
+      provenance already logged in attempt-1's verdict.
+    - Spent/Target/Net-Savings 10px uppercase labels (lines ~48/52,
+      unchanged) — 4.4:1, same provenance.
+    - text-rose-600 value figures ($64,000.00 Spent, -$16,000.00 Net
+      Savings) on rose-50 — 4.27:1, matches attempt-1's "value coloring on
+      bg-rose-50" observation.
+    - KPI card's own pre-existing "Target $X · $Y/mo over" rose-600 text
+      (Budget and Healthcare tiles) — 4.27–4.49:1, unrelated to W4.
+    - KPI "over N mo" hint and "Category: Health Insurance" caption
+      (text-gray-500/400, unchanged lines) — 4.4:1 / 2.31:1 (light),
+      3.47:1 (dark) — pre-existing, unrelated to W4.
+    - "Living: $X of $Y" / "Health: $X of $Y" label spans (the OUTER
+      `text-xs text-gray-500 dark:text-gray-400` wrapper, line unchanged
+      by this diff) — 4.4:1 — pre-existing.
+    - `text-rose-500 dark:text-rose-400` "over" status spans in the
+      Living/Health decomposition (color class unchanged by this diff;
+      only the *condition* selecting it changed from `gt Delta 0.0` to
+      `eq Status "over"`, same resulting class string) — 3.34:1 —
+      pre-existing, same family as attempt-1's "value coloring
+      3.43–4.27:1" observation.
+  None of these touch the two lines attempt-1 failed. No form-label/
+  select-name findings are new (pre-existing site-wide, already noted by
+  attempt-1). ITEM (2): the originally-failed lines are confirmed clear —
+  but see (3) below, which is new.
+
+(3) KPI CARD OVER/UNDER/ON-TARGET WORDING — kpis.html diff swaps the
+  per-bucket status spans from a bare `gt/lt 0.0` comparison to
+  `eq .BudgetVerdict.{Living,Healthcare}.Status "over"/"under"`, with a
+  new third branch for "on target". Confirmed the WORDS are present and
+  correct in all three states (color-alone, point 8, is satisfied):
+    over:      `text-rose-500 dark:text-rose-400`   + literal "over"
+    under:     `text-emerald-500 dark:text-emerald-400` + literal "under"
+    on target: `text-gray-500 dark:text-gray-400`   + literal "on target"
+  (verified live: red fixture -> "Living: ... over" / "Healthcare: ...
+  over"; green fixture -> both "under"; mixed fixture -> "Living: ... over"
+  / "Healthcare: ... under"; a 5th fixture tuned to land Healthcare's
+  cumulative delta at exactly $0.00 -> "Healthcare: $0.00 on target".)
+
+  BUT: that fifth, newly-reachable "on target" branch's class,
+  `text-gray-500 dark:text-gray-400`, is NEW — the pre-fix code never
+  rendered gray text in this position (only rose-500/emerald-500). Forced
+  the reachable combination where the OVERALL Budget card is "over" (the
+  card's own background flips to `bg-rose-50`, since `$budgetOver` is
+  keyed on total combined delta, independent of any one bucket) while ONE
+  bucket sits exactly on-target within the $1 dead-band — a state
+  `classifyBucket`'s own comment describes as ordinary, not a corner case:
+  Living heavily over ($8,328.54 over) drives the card to `bg-rose-50`
+  while Healthcare is tuned to $0.00 delta.
+
+  Live axe-core hit, red-tinted KPI card, light theme forced:
+  "Element has insufficient color contrast of 4.4 (foreground color:
+  #6b7280, background color: #fff1f2, ...). Expected contrast ratio of
+  4.5:1" on
+  `.gap-2.justify-between.flex:nth-child(2) > .text-gray-500.dark\:text-gray-400`
+  — `<span class="text-gray-500 dark:text-gray-400"><span class="num">
+  $0.00</span> on target</span>`. Hand-computed: gray-500 #6b7280 on
+  bg-rose-50 #fff1f2 = 4.400832:1, identical to the exact defect attempt-1
+  failed and this same attempt fixed in the OTHER file. Dark theme: PASS
+  (composited rose-900/20-on-gray-900 background, dark:text-gray-400 =
+  6.62:1, same math as (1)).
+
+  This is a NEW violation, not a carry-over: the pre-diff code had no
+  gray/"on target" branch here at all, so this exact node did not exist
+  before this attempt's kpis.html change. It fails ACCESSIBILITY.md point
+  7 / WCAG 2.2 SC 1.4.3 in light theme, in a state the new BudgetVerdict
+  wiring itself makes newly reachable and — per the diff's own inline
+  "Ruling 2026-08-29a" comment — is meant to be the normal, expected
+  presentation of an on-target bucket next to an over-budget total, not an
+  edge case to wave off.
+
+(4) LINEARIZATION / `.num` — unchanged from attempt-1: no `aria-hidden`,
+  `sr-only`, `visually-hidden`, or `aria-live` added anywhere in either
+  file (`grep` clean on both). `.num` (web/static/css/styles.css:149) is
+  still font-family/tabular-nums only — no size/overflow rules, so 200%
+  zoom/text-resize is unaffected. DOM order in dashboard-verdict-bar.html
+  is unchanged from attempt-1's PASS. ITEM (4): PASS, holds.
+
+FAILURES:
+- ACCESSIBILITY.md point 7 / WCAG 2.2 SC 1.4.3 (Contrast, AA) —
+  web/templates/components/kpis.html, the two per-bucket status spans
+  (Living and Healthcare) in the Budget KPI card's new
+  `eq .BudgetVerdict.{Living,Healthcare}.Status "..."` conditional: the new
+  "on target" branch's `text-gray-500 dark:text-gray-400` renders at
+  4.40:1 in light theme whenever the card's background is `bg-rose-50`
+  (i.e. whenever the OVERALL combined verdict is "over" while the specific
+  bucket being rendered is exactly on-target within the $1 dead-band) —
+  below the 4.5:1 AA minimum. Confirmed live via axe-core (Playwright,
+  Chromium) against the built binary and by hand computation (relative-
+  luminance formula, both 4.40:1/4.400832:1). This is the same failing
+  color pairing attempt-1 found and this attempt fixed in
+  dashboard-verdict-bar.html, reintroduced fresh in kpis.html by this
+  attempt's own new "on target" branch — not a pre-existing, previously-
+  reported defect. Fix should reuse the same `text-gray-600
+  dark:text-gray-400` this attempt already applied to the sibling banner,
+  or an equivalent that clears 4.5:1 against bg-rose-50/bg-amber-50/
+  bg-emerald-50 alike.
+
+OBSERVATIONS (non-blocking, pre-existing per attempt-1's provenance, not
+introduced by this attempt, unrelated to items (1)-(4) above):
+- dashboard-verdict-bar.html lines ~22/48/52 (text-gray-500/400, "over N
+  months" span and Spent/Target/Net-Savings labels) — 4.4:1 on bg-rose-50 —
+  same provenance attempt-1 already logged; unchanged by this attempt.
+- kpis.html's outer `text-xs text-gray-500 dark:text-gray-400` wrapper
+  around the Living/Health decomposition lines (label text "Living: $X of
+  $Y") — 4.4:1 on bg-rose-50 — this exact line/class predates this diff
+  (diff only touched the nested status `<span>`, not this wrapper).
+- text-rose-500/emerald-500 dark:text-rose-400/emerald-400 value coloring
+  on bg-rose-50 (KPI decomposition "over"/"under" status text) — 3.34:1 —
+  same class strings as before this diff (only the selecting condition
+  changed), same family as attempt-1's "value coloring on bg-rose-50 at
+  3.43–4.27:1" note.
+- Site-wide, unrelated to W4: `input[name="start"]`/`input[name="end"]`
+  missing labels, unnamed comparison `<select>` — already logged by
+  attempt-1.
+- "Category: Health Insurance" caption (text-gray-400 dark:text-gray-500)
+  at 2.31:1 light / 3.47:1 dark on rose-tinted backgrounds — pre-existing,
+  outside this diff's files entirely (Healthcare KPI tile, untouched).
+
+Net: items (1), (2) and (4) from the recheck brief PASS — the originally
+failed lines are fixed and dark-theme parity holds across all three
+health-state tints. Item (3)'s wording/color-pairing requirement is met in
+words, but the color half of the same requirement fails on a newly
+reachable combination this attempt's own rewiring introduced. PASS is
+withheld: FAIL.

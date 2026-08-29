@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,6 +75,7 @@ func getFuncMap() template.FuncMap {
 		"conversionSummary":                   conversionSummary,
 		"formatNumber":                        formatNumber,
 		"formatPercent":                       formatPercent,
+		"formatMultiplier":                    formatMultiplier,
 		"formatDate":                          formatDate,
 		"formatDateTime":                      formatDateTime,
 		"abs":                                 abs,
@@ -568,6 +570,17 @@ func formatPercent(v float64) string {
 		return fmt.Sprintf("+%.1f", v)
 	}
 	return fmt.Sprintf("%.1f", v)
+}
+
+// formatMultiplier renders a spending-phase multiplier as "1.1" or
+// "1.05" -- up to 2 decimal places, with trailing zeros (and a trailing
+// decimal point) trimmed. Scoped to the dashboard's Target-provenance
+// annotation (kpis.html); not a general-purpose number formatter.
+func formatMultiplier(v float64) string {
+	s := strconv.FormatFloat(v, 'f', 2, 64)
+	s = strings.TrimRight(s, "0")
+	s = strings.TrimRight(s, ".")
+	return s
 }
 
 func formatDate(t time.Time) string {

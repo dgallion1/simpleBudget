@@ -1,0 +1,155 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W3
+ATTEMPT: 2
+---
+All verification run in a `cp -a` copy at
+/tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/w3work
+(branch fix/phase-visibility, go1.26.6). Probe file deleted after use; real tree
+`find . -name "zzz_probe*" | wc -l` = 0. I wrote nothing to the real tree except
+this verdict file.
+
+C1. BUILD / VET / TEST / CSS-VERIFY -- MET
+  `go version` -> go1.26.6 linux/amd64
+  `go build ./...` -> BUILD_EXIT=0, no output.
+  `go vet ./...`  -> VET_EXIT=0, no output.
+  `go test ./... -count=1` -> TEST_EXIT=0; 49 "ok" package lines;
+    `grep -cE "^(FAIL|--- *FAIL)"` = 0; `grep -E "FAIL|SKIP|no test files"` = no
+    matches at all.
+  `make css-verify` -> "tailwind.css is up to date", CSS_EXIT=0.
+
+C2. W3'S NAMED TESTS PASS, NONE SKIPPED -- MET
+  `go test ./internal/services/metrics/ -count=1 -v -run TestTargetProvenance`
+    -> 7/7 "--- PASS", zero SKIP: _NilSettings, _ZeroBaseExpenses,
+    _PhasesDisabled, _NoPhaseConfig, _GoGoPhase_MultiplierOne_NoAnnotate,
+    _SinglePhaseAcrossRange, _StraddlesTransition_WeightedAverage;
+    "ok budget2/internal/services/metrics 0.021s".
+  `go test ./internal/handlers/dashboard/ -count=1 -v -run
+    TestDashboardKPIs_TargetProvenance`
+    -> 2/2 "--- PASS", zero SKIP: _AnnotatesWhenPhaseActive,
+    _AbsentWhenNoPhaseConfig; "ok budget2/internal/handlers/dashboard 0.118s".
+  Read both updated render tests (handlers_http_test.go:1521-1622). They assert
+  what their names claim, and were genuinely updated this attempt:
+    - _AnnotatesWhenPhaseActive now asserts BOTH
+      `title="Target $1,900.00 — from What-If plan: $2,000 base × 0.95 (Active phase)"`
+      and the identical `aria-label="..."` -- i.e. the figure-leading form, not
+      attempt 1's "Target from What-If plan: ..." string.
+    - _AbsentWhenNoPhaseConfig gained a new assertion at line 1619:
+      `regexp.MustCompile(`<p class="text-sm [^"]*">\s*Target <span class="num">`)`
+      must match -- a positive assertion that the bare, unwrapped master markup
+      is emitted when unannotated. That is the attempt-1 finding closed.
+
+C3. RENDER FACTS, ANNOTATED CASE -- MET
+  Probe drove the real chi router + real template dir through
+  GET /dashboard/kpis with a fixture whose phase-adjusted target has cents
+  (base 7386, Go-Go x1.1, primary age 60, one-month range -> $8,124.60):
+    PROBE title   = "Target $8,124.60 — from What-If plan: $7,386 base × 1.1 (Go-Go phase)"
+    PROBE aria    = "Target $8,124.60 — from What-If plan: $7,386 base × 1.1 (Go-Go phase)"
+    PROBE visible = "$8,124.60"
+    PROBE title==aria: true
+    PROBE title starts with "Target $8,124.60": true
+    PROBE label figure = "$8,124.60" ; visible figure = "$8,124.60" ; equal: true
+  Regex used to capture the three values in one match, so title/aria/visible are
+  provably from the same rendered element:
+    `<span title="([^"]*)" aria-label="([^"]*)">Target <span class="num">([^<]*)</span></span>`
+  Straddling case (spec rule 3), base 7386, primary age 64, phases 1.1 -> 1.0 at
+  65, range 2025-01-01..2026-12-31:
+    PROBE straddle title   = "Target $7,755.30 — from What-If plan: $7,386 base × avg 1.05 (crosses phase change)"
+    PROBE straddle aria    = (identical string)
+    PROBE straddle visible = "$7,755.30"
+    PROBE straddle title==aria: true ; leads with figure: true
+  Both fixtures have non-zero cents, so the character-for-character figure
+  equality is a real test, not a $X,XXX.00 coincidence.
+
+C4. UNANNOTATED BYTE-IDENTITY vs master -- MET for W3; see the attribution note.
+  Setup: two temp template dirs, each a `cp -a` of web/templates; one keeps the
+  branch's components/kpis.html, the other is overwritten with
+  `git show master:web/templates/components/kpis.html`. Same handler, same
+  fixture (`{"monthly_living_expenses": 2000}`), same request.
+  (a) Attempt-1's wrapper-span defect is GONE. The Monthly Living Expenses card
+      as rendered (fragment lines 86-107) is byte-identical between branch and
+      master:
+        MLE card (rendered lines 86-107) BYTE-IDENTICAL: True
+        prefix lines 1-149 identical: True
+      and the rendered card contains the bare master markup
+        `                    Target <span class="num">$2,000.00</span> · <span class="num">$527.22</span>/mo under`
+      with `count of 'aria-label="Target'` = 0 and `count of 'title="Target'` = 0.
+  (b) W3-hunk-only isolation. `diff -u master-kpis.html <branch kpis.html>` shows
+      exactly two hunks: @@ -60,8 +60,18 @@ (W3's target line) and
+      @@ -136,17 +146,23 @@ (W4's BudgetVerdict sub-rows, ruling 2026-08-29a).
+      I built master's kpis.html + the W3 hunk ONLY and rendered it against
+      pristine master across three unannotated cases:
+        PROBE W3-hunk-only [no-phase-config]: lenA=9837 lenB=9837 BYTE-IDENTICAL=true
+        PROBE W3-hunk-only [phases-disabled]: lenA=9837 lenB=9837 BYTE-IDENTICAL=true
+        PROBE W3-hunk-only [multiplier-one]:  lenA=9837 lenB=9837 BYTE-IDENTICAL=true
+      W3's change alone is byte-neutral when Annotate is false, in all three
+      ways the annotation can be suppressed.
+  ATTRIBUTION NOTE FOR THE LEAD (fact, not a W3 finding): the FULL fragment on
+  the branch is NOT byte-identical to master --
+    PROBE unannotated lens: branch=9852 master=9837 identical=false
+  `diff -u` shows all 15 bytes in one place, the budget-vs-actual card's
+  per-bucket sub-rows:
+    +                                          (blank line left by W4's {{/* ... */}} comment)
+    -   <span class="text-emerald-500 dark:text-emerald-400">
+    -       <span class="num">$0.00</span> under
+    +   <span class="text-gray-500 dark:text-gray-400">
+    +       <span class="num">$0.00</span> on target
+  That is W4's hunk. `web/templates/components/kpis.html` appears in BOTH
+  .swarm/manifests/W3.2.files and .swarm/manifests/W4.2.files; the residual diff
+  is entirely inside W4's hunk and is W4's intended behavior under ruling
+  2026-08-29a. It is not verifiable or fixable within W3's scope, and W3's own
+  requirement ("when phases are disabled or multiplier == 1.0 the attribute is
+  absent"; the visible card unchanged) is met per (a) and (b).
+
+C5. metrics + render.go UNCHANGED vs attempt 1 -- MET (mtime + content evidence;
+    see the honesty caveat)
+  There is no attempt-1 commit, stash, or snapshot in the repo (`git stash list`
+  -> "No stashes"; `.swarm/work/` is empty; branch tip is fa3ee20, the same
+  master merge, with everything unstaged), so a literal `git diff` against
+  attempt 1 is not possible. The strongest available evidence:
+  (a) mtimes straddle the attempt-1 verdict write (13:02:22):
+        12:39:00  internal/services/metrics/metrics.go
+        12:41:03  internal/services/metrics/metrics_test.go
+        12:39:33  internal/templates/render.go
+        12:40:19  internal/handlers/dashboard/handlers.go
+        13:14:15  web/templates/components/kpis.html          <-- attempt 2
+        13:20:28  internal/handlers/dashboard/handlers_http_test.go  <-- attempt 2
+      i.e. only the two files the brief names were touched this attempt.
+  (b) Content corroboration against the attempt-1 verdict's own citations:
+      render.go line 78 is still `"formatMultiplier": formatMultiplier,`;
+      metrics_test.go line 1063 is still the `// --- TargetProvenance ---`
+      section header; all 7 attempt-1 test names still exist and pass.
+  (c) Attempt-1 criteria that depend on metrics.go re-checked cheaply and still
+      hold: `grep` over metrics.go shows TargetProvenance takes its multiplier
+      from `mult, name, straddles := phaseWalk(s, rangeStart, rangeEnd)`
+      (metrics.go:186) and phaseAdjustedMonthlyTarget from
+      `avgMultiplier, _, _ := phaseWalk(...)` (metrics.go:149) -- one walk, two
+      callers, no target/base division anywhere in the file. BudgetTargets'
+      signature is identical to master's
+      (`func BudgetTargets(s *models.WhatIfSettings, rangeStart, rangeEnd time.Time) (living, healthcare float64)`,
+      branch:200 vs `git show master:...`:92).
+  CAVEAT stated plainly: (a) is filesystem-timestamp evidence, not content
+  identity against a stored attempt-1 tree, because no such tree exists to
+  diff. I did not re-run the 16,128-case differential equivalence probe; per the
+  brief that is licensed only if metrics is unchanged, and (a)+(b)+(c) are the
+  best proof of that available in this repo.
+
+SCOPE
+  `git diff --stat master` over the six W3.2 manifest files:
+    internal/handlers/dashboard/handlers.go            |   8 ++
+    internal/handlers/dashboard/handlers_http_test.go  | 106 +++++
+    internal/services/metrics/metrics.go               | 136 +++++++---
+    internal/services/metrics/metrics_test.go          | 125 +++++
+    internal/templates/render.go                       |  13 +
+    web/templates/components/kpis.html                 |  26 ++-
+    6 files changed, 395 insertions(+), 19 deletions(-)
+  .swarm/critical.globs = internal/services/storage/**, internal/services/dataloader/**,
+  internal/services/retirement/engine/**, internal/services/transfers/**,
+  internal/services/accounts/accounts.go, internal/services/mcpsvc/confirm/**.
+  None of the six W3 files matches any pattern; W3 touches no critical glob.
+  The branch also carries W1/W2/W4 changes (whatif handlers/models/templates,
+  retirement/analysis/budget_fit.go, dashboard verdict*.go,
+  dashboard-verdict-bar.html) matching the sibling W1.2/W2.2/W4.2 manifests.
+  kpis.html is a shared file listed in both W3.2 and W4.2 manifests. I did not
+  verify the sibling tasks.

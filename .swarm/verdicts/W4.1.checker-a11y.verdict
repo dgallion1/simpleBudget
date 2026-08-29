@@ -1,0 +1,156 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W4
+ATTEMPT: 1
+---
+SCOPE: git diff master -- web/templates/components/dashboard-verdict-bar.html
+(+18/-0, adds a "Living/Healthcare" decomposition line and a plain-English
+verdict sentence beneath the existing headline, using
+text-sm/text-gray-500/dark:text-gray-400/mt-1/space-y-0.5/num).
+
+Method: read ACCESSIBILITY.md (16 numbered points, WCAG 2.2 AA baseline);
+built the branch (`go build ./cmd/server`), ran it three times against
+copies of testdata with monthly_living_expenses/monthly_healthcare tuned to
+force each Health state (green/amber/red), and audited the live
+`/dashboard` page with axe-core (via selenium-webdriver + axe-core source
+injected directly, since @axe-core/cli defaults to headless Chrome's dark
+`prefers-color-scheme`, which silently hid the light-theme failures on the
+first pass — CDP `Emulation.setEmulatedMedia` was used to force each theme
+explicitly). Cross-checked every reported ratio against hand-computed WCAG
+relative-luminance math. All servers were on 127.0.0.1 only and killed after
+the audit; no personal financial data left running.
+
+1. CONTRAST — checked in all three states the decomposition block can render
+   in (HasTarget is only true for green/amber/red; it's never shown against
+   the neutral gray-50 band), both themes.
+
+   Backgrounds traced from internal/templates/render.go's verdictClasses map
+   and internal/handlers/dashboard/verdict.go's Health selection
+   (>10% of target over => red, else amber; under/on-budget => green):
+     green:  bg-emerald-50  (#ecfdf5)      dark:bg-emerald-900/20 on body bg-gray-900
+     amber:  bg-amber-50    (#fffbeb)      dark:bg-amber-900/20 on body bg-gray-900
+     red:    bg-rose-50     (#fff1f2)      dark:bg-rose-900/20 on body bg-gray-900
+
+   New text uses text-gray-500 (#6b7280) light / dark:text-gray-400 (#9ca3af)
+   dark, text-sm (14px, normal weight — not "large text").
+
+   Light theme, axe-confirmed via forced `prefers-color-scheme: light` on
+   the live rendered page (dashboard-verdict-bar.html only):
+     green (#ecfdf5 bg):  gray-500 => 4.59:1  PASS (≥4.5)
+     amber (#fffbeb bg):  gray-500 => 4.66:1  PASS (≥4.5)  [hand-computed;
+       axe run did not hit true amber because test data landed on green/red
+       only — math uses the same verified formula that matched axe exactly
+       in the other two states]
+     red   (#fff1f2 bg):  gray-500 => 4.40:1  FAIL (<4.5)
+       axe-core, live page, forced light scheme:
+       "Element has insufficient color contrast of 4.4 (foreground color:
+       #6b7280, background color: #fff1f2, font size: 10.5pt (14px), font
+       weight: normal). Expected contrast ratio of 4.5:1" — hit on every
+       text-gray-500-on-rose-50 node in the band, including the NEW
+       decomposition `<div>Living: ... Healthcare: ...</div>` and the NEW
+       `<div>No headroom — ... over plan for this period.</div>` sentence
+       line added by this diff.
+       Hand-computed (WCAG relative luminance): 4.400832:1. Matches axe
+       exactly.
+
+   Dark theme, axe-confirmed via forced `prefers-color-scheme: dark`:
+     0 violations in the verdict band in either green or red state.
+     Composited dark:text-gray-400 (#9ca3af) against the real composited
+     background (dark:bg-*-900/20 over the body's dark:bg-gray-900,
+     #111827):
+       green: emerald-900/20 on gray-900 ≈ #0f232b -> 6.38:1  PASS
+       red:   rose-900/20 on gray-900    ≈ #29172a -> 6.62:1  PASS
+     Dark theme has full parity here (point 12) — no dark-only regression.
+
+   RULING: point 7 (contrast ≥4.5:1) is violated in the red/light
+   combination for the two new lines this diff adds.
+
+   PROVENANCE — this exact defect (text-gray-500/dark:text-gray-400 on the
+   rose-50 band background, 4.40:1) already exists in master, unrelated to
+   this diff: line 16/19/22's pre-existing "over {{Months}} months" span
+   uses the identical classes against the identical background, and the
+   Spent/Target 10px uppercase labels (lines 48/52, unchanged) do too — axe
+   flagged all of these together with the two new lines in the red state.
+   The diff does not invent a new failing color pairing; it reuses the
+   file's own already-broken utility-class combination and puts two more
+   sentences behind it. Per the audit brief this is reported with its
+   provenance, but per ACCESSIBILITY.md point 7 (a flat numeric threshold,
+   no grandfather clause) the two new text nodes are live content that
+   fails AA today, in a state (>10% over budget) that is the primary reason
+   this feature exists — so it is called a FAIL rather than filed as a
+   non-blocking note. The pre-existing occurrences (lines 16/19/22, 48, 52)
+   are flagged as a pre-existing site-wide defect for the lead to fix
+   alongside this task, not newly introduced by W4.
+
+   Also observed (pre-existing, out of scope for this diff, not blocking
+   this verdict): axe flagged text-emerald-600 (#059669) on bg-emerald-50
+   (#ecfdf5) at 3.57:1 (Net Savings positive-value figure) and
+   text-emerald-600/text-rose-600 value coloring against bg-rose-50 at
+   3.43–4.27:1 — all pre-existing, unrelated to the decomposition/sentence
+   feature, and unchanged by this diff.
+
+2. COLOR-ALONE (point 8) — PASS. "Living: $X over" / "Healthcare: $Y
+   under" / sentence Kinds "both"/"mixed"/"over" all spell the
+   over/under/on-target distinction in words. The new spans do not apply
+   any conditional color (no text-rose-*/text-emerald-* on the new content
+   at all — everything in the new block is the same gray-500/gray-400
+   regardless of over/under), so there isn't even redundant color-coding to
+   verify parity on; the words are the only channel, which satisfies the
+   point outright.
+
+3. LINEARIZATION (points 1/3 spirit, no explicit ACCESSIBILITY.md number
+   for this but it's WCAG 1.3.2 Meaningful Sequence, AA-adjacent A) — PASS.
+   grep confirms no `aria-hidden`, `aria-live`, `sr-only`, or
+   `visually-hidden` anywhere in the file — no suppressed or
+   screen-reader-only injected text. New block sits as a sibling `<div>`
+   directly after the headline `<div>`, inside the same `flex-1` column,
+   before the separate `ml-auto` stat-tiles column. DOM order (label →
+   headline → decomposition → sentence → stat tiles) matches visual/reading
+   order; no CSS `order` property is applied anywhere in this file.
+
+4. `.num` CLASS (web/static/css/styles.css:149) — PASS.
+   ```
+   .num {
+       font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+       font-variant-numeric: tabular-nums;
+       font-feature-settings: "tnum";
+   }
+   ```
+   Only changes font-family and tabular-figure rendering; no font-size,
+   line-height, width, or overflow rules. Size is inherited from the
+   surrounding text-sm (Tailwind's rem-based 0.875rem), so 200% browser
+   zoom / text-resize scales it with the rest of the paragraph — nothing in
+   `.num` fights reflow (WCAG 1.4.4/1.4.10).
+
+FAILURES:
+- ACCESSIBILITY.md point 7 / WCAG 2.2 SC 1.4.3 (Contrast, AA) —
+  web/templates/components/dashboard-verdict-bar.html:26 and :39 (new
+  decomposition `<div>` and new "No headroom" sentence `<div>`, both under
+  the `text-sm text-gray-500 dark:text-gray-400 mt-1 space-y-0.5` wrapper at
+  line 26): light-theme contrast is 4.40:1 against the red-state
+  `bg-rose-50` band background, below the 4.5:1 AA minimum for normal-size
+  text. Confirmed by axe-core against the live rendered page and by hand
+  computation (relative-luminance formula, both give 4.40:1/4.400832:1).
+  Provenance: identical class/background pairing pre-exists in this same
+  file (lines 16/19/22, 48, 52, unchanged by this diff) — the diff
+  replicates a pre-existing defect into two new, frequently-visible lines
+  rather than introducing a new failure category. Reported per the audit
+  brief's provenance requirement; still a FAIL because the new content is
+  live text that does not meet AA today, in the state (over budget by
+  >10%) most central to the feature.
+
+OBSERVATIONS (non-blocking, out of scope for this diff):
+- Same page, pre-existing: text-emerald-600 (#059669) on bg-emerald-50 at
+  3.57:1 (Net Savings figure, green state) and value coloring on bg-rose-50
+  at 3.43–4.27:1 — unrelated to W4's decomposition/sentence feature,
+  untouched by this diff, flagged for the lead's separate backlog.
+- Site-wide (same /dashboard page, unrelated to this component):
+  axe flagged `input[name="start"]`/`input[name="end"]` missing labels and
+  an unnamed `<select>` (date-range picker) — pre-existing, out of this
+  diff's scope, noted for completeness.
+- The "·" separator between Living/Healthcare in the new decomposition line
+  is presentational; some screen readers render it verbally ("middle dot").
+  Not an ACCESSIBILITY.md violation and not blocking, but a candidate for
+  `aria-hidden="true"` on the separator glyph alone (not the words around
+  it) if the lead wants to tidy verbosity.

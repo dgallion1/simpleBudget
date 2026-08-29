@@ -308,3 +308,33 @@ All three tasks accepted, `gate.sh done` exits 0. Spec: `.swarm/V-RUN-SPEC.md`.
 Escalate-scan note for future runs: V3's test-only edit under
 `dataloader/**` did NOT trigger escalation — the gate escalates on the
 diff, not the path (agents2 31e9954).
+
+## W run — DONE 2026-08-29 (branch fix/phase-visibility)
+
+All four tasks accepted; the ledger's W rows are complete (the X rows
+belong to the concurrent agents2-26 session's run). Spec + rulings:
+`.swarm/W-RUN-SPEC.md` (rulings 2026-08-29a through d).
+
+- **W1** (tier 3, attempt 3) — Living Expenses phase sub-rows in the
+  Monthly Budget Analysis; displayed-sum identity holds by construction
+  (integer cents parsed from the same %.2f the template renders).
+- **W2** (tier 3, attempt 4, user-reopened) — phase note under the slider;
+  snap trap dead (hidden exact-value input is the only submission path;
+  aria-valuetext + thumb parity); ONE whole-dollar rule (half-away,
+  'en-US'-pinned) across Go and JS.
+- **W3** (tier 1, attempt 2) — dashboard Target provenance title/aria.
+- **W4** (tier 3, attempt 4, judges 3-0 overrule) — headroom decomposition
+  + plain-English sentence in the budget banner; banner, card rows, tint,
+  headline all consume one dead-banded BudgetVerdict classification.
+
+Process lessons already encoded as rulings: 29a single-source thresholds,
+29b rendered-strings sums, 29c scope-of-reopened-attempt governs, 29d a
+FAIL can be factually wrong — verify the checker's premise before a fifth
+attempt.
+
+Recorded backlog (not tasks in this run): the Budget sparkline basis
+mismatch (ruling 29d — chip raised); pre-existing a11y debt swept up by
+the W checkers: text-gray-400/500 caption pair sitewide, master's banner
+text on tinted bands, Net Savings coloring 3.4-4.3:1, unlabeled date-range
+inputs, #steady-state-slider label, healthcare-person Source chip
+contrast; W2 oracle helper zzCanonWhole mis-groups negatives (test-only).

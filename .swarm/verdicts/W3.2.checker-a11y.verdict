@@ -1,0 +1,122 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W3
+ATTEMPT: 2
+---
+Scope: git diff master -- web/templates/components/kpis.html, internal/handlers/dashboard/
+handlers.go, internal/services/metrics/metrics.go (fix/phase-visibility, W3.2 manifest).
+Audited in a fresh throwaway copy of /home/darrell/bin/ai/budget2 (cp -a, .git kept) at
+/home/darrell/work/agents2/.swarm-work/budget2-w3-2. No project file was edited in the real
+tree; only the verdict file above was written there. Same real-handler render harness as
+attempt 1 (existing route-level tests plus two temporary local dump tests hitting the same
+/dashboard/kpis route, deleted after use — not part of the accepted diff).
+
+Diff under test (kpis.html), condensed:
+  {{- $prov := .TargetProvenance}}
+  {{- $targetFigure := formatMoney .Metrics.BudgetTarget}}
+  {{- if $prov.Annotate}}
+    {{if $prov.Straddles}}
+      $targetAnnotation = "Target %s — from What-If plan: %s base × avg %s (crosses phase change)"
+    {{else}}
+      $targetAnnotation = "Target %s — from What-If plan: %s base × %s (%s phase)"
+    {{end}}
+  {{end}}
+  {{if $prov.Annotate}}<span title="{{$targetAnnotation}}" aria-label="{{$targetAnnotation}}">
+      Target <span class="num">{{formatMoney .Metrics.BudgetTarget}}</span></span>
+  {{else}}Target <span class="num">{{formatMoney .Metrics.BudgetTarget}}</span>{{end}}
+
+$targetFigure is produced by the exact same template call, `formatMoney .Metrics.BudgetTarget`,
+that renders the visible number in the nested <span class="num">, on the same render pass —
+so the two cannot drift by construction.
+
+CHECK 1 — accessible name now contains the figure AND provenance (1.3.1 / 4.1.2): PASS.
+Rendered via the project's own test, TestDashboardKPIs_TargetProvenance_AnnotatesWhenPhaseActive
+(handlers_http_test.go:1521, base $2,000, Active phase, multiplier 0.95):
+  title="Target $1,900.00 — from What-If plan: $2,000 base × 0.95 (Active phase)"
+  aria-label="Target $1,900.00 — from What-If plan: $2,000 base × 0.95 (Active phase)"
+`go test ./internal/handlers/dashboard/... -run TestDashboardKPIs_TargetProvenance -v` — PASS
+(both provenance tests).
+Independently confirmed via a temporary local dump test reproducing the task's own example
+fixture (base $7,386, Go-Go phase, multiplier 1.1, one-month range):
+  <p class="text-sm emerald...">
+    <span title="Target $8,124.60 — from What-If plan: $7,386 base × 1.1 (Go-Go phase)"
+          aria-label="Target $8,124.60 — from What-If plan: $7,386 base × 1.1 (Go-Go phase)">
+      Target <span class="num">$8,124.60</span>
+    </span> · <span class="num">$6,651.82</span>/mo under
+  </p>
+Visible figure ($8,124.60) and aria-label's leading figure are byte-identical. AT users now
+hear the actual target dollar figure plus its provenance; the content loss from attempt 1
+(Check 1 FAIL — aria-label omitted the computed target, exposing only the pre-multiplier base)
+is resolved. This satisfies 1.3.1 (programmatically-determined text now carries the
+visually-presented value) and 4.1.2 (exposed name supplements rather than replaces the
+rendered figure).
+Also exercised the straddling-range branch with a second temporary dump test (base $2,000,
+range crossing a phase boundary, weighted-average multiplier):
+  title="Target $1,984.62 — from What-If plan: $2,000 base × avg 0.99 (crosses phase change)"
+  aria-label= (identical)
+  visible: <span class="num">$1,984.62</span>
+Figure again matches exactly; "crosses phase change" wording linearizes acceptably for AT
+(Check 5).
+
+CHECK 2 — title == aria-label, no title-only info (1.4.13 / 2.1.1): PASS.
+Both attributes interpolate the same {{$targetAnnotation}} value in all three fixtures
+exercised above (single-phase Active, single-phase Go-Go, straddling). Byte-identical in
+every rendered case. Same OBSERVATION as attempt 1 stands (non-blocking, unchanged by this
+fix): the native title tooltip is mouse-hover-only since the span isn't focusable, so
+sighted keyboard-only users still get neither channel. Not a new regression and not an AA
+violation on its own (1.4.13 governs parity of trigger *content* where hover-or-focus content
+exists, not a mandate that both triggers exist).
+
+CHECK 3 — no wrapper span / no attributes in the unannotated case (byte-for-byte AT parity
+with pre-feature master): PASS.
+`{{if $prov.Annotate}}<span ...>...</span>{{else}}Target <span class="num">...</span>{{end}}`
+— the wrapper span exists only inside the Annotate branch; the else branch is exactly the
+original unwrapped markup. Confirmed by running the project's own
+TestDashboardKPIs_TargetProvenance_AbsentWhenNoPhaseConfig (handlers_http_test.go:1576),
+which asserts no "Target from What-If plan:" text, no `aria-label="Target` attribute, and
+(via regex tolerant of surrounding whitespace) the bare `Target <span class="num">` markup
+with no wrapper — PASS. Note: the $prov/$targetFigure/$targetAnnotation `{{- ...}}` assignment
+lines execute whenever `.Metrics.HasBudgetTarget` is true (even when Annotate is false),
+each leaving one blank output line because they use only left-trim (`{{-`), not `-}}`. This
+is a whitespace-only artifact — confirmed by inspection that it does not add nodes, text, or
+attributes to the DOM and cannot change the accessible-name computation (browsers collapse
+whitespace-only text nodes) — so it does not affect what AT announces. Not a FAIL; noted as
+an OBSERVATION below.
+
+CHECK 4 — still no tabindex/focusability introduced: PASS.
+Diff adds only `title=` / `aria-label=` (and, in the annotated branch, the wrapping `<span>`
+itself) — no `tabindex`, `role`, or interactive markup anywhere in the diff. The span remains
+correctly out of the tab order.
+
+CHECK 5 — em-dash separator linearizes acceptably: PASS.
+Rendered strings ("Target $8,124.60 — from What-If plan: ...", "Target $1,984.62 — from
+What-If plan: ... (crosses phase change)") place the em-dash between two complete clauses
+(figure, then provenance clause) with a space on each side. Screen readers either announce it
+as a pause/"dash" or silently drop it depending on verbosity settings; either way the two
+clauses remain distinguishable and neither reading loses information. No WCAG criterion
+requires a specific punctuation-to-speech mapping here.
+
+ACCESSIBILITY.md cross-check: point 4 (aria-label supplementing/standing in for a visible
+label without erasing visually-presented content) and point 13 (accessible text must carry
+what sighted users see, not substitute a different figure) are now satisfied — the aria-label
+leads with the exact visible target figure before adding provenance, rather than replacing it.
+
+Build sanity: `go build ./...` clean in the audited copy after the fix (no template/handler
+compile errors introduced).
+
+OBSERVATIONS (non-blocking, for the lead):
+1. (Carried from attempt 1, unchanged) The provenance breakdown is exposed via `title`
+   (mouse-hover-only, span not focusable) and `aria-label` (screen-reader-only); sighted
+   keyboard-only users get neither. Not an AA violation but worth a design note if keyboard
+   users are expected to want the breakdown too (e.g. a visible disclosure control).
+2. The `{{- $prov := ...}}`-style assignment lines emit one blank output line each regardless
+   of the Annotate branch taken, whenever a budget target exists. Purely cosmetic in rendered
+   HTML (collapsed by browsers, verified not to affect the DOM structure or AT output) — flag
+   only if the lead cares about minimizing generated whitespace.
+
+VERDICT: PASS — the Check 1 FAIL from attempt 1 (aria-label replacing rather than
+supplementing the visible target figure) is resolved: the accessible name now leads with the
+exact rendered dollar figure before adding provenance, confirmed across single-phase and
+straddling-range fixtures via the real handler/template render path. Checks 2-5 remain PASS
+with no new defects introduced.

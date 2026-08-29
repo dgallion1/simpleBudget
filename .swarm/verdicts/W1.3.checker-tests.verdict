@@ -1,0 +1,147 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W1
+ATTEMPT: 3
+---
+Verified in a full copy of /home/darrell/bin/ai/budget2 (cp -a, .git kept),
+branch fix/phase-visibility, go1.26.6 linux/amd64. Nothing written to the real
+tree except this file.
+
+(1) ORACLE — PASS
+  cmd: bash .swarm/tier3/W1/accept.sh   (cwd = copy)
+  out: CHECK 01-displayed-identity: PASS
+       CHECK 02-package-suites: PASS
+       CHECK 03-build: PASS
+       CHECK 04-vet: PASS
+       passed=4 failed=0
+       ORACLE PASS
+  Re-run after cleaning my scratch files: identical, ends "ORACLE PASS".
+
+(2) BUILD / VET / TESTS / CSS — PASS
+  cmd: go build ./...            -> build_exit=0, no output
+  cmd: go vet ./...              -> vet_exit=0, no output
+  cmd: go test ./...             -> TEST_EXIT=0; all 51 packages "ok", zero
+                                    FAIL/[build failed] lines. Includes
+                                    internal/services/retirement/analysis 40.471s,
+                                    internal/templates 0.801s,
+                                    internal/handlers/whatif 21.390s.
+  cmd: make css-verify           -> CSS_EXIT=0, "tailwind.css is up to date"
+
+(3) W1 TESTS BY NAME, -count=1, NONE SKIPPED — PASS
+  cmd: go test -count=1 -v -run '<4 analysis tests>' ./internal/services/retirement/analysis/
+       --- PASS: TestBudgetFit_LivingExpensesSubItems_PhaseAbove1 (0.00s)
+       --- PASS: TestBudgetFit_LivingExpensesSubItems_PhaseBelow1 (0.00s)
+       --- PASS: TestBudgetFit_LivingExpensesSubItems_AbsentWhenPhasesDisabled (0.00s)
+       --- PASS: TestBudgetFit_LivingExpensesSubItems_AbsentWhenMultiplierIsOne (0.00s)
+  cmd: go test -count=1 -v -run '<2 template tests>' ./internal/templates/
+       --- PASS: TestRenderBudgetAnalysis_LivingExpenseSubItems_RenderedSumHoldsOnFractionalCentBase (0.01s)
+       --- PASS: TestRenderBudgetAnalysisShowsLivingExpensePhaseSubItems (0.01s)
+  6 of 6 named tests ran and passed; no "--- SKIP" in -v output.
+  cmd: grep -n 't.Skip' over the three W1 test files -> no matches.
+  Bodies read and confirmed to assert what their names claim:
+   - PhaseAbove1: 2 sub-items, names "Base (slider setting)" / "Go-Go phase x1.1",
+     7386.00 + 738.60 == 8124.60, SignedAmount set.
+   - PhaseBelow1: asserts adj.Amount < 0 and == -738.60 for a 0.9 phase.
+   - AbsentWhenPhasesDisabled / AbsentWhenMultiplierIsOne: assert SubItems == nil.
+   - RenderedSumHoldsOnFractionalCentBase: drives the REAL analysis.BudgetFit at
+     base 7386.555, renders the real template, regex-extracts the three dollar
+     strings from HTML, asserts base+adjustment == total. (Note: compares parsed
+     float64s with !=, not integer cents; sound at these magnitudes since a real
+     mismatch is >= 1 cent, but the oracle's integer-cent form is stronger.)
+   - ShowsLivingExpensePhaseSubItems: positive fixture asserts the two labels and
+     "$7,386.00/mo", "+$738.60/mo", "$8,124.60/mo"; negative fixture asserts the
+     labels are ABSENT when SubItems is empty.
+
+(4) BITE — PASS (oracle kills the attempt-2 algorithm)
+  In a second scratch copy I replaced the body of centsFromDecimalString with
+  the attempt-2 algorithm: `return int64(math.Round(v * 100))`.
+  cmd: go build ./... -> BUILD_OK
+  cmd: bash .swarm/tier3/W1/accept.sh -> ORACLE_EXIT=1
+       CHECK 01-displayed-identity: FAIL (want 0, got 1)
+       CHECK 02-package-suites: FAIL (want 0, got 1)
+       passed=2 failed=2   (no "ORACLE PASS" line)
+       --- FAIL: TestOracleW1SweepDisplayedIdentity (6.34s), 9 FP-tie cases, e.g.
+         base=117879.59 mult=0.5: DISPLAYED 11787959 + -5893979 = 5893980 cents,
+           want displayed total 5893979
+         base=2133.58 mult=1.25: DISPLAYED 213358 + 53340 = 266698, want 266697
+  The oracle is therefore not vacuous: it discriminates %.2f-parse cents from
+  math.Round cents exactly where the two disagree.
+
+(5) DIFF READ — PASS
+  cmd: rtk proxy git diff -- internal/services/retirement/analysis/budget_fit.go
+       internal/models/whatif.go web/templates/components/whatif/budget-analysis.html
+  - Row Amount stays raw: `Amount: livingExpenseAmount` where
+    livingExpenseAmount = engine.LivingExpensesAtMonth(s, 0). Unchanged value.
+  - %.2f semantics reproduced: centsFromDecimalString does
+    fmt.Sprintf("%.2f", math.Abs(v)), SplitN on ".", ParseInt both parts,
+    cents = whole*100+frac, negate if v < 0. formatMoney (internal/templates/
+    render.go:425-431) does the identical thing: negative -> v = -v, then
+    fmt.Sprintf("%.2f", v), then comma grouping. Same rounding, same sign rule.
+  - Proved by command, not inspection. Scratch test (package analysis, since
+    centsFromDecimalString is unexported) asserting
+      fmt.Sprintf("%.2f", float64(centsFromDecimalString(v))/100) == fmt.Sprintf("%.2f", v)
+    over 21 fixed values (0, +/-0.005, +/-7386.555, +/-9999.99/7, 1e7, 1e7+0.005,
+    +/-12345678.905, +/-99999999.995, +/-1e9+0.125, +/-1234567890.125) plus
+    400,000 pseudorandom signed values up to ~$100M and their /7 divisions:
+      --- PASS: TestZZCheckerCentsMatchesPercent2f (0.32s)
+  - End-to-end negative + >= $10M displayed identity, scratch test rendering the
+    real template through analysis.BudgetFit:
+      base=12,345,678.905 x1.1 -> total=1358024680 base=1234567890 adj=+123456790
+      base=99,999,999.995 x1.25-> total=12499999999 base=10000000000 adj=+2499999999
+      base=10,000,000.00  x0.9 -> total=900000000  base=1000000000  adj=-100000000
+      base=12,345,678.905 x0.5 -> total=617283945  base=1234567890  adj=-617283945
+      base=1428.57        x0.9 -> total=128571     base=142857      adj=-14286
+      base=7386.555       x0.8 -> total=590924     base=738656      adj=-147732
+    base+adj == total in every case; adjustment negative for every mult < 1.0.
+    ok budget2/internal/templates (test PASS after I relaxed my own over-strict
+    assertion; see OBSERVATIONS).
+  - No engine change: `git status --porcelain -- internal/services/retirement/engine/`
+    returns nothing. .swarm/critical.globs lists internal/services/retirement/engine/**
+    (and storage, dataloader, transfers, accounts.go, mcpsvc/confirm) -- none dirty.
+  - Ruling citation present: the centsFromDecimalString doc comment ends
+    "(Ruling 2026-08-29b)" and the inline block in BudgetFit opens
+    'Ruling 2026-08-29b "sum must hold" means the RENDERED strings, not the
+    underlying floats'.
+  - models/whatif.go: +29/-0 only -- GetSpendingPhaseNameAt (mirrors
+    GetSpendingMultiplier's selection rule) plus the SubItems/SignedAmount fields.
+  - Template: +8/-0, a `{{if .SubItems}}{{range .SubItems}}` block emitting
+    pl-8 indented rows; nothing else touched.
+
+OBSERVATIONS (not failures against criteria 1-5; lead adjudicates)
+  a) Spec W1 req 1 says rows without SubItems must be "byte-identical in
+     output". They are not literally byte-identical: the `{{if}}/{{range}}`
+     block leaves one whitespace-only line (12 spaces + newline) per breakdown
+     row. Measured by rendering a 3-row no-SubItems fixture against the HEAD
+     template and against the working template and diffing:
+       27a28 / 34a36 / 40a43, each added line is `            ` and nothing else
+       (cat -A shows "            <EOL>").
+     Whitespace-only; no visible or semantic change. The oracle does not test
+     byte-identity, and the spec designates the oracle as the authoritative
+     acceptance statement for attempt 3.
+  b) Degenerate tiny-base case: base $0.01 with a x0.5 phase renders
+     total $0.01, base $0.01, adjustment "+$0.00" -- a "+" on a shrinking
+     phase. The displayed identity still holds (1 + 0 == 1); this is the
+     unavoidable consequence of cent-exact display rounding, not a defect in
+     the fix. Flagging because it is the one case where the sign glyph
+     contradicts the phase label.
+  c) The template-level fractional-cent test compares float64s (see criterion 3)
+     rather than integer cents. Cannot produce a false PASS at these
+     magnitudes, but it is weaker than the oracle it mirrors.
+
+SCOPE
+  cmd: git status --porcelain, diffed against the union of .swarm/manifests/W*.files
+  Dirty non-.swarm paths not covered by any W manifest:
+    internal/services/retirement/settings.go
+    internal/services/retirement/settings_test.go
+    internal/services/retirement/settings_load_copy_test.go
+    internal/services/retirement/overrides/overrides.go
+    swarm/t7-coverage.sh
+  All five belong to the concurrent, separately-led run (settings_load_copy_test.go
+  adds TestMutatorReturnDoesNotAliasCache about SettingsManager mutators returning
+  prepare.Clone -- unrelated to W). Reported as concurrent-run background, NOT a
+  W scope violation.
+  W1's own manifest (.swarm/manifests/W1.3.files) lists 6 files; all 6 are dirty
+  and every W1-attributable hunk lies inside them. internal/models/whatif.go is
+  claimed only by W1 manifests (grep -l over .swarm/manifests/W*.files).
+  No file under .swarm/critical.globs is modified.

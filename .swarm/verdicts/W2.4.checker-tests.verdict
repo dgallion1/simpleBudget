@@ -1,0 +1,242 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W2
+ATTEMPT: 4
+---
+Method: repo copied with `cp -a /home/darrell/bin/ai/budget2 <scratch>/w2/budget2`
+(HEAD fa3ee202381da837f8a40b8dacae77955fdbc595, branch fix/phase-visibility).
+Every command below ran in the copy. The only file written in the real tree is
+this verdict. Toolchain: `go version` inside the module reports
+"go version go1.26.6 linux/amd64" (go.mod `toolchain go1.26.6`, GOTOOLCHAIN=auto;
+the host go on PATH is 1.26.3 and is upgraded automatically). node v24.12.0.
+
+--------------------------------------------------------------------------
+(1) ORACLE: `bash .swarm/tier3/W2/accept.sh` -> passed=12 failed=0, ORACLE PASS
+--------------------------------------------------------------------------
+PASS. Command: `bash .swarm/tier3/W2/accept.sh`; captured exit status printed
+"ORACLE_EXIT=0". Full check roll:
+  CHECK 01-canonical-strings: PASS
+  CHECK 02-js-one-formatter-defined: PASS
+  CHECK 03-js-single-toLocaleString: PASS
+  CHECK 04a-portfolio-no-bare-toLocaleString: PASS
+  CHECK 04b-portfolio-uses-shared-formatter: PASS
+  CHECK 08-no-bare-toLocaleString-anywhere: PASS
+  CHECK 09-no-undefined-locale: PASS
+  CHECK 10-rate-assumptions-routes-through-shared-formatter: PASS
+  CHECK 11-spending-phases-label-guarded: PASS
+  CHECK 05-package-suite: PASS
+  CHECK 06-build: PASS
+  CHECK 07-vet: PASS
+  ---
+  passed=12 failed=0
+  ORACLE PASS
+
+--------------------------------------------------------------------------
+(2) build / vet / test / css-verify green
+--------------------------------------------------------------------------
+PASS, four separate commands:
+  `go build ./...`            -> no output, BUILD=0
+  `go vet ./...`              -> no output, VET=0
+  `go test -count=1 ./...`    -> FULLTEST_EXIT=0; 49 packages reported "ok";
+                                 `grep -E "FAIL|panic"` over the log produced
+                                 no lines.
+  `make css-verify`           -> "tailwind.css is up to date", CSSVERIFY=0
+                                 (rebuilds to tmp/tailwind.check.css and cmp's
+                                 against the committed web/static/css/tailwind.css).
+
+--------------------------------------------------------------------------
+(3) W2 tests by name, including the new spending-phases guard, none skipped
+--------------------------------------------------------------------------
+PASS. The five W2 test files named in .swarm/manifests/W2.4.files define 14 test
+functions (`grep -Hn "^func Test" <the five files>`). Running them by name:
+
+`go test -count=1 -v -run '<all 12 whatif names>' ./internal/handlers/whatif/`
+  --- PASS: TestBuildLivingExpensesPhaseNote_EnabledWithNextTransition (0.00s)
+  --- PASS: TestBuildLivingExpensesPhaseNote_DisabledPhases (0.00s)
+  --- PASS: TestBuildLivingExpensesPhaseNote_NilConfig (0.00s)
+  --- PASS: TestBuildLivingExpensesPhaseNote_MultiplierOne (0.00s)
+  --- PASS: TestBuildLivingExpensesPhaseNote_SinglePhaseOmitsNextClause (0.00s)
+  --- PASS: TestBuildLivingExpensesPhaseNote_NilSettings (0.00s)
+  --- PASS: TestFormatPhaseMultiplier (0.00s)
+  --- PASS: TestPortfolioSettingsRender_LivingExpensesPhaseNote (0.01s)
+  --- PASS: TestHandleWhatIfSettings_LivingExpensesRoundTripsOffGridValue (0.01s)
+  --- PASS: TestHandleWhatIfSettings_LivingExpensesSnappedValueWouldPersist (0.01s)
+  --- PASS: TestMonthlyLivingExpensesWholeDollarRounding_HalfAwayFromZeroTie (0.01s)
+  --- PASS: TestSpendingPhasesRender_PhaseDollarLabel (0.01s)   <-- NEW (attempt 4)
+  ok  budget2/internal/handlers/whatif  0.072s
+
+`go test -count=1 -v -run '...' ./internal/templates/`
+  --- PASS: TestRenderRateAssumptions_PhasesEnabledOmitsPreviewPanel (0.01s)
+  --- PASS: TestUpdateSpendingPreview_NoPanelDoesNotThrow (0.04s)
+      --- PASS: .../panel_absent (0.02s)
+      --- PASS: .../panel_visible (0.02s)
+  ok  budget2/internal/templates  0.057s
+
+No skips: `go test -count=1 ./... | grep -c SKIP` -> 0, and
+`go test -count=1 -v ./internal/handlers/whatif/ ./internal/templates/ |
+ grep -E "^(--- SKIP|=== SKIP)"` produced no lines. Note the Node harness test
+does carry a `t.Skip` guard when node is absent; node IS present here and both
+subtests ran and passed, so the guard did not fire.
+
+Read-through of the tests, not just their names:
+- spending_phases_render_test.go:14 TestSpendingPhasesRender_PhaseDollarLabel
+  renders the "whatif-spending-phases" template with MonthlyLivingExpenses=7386
+  and a 1.25 multiplier and asserts `strings.Contains(out, "$9,233/mo")` —
+  i.e. half-away-from-zero on the 9232.50 tie WITH comma grouping. It asserts
+  what its name claims. Proof it is load-bearing is bite (c) below.
+- monthly_living_expenses_rounding_test.go asserts
+  `aria-valuetext="$7,387"` present AND `aria-valuetext="$7,386"` absent on the
+  .50 tie, in both portfolio-settings and the quick-adjust mirror, plus the
+  phase-dollar label. Real tie assertion, not a name.
+- render_spending_preview_test.go now concatenates the extracted
+  whatif-quick-adjust-scripts source AHEAD of the spending-preview source
+  (`combined := append(append([]byte{}, qa[1]...), m[1]...)`) so
+  formatWholeDollars is defined before updateSpendingPreview calls it — this is
+  the shared-function dependency the attempt-4 delta claims, and the harness
+  stubs `document.body.addEventListener` because quick-adjust-scripts wires
+  listeners at load. Both modes ("OK skipped", "OK rows=6") assert.
+
+--------------------------------------------------------------------------
+(4) The locale defect is dead — reproduced the adversarial lane's scenario
+--------------------------------------------------------------------------
+PASS, by execution, not inspection.
+
+(4a) Static: `grep -rn "toLocaleString" web/templates/components/whatif/`
+returns exactly 5 call sites, every one locale-pinned:
+  portfolio-settings.html:170   (base * multiplier).toLocaleString('en-US', {min/maxFractionDigits:2})
+  quick-adjust-scripts.html:12  '$' + Math.round(v).toLocaleString('en-US')
+  healthcare-person.html:81,121,148  '$' + Number(this.value).toLocaleString('en-US')
+`grep -rn "toLocaleString()\|toLocaleString(undefined" web/templates/` returns
+ZERO lines across the whole template tree (not just whatif), and the same grep
+over web/static/js/ returns zero. rate-assumptions.html has zero toLocaleString
+(it routes through `${formatWholeDollars(spending)}` at line 866).
+
+(4b) Dynamic: a Node probe reads the template files off disk, extracts the
+formatter source VERBATIM by regex (no hand-transcription) and evals it, run as
+`LC_ALL=de_DE.UTF-8 LANG=de_DE.UTF-8 node locale_probe.js <tree>`:
+  EXTRACTED_SOURCE: "function formatWholeDollars(v) {\n    return '$' + Math.round(v).toLocaleString('en-US');\n}"
+  node default locale = de-DE
+  formatWholeDollars(7386.5)  = $7,387      want $7,387      PASS
+  formatWholeDollars(7386)    = $7,386      want $7,386      PASS
+  formatWholeDollars(9232.5)  = $9,233      want $9,233      PASS
+  formatWholeDollars(1234567) = $1,234,567  want $1,234,567  PASS
+  CONTROL locale-less: $7.387          <-- the defect, reproduced
+  healthcare inline handlers found: 3
+    handler[0] on "7387" = $7,387  PASS
+    handler[1] on "7387" = $7,387  PASS
+    handler[2] on "7387" = $7,387  PASS
+  portfolio phase-amount expr: "(base * multiplier).toLocaleString('en-US', {...})"
+    portfolio phase amount(7386,1.25) = 9,232.50  PASS
+  LOCALE_PROBE_PASS ; PROBE_EXIT=0
+
+The CONTROL line is the decisive evidence: in the SAME process, under the SAME
+de-DE default locale, the pre-fix locale-less call yields "$7.387" (dot
+grouping, which would overwrite the server's "$7,386"/"$7,387" on first input
+event) while every shipped call site yields comma grouping. Node honours
+LC_ALL here — verified independently:
+`LC_ALL=de_DE.UTF-8 node -e "..."` printed
+  default locale: de-DE / bare: 7.387 / undef: 7.387
+so the harness really was in a de-DE locale, and both the bare and the
+`undefined`-locale forms are demonstrably broken there.
+
+Caveat stated plainly: this is Node/ICU with the formatter extracted from the
+templates, not a real browser. The brief authorised exactly this reproduction.
+
+--------------------------------------------------------------------------
+(5) Mutation bites — all three fail as required
+--------------------------------------------------------------------------
+Each bite is a fresh `cp -a` of the copy; the original copy is untouched.
+
+(5a) Revert quick-adjust-scripts' 'en-US' pin
+  Mutation: line 12 -> `return '$' + Math.round(v).toLocaleString();`
+  `bash .swarm/tier3/W2/accept.sh` -> BITE_A_EXIT=1
+    CHECK 08-no-bare-toLocaleString-anywhere: FAIL (want 0, got 1)
+    passed=11 failed=1
+  Check 08 is the killer, as required. Worth recording: checks 02 and 03 still
+  PASS under this mutation (03 only counts occurrences, it does not inspect the
+  argument), so check 08 is the ONLY thing standing between this tree and the
+  regression.
+
+(5b) Revert rate-assumptions to an inline formatter
+  Mutation: line 866 -> `${'$' + Math.round(spending).toLocaleString('en-US')}/mo`
+  `bash .swarm/tier3/W2/accept.sh` -> BITE_B_EXIT=1
+    CHECK 10-rate-assumptions-routes-through-shared-formatter: FAIL (want 0, got 1)
+    passed=11 failed=1
+  Check 10 fails as required — and note it fails even though the inline copy
+  was itself correctly locale-pinned, i.e. it enforces the single-formatter
+  contract, not merely the locale.
+
+(5c) Mutate spending-phases' server-rendered label to formatNumber
+  Mutation: spending-phases.html:78
+    `{{formatDollars (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}`
+    -> `{{formatNumber (mul ...)}}`
+  `go test -count=1 -run TestSpendingPhasesRender_PhaseDollarLabel ./internal/handlers/whatif/`
+    --- FAIL: TestSpendingPhasesRender_PhaseDollarLabel (0.01s)
+        spending_phases_render_test.go:33: expected phase-dollar label "$9,233/mo" ...
+    GUARD_EXIT=1
+  The NEW in-repo guard fails, as required.
+
+  I additionally confirmed the N1 gap this guard was written to close was real
+  and that the guard is its sole detector:
+    - `go test -count=1 -v ./internal/handlers/whatif/` in the mutated tree:
+      the ONLY `--- FAIL` line in the whole package is
+      TestSpendingPhasesRender_PhaseDollarLabel.
+    - Deleting spending_phases_render_test.go from the mutated tree and running
+      `go test -count=1 ./...` gives NOGUARD_EXIT=0 — the pre-attempt-4 suite
+      is entirely green against this mutation. The gap was genuine and is now
+      closed in-repo (oracle check 11 covers the same ground independently).
+
+--------------------------------------------------------------------------
+(6) Attempt-3 invariants still hold
+--------------------------------------------------------------------------
+PASS. Both re-run and both read.
+  --- PASS: TestHandleWhatIfSettings_LivingExpensesRoundTripsOffGridValue
+      Saves MonthlyLivingExpenses=7386, POSTs
+      monthly_living_expenses="7386.00" plus an unrelated monthly_property_tax
+      change to handleWhatIfSettings, reloads and asserts
+      `loaded.MonthlyLivingExpenses != 7386` is a failure and
+      `loaded.MonthlyPropertyTax != 250` is a failure. Genuine round-trip
+      through a real POST via httptest, exactly as its name claims.
+  --- PASS: TestMonthlyLivingExpensesWholeDollarRounding_HalfAwayFromZeroTie
+      (all three subtests) — the .50 tie assertions described under (3).
+
+--------------------------------------------------------------------------
+SCOPE
+--------------------------------------------------------------------------
+Attempt-4 delta established by mtime against the W2.3 verdict
+(.swarm/verdicts/W2.3.checker-tests.verdict, 14:27:08):
+`find internal web swarm cmd -newermt "2026-08-29 14:28" -type f` lists exactly
+eight files. Six are the attempt-4 delta and all six appear in
+.swarm/manifests/W2.4.files:
+  14:44:40 web/templates/components/whatif/quick-adjust-scripts.html
+  14:44:43 web/templates/components/whatif/portfolio-settings.html
+  14:44:45 web/templates/components/whatif/rate-assumptions.html
+  14:44:55 web/templates/components/whatif/healthcare-person.html
+  14:45:33 internal/handlers/whatif/spending_phases_render_test.go
+  14:49:48 internal/templates/render_spending_preview_test.go
+This matches the declared delta exactly: locale pinning + rate-assumptions
+routed through the shared formatter + the new guard + the harness update.
+
+The other two files in that window are NOT W2:
+  14:47:25 web/templates/components/kpis.html
+  14:48:24 internal/handlers/dashboard/verdict_render_test.go
+`grep -l "kpis.html\|verdict_render_test.go" -r .swarm/manifests/` shows both are
+owned by W3.1, W3.2, W4.1, W4.2, W4.3 and W4.4 — the concurrent dashboard-verdict
+run sharing this worktree. Their content (Metrics.LivingExpensesTotal / verdict
+bar) is unrelated to whatif locale formatting. Flagged for the lead as
+cross-task worktree traffic; not attributable to W2 and not something I can
+adjudicate.
+
+critical.globs: clean. Every path in .swarm/manifests/W2.4.files was matched
+against each pattern in .swarm/critical.globs — zero hits (CRITICAL_SCAN_DONE
+with no "CRITICAL HIT" lines). All W2.4 paths live under
+internal/handlers/whatif/, internal/templates/ and
+web/templates/components/whatif/.
+
+Concurrent-run background declared out of scope by the brief
+(internal/services/whatifmcp/**, internal/services/retirement/{settings*,
+overrides/**}, swarm/t7-coverage.sh) was not examined; all of it is green in
+the full-suite run above.
+
+Nothing was edited. The only write to the real tree is this file.

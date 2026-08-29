@@ -1,0 +1,123 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: W1
+ATTEMPT: 3
+---
+SCOPE: attempt 3 changed only internal/services/retirement/analysis/budget_fit.go
+(rounding math, "sum must hold" fix per Ruling 2026-08-29b) plus new Go
+tests. Verified the template that renders the affected UI,
+web/templates/components/whatif/budget-analysis.html, is byte-identical to
+the attempt-2 passing state. Worked in a scratch copy
+(/tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/budget2-copy,
+cp -a, .git intact, branch fix/phase-visibility); only write is this verdict
+file in the real tree. Standard: ACCESSIBILITY.md points 7, 8, 12, 13 +
+WCAG 2.2 AA 1.4.3.
+
+1. TEMPLATE UNCHANGED — PASS.
+   `git diff master -- web/templates/components/whatif/budget-analysis.html`
+   shows exactly one hunk, identical to the one W1.2's verdict recorded:
+   the 8-line block (now lines 33-40) adding the two Living-Expenses
+   sub-row `<div>`s, both spans on `text-gray-500 dark:text-gray-300`. No
+   class, attribute, or markup differs from the attempt-2 state. The
+   rounding fix lives entirely in budget_fit.go / models — the template's
+   `{{if .SubItems}}{{range .SubItems}}...{{end}}{{end}}` loop is untouched
+   and was already generic over any SubItems content.
+
+2. CONTRAST — PASS, recomputed against the same hex pair (unchanged
+   classes mean unchanged colors).
+   Panel bg: budget-analysis.html:4 `bg-white dark:bg-gray-800` → light
+   #ffffff, dark #1f2937 (stock Tailwind, no overrides in
+   tailwind.config.js).
+   sRGB relative-luminance (WCAG formula, recomputed independently in
+   python):
+     - text-gray-500 #6b7280 on #ffffff (light) → 4.83:1  PASS (≥4.5:1)
+     - dark:text-gray-300 #d1d5db on #1f2937 (dark) → 9.96:1 PASS (≥4.5:1)
+   text-sm container, no size/weight override on sub-row spans → normal-text
+   4.5:1 threshold applies (WCAG 1.4.3); both themes clear it, matching
+   W1.2's cited numbers exactly (point 7, point 12 dark-mode parity).
+
+3. LIVE RE-RENDER WITH THE ROUNDING FIX — PASS.
+   Built a throwaway cmd/a11yrender/main.go calling the real
+   analysis.BudgetFit + internal/templates.NewFromFS/RenderToString, using
+   the fractional-cent base from the new regression test
+   (render_budget_analysis_fractional_cent_test.go): MonthlyLivingExpenses
+   = 7386.555, Go-Go phase ×1.1. Rendered output:
+     Living Expenses ....... $8,125.21/mo
+       Base (slider setting) $7,386.56/mo
+       Go-Go phase ×1.1 ..... +$738.65/mo
+   7386.56 + 738.65 = 8125.21 — the displayed strings now sum exactly (this
+   is the defect attempt-3 fixes; confirms the fix works and the template
+   renders it with no new markup). Both sub-row spans still carry
+   `text-gray-500 dark:text-gray-300`; no class conditioned on sign or
+   magnitude.
+
+4. AXE RE-RUN, LIGHT + DARK — PASS for the sub-rows.
+   Wrapped the rendered panel in light.html (no dark class) and dark.html
+   (`<html class="dark">`), both loading the real built
+   web/static/css/tailwind.css, ran
+   `npx @axe-core/cli file:///tmp/{light,dark}.html --tags wcag2a,wcag2aa,wcag21aa,wcag22aa`.
+   Because this harness renders the WHOLE whatif-budget-analysis component
+   (sliders, steady-state controls, etc. — not just the isolated fixture
+   W1.2 used), the raw violation counts differ from W1.2's numbers, but
+   every single reported selector is pre-existing and outside this
+   template's changed lines:
+     light: 12 color-contrast occurrences — text-green-600 spans,
+       text-gray-400/dark:text-gray-500 captions, .font-normal,
+       #steady-state-age-display, .w-8, .text-amber-600, .ml-1 age labels,
+       `summary`; plus 1 "label" violation on #steady-state-slider.
+     dark: 9 color-contrast occurrences, same categories minus
+       text-green-600/text-amber-600 (those pass in dark); same "label"
+       violation on #steady-state-slider.
+   None of the reported selectors match the sub-row markup
+   (`.pl-8 > .text-gray-500.dark\:text-gray-300`); grepped the full
+   violation-node lists for "pl-8" and "text-gray-500.dark\:text-gray-300"
+   — zero matches in either run. These are the same pre-existing,
+   out-of-scope findings W1.2 already flagged as an OBSERVATION (untouched
+   by this diff, confirmed via `git diff master` showing no other class
+   changes in the file).
+
+5. SUB-ROW DOM ADJACENCY / TEXT SIGNS / MULTIPLIER GLYPH — PASS, unchanged.
+   - Rendered HTML: both new sub-row `<div>`s remain immediate next-siblings
+     of the "Living Expenses" row's `<div>`, before the next breakdown item.
+   - "+" is literal template text (budget-analysis.html:37
+     `{{if and .SignedAmount (ge .Amount 0.0)}}+{{end}}`), unchanged;
+     "-" comes from formatMoney() string concatenation, not CSS content —
+     both announce to screen readers (point 13, real text not color-only).
+   - Byte-checked the multiplier glyph in the freshly rendered HTML:
+     `Go-Go phase ×1.1` — hex dump confirms 0xC3 0x97 (UTF-8 for U+00D7
+     MULTIPLICATION SIGN), not ASCII "x" (0x78). Produced by the same
+     unmodified `fmt.Sprintf("%s phase ×%s", ...)` line; `git diff master`
+     on budget_fit.go shows only sub-item-construction lines added around
+     it.
+   - Color-alone: sign is conveyed by literal "+"/"-" text; the amount
+     span's class is static (`text-gray-500 dark:text-gray-300`) regardless
+     of sign — no color-only information (point 8).
+
+6. GO TEST SUITE SANITY (informational, not a substitute for checker-tests) —
+   new tests render-verify the identity: both
+   internal/services/retirement/analysis/budget_fit_living_expense_subitems_test.go
+   and
+   internal/templates/render_budget_analysis_fractional_cent_test.go assert
+   the same base+adjustment=total invariant via the rendered strings. Not
+   run here (checker-tests' lane), only read to confirm they exercise the
+   real template path and the fractional-cent case this a11y check also
+   rendered.
+
+RAW EVIDENCE (scratch copy / scratchpad only):
+  /tmp/claude-1000/-home-darrell-work-agents2/10650b69-2838-4be1-90f1-25413f54158e/scratchpad/budget2-copy/cmd/a11yrender/main.go
+  /tmp/a11y-panel.html
+  /tmp/light.html
+  /tmp/dark.html
+
+VERDICT: PASS — the template attempt-2 was checked against is unchanged
+byte-for-byte in the diff vs master, both sub-row contrast pairs recompute
+to the same passing ratios (4.83:1 light, 9.96:1 dark), a live re-render
+using the exact rounding-fix scenario shows the displayed base+adjustment
+now sums to the displayed total with no markup regression, axe finds zero
+violations on the sub-row elements in either theme, and DOM adjacency,
+real-text sign glyphs, and the U+00D7 multiplier character are all intact.
+Pre-existing, out-of-scope axe findings elsewhere in the component
+(text-green-600/text-amber-600 pairs, tax-caption text-gray-400/500,
+#steady-state-slider missing label) are unchanged by this diff and remain
+an OBSERVATION for a future dedicated sweep, not a blocker for W1.

@@ -1,0 +1,241 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: W4
+ATTEMPT: 4
+---
+METHOD
+    Repo copied with `cp -a` (git intact) to
+    scratchpad/w4/repo; every command below ran in that copy or in a further
+    copy of it. Nothing was written to /home/darrell/bin/ai/budget2 except this
+    verdict file. Copy fidelity proven:
+      sha256sum on both trees, identical for all four files that matter:
+        da519909...9689  web/templates/components/kpis.html
+        68648e6f...d3ab  internal/handlers/dashboard/verdict_render_test.go
+        06df35ff...2d6d  internal/handlers/dashboard/verdict.go   (attempt-3 file)
+        aad7c3e9...ded6  .swarm/tier3/W4/accept.sh
+    Toolchain: `go version` -> go1.26.6 linux/amd64.
+    Baseline for every "vs master" comparison: `git show master:...` at
+    fa3ee20 (the branch's merge-base tip).
+
+CRITERION 1 — oracle
+    MET. Command: `bash .swarm/tier3/W4/accept.sh` (cwd = tree under test).
+    Output:
+      CHECK 00-tint-single-source-and-trim: PASS
+      CHECK 01-parity-and-cleanliness: PASS
+      CHECK 02-package-suite: PASS
+      CHECK 03-build: PASS
+      CHECK 04-vet: PASS
+      ---
+      passed=5 failed=0
+      ORACLE PASS
+    Exit status 0 (the script's own `(( FAILN == 0 )) || exit 1`).
+
+CRITERION 2 — build / vet / test / css-verify
+    MET, four commands:
+      `go build ./...`   -> no output, BUILD_RC=0
+      `go vet ./...`     -> no output, VET_RC=0
+      `go test ./...`    -> TEST_EXIT=0; filtered for anything that is not
+                            "ok" or "no test files": zero lines.
+      `make css-verify`  -> "tailwind.css is up to date", RC=0
+    (repo has no swarm/css-verify.sh; the target lives in Makefile:323.)
+
+CRITERION 3 — all W4 tests by name, incl. the new tint test, none skipped
+    MET. `grep -n '^func Test'` over the two W4 test files enumerates eight:
+      verdict_render_test.go: TestDashboardVerdictBar_Render (:10),
+        TestBudgetKPICardAndVerdictBanner_AgreeWithinDeadBand (:191),
+        TestBudgetKPICard_BucketRowAbsentWhenUnconfigured (:280),
+        TestVerdictRender_NoNegativeZero (:346),
+        TestBudgetKPICard_TintMatchesClassification (:426)   <- new in attempt 4
+      verdict_test.go: TestBuildBudgetVerdict (:10),
+        TestClassifyBucket (:286), TestClassifyVerdictSentence (:319)
+    `go test -count=1 -v -run '<all eight>' ./internal/handlers/dashboard/`
+    -> "--- PASS" for all eight top-level tests and every subtest; final
+    line "ok  budget2/internal/handlers/dashboard 0.070s".
+    Skip scan: `go test -count=1 -v ./internal/handlers/dashboard/ | grep -E
+    'SKIP'` -> no output (151 "--- PASS" lines counted in the same run);
+    `go test -count=1 ./... | grep -E 'SKIP|FAIL'` -> no output.
+
+    Assertion audit of the new test (verdict_render_test.go:418-477), read in
+    full, not inferred from its name: three subtests, each rendering the real
+    "kpis" template through renderer.RenderToString with a BudgetVerdict built
+    by BuildBudgetVerdict.
+      dead-band (delta 0.60): asserts headline contains "On budget" AND
+        strings.Count(out,"bg-rose-50")==2 AND count("border-rose-200")==2
+        (the two permanently-rose static cards).
+      clearly over (+501): asserts `</span> over</p>` present AND
+        count("bg-rose-50") >= 3.
+      clearly under (-501): asserts `</span> under</p>` AND
+        count("bg-emerald-50") >= 2 AND count("bg-rose-50") == 2.
+    The name claims "tint matches classification"; the body asserts tint
+    counts and headline text across all three classification states. Name and
+    body agree. Proven to bite in criterion 6(b).
+
+CRITERION 4 — numeric comparison literals in the Budget-card region
+    MET AS SCOPED BY THE RULING; NOT LITERALLY MET. Report the fact and let
+    the lead adjudicate.
+    Command (Budget card = kpis.html lines 128-202, the last card, from its
+    `<!-- Budget ... -->` marker to its closing `</div>`):
+      awk 'NR>=128&&NR<=202' web/templates/components/kpis.html |
+        grep -E '[-]?[01]\.0'
+    Output: exactly ONE hit, at line 180:
+      {{if ge .PeriodComparison.CumulativeDeltaChange 0.0}}+{{else}}-{{end}}...
+    That literal is NOT on the classified figure. It is the +/- sign prefix on
+    PeriodComparison.CumulativeDeltaChange (period-over-period change), and it
+    is byte-identical to master:
+      `git show master:web/templates/components/kpis.html | grep -n
+       PeriodComparison.CumulativeDeltaChange` -> master line 156, same text.
+    Ruling 2026-08-29c scopes attempt 4 to "the last two independent
+    classifiers of CombinedCumulativeDelta ... Nothing else", so removing it
+    would itself breach scope.
+    The criterion's operative half IS proven:
+      `grep -n 'CombinedCumulativeDelta\|\.CumulativeDelta\b\|
+       HealthcareCumulativeDelta' web/templates/components/kpis.html`
+      -> only lines 144 and 146, both `formatMoney (abs ...)` for display.
+      Zero comparisons on any cumulative-delta figure remain in the template.
+    Tint / headline / icon all branch on verdict-derived variables:
+      :133 {{$budgetOver := and .BudgetVerdict.HasTarget .BudgetVerdict.IsOver}}
+      :134 {{$budgetHealthy := and .BudgetVerdict.HasTarget .BudgetVerdict.IsUnder}}
+      :136-:138 container tint  -> $budgetOver / $budgetHealthy
+      :143,:145 headline        -> $budgetOver / $budgetHealthy
+      :195,:196 icon bg + svg   -> $budgetOver / $budgetHealthy
+      :163,:171 bucket rows     -> eq .BudgetVerdict.{Living,Healthcare}.Status
+    LEAD DECISION NEEDED: criterion 4 as written ("zero numeric comparison
+    literals remain") and ruling 29c ("nothing else") cannot both be
+    satisfied. I read the ruling as controlling and record the criterion met.
+
+CRITERION 5 — the whitespace criterion that failed attempt 3
+    MET. Method reproduced from the attempt-3 verdict (W4.3.checker-tests,
+    lines 85-116): two trees, identical Go code, differing only in
+    web/templates/components/kpis.html (branch version vs
+    `git show master:...`); an identical planted dump test renders the "kpis"
+    and "dashboard-verdict-bar" templates for fixtures both-buckets-configured
+    at living +501/hc 0 ("clearly over"), living -501/hc 0 ("clearly under")
+    and living +0.60/hc 0 (dead band). Bucket-row region extracted by
+    depth-matched <div> scan from
+      `<div class="text-xs text-gray-500 dark:text-gray-400 mt-2 space-y-0.5
+       leading-snug">` through its closing tag.
+    Measured:
+      over     master 860B / branch 858B ; whitespace-only lines: master 0, branch 0
+      under    master 867B / branch 865B ; whitespace-only lines: master 0, branch 0
+      deadband master 858B / branch 861B ; whitespace-only lines: master 0, branch 0
+      line count 14 in every case, both arms.
+    `diff -u master branch` on the over and under regions yields exactly one
+    hunk each, two lines changed, all content, no whitespace:
+      -   <span class="text-emerald-500 dark:text-emerald-400">
+      -       <span class="num">$0.00</span> under
+      +   <span class="text-gray-600 dark:text-gray-400">
+      +       <span class="num">$0.00</span> on target
+    i.e. the healthcare bucket at delta 0 now reads "on target" in the
+    dead-band gray instead of "under" in emerald. That is the intended content
+    change. NO whitespace-only lines that master lacks: zero in either arm.
+    The attempt-3 gap (master 799B / branch 883B, five new whitespace-only
+    lines) is closed. All five trim markers are present, in the Budget card
+    region only, at kpis.html :153 `{{- /* Ruling 2026-08-29a`, :160
+    `{{- if .BudgetVerdict.Living.Configured}}`, :167 `{{- end}}`, :168
+    `{{- if .BudgetVerdict.Healthcare.Configured}}`, :175 `{{- end}}` —
+    the same five sites attempt 3 named (149/156/163/164/171, shifted +4 by
+    the new comment). `grep -c '{{-'` over lines 128-202 -> 5.
+
+    RESIDUAL, outside criterion 5's stated region, reported for the lead:
+    a full-render line diff (branch vs master-template, same Go code, same
+    fixture) shows exactly one whitespace-only line that master lacks, and it
+    is NOT in the bucket-row region:
+      over/under: master 187 lines / branch 188; unified diff n=0 gives two
+      hunks — '@@ -141,0 +142 @@' adding the single line '    ' (4 spaces),
+      and the intended content hunk above. Whitespace-only lines added by the
+      branch = 1, removed = 0. Render line 142 sits immediately BEFORE the
+      Budget card container (line 143), in the inter-card gap where master
+      already emits three such lines (139-141).
+    Source located: the new `{{/* Ruling 2026-08-29c: ... */}}` at
+    kpis.html:129-132 carries no trim marker, unlike its 29a sibling at :153.
+    One-token fix would be `{{- /* Ruling 2026-08-29c` . Zero rendered effect;
+    the same artifact class attempt 3 failed on, but at the inter-card level
+    rather than inside the card, and introduced by the very comment the
+    ruling authorized. Criterion 5 as written scopes to the bucket-row region
+    and that region is clean, so I do not fail on it.
+
+CRITERION 6 — bites, in scratch copies only
+    6(a) MET. Mutant: kpis.html:160 `{{- if .BudgetVerdict.Living.Configured}}`
+      -> `{{if ...}}` (one trim marker reverted; single-occurrence assert in
+      the patch script).
+      Region comparison CATCHES it:
+        over   master 860B / branch 858B / MUTANT 879B, whitespace-only
+               lines 0 / 0 / 1
+        under  master 867B / branch 865B / MUTANT 886B, 0 / 0 / 1
+        mutant region == branch region: False (both fixtures)
+      The oracle DOES NOT catch it: `bash .swarm/tier3/W4/accept.sh` in the
+      mutant tree still prints passed=5 failed=0 / ORACLE PASS, exit 0.
+      The brief's requirement is "region comparison and/or the oracle", so the
+      criterion is satisfied by the region comparison. Recorded for the lead:
+      oracle check 00 is named "00-tint-single-source-and-trim" but its body
+      (zz_oracle_w4b_test.go) contains no whitespace or trim assertion at all
+      — only tint-class counts. The name overpromises; trim regressions are
+      caught only by an external region diff such as this one.
+    6(b) MET. Mutant: kpis.html:133 reverted to
+      `{{$budgetOver := and .Metrics.HasCombinedTarget
+        (gt .Metrics.CombinedCumulativeDelta 0.0)}}`.
+      New tint test FAILS:
+        --- FAIL: TestBudgetKPICard_TintMatchesClassification/dead-band:...
+          verdict_render_test.go:450: dead-band: 3 occurrence(s) of
+            "bg-rose-50", want exactly the 2 static cards
+          verdict_render_test.go:450: ... "border-rose-200" ...
+        TINT_RC=1
+      Oracle check 00 FAILS:
+        CHECK 00-tint-single-source-and-trim: FAIL (want 0, got 1)
+          zz_oracle_w4b_test.go:29: dead-band: 3 occurrence(s) of "bg-rose-50"
+        (01 and 02 fail too; 03/04 pass) -> passed=2 failed=3, exit 1.
+      Both required detectors fire, on the specific mutation.
+
+CRITERION 7 — dead band end-to-end, one render
+    MET. Single fixture, CombinedCumulativeDelta = 0.60 (living +0.60,
+    healthcare 0, both configured, combined target 2300), rendered once
+    through "kpis" (which embeds the banner) and once through
+    "dashboard-verdict-bar". All three observations come from that one render
+    pair:
+      a) Card headline "On budget" — kpis render line 150:
+         <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">On budget</p>
+         and `</span> over</p>` is absent from the render (False).
+      b) No rose tint on the Budget card — card container at render lines
+         143-144 is
+           class="rounded-xl border p-4 ... border-gray-200 dark:border-gray-700
+                  bg-gray-50 dark:bg-gray-800"
+         icon wrapper: `<div class="p-3 bg-gray-100 dark:bg-gray-700 rounded-full">`.
+         Whole-render counts: bg-rose-50 = 2, border-rose-200 = 2, and both
+         occurrences are at render lines 69 and 114 — the two permanently-rose
+         static cards (Total Expenses, Monthly Healthcare). Neither is the
+         Budget card.
+      c) Banner healthy — the dashboard-verdict-bar render carries
+         class="verdict-green ... bg-emerald-50 dark:bg-emerald-900/20
+         border-emerald-300 dark:border-emerald-700", headline "On budget",
+         decomposition "Living: $0.60 on target · Healthcare: $0.00 on target",
+         sentence "You could spend up to $0.00 extra this period and stay on
+         plan." No "$-0.00" anywhere.
+    The two surfaces agree on the same 0.60 figure — the exact split that
+    ruling 2026-08-29a was written to close.
+
+SCOPE
+    Attempt-4 delta is confined to the two files the brief names. Evidence:
+    mtimes in the tree under test (cp -a preserved),
+      14:47:25  web/templates/components/kpis.html
+      14:48:24  internal/handlers/dashboard/verdict_render_test.go
+      14:02:24  internal/handlers/dashboard/verdict_test.go        (attempt 3)
+      14:01:27  web/templates/components/dashboard-verdict-bar.html (attempt 3)
+      13:59:09  internal/handlers/dashboard/verdict.go             (attempt 3)
+    verdict.go therefore UNCHANGED in attempt 4, as the brief states.
+    All five paths in .swarm/manifests/W4.4.files appear in
+    `git diff --name-only master`; nothing in the manifest is missing.
+    critical.globs: `cat .swarm/critical.globs` lists
+      internal/services/storage/**, internal/services/dataloader/**,
+      internal/services/retirement/engine/**, internal/services/transfers/**,
+      internal/services/accounts/accounts.go, internal/services/mcpsvc/confirm/**
+    No W4 manifest path matches any of them; none of those paths appears in
+    `git diff --name-only master`.
+    Other files dirty vs master (whatif handlers/templates, models/whatif.go,
+    metrics, retirement/analysis/budget_fit.go, retirement/overrides,
+    retirement/settings*, internal/templates/render*, swarm/t7-coverage.sh,
+    handlers.go, handlers_http_test.go) belong to the concurrent W1/W2/W3/X
+    runs the brief declares out of scope, and none carries an attempt-4
+    mtime. kpis.html additionally contains the concurrent W3 provenance block
+    at lines 63-74; it is correctly trimmed ({{- at :63,:64,:65,:66) and is
+    not W4's.

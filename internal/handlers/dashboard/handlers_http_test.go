@@ -3,6 +3,7 @@ package dashboard
 import (
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -1512,6 +1513,111 @@ func TestHandleDashboard_BudgetVsActualCard_EmptyState(t *testing.T) {
 	}
 	if !strings.Contains(body, "Budget vs Actual Over Time") {
 		t.Errorf("chart card heading missing")
+	}
+}
+
+// ---------- Target provenance (title/aria on the phase-adjusted target) ----------
+
+func TestDashboardKPIs_TargetProvenance_AnnotatesWhenPhaseActive(t *testing.T) {
+	rows := [][]string{
+		{"2025-01-05", "Rent", "-1500", "Housing"},
+	}
+	tmpDir, dl, store, cleanup := writeTempCSV(t, rows)
+	defer cleanup()
+
+	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
+	rend, err := templates.New(templateDir, false)
+	if err != nil {
+		t.Fatalf("templates.New: %v", err)
+	}
+
+	rm := retirement.NewSettingsManager(tmpDir, store)
+	settingsPath := filepath.Join(tmpDir, "whatif.json")
+	// Primary is 70 at start ("2025-01") -> Active phase (multiplier 0.95),
+	// so the $2,000 base target is phase-adjusted to $1,900. The whole
+	// one-month query range sits inside the Active phase, so no straddle.
+	settingsJSON := fmt.Sprintf(`{
+		"monthly_living_expenses": 2000,
+		"start_date": "2025-01",
+		"phase_age_reference": "primary",
+		"persons": [{"id": "p1", "name": "Primary", "birth_month": %q, "role": "primary"}],
+		"spending_phase_config": {
+			"enabled": true,
+			"phases": [
+				{"name": "Go-Go", "start_age": 0, "multiplier": 1.0},
+				{"name": "Active", "start_age": 65, "multiplier": 0.95}
+			]
+		}
+	}`, models.BirthMonthForAge("2025-01", 70))
+	if err := os.WriteFile(settingsPath, []byte(settingsJSON), 0o600); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	Initialize(dl, rend, rm, store)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+
+	rec := doGet(t, r, "/dashboard/kpis?start=2025-01-01&end=2025-01-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rec.Code, rec.Body.String()[:min(rec.Body.Len(), 300)])
+	}
+	body := rec.Body.String()
+
+	wantText := "Target $1,900.00 — from What-If plan: $2,000 base × 0.95 (Active phase)"
+	if !strings.Contains(body, `title="`+wantText+`"`) {
+		t.Errorf("missing title=%q; body excerpt: %s", wantText, excerptAround(body, "Monthly Living Expenses", 600))
+	}
+	if !strings.Contains(body, `aria-label="`+wantText+`"`) {
+		t.Errorf("missing aria-label=%q; body excerpt: %s", wantText, excerptAround(body, "Monthly Living Expenses", 600))
+	}
+}
+
+func TestDashboardKPIs_TargetProvenance_AbsentWhenNoPhaseConfig(t *testing.T) {
+	rows := [][]string{
+		{"2025-01-05", "Rent", "-1500", "Housing"},
+	}
+	tmpDir, dl, store, cleanup := writeTempCSV(t, rows)
+	defer cleanup()
+
+	templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
+	rend, err := templates.New(templateDir, false)
+	if err != nil {
+		t.Fatalf("templates.New: %v", err)
+	}
+
+	rm := retirement.NewSettingsManager(tmpDir, store)
+	settingsPath := filepath.Join(tmpDir, "whatif.json")
+	// No spending_phase_config at all -> target equals the base; nothing to annotate.
+	if err := os.WriteFile(settingsPath, []byte(`{"monthly_living_expenses": 2000}`), 0o600); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+
+	Initialize(dl, rend, rm, store)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+
+	rec := doGet(t, r, "/dashboard/kpis?start=2025-01-01&end=2025-01-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rec.Code, rec.Body.String()[:min(rec.Body.Len(), 300)])
+	}
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "Target") {
+		t.Fatalf("expected Monthly Living Expenses card to show 'Target'; body:\n%s", body)
+	}
+	if strings.Contains(body, "Target from What-If plan:") {
+		t.Errorf("target annotation rendered with no phase config; expected byte-identical (unannotated) rendering; body:\n%s", body)
+	}
+	if strings.Contains(body, `aria-label="Target`) {
+		t.Errorf("unexpected aria-label on Target when no phase config exists; body:\n%s", body)
+	}
+	// Byte-identical to master's fragment: no wrapper <span> around "Target"
+	// at all when unannotated — just the bare "Target <span class=\"num\">"
+	// text master has always rendered.
+	if !regexp.MustCompile(`<p class="text-sm [^"]*">\s*Target <span class="num">`).MatchString(body) {
+		t.Errorf("expected bare \"Target <span...\" markup (byte-identical to master, no wrapper span) when unannotated; body:\n%s", body)
 	}
 }
 

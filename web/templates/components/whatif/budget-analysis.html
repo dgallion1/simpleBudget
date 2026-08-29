@@ -30,6 +30,14 @@
                 </span>
                 <span class="text-gray-600 dark:text-gray-300">{{formatMoney .Amount}}/mo</span>
             </div>
+            {{if .SubItems}}
+            {{range .SubItems}}
+            <div class="flex justify-between py-0.5 pl-8">
+                <span class="text-gray-500 dark:text-gray-300">{{.Name}}</span>
+                <span class="text-gray-500 dark:text-gray-300">{{if and .SignedAmount (ge .Amount 0.0)}}+{{end}}{{formatMoney .Amount}}/mo</span>
+            </div>
+            {{end}}
+            {{end}}
             {{end}}
             {{end}}
 

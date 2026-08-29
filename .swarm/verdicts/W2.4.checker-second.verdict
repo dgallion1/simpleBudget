@@ -1,0 +1,74 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: W2
+ATTEMPT: 4
+---
+Worked from a scratchpad copy of /home/darrell/bin/ai/budget2 (fix/phase-visibility,
+diff verified byte-identical to the live tree via `git diff` comparison before and
+after testing). Only write was the verdict file below.
+
+(1) de-DE reproduction, re-run against current code: with `LANG=de_DE.UTF-8
+LC_ALL=de_DE.UTF-8` (confirmed `Intl.NumberFormat().resolvedOptions().locale`
+resolves to `de-DE` under node 24/ICU77), extracted and ran every JS dollar-string
+call site verbatim (formatWholeDollars in quick-adjust-scripts.html; the
+phase-note cents line in portfolio-settings.html; the three healthcare-person.html
+oninput handlers). All produced en-US-grouped output ($7,387 / $9,233 / $8,124.60
+etc.) under the simulated de-DE environment — the drift is dead on every dollar
+string this run touched, because every call now takes an explicit 'en-US' (or
+'en-US', {...}) argument rather than the OS/browser default.
+
+(2) Whole-app sweep: `grep -rn "toLocaleString" web/` returns exactly 5 hits, all
+in whatif templates (quick-adjust-scripts.html:12, portfolio-settings.html:170,
+healthcare-person.html:81/121/148) and all pin 'en-US'. No hits in
+dashboard.js/whatif-tabs.js/whatif-poll.js. charts.js uses `Intl.NumberFormat('en-US', ...)`
+(already locale-pinned, untouched by this run). `grep -rnE
+"toLocaleString\s*\(\s*\)"` and the `undefined`-locale variant both return zero
+matches app-wide (whitespace-obfuscated bare calls also ruled out). No other
+same-page server/client disagreement introduced by this run.
+
+(3) Intl edge/boundary probe: compared Go's canonical half-away-from-zero
+formatter against `Math.round(v).toLocaleString('en-US')` for 0, 0.4, 0.5, 999,
+999.5, 1000, 999999.5, 1e9, 1234567890.5, 1e-7 — all match exactly, including
+comma-grouping at the billion boundary. Found two non-shipping edge notes, not
+failures: (a) the oracle's own throwaway `zzCanonWhole` helper in accept.sh
+mis-places the comma for negative inputs ("$-,100") — a cosmetic bug in the test
+helper itself, not in the production `internal/templates/render.go
+formatWholeDollars`, which correctly strips sign before grouping and returns
+"-$100"; (b) JS Math.round(-0.5).toLocaleString('en-US') yields "$-0" vs Go's
+"$0" — but living expenses and every other value routed through
+formatWholeDollars on this page are non-negative by construction (multipliers,
+slider minimums all >= 0), so this is unreachable in the app, not a same-page
+divergence.
+
+(4) Node-harness load-order check: real page script order in whatif.html is
+`whatif-spending-preview-scripts` (defines updateSpendingPreview) BEFORE
+`whatif-quick-adjust-scripts` (defines formatWholeDollars) — the opposite of
+what the render_spending_preview_test.go comment claims ("the same load order as
+the real page"; the harness concatenates quick-adjust-scripts first). This
+comment is factually wrong. It does not mask a real defect: verified by swapping
+the concatenation order in a scratch copy of the test (m+qa instead of qa+m) —
+TestUpdateSpendingPreview_NoPanelDoesNotThrow still passes either way, because
+both are plain top-level `function` declarations with no immediate/top-level
+cross-calls; every real invocation (oninput/onclick) fires only after the full
+page — hence all script tags — has already parsed and executed. Confirmed no
+DOMContentLoaded listener anywhere in rate-assumptions.html or
+quick-adjust-scripts.html calls updateSpendingPreview or formatWholeDollars at
+load time. Traced the actual template inclusion chain
+(whatif.html:101 whatif-rate-assumptions inputs, :155-159 script includes,
+:159 quick-adjust-scripts) to confirm this. Verdict: comment inaccuracy, not a
+functional defect — noted for the record, not grounds for FAIL.
+(Accidentally reverted this test file to HEAD with a stray `git checkout --` on
+my scratch copy mid-investigation; caught it immediately via `git status`
+showing a clean file, restored from the real tree via `cp`, and reverified the
+oracle passed clean afterward — real repo at /home/darrell/bin/ai/budget2 was
+never touched by this.)
+
+(5) Baseline reproduction: `bash .swarm/tier3/W2/accept.sh` on the copied tree:
+12/12 checks PASS, "ORACLE PASS" (matches .swarm/tier3/W2/oracle.4.log).
+`go build ./...`, `go vet ./...`, `go test ./...` all clean (no non-ok packages).
+Out-of-scope concurrent-run areas (whatifmcp, retirement/settings*,
+retirement/overrides, swarm/t7-coverage.sh) not touched by this review.
+
+No reachable same-value-two-strings case remains on any whatif surface this run
+touched. PASS.

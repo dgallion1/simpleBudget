@@ -1,0 +1,146 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: X8
+ATTEMPT: 1
+---
+Audited in a `cp -a` copy at scratch/x8/repo (kept .git). All commands below
+were run there against a real render, not template source.
+
+## 1. Template integrity (heading-repair verification)
+
+- Independent tag-balance check (open/close counts for h1-h6/div/section/span,
+  after stripping HTML/Go-template comments) across all 50 manifest templates
+  incl. the 6 hand-repaired files (budget-analysis, failure-points,
+  historical-backtest, monte-carlo, spending-phases, social-security):
+  ALL BALANCED. Two apparent mismatches were false positives from tag names
+  mentioned inside `<!-- -->` and `//` JS comments (accounts_card.html,
+  accounts.html), confirmed by direct inspection, not real markup.
+- `go build ./...`: clean. `go test -count=1 ./internal/templates/...
+  ./web/... ./internal/handlers/whatif/...`: all `ok`.
+- Built cmd/server, ran it against a throwaway `BUDGET_DATA_DIR` (empty temp
+  dir, no seed data needed — pages render empty-state at 200 OK) and curled
+  /dashboard /whatif /insights /transfers /major-expenses. Parsed each
+  response with a strict Python html.parser tag-stack tracker (not the
+  template source):
+  - dashboard: 1 h1, sequence h1,h2×5 — no skip, 0 tag-mismatch errors.
+  - insights: 1 h1, sequence h1,h2,h2,h2,h2,h3,h3,h2 — no skip, 0 errors.
+  - major-expenses: 1 h1, sequence h1,h2,h3,h2 — no skip, 0 errors.
+  - transfers: 1 h1, sequence h1,h2,h2 — no skip, 0 errors.
+  - whatif: 1 h1, 28 more headings (all the promoted whatif/* partials
+    concatenated) — no skip anywhere, 0 tag-mismatch errors. This directly
+    exercises all 6 hand-repaired files in one render; the repair is proven
+    complete, not just claimed.
+  - Landmarks: every page has exactly one <main>, one <nav>, one <header>
+    (banner) and one <footer>; transfers has a second, non-landmark <header>
+    nested inside <main> wrapping just the h1/intro text — byte-identical to
+    master (`git diff master -- web/templates/pages/transfers.html` shows no
+    header/h1 hunk), not an X8 defect.
+
+## 2. Contrast spot-audit (18 combinations computed from the actual shipped
+   CSS values, `git diff master -- web/static/css/tailwind.css` confirms the
+   RGB/alpha figures used came straight from web/static/css/tailwind.css)
+
+PASS (light and dark):
+- green-700/white 5.02:1, green-700/green-50 4.79:1 (green-600/white was
+  3.30:1 — confirms why the sweep was necessary)
+- gray-600 captions on white 7.56:1, gray-50 7.23:1, rose-50 6.88:1,
+  indigo-50 6.76:1, amber-50 7.29:1, emerald-50 7.17:1
+- verdict-bar band label/value colors, both themes, all 4 Health states
+  (read from render.go's verdictClasses map), band bg composited correctly
+  from the shipped rgba() alpha values over the real body background
+  (bg-gray-900 dark / bg-gray-50 light): emerald-700/emerald-50 5.21:1,
+  amber-700/amber-50 4.84:1, rose-700/rose-50 5.72:1, gray-600(label)/
+  gray-700(value) on gray-50 7.23/9.86:1; dark: emerald-300/400, amber-300/
+  400, rose-300/400, gray-400/200 on their composited band backgrounds all
+  6.24-11.86:1.
+- svg exemption (monte-carlo.html:268): byte-identical to master
+  (`git diff master` confirms), non-text icon, out of scope for the sweep as
+  documented. (Missing aria-hidden on this decorative svg is PRE-EXISTING —
+  see Observations.)
+
+FAIL — dark-mode contrast, ACCESSIBILITY.md points 7 and 12 (WCAG 1.4.3):
+  The task's own list of "8 hand-picked tint-background exceptions" in
+  kpis.html + guardrails.html (plus 4 more instances of the same pattern,
+  `text-gray-500 dark:text-gray-500`, in the same two files) leave
+  `dark:text-gray-500` (#6b7280) as caption/label text against dark
+  translucent or solid card backgrounds that are much darker than the
+  gray-800 the shade was calibrated for. Computed straight from the shipped
+  CSS (`rgba(136,19,55,.2)` etc. composited over the real body
+  `bg-gray-900`/card `bg-gray-800`, per `git diff master -- ...` confirming
+  none of these background classes changed):
+
+    kpis.html:77,81   (bg-gray-50 dark:bg-gray-800, solid)      3.04:1
+    kpis.html:111,113 (bg-rose-50 dark:bg-rose-900/20)          3.48:1
+    kpis.html:179,185 (neutral: bg-gray-50 dark:bg-gray-800)    3.04:1
+    guardrails.html:6,72 (bg-white dark:bg-gray-800 card, solid) 3.04:1
+    guardrails.html:26,33 (bg-red-50 dark:bg-red-900/20)         2.96:1
+    guardrails.html:46,53 (bg-green-50 dark:bg-green-900/20)     2.80:1
+
+  All 12 sites are text-xs/text-sm/text-[10px] — none qualify as "large
+  text" — so the 4.5:1 threshold applies; every one fails it, several by a
+  wide margin. `git diff master` shows these `dark:*` class tokens were left
+  unchanged while the paired light-mode class WAS swept on the same line
+  (e.g. kpis.html: `text-gray-400 dark:text-gray-500` (master) →
+  `text-gray-600 dark:text-gray-500` (X8) at line 111) — i.e. this is not
+  inherited baggage the sweep walked past, it is the sweep's own documented,
+  reviewed decision to leave these 8(+4) alone, and that decision is
+  measurably wrong: the light side got fixed, dark did not, so dark mode is
+  no longer at parity with light (point 12) on these captions.
+
+## 3. Sweep completeness
+
+- `grep -rn 'text-green-600' web/templates internal --include='*.html'
+  --include='*.go'` → exactly one hit: monte-carlo.html:268, the documented
+  svg exemption. Sweep complete elsewhere.
+- kpis.html / guardrails.html gray-400/500 spot-grep: see #2 above — the
+  documented exceptions are real and located exactly where described, but
+  fail contrast (not a completeness defect, a correctness defect in the
+  exception itself).
+
+## 4. Labels
+
+- 8 date-range inputs confirmed across the 4 pages that have them
+  (dashboard×2, insights×2, major-expenses×2, explorer×2 — all in the
+  manifest), verified in RENDERED html (curl'd dashboard/insights/major-
+  expenses; explorer template inspected directly, all 8 `for`/`id` pairs
+  match and are page-unique). `git diff master` confirms each label was
+  previously unassociated (`<label class="...">`) and now carries a
+  matching `for`/`id`.
+- `#steady-state-slider` aria-label confirmed in rendered whatif.html
+  (`aria-label="Override steady-state year"`), matches the diff.
+
+## 5. JS selector
+
+- `git diff master -- .../conversion-sweep.html` shows exactly the two
+  `querySelector('#conversion-sweep-panel h3')` → `...h2` sites updated.
+- `grep -rn "querySelector...['\"]h[3-6]" web/static/js web/templates` →
+  no hits anywhere else. No other broken heading selector.
+
+## 6. Build hygiene
+
+- `git diff master -- web/static/css/tailwind.css` → empty (byte-identical).
+- `make css-verify` → "tailwind.css is up to date".
+- `bash swarm/t7-coverage.sh` → exit 0, "OK: 732 literal utility-looking
+  class tokens covered (55 whitelisted, 50 dynamic-safelist entries
+  verified present)".
+
+## 7. Scope
+
+- `git status --short` cross-checked against the 54-file manifest: every
+  manifest file is modified; the extra modified files (handlers_live*.go,
+  handlers_test.go, dataloader/loader.go, retirement/*, mcpsvc/*,
+  .swarm/ledger.tsv, .swarm/NEXT.md, swarm/t7-coverage.sh, .claude/skills/*)
+  belong to sibling X-run tasks / lead bookkeeping, not X8 — reported, not
+  attributed.
+- `internal/handlers/whatif/spending_trajectory_test.go`: exactly one
+  changed line, a `text-green-600`→`text-green-700` class-string assertion.
+  Confirmed authorized, single-line.
+
+## Observations (non-blocking, pre-existing, not X8's introduction)
+
+- monte-carlo.html:268 decorative svg icon has no `aria-hidden="true"`;
+  byte-identical to master, out of X8's scope.
+- The recorded follow-ups (Budget sparkline/basis mismatch,
+  successRateTextClass tinted-band item, rulings 2026-08-29d / X8 report)
+  were not re-litigated per instruction.

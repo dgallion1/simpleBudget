@@ -1,0 +1,87 @@
+VERDICT: OVERRULE
+CHECKER: judge-standards
+FAMILY: adversarial
+TASK: X1
+ATTEMPT: 2
+---
+Read on disk: internal/services/mcpsvc/snapshot/snapshot_test.go (the actual
+comment, not the checkers' paraphrases), snapshot.go:1-70 (Ensure's own doc
+comment), docs/whatif-mcp-followups-2026-08-09.md §3, `gh issue view 26
+--json body`, and .swarm/X-RUN-SPEC.md's X1 section + Amendments.
+
+Written acceptance for X1 attempt 2, as stated by the lead and confirmed in
+X-RUN-SPEC.md: "honest rename of the missing-file case; a genuinely-
+unreadable case (source exists, read fails, error surfaced, no destination
+file leaked); root-proof per D-2026-08-29e; package vet/tests green." All
+four are satisfied and mutation-verified — checker-second's own report
+concedes this explicitly ("technical assertions in the new test are correct
+and mutation-verified"). checker-tests independently proved C1-C6 with
+commands, including the root-namespace EISDIR proof and two adversarial
+mutations (swallow-error, leak-a-.bak) that the new test catches. Nothing in
+this is in dispute.
+
+The sole contested point is the new test's doc comment, which cites
+docs/whatif-mcp-followups-2026-08-09.md §3 for an encryption/blind-copy
+rationale that §3 does not support and that arguably conflicts with Ensure's
+own neighboring doc comment (snapshot.go:47-50, ciphertext being exactly
+what os.ReadFile CAN read). checker-second's textual reading of §3 is
+correct on its own terms — §3 ("Data-directory resolution") is about the
+`.encrypted`-marker directory mismatch and BUDGET_DATA_DIR, not about
+Ensure/os.ReadFile at all.
+
+But the material fact controls the ruling. This exact citation and rationale
+did not originate with the worker:
+
+  Issue #26 body (`gh issue view 26 --json body`): "The reason
+  `Snapshotter.Ensure` reads the source bytes rather than using `os.Link` is
+  specifically the unreadable case: `docs/whatif-mcp-followups-2026-08-09.md`
+  §3 records that this MCP detects encryption in the wrong directory, so a
+  blind copy of ciphertext would appear to succeed and the caller's
+  abort-before-write guarantee would silently not fire."
+
+  .swarm/X-RUN-SPEC.md X1 (the dispatch brief itself, lines 54-57): "The
+  reason `Snapshotter.Ensure` reads bytes instead of `os.Link` is the
+  UNREADABLE case (docs/whatif-mcp-followups-2026-08-09.md §3: blind copy of
+  ciphertext would appear to succeed and the abort-before-write guarantee
+  would silently not fire)."
+
+  The test's comment on disk is a close paraphrase of both, reproducing the
+  same claim and the same citation almost verbatim. The worker did not
+  fabricate this provenance; it inherited it faithfully from the material it
+  was dispatched with. If the citation is wrong, the error was authored
+  upstream of the worker (issue #26, echoed into the SPEC's own task
+  description) and the worker's fidelity to its brief is not a standards
+  violation attributable to this work product.
+
+On the two questions posed: (1) the WRITTEN standard for X1 — the four-item
+acceptance list — nowhere requires the new test's comment to carry a
+correct documentary citation; citation accuracy is not one of the
+enumerated criteria and all four enumerated criteria are met. (2) The house
+norm that doc comments must match what the code does (seen repeatedly in
+this repo's review specs, e.g. REVIEW_AUG20_SPEC S5, REVIEW_FIXES_SPEC R6)
+is aimed at comments asserting something about the code's own behavior that
+a future reader would otherwise have to rediscover by hand — classically a
+function's own godoc. Here the defective sentence is explanatory motivation
+for a test, lifted near-verbatim from the issue/spec that commissioned it;
+the defect is located in that upstream text, not invented or embellished by
+the worker's own judgment. checker-second's report agrees the test "would
+have been sound on its own steam citing Ensure's actual
+missing-file-must-abort guarantee... It did not need the encryption tie-in
+at all" — i.e. the finding is about an avoidable citation error in
+inherited framing, not a defect in test construction or in honesty about
+what the test checks (which was the actual subject of issue #26 and the
+actual subject of X1's acceptance criteria).
+
+Sending this back to the worker for a comment-wording fix, when all four
+acceptance criteria are met and mutation-verified and the wrong citation
+was handed to the worker by the brief itself, would penalize the work for a
+defect in the constitution's own supporting material rather than in the
+work. That is a correction to route to the lead (fix the SPEC/issue
+citation, or have the worker reword the comment to cite Ensure's actual
+missing-source-must-abort guarantee as checker-second suggests), not a
+task-blocking standards failure at this attempt.
+
+VERDICT: OVERRULE — the FAIL is set aside; the work meets the written X1
+acceptance criteria at attempt 2. Recommend the lead separately correct the
+§3 citation (in the test comment and, upstream, in X-RUN-SPEC.md/issue #26)
+as a non-blocking follow-up.

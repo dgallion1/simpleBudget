@@ -437,7 +437,7 @@
                         aria-describedby="acct-new-id-help"
                         {{if eq .ErrorField "id"}}aria-invalid="true"{{end}}
                         class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                    <p id="acct-new-id-help" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    <p id="acct-new-id-help" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
                         A stable slug, e.g. <code>usaa-checking</code>. Transactions and
                         your saved decisions reference it, so it must be unique and should
                         not be renamed casually.
@@ -468,7 +468,7 @@
                         <option value="{{.}}">{{title (printf "%s" .)}}</option>
                         {{end}}
                     </select>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
                         <code>credit</code> forces the credit-card sign convention
                         for this account&rsquo;s files, overriding the &ge;70%-positive
                         heuristic. Other kinds leave the heuristic alone.
@@ -483,7 +483,7 @@
                     aria-describedby="acct-new-patterns-help"
                     class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                     placeholder="usaa-checking*.csv&#10;usaa"></textarea>
-                <p id="acct-new-patterns-help" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                <p id="acct-new-patterns-help" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
                     One pattern per line. Patterns are matched case-insensitively
                     against the CSV filename: a glob first (<code>path.Match</code>),
                     then a plain substring as a fallback. A pattern like
@@ -499,7 +499,7 @@
                     aria-describedby="acct-new-threshold-help"
                     {{if eq .ErrorField "low_balance_threshold"}}data-focus-target="low_balance_threshold" aria-invalid="true"{{end}}
                     class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                <p id="acct-new-threshold-help" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                <p id="acct-new-threshold-help" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
                     Enter a dollar amount, e.g. <code>500</code>. Leave blank or enter
                     <code>0</code> to use the default of ${{printf "%.0f" .DefaultThreshold}}.
                     Only meaningful for checking and savings accounts.
@@ -529,7 +529,7 @@
                         <h3 class="text-base font-medium text-gray-800 dark:text-gray-100">
                             {{$acct.Account.Name}}
                             {{if $acct.IsFirst}}
-                            <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">(first match wins)</span>
+                            <span class="ml-2 text-xs text-gray-600 dark:text-gray-400">(first match wins)</span>
                             {{end}}
                         </h3>
                         <p class="text-sm text-gray-600 dark:text-gray-400">
@@ -575,7 +575,7 @@
                                 value="{{if gt $acct.Account.LowBalanceThreshold 0.0}}{{printf "%.2f" $acct.Account.LowBalanceThreshold}}{{end}}"
                                 aria-describedby="acct-edit-threshold-help-{{$acct.Account.ID}}"
                                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                            <p id="acct-edit-threshold-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            <p id="acct-edit-threshold-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
                                 Blank or <code>0</code> uses the default (${{printf "%.0f" $root.DefaultThreshold}}).
                             </p>
                         </div>
@@ -587,7 +587,7 @@
                         <textarea id="acct-edit-patterns-{{$acct.Account.ID}}" name="file_patterns" rows="3"
                             aria-describedby="acct-edit-patterns-help-{{$acct.Account.ID}}"
                             class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">{{range $acct.Account.FilePatterns}}{{.}}&#10;{{end}}</textarea>
-                        <p id="acct-edit-patterns-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        <p id="acct-edit-patterns-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
                             One per line. Glob (<code>path.Match</code>) first, substring fallback.
                         </p>
                     </div>
@@ -607,7 +607,7 @@
                         {{range $acct.MatchedFiles}}<li class="font-mono">{{.}}</li>{{end}}
                     </ul>
                     {{else}}
-                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
                         No CSV files in the data directory currently match this account&rsquo;s patterns.
                     </p>
                     {{end}}
@@ -616,7 +616,7 @@
                 {{/* Anchors. */}}
                 <div class="mt-4">
                     <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">Balance anchors</h4>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
                         An anchor records the balance at the <strong>end</strong> of the
                         anchor day. A transaction dated on the anchor day is already
                         reflected in the amount and is not added again when rolling the
@@ -653,7 +653,7 @@
                         </tbody>
                     </table>
                     {{else}}
-                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">No anchors set.</p>
+                    <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">No anchors set.</p>
                     {{end}}
 
                     <form hx-post="/accounts/{{$acct.Account.ID}}/anchor" hx-target="#accounts-list" hx-swap="innerHTML" class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
@@ -667,7 +667,7 @@
                                 aria-describedby="acct-anchor-date-help-{{$acct.Account.ID}}"
                                 {{if eq $root.ErrorField "anchor_date"}}data-focus-target="anchor_date" aria-invalid="true"{{end}}
                                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                            <p id="acct-anchor-date-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            <p id="acct-anchor-date-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
                                 Format: YYYY-MM-DD.
                             </p>
                         </div>
@@ -681,7 +681,7 @@
                                 aria-describedby="acct-anchor-amount-help-{{$acct.Account.ID}}"
                                 {{if eq $root.ErrorField "anchor_amount"}}data-focus-target="anchor_amount" aria-invalid="true"{{end}}
                                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                            <p id="acct-anchor-amount-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            <p id="acct-anchor-amount-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
                                 Dollars, bank convention (positive = money you have), e.g. <code>4210.55</code>.
                             </p>
                         </div>

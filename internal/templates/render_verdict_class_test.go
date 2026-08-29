@@ -37,12 +37,12 @@ func TestVerdictValueClass(t *testing.T) {
 		h    models.Health
 		want string
 	}{
-		{"green", models.HealthGreen, "text-emerald-600 dark:text-emerald-400"},
-		{"amber", models.HealthAmber, "text-amber-600 dark:text-amber-400"},
-		{"red", models.HealthRed, "text-rose-600 dark:text-rose-400"},
+		{"green", models.HealthGreen, "text-emerald-700 dark:text-emerald-400"},
+		{"amber", models.HealthAmber, "text-amber-700 dark:text-amber-400"},
+		{"red", models.HealthRed, "text-rose-700 dark:text-rose-400"},
 		{"neutral", models.HealthNeutral, "text-gray-700 dark:text-gray-200"},
-		{"zero value fails loud as red", models.Health(""), "text-rose-600 dark:text-rose-400"},
-		{"unknown value fails loud as red", models.Health("chartreuse"), "text-rose-600 dark:text-rose-400"},
+		{"zero value fails loud as red", models.Health(""), "text-rose-700 dark:text-rose-400"},
+		{"unknown value fails loud as red", models.Health("chartreuse"), "text-rose-700 dark:text-rose-400"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,7 +62,7 @@ func TestVerdictLabelClass(t *testing.T) {
 		{"green", models.HealthGreen, "text-emerald-700 dark:text-emerald-300"},
 		{"amber", models.HealthAmber, "text-amber-700 dark:text-amber-300"},
 		{"red", models.HealthRed, "text-rose-700 dark:text-rose-300"},
-		{"neutral", models.HealthNeutral, "text-gray-500 dark:text-gray-400"},
+		{"neutral", models.HealthNeutral, "text-gray-600 dark:text-gray-400"},
 		{"zero value fails loud as red", models.Health(""), "text-rose-700 dark:text-rose-300"},
 		{"unknown value fails loud as red", models.Health("chartreuse"), "text-rose-700 dark:text-rose-300"},
 	}

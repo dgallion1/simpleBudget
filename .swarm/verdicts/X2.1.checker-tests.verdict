@@ -1,0 +1,153 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: X2
+ATTEMPT: 1
+---
+Environment: repo copied with `cp -a /home/darrell/bin/ai/budget2 <scratch>/x2/repo` (branch
+fix/phase-visibility, .git preserved). All commands below run in the copy. go version go1.26.6
+linux/amd64. Mutation experiments run in separate copies (mutA/mutB/mutAB/mutC/mutD); the
+verdict copy was never mutated.
+
+CRITERION 1 — both named tests pass, neither skipped: PASS
+  cmd: go test -count=1 -v -run 'TestRevision_DoesNotBumpOnCacheMissLoad|TestMutatorReturnDoesNotAliasCache' ./internal/services/retirement/
+  out: === RUN   TestMutatorReturnDoesNotAliasCache
+       --- PASS: TestMutatorReturnDoesNotAliasCache (0.01s)
+       === RUN   TestRevision_DoesNotBumpOnCacheMissLoad
+       --- PASS: TestRevision_DoesNotBumpOnCacheMissLoad (0.01s)
+       ok  budget2/internal/services/retirement 0.025s
+  No SKIP lines; both show === RUN followed by --- PASS.
+
+CRITERION 2 — #27 bites: PARTIAL, FAILS on the second required mutation.
+
+  2a (bump mutation must kill the test): PASS
+    mutA: loadInternalContext's migration re-save changed from sm.saveInternal(settings) to
+    sm.saveInternalAndBump(settings) (settings.go:618, the `if changed {` branch).
+    cmd: go test -count=1 -run TestRevision_DoesNotBumpOnCacheMissLoad ./internal/services/retirement/
+    out: --- FAIL: TestRevision_DoesNotBumpOnCacheMissLoad (0.02s)
+         settings_test.go:559: a cache-miss load bumped the revision: 1 -> 2
+    This proves the seeded legacy file genuinely drives the load through decodeSettings'
+    changed=true branch and the loadInternalContext re-save. The revision assertion is
+    load-bearing.
+
+  2b (removing the seeding must make the Persons assertion FAIL): FAIL
+    mutB: the seeding block (the `legacy := []byte(...)` literal plus the store.WriteFile call,
+    settings_test.go:535-544) deleted; nothing else changed.
+    cmd: go test -count=1 -v -run TestRevision_DoesNotBumpOnCacheMissLoad ./internal/services/retirement/
+    out: === RUN   TestRevision_DoesNotBumpOnCacheMissLoad
+         --- PASS: TestRevision_DoesNotBumpOnCacheMissLoad (0.00s)
+         ok  budget2/internal/services/retirement 0.004s
+    The assertion `if len(settings.Persons) == 0 { t.Fatal("seed file did not exercise the
+    decode-time migration: Persons still empty after Load") }` (settings_test.go:555-557) does
+    NOT fire without the fixture, so it does not prove what its message claims.
+
+    Root cause, cited: with no file on disk, loadInternalContext takes the os.IsNotExist branch
+    and returns models.DefaultWhatIfSettings() (settings.go:602-605), and
+    DefaultWhatIfSettings already populates Persons —
+      cmd: sed -n '786,800p' internal/models/whatif.go
+      out: func DefaultWhatIfSettings() *WhatIfSettings {  ...  Persons: []Person{ {ID: ..., Name: "You", ...
+    So len(settings.Persons) != 0 on both the migration path and the defaults path; the
+    assertion cannot distinguish them. The worker's reported "proving the migration path ran"
+    assertion is vacuous as written.
+
+    Confirming the original vacuity is real (context, not a criterion):
+    mutAB: seeding removed AND the re-save bumped.
+    cmd: go test -count=1 -v -run TestRevision_DoesNotBumpOnCacheMissLoad ./internal/services/retirement/
+    out: --- PASS (0.00s) — i.e. without the fixture the revision assertion is vacuous, which
+    is exactly issue #27. The fixture fixes that; the added guard assertion does not guard it.
+
+    WHAT IS MISSING: an assertion in TestRevision_DoesNotBumpOnCacheMissLoad that is false
+    unless the seeded legacy file was decoded — e.g. assert on a value that can only come from
+    the seed (PortfolioValue == 500000, MonthlyLivingExpenses == 4000 with StartDate "2024-01",
+    or Persons[0].BirthMonth == models.BirthMonthForAge("2024-01", 62) / CurrentAge == 62),
+    rather than on len(Persons) which the defaults also satisfy. File:
+    internal/services/retirement/settings_test.go:555-557.
+
+CRITERION 3 — #31 completeness audit of settings.go: PASS
+  cmd: grep -nE 'saveInternal(AndBump)?\(' internal/services/retirement/*.go | grep -v _test.go
+  → 24 mutator save sites: 817 845 886 919 950 969 1000 1028 1068 1101 1123 1189 1215 1432
+    1451 1475 1533 1552 1580 1620 1653 1672 1697 1901
+    (plus 727 = SaveWithRevision, returns an int, no pointer; 618 = loadInternalContext's
+    read-path re-save; 756 = saveInternalAndBump's own body.)
+  cmd: for each of those 24 lines, awk the following 14 lines and print the returns
+  out: every one of the 24 ends in `return prepare.Clone(settings)` (21 sites) or
+       `cloned, err := prepare.Clone(...)` then `return cloned, ...` (UpdateSettings:1131,
+       ApplyOverrides:1196, UpdateSettingsWithPersons:1223). ZERO mutators return the cached
+       object.
+  cmd: grep -n "return settings\|return updated\|return sm.cache\|return cached\|return cloned" internal/services/retirement/settings.go
+  out: only 622 (loadInternalContext — unexported, documented raw-return manager-internal path,
+       object not yet in sm.cache), 652 (LoadScenarioSettings — freshly decoded, never assigned
+       to sm.cache), 1131/1196/1223 (the three cloned returns). No missed mutator.
+  cmd: grep -nE '^func .*SettingsManager\).*\*models\.WhatIfSettings[,)]' internal/services/retirement/*.go | grep -v _test.go
+  out: every SettingsManager method returning a settings pointer lives in settings.go; no
+       method in chain.go / orchestrator.go / engine_hooks.go returns one. Audit is complete
+       for the package.
+  Load/LoadContext escape points also clone: settings.go:448, 461, 473.
+
+CRITERION 4 — #31 bites: PASS
+  mutC: AddIncomeSource's `return prepare.Clone(settings)` reverted to `return settings, nil`;
+  no other mutator touched.
+  cmd: go test -count=1 -v -run TestMutatorReturnDoesNotAliasCache ./internal/services/retirement/
+  out: --- FAIL: TestMutatorReturnDoesNotAliasCache (0.01s)
+       settings_load_copy_test.go:294: mutating AddIncomeSource's return value changed the
+       manager's cached settings: PortfolioValue 9.99999999e+08, want 0 — AddIncomeSource
+       returned the cached object, not a copy
+  Test body read and confirmed to assert what its name claims: it mutates the mutator's return
+  value, then checks both a fresh Load() and a second AddIncomeSource() for the leak
+  (settings_load_copy_test.go:272-308). Restored copy (the unmutated `repo`) passes.
+
+  COVERAGE NOTE (not a criterion): the test covers only AddIncomeSource.
+  mutD: AddBigTicketItem alone reverted to `return settings, nil`.
+  cmd: go test -count=1 ./internal/services/retirement/
+  out: ok  budget2/internal/services/retirement 36.960s — no test in the package catches a
+  regression in the other 23 mutators. The test's own comment states AddIncomeSource "stands in
+  for the whole family", and criterion 3's static audit is what covers the rest, so this is
+  reported, not scored.
+
+CRITERION 5 — doc claims true as written: PASS, with one noted nuance
+  Read: internal/services/retirement/settings.go:385-432 (Load), 434-438 (LoadContext),
+  568-582 (loadInternal/loadInternalContext), 625-627 (LoadScenarioSettings).
+  New claim: "the manager's cached object never escapes the manager, full stop — not through
+  Load, and not through any mutator's return value either (every mutator that saves also
+  returns prepare.Clone(settings), not settings itself)."
+  Verified against criterion 3's audit: no mutator exception remains, and all three of
+  LoadContext's return points clone (448, 461, 473). The parenthetical is literally true for
+  all 24 save-and-return methods.
+  NUANCE (pre-existing, unchanged by X2, not a mutator exception): Save/SaveWithRevision adopt
+  the CALLER's pointer as the cache (saveInternal, settings.go:801 `sm.cache = settings`), so
+  after a Save the caller still holds the object that is now cached. That is ingress, not
+  escape, and the same comment's next sentences state the contract that covers it ("hand it
+  back to Save/SaveWithRevision ... once saveInternal stores a pointer in sm.cache, nothing
+  mutates that object again"). Reporting it so the lead can judge whether "full stop" overreaches.
+
+CRITERION 6 — build/vet/tests: PASS
+  cmd: go build ./...                                   out: (no output) BUILD_OK
+  cmd: go vet ./internal/services/retirement/           out: (no output) VET_OK
+  cmd: go test -count=1 ./internal/services/retirement/ out: ok budget2/internal/services/retirement 39.610s
+  cmd: go test ./...                                    out: FULL_SUITE_EXIT=0; 49 "ok" packages;
+       `grep -E "FAIL|panic"` on the log returned nothing. The dataloader concurrency caveat did
+       not trigger — internal/services/dataloader passed in this copy.
+
+CRITERION 7 — scope: PASS
+  cmd: git status --porcelain
+  X2's three manifest files are modified and nothing else in X2's territory:
+    M internal/services/retirement/settings.go
+    M internal/services/retirement/settings_test.go
+    M internal/services/retirement/settings_load_copy_test.go
+  Other dirty paths, each matched to a sibling manifest (reported, not attributed to X2):
+    M internal/services/dataloader/loader.go            -> .swarm/manifests/X5.1.files
+    ?? internal/services/dataloader/alias_stable_id_test.go -> .swarm/manifests/X5.1.files
+    M internal/services/mcpsvc/snapshot/snapshot_test.go -> .swarm/manifests/X1.2.files
+    M internal/services/retirement/overrides/overrides.go -> .swarm/manifests/X3.1.files
+    M swarm/t7-coverage.sh                               -> .swarm/manifests/X4.1.files
+    M .swarm/ledger.tsv, plus untracked .swarm/ manifests, verdicts, tier3/X5, X-RUN-SPEC.md
+  critical.globs: internal/services/dataloader/** is listed and IS dirty, but by X5, not X2.
+  None of X2's three files matches any entry in .swarm/critical.globs.
+  No new package, no vendored dep, no build-file change.
+
+BOTTOM LINE: 6 of 7 criteria demonstrated by command output. Criterion 2 fails on its second
+half: the new `len(settings.Persons) == 0` assertion in settings_test.go:555-557 passes with the
+legacy fixture removed, so it does not prove the migration path ran. The #27 fix's substance
+(the fixture reaching the changed=true re-save branch, revision unmoved) is sound and
+mutation-proven; the guard assertion the worker reported as proof is not. Fix is one assertion,
+in one file.

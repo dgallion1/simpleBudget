@@ -1,0 +1,190 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: X2
+ATTEMPT: 2
+---
+Environment: repo copied `cp -a /home/darrell/bin/ai/budget2 <scratch>/a2/repo` (.git preserved,
+HEAD 8ed11c3 "Merge pull request #65 from dgallion1/fix/phase-visibility", 42 dirty paths).
+GOTOOLCHAIN=go1.26.6 -> `go version` = go1.26.6 linux/amd64 (GOROOT
+/home/darrell/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.6.linux-amd64). Every mutation ran in
+its own separate copy (mutSeed/mutBump/mutBT/mutIS/mutUSP/mutAge); the verdict copy <scratch>/a2/repo
+was NEVER mutated and was re-checked pristine at the end. The real tree was never written except
+this verdict file.
+
+CRITERION 1 — no production file changed in attempt 2; settings.go identical to attempt-1 state: PASS
+  cmd: md5sum internal/services/retirement/{settings.go,settings_test.go,settings_load_copy_test.go}
+       in the real tree AND in the attempt-1 verdict copy <scratch>/x2/repo
+  out: settings.go  66b7201e5276673fba505fb0a8e6ca3e  in BOTH -> byte-identical to attempt 1.
+       settings_test.go           edcbf7e3... (a2) vs bd3c724d... (a1)  -> changed
+       settings_load_copy_test.go 958ad54e... (a2) vs e9484415... (a1)  -> changed
+  MD5 OF settings.go AS ASKED: 66b7201e5276673fba505fb0a8e6ca3e (unchanged from attempt 1).
+  Note: settings.go mtime moved (15:43:16) but content did not; md5 is the binding fact.
+  cmd: git diff -- internal/services/retirement/settings.go
+  out: exactly two kinds of hunk, no others:
+       (a) ONE doc-comment hunk at Load (settings.go:386-395) — the "never escapes the manager,
+           full stop" wording audited under attempt-1 criterion 5.
+       (b) 24 mutator return conversions, all `-return settings, nil` / `+return prepare.Clone(settings)`
+           at lines 818 846 887 920 951 970 1001 1029 1069 1102 1433 1452 1476 1534 1553 1581 1621
+           1654 1673 1698 1903 (21 direct), plus the three `cloned, err := prepare.Clone(...)`
+           forms at UpdateSettings:1124, ApplyOverrides:1189, UpdateSettingsWithPersons:1216.
+       git diff --stat: settings.go | 71 ++++++-----  — no new hunk relative to attempt 1.
+  cmd: diff -rq <a1-copy>/internal/services/retirement/ <a2-copy>/internal/services/retirement/
+  out: only 3 files differ: settings_test.go, settings_load_copy_test.go, and prepare/prepare.go.
+       prepare/prepare.go is NOT X2's (see criterion 6) and is comment-only.
+  Attempt 2 is TEST-ONLY, as the X2.2 manifest declares.
+
+CRITERION 2 — the attempt-1 killer is dead: PASS
+  mutSeed: in a separate copy, deleted settings_test.go:535-544 (the `legacy := []byte(...)`
+  literal plus the `store.WriteFile(filepath.Join(tmpDir, "whatif.json"), legacy, 0644)` block) —
+  the exact mutation that attempt 1 survived. Nothing else changed.
+  cmd: go test -count=1 -v -run TestRevision_DoesNotBumpOnCacheMissLoad ./internal/services/retirement/
+  out: === RUN   TestRevision_DoesNotBumpOnCacheMissLoad
+           settings_test.go:554: seed file was not decoded: PortfolioValue = 0, want 500000 (the seeded value)
+       --- FAIL: TestRevision_DoesNotBumpOnCacheMissLoad (0.00s)
+       FAIL	budget2/internal/services/retirement	0.003s
+  The new guard FAILS with the seeded-value message. Attempt 1's exact killer (which produced
+  `--- PASS` on the same mutation, see X2.1 verdict finding 2b) is dead.
+  Restore: not needed — mutation was in the throwaway copy mutSeed; <a2>/repo was never edited
+  (md5s above re-confirmed identical at end of run).
+
+  EXTRA (not required by the brief; run because attempt 1 failed on a vacuous assertion):
+  the SECOND new guard, CurrentAge == 62, is independently non-vacuous.
+  mutAge: kept portfolio_value 500000 in the seed but dropped the `"current_age": 62` line.
+  cmd: go test -count=1 -v -run TestRevision_DoesNotBumpOnCacheMissLoad ./internal/services/retirement/
+  out: settings_test.go:566: decode-time migration did not run: CurrentAge = 65, want 62 (derived
+       from the legacy current_age field via the synthesized Persons[0])
+       --- FAIL
+  So PortfolioValue pins the decode of the seed, and CurrentAge separately distinguishes the
+  legacy-field migration (62) from the DefaultWhatIfSettings fallback (65). Neither guard is
+  satisfiable by the defaults path — the precise defect in attempt 1.
+
+CRITERION 3 — attempt-1's passing checks still hold: PASS (all three)
+  3a  mutBump: settings.go:618 `sm.saveInternal(settings)` -> `sm.saveInternalAndBump(settings)`
+      (the `if changed {` branch of loadInternalContext). Assert on the exact source line performed
+      by the mutation script before editing.
+      cmd: go test -count=1 -v -run TestRevision_DoesNotBumpOnCacheMissLoad ./internal/services/retirement/
+      out: settings_test.go:570: a cache-miss load bumped the revision: 1 -> 2
+           --- FAIL: TestRevision_DoesNotBumpOnCacheMissLoad (0.01s)
+      The revision assertion FAILS as required. Note it is the REVISION line (570) that fires, not
+      the new guards at 554/566 — so the two added guards do not shadow or short-circuit the
+      assertion the test exists for; the fixture still drives the migration re-save branch.
+
+  3b  mutBT: AddBigTicketItem's `return prepare.Clone(settings)` (settings.go:1556) reverted to
+      `return settings, nil`; no other mutator touched.
+      cmd: go test -count=1 -v -run TestMutatorReturnDoesNotAliasCache ./internal/services/retirement/
+      out: --- FAIL: TestMutatorReturnDoesNotAliasCache (0.03s)
+               --- PASS: TestMutatorReturnDoesNotAliasCache/AddIncomeSource (0.01s)
+               --- FAIL: TestMutatorReturnDoesNotAliasCache/AddBigTicketItem (0.01s)
+               --- PASS: TestMutatorReturnDoesNotAliasCache/UpdateSpendingPhases (0.01s)
+           settings_load_copy_test.go:385: mutating the return value leaked into the manager's
+           state: BigTicketItems = [{ID:bt-1 Name:Roof Amount:9.99999999e+08 ...}], want [0].Amount = 20000
+      ONLY its subtest fails. Exactly as required.
+
+  3c  mutIS: AddIncomeSource's `return prepare.Clone(settings)` (settings.go:821) reverted to
+      `return settings, nil`; no other mutator touched.
+      cmd: go test -count=1 -v -run TestMutatorReturnDoesNotAliasCache ./internal/services/retirement/
+      out: --- FAIL: TestMutatorReturnDoesNotAliasCache (0.03s)
+               --- FAIL: TestMutatorReturnDoesNotAliasCache/AddIncomeSource (0.01s)
+               --- PASS: TestMutatorReturnDoesNotAliasCache/AddBigTicketItem (0.01s)
+               --- PASS: TestMutatorReturnDoesNotAliasCache/UpdateSpendingPhases (0.01s)
+           settings_load_copy_test.go:385: mutating the return value leaked into the manager's
+           state: IncomeSources = [{ID:inc-1 Name:CORRUPTED ...}], want [0].Name = "Pension"
+      ONLY its subtest fails. Exactly as required.
+
+  EXTRA (not required): the THIRD table row is also load-bearing, so the new coverage is real
+  and not decorative.
+  mutUSP: UpdateSpendingPhases' `return prepare.Clone(settings)` (settings.go:1436) reverted.
+  cmd: go test -count=1 -v -run TestMutatorReturnDoesNotAliasCache ./internal/services/retirement/
+  out:     --- PASS: .../AddIncomeSource (0.02s)
+           --- PASS: .../AddBigTicketItem (0.01s)
+           --- FAIL: .../UpdateSpendingPhases (0.01s)
+       settings_load_copy_test.go:385: mutating the return value leaked into the manager's state:
+       SpendingPhaseConfig.Enabled = false, want true
+  All three rows isolate their own mutator; each subtest builds a fresh manager via
+  newAgedManager(t) (settings_load_copy_test.go:13-34, t.TempDir + storage.New), so the rows do
+  not share state — confirmed empirically by the three single-row failures above.
+
+CRITERION 4 — three table subtests + the revision test pass by name, none skipped: PASS
+  cmd: go test -count=1 -v -run 'TestRevision_DoesNotBumpOnCacheMissLoad|TestMutatorReturnDoesNotAliasCache' ./internal/services/retirement/
+  out: === RUN   TestMutatorReturnDoesNotAliasCache
+       === RUN   TestMutatorReturnDoesNotAliasCache/AddIncomeSource
+       === RUN   TestMutatorReturnDoesNotAliasCache/AddBigTicketItem
+       === RUN   TestMutatorReturnDoesNotAliasCache/UpdateSpendingPhases
+       --- PASS: TestMutatorReturnDoesNotAliasCache (0.03s)
+           --- PASS: TestMutatorReturnDoesNotAliasCache/AddIncomeSource (0.01s)
+           --- PASS: TestMutatorReturnDoesNotAliasCache/AddBigTicketItem (0.01s)
+           --- PASS: TestMutatorReturnDoesNotAliasCache/UpdateSpendingPhases (0.01s)
+       === RUN   TestRevision_DoesNotBumpOnCacheMissLoad
+       --- PASS: TestRevision_DoesNotBumpOnCacheMissLoad (0.01s)
+       ok  	budget2/internal/services/retirement	0.046s
+  All four named units show `=== RUN` followed by `--- PASS`. No SKIP line anywhere.
+  cmd: grep -n 't\.Skip\|Short()\|//go:build' internal/services/retirement/settings_test.go internal/services/retirement/settings_load_copy_test.go
+  out: (no matches, exit 1) — no skip, no short-mode bail, no build tag gating either file.
+  Tests read and confirmed to assert what their names claim:
+   - TestMutatorReturnDoesNotAliasCache: each row calls the mutator, mutates a field THAT MUTATOR
+     JUST WROTE on the returned object (not an unrelated canary), then asserts the pre-mutation
+     value both via a fresh sm.Load() and via a second call to the same mutator family. The
+     UpdateSpendingPhases row's `second` deliberately passes nil phases, because
+     UpdateSpendingPhases only overwrites Phases when len(phases) > 0 — so a leaked mutation
+     would still surface. Aliasing is genuinely what is being tested.
+   - TestRevision_DoesNotBumpOnCacheMissLoad: seeds a legacy no-"persons" file, invalidates the
+     cache, loads, then asserts (i) the seed was decoded, (ii) the legacy->Persons migration ran,
+     (iii) sm.Revision() is unchanged. 3a proves (iii) is load-bearing; mutSeed/mutAge prove (i)
+     and (ii) are.
+
+CRITERION 5 — vet clean, package tests green: PASS
+  cmd: go vet ./internal/services/retirement/            out: (no output) VET_EXIT=0
+  cmd: go test -count=1 ./internal/services/retirement/  out: ok  budget2/internal/services/retirement  34.464s  PKG_EXIT=0
+  Beyond the brief, also green tree-wide at this snapshot:
+  cmd: go build ./...   out: (no output) BUILD_EXIT=0
+  cmd: go test ./...    out: FULL_SUITE_EXIT=0; 49 packages reported "ok";
+       grep -nE '^(FAIL|---|.*panic)' on the log returned nothing.
+  The sibling in-flight edits present in this snapshot (internal/handlers/whatif/**,
+  mcpsvc/plan, dataloader) built and passed here; no scope-out was needed.
+
+CRITERION 6 — scope: PASS
+  cmd: diff -rq <a1-copy> <a2-copy> -x .git -x .swarm -x '.aider*'
+  Inside X2's declared territory (internal/services/retirement/*.go at package root), EXACTLY the
+  two X2.2 manifest files differ from attempt 1:
+    internal/services/retirement/settings_test.go
+    internal/services/retirement/settings_load_copy_test.go
+  and internal/services/retirement/settings.go is byte-identical (md5 66b7201e..., criterion 1).
+  Every other differing path maps to a sibling manifest — REPORTED, NOT ATTRIBUTED to X2:
+    internal/handlers/whatif/handlers_test.go                    -> .swarm/manifests/X6.1.files
+    internal/handlers/whatif/handlers_live.go                    -> .swarm/manifests/X7.1.files
+    internal/handlers/whatif/handlers_live_test.go               -> .swarm/manifests/X7.1.files
+    internal/handlers/whatif/handlers_live_expected_scenario_test.go -> .swarm/manifests/X7.1.files
+    internal/services/dataloader/loader.go                       -> .swarm/manifests/X5.2.files
+    internal/services/dataloader/alias_stable_id_test.go         -> .swarm/manifests/X5.2.files
+    internal/services/mcpsvc/snapshot/snapshot_test.go           -> .swarm/manifests/X1.2.files
+    internal/services/retirement/overrides/overrides.go          -> .swarm/manifests/X3.1.files
+    swarm/t7-coverage.sh                                         -> .swarm/manifests/X4.2.files
+    .claude/skills/budget2-mcp/references/retirement-plan.md     -> .swarm/manifests/mcp-skill-fixes.1.files
+    server.log, .claude/worktrees/y-sparkline                    -> runtime/worktree artifacts, untracked
+  TWO dirty paths match NO current X manifest — reported for the lead, not attributed to X2:
+    internal/services/retirement/prepare/prepare.go   (mtime 15:41:47)
+    internal/services/mcpsvc/plan/overrides.go        (mtime 15:41:49)
+  cmd: git diff -- internal/services/retirement/prepare/prepare.go internal/services/mcpsvc/plan/overrides.go
+  out: BOTH are comment-only (no statement changed): prepare.go rewords the Clone-vs-DeepCopy
+  note to say "overrides.Apply copies via Clone, and ... mcpsvc/plan re-attaches the map";
+  plan/overrides.go correspondingly drops "a second time"/"Apply already re-attached it once".
+  These two mtimes sit in one batch with snapshot_test.go (X1's file, 15:41:45) and are consistent
+  with the ledger's X1 reason "gate-ok-attempt-2-judges-overrule-3-0-comment-fix-to-lead"; they are
+  NOT in either X2 write window (settings_test.go 15:41:10, settings_load_copy_test.go 15:42:57)
+  and cannot affect X2 behaviour since no code changed. Lead should confirm ownership.
+  critical.globs: cmd: cat .swarm/critical.globs -> internal/services/storage/**,
+  internal/services/dataloader/**, internal/services/retirement/engine/**,
+  internal/services/transfers/**, internal/services/accounts/accounts.go,
+  internal/services/mcpsvc/confirm/**. NEITHER X2.2 file matches any entry
+  (they are internal/services/retirement/*_test.go at package root, not .../engine/**).
+  dataloader/** is dirty and IS critical, but by X5, not X2.
+  No new package, no dependency change, no build-file change, no go.mod/go.sum change.
+  X2 is Tier 2 per .swarm/ledger.tsv (`X2  2  tests,second  pending  2  worker-coder ...`) and
+  there is no .swarm/tier3/X2 oracle to run — correct for the tier.
+
+BOTTOM LINE: all 6 criteria demonstrated by command output. Attempt 1's single defect is fixed and
+proven fixed by the mutation that attempt 1 survived: deleting the seed now yields
+`settings_test.go:554: seed file was not decoded: PortfolioValue = 0, want 500000`. Both new guards
+are independently non-vacuous, all three new table rows independently kill their own mutator, the
+revision assertion is unshadowed, and no production file moved in attempt 2.

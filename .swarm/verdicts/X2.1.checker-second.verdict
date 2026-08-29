@@ -1,0 +1,99 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: X2
+ATTEMPT: 1
+---
+Attack summary against both parts of the claim (worked in an isolated cp -a
+copy at /tmp/claude-1000/.../scratchpad/x2check, toolchain go1.26.6).
+
+(a) TestRevision_DoesNotBumpOnCacheMissLoad genuinely reaches the
+decode-migration re-save path.
+- Read decodeSettings/normalizeLoadedWhatIfSettings (settings.go:279-339):
+  the seeded legacy JSON has no "persons" key, so len(settings.Persons)==0
+  is true and the migration branch (changed=true, Persons synthesized from
+  legacy current_age) is unconditionally taken — not a vacuous seed.
+- The test's own new assertion (`len(settings.Persons)==0` -> Fatal) directly
+  guards against the vacuous-seed counter-scenario the task asked me to
+  construct.
+- Mutation test: changed line 618's `sm.saveInternal(settings)` to
+  `sm.saveInternalAndBump(settings)` inside the `changed` branch of
+  loadInternalContext. Result: TestRevision_DoesNotBumpOnCacheMissLoad FAILED
+  ("a cache-miss load bumped the revision: 1 -> 2"), confirming the test is a
+  real, non-tautological guard on saveInternal (no bump) vs
+  saveInternalAndBump (bump) — the two are otherwise textually
+  interchangeable so a weaker test would not have caught this. Reverted.
+
+(b) All 24 mutators return prepare.Clone(settings), cache never escapes.
+- Grepped every `func (sm *SettingsManager) ... (*models.WhatIfSettings, ...)`
+  in settings.go: exactly 24 methods that load, mutate, save, and return
+  settings (AddIncomeSource..PurgeRemovedOneTimeExpense family, UpdateSettings,
+  ApplyOverrides, UpdateSettingsWithPersons, UpdateSpendingPhases, the
+  healthcare/big-ticket/one-time-expense family, CreateScenario). `git diff
+  HEAD -- settings.go` shows the mechanical conversion applied to all 24
+  return sites uniformly in one diff (`return settings, nil` ->
+  `return prepare.Clone(settings)`, or explicit `cloned, err :=
+  prepare.Clone(...)` for the 3 multi-return methods) — confirmed by direct
+  diff read, not just grep.
+- Error paths audited line-by-line for all 24 (awk+grep over
+  settings.go:806-1907): every non-success return is `nil, err` (or
+  `nil, "", 0, err` / `nil, 0, err`); none leak the raw, partially-mutated
+  `settings` object on a validation/conflict/not-found error.
+- Mutation test: reverted AddIncomeSource's return to raw `settings, nil`.
+  `go test ./internal/services/retirement/...` failed with
+  TestMutatorReturnDoesNotAliasCache: "AddIncomeSource returned the cached
+  object, not a copy" — confirms this guard is real and would catch a
+  regression on the one mutator it covers. Reverted.
+- Real gap found: TestMutatorReturnDoesNotAliasCache exercises ONLY
+  AddIncomeSource ("stands in for the whole family" per its own comment) — it
+  is not a per-mutator loop, so the other 23 conversions are NOT covered by an
+  automated aliasing regression test, only by the uniform diff and my manual
+  code-path audit above. This is an honest, disclosed test-coverage
+  limitation, not a hidden defect: the diff itself (git diff HEAD) shows the
+  fix applied identically at all 24 sites, so the claim as stated ("24
+  mutators... return prepare.Clone") is true today; a future edit to any of
+  the other 23 mutators could silently reintroduce the bug without a test
+  failing. Reporting for the record; not fatal to this verdict since claim (b)
+  is a statement about the current code, which I independently verified.
+- Nested-pointer/shallow-copy concern: read prepare.Clone/DeepCopy
+  (prepare/prepare.go). DeepCopy is a JSON marshal/unmarshal round trip
+  (independent structs throughout); Clone additionally deep-copies the
+  json:"-" fields (CurrentAge, SpouseAge, RothConversion.PerYearOverrides map
+  — copied element-by-element into a fresh map, not aliased). Cross-checked
+  against TestCloneCarriesEveryJSONOmittedField (prepare/clone_test.go, a
+  pre-existing test outside this manifest, unmodified by X2, currently
+  passing) which reflects over the whole WhatIfSettings type graph and
+  explicitly asserts non-aliasing for every json:"-" field found by walking
+  the struct, including map/slice-kind checks. Found one other json:"-" field
+  in the codebase, TaxOptimizerCandidate.BracketFillFeedback
+  (models/whatif.go:1618) — confirmed NOT reachable from WhatIfSettings (it's
+  on an unrelated analysis-result struct), so it is correctly out of scope for
+  Clone/the reflection walk. No shallow-copy hole found.
+- Multi-return Clone-error-after-save branch (UpdateSettings, ApplyOverrides,
+  UpdateSettingsWithPersons): if prepare.Clone errors after
+  saveInternalAndBump already succeeded (and bumped sm.revision), all three
+  return `nil, ..., err` — a "phantom failure" where the write landed but the
+  caller is told it failed. Read all production callers
+  (handlers/whatif/handlers_live.go, handlers/whatif/handlers_rates.go,
+  services/mcpsvc/plan/register.go): every one checks `err != nil` and
+  returns/aborts before touching the returned settings pointer, so this
+  cannot nil-deref a caller. Because Clone's DeepCopy is the same
+  json.Marshal that saveInternal already ran successfully on the identical
+  object moments earlier, this path is practically unreachable (would need
+  Marshal to succeed once and fail on the same data immediately after) —
+  noting for the record, not treating as a live defect.
+- Concurrency: `go test -race -count=1 ./internal/services/retirement/`
+  (69.5s) — PASS, no races, including existing goroutine-based tests that
+  exercise CreateScenario/ApplyOverrides against concurrent readers.
+- Cross-package fallout: `go test -count=1 ./internal/services/mcpsvc/plan/
+  ./internal/handlers/whatif/` — PASS.
+- Baseline: `go build ./...` clean; `go vet ./internal/services/retirement/...`
+  clean; `gofmt -l` clean on all 3 manifest files; full `go test -count=1
+  ./...` — all packages PASS including internal/services/dataloader (no
+  sibling-caused casualty observed in this copy).
+
+No FAIL-worthy defect found after mutation testing of both halves of the
+claim. Recommend the boss note the 1/24 automated-coverage gap on
+TestMutatorReturnDoesNotAliasCache as a follow-up item (extend it to loop
+over the full mutator family, or accept the diff-uniformity argument as
+sufficient) — not blocking.

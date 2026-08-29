@@ -1,0 +1,87 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: X7
+ATTEMPT: 1
+---
+Attacked D-2026-08-29a / issue #24 (require expected_scenario on POST /whatif/apply). All attack surfaces refuted; no defect found within scope.
+
+1. Bypass hunt. `grep -rn "ApplyOverrides(" --include=*.go` finds exactly two
+   non-test call sites: handleWhatIfApply (guarded, this diff) and
+   internal/services/mcpsvc/plan/register.go:236 (apply_changes MCP tool,
+   calls SettingsManager.ApplyOverrides directly — never goes through the
+   HTTP handler at all). No JS/template caller of POST /whatif/apply exists
+   (grepped web/static/js and web/templates — none). This matches
+   X-RUN-SPEC.md's own framing ("Read and cite the one live caller
+   (apply_changes in mcpsvc)") and settings.go:719's comment calling it
+   "the MCP /whatif/apply path" — the spec already treats apply_changes as
+   the relevant caller despite the different code path, so this is not a
+   worker error, just confirmed as pre-existing framing.
+
+2. Guard robustness — wrong JSON type. Live-probed (temp test, removed
+   after) `expected_scenario: 5`, `null`, `[]`: all three return 400, no
+   panic. Numbers/arrays fail json.Decode's UnmarshalTypeError before the
+   guard runs (400 "invalid overrides JSON"); `null` decodes as a no-op onto
+   the string zero value, so it falls through to the TrimSpace=="" guard
+   (400 naming expected_scenario). Both paths are safe and 400.
+
+3. Whitespace matching active scenario. handleWhatIfApply only TrimSpaces
+   for the *emptiness* check; the raw (untrimmed) value is passed to
+   ApplyOverrides. settings.go:1164 compares
+   `expectedScenario != "" && expectedScenario != sm.filename` — exact
+   string equality, no trim. So `" whatif.json"` (leading space) against
+   active "whatif.json" is a mismatch → 409, nothing written. Confirmed
+   deliberate and safe, matches the attack prompt's predicted (fine) outcome.
+
+4. apply_changes / ActiveFilename() empty-string risk. Read
+   NewSettingsManager (settings.go:128): `filename: defaultWhatIfFilename`
+   ("whatif.json") — never empty at construction. Every reassignment site
+   (SwitchScenario, scenario-delete revert, scenario-load reconciliation)
+   sets it only after TrimSpace + existence validation, never to "". So
+   ActiveFilename() cannot return "", and apply_changes's
+   `expected := in.Scenario; if expected == "" { expected =
+   deps.Settings.ActiveFilename() }` fallback can never send "" to
+   ApplyOverrides. Claim confirmed, not just cited.
+
+5. Coverage. `go test ./internal/services/mcpsvc/plan/...` passes but no
+   test in that package exercises the in.Scenario=="" fallback branch
+   itself (only confirmed by reading, per point 4, that it's unreachable
+   with "" — a coverage gap, not a correctness defect; noting for the
+   backlog, not grounds for FAIL since the fallback is provably dead for
+   the reason above).
+
+6. Pre-existing test dilution. `git diff master -- handlers_live_test.go`:
+   all five patched tests (Persists/PositiveRoth/ZeroRoth/SpouseClaimAge/
+   RejectsUnwritableAndInvalid) purely ADD `"expected_scenario": <active>`
+   to existing request bodies — no assertion was removed or weakened. The
+   409-mismatch and matching-scenario tests (MismatchedExpectedScenarioIs409,
+   MatchingExpectedScenarioIsAccepted) predate this diff and are untouched.
+   handlers_test.go and spending_trajectory_test.go also show diffs in the
+   working tree, but git-diffing them confirms they belong to X6 (#25
+   HX-Trigger) and X8 (green-700 sweep) respectively — out of X7's manifest
+   scope (.swarm/manifests/X7.1.files lists only the 3 X7 files).
+
+7. No-write claim — mutation-tested. Patched a copy of handlers_live.go so
+   the guard's http.Error still fires but ApplyOverrides runs unconditionally
+   beforehand (write-before-guard bypass). Ran
+   TestHandleWhatIfApply_{Missing,Blank}ExpectedScenarioIs400AndWritesNothing
+   against the mutant: both FAILED ("a rejected apply still wrote:
+   monthly_living_expenses 4000 -> 9999"), confirming the tests' disk-state
+   assertion actually catches a write-before-guard defect. Reverted to the
+   original diff before continuing.
+
+8. Baseline (binding). In the cp -a copy: `go build ./...` clean;
+   `go test ./...` full suite green (54 packages, incl.
+   internal/handlers/whatif, internal/services/mcpsvc/plan,
+   internal/services/retirement — all ok). `go test -race -count=1
+   ./internal/handlers/whatif/...` green (39s). `go vet` clean on the three
+   touched packages; `gofmt -l` clean on the three X7 files. Note: per
+   ruling X-2026-08-29a this run's ledger only requires package-scope
+   verification given the shared tree with the concurrent W run — full
+   ./... build+test above is strictly stronger and also passed, so the
+   stricter bar is met regardless.
+
+No FAIL-worthy defect found inside X7's scope. The one open item (#5,
+coverage of the in.Scenario=="" branch) is a backlog note, not a blocker,
+since I independently proved that branch is unreachable given
+ActiveFilename()'s invariants.

@@ -78,7 +78,7 @@
              data-chart-payload="{{.MonthlyFlowChart}}"
              role="img"
              aria-label="Bar chart of transfers between institutions by month. A data table with the same values follows.">
-            <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
+            <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
                 Loading chart...
             </div>
         </div>
@@ -121,7 +121,7 @@
     <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" aria-labelledby="transfers-history-heading">
         <h2 id="transfers-history-heading" class="text-lg font-medium text-gray-800 dark:text-gray-100">
             Transfer history
-            <span class="ml-2 text-sm text-gray-500 dark:text-gray-400">({{len .History}})</span>
+            <span class="ml-2 text-sm text-gray-600 dark:text-gray-400">({{len .History}})</span>
         </h2>
         <div class="mt-3 overflow-x-auto">
             <table class="min-w-full text-sm text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded">
@@ -180,7 +180,7 @@
     <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" aria-labelledby="transfers-queue-heading">
         <h2 id="transfers-queue-heading" class="text-lg font-medium text-gray-800 dark:text-gray-100" tabindex="-1">
             Suspected pairs
-            {{if .Suspected}}<span class="ml-2 text-sm text-gray-500 dark:text-gray-400">({{len .Suspected}})</span>{{end}}
+            {{if .Suspected}}<span class="ml-2 text-sm text-gray-600 dark:text-gray-400">({{len .Suspected}})</span>{{end}}
         </h2>
         <div id="transfers-queue">
             {{template "transfers-queue-partial" .}}
@@ -247,9 +247,9 @@
     <div id="suspected-{{.PairKey}}" class="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Leg A</p>
+                <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">Leg A</p>
                 <div class="text-sm font-medium text-gray-800 dark:text-gray-100">{{.Left.Label}}</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
                     {{.Left.Date.Format "2006-01-02"}}
                     {{if .Left.AccountID}}&middot; {{.Left.AccountID}}{{else}}&middot; unassigned{{end}}
                 </div>
@@ -258,9 +258,9 @@
                 </div>
             </div>
             <div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Leg B</p>
+                <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">Leg B</p>
                 <div class="text-sm font-medium text-gray-800 dark:text-gray-100">{{.Right.Label}}</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
                     {{.Right.Date.Format "2006-01-02"}}
                     {{if .Right.AccountID}}&middot; {{.Right.AccountID}}{{else}}&middot; unassigned{{end}}
                 </div>
@@ -269,7 +269,7 @@
                 </div>
             </div>
         </div>
-        <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+        <p class="mt-3 text-xs text-gray-600 dark:text-gray-400">
             Suggested because: {{if eq .Reason "ambiguous"}}two equally plausible counterparties (ambiguous tie){{else}}amounts match across accounts within the window, with no transfer pattern{{end}}.
         </p>
         <div class="mt-3 flex flex-wrap gap-2">
@@ -293,7 +293,7 @@
     </div>
     {{end}}
     {{else}}
-    <p class="text-sm text-gray-500 dark:text-gray-400" data-focus-target>
+    <p class="text-sm text-gray-600 dark:text-gray-400" data-focus-target>
         No suspected transfer pairs awaiting review.
     </p>
     {{end}}

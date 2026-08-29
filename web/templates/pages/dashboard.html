@@ -30,7 +30,7 @@
             <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
             </svg>
-            <span class="text-green-600 dark:text-green-400 font-medium">Upload complete! Refreshing...</span>
+            <span class="text-green-700 dark:text-green-400 font-medium">Upload complete! Refreshing...</span>
         </div>
         <div id="drop-zone-error" class="hidden flex items-center justify-center space-x-3">
             <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -45,14 +45,14 @@
         <form id="date-filter-form" class="flex flex-wrap items-center gap-4">
 
             <div class="flex items-center space-x-2">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">From:</label>
-                <input type="date" name="start" value="{{.StartDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
+                <label for="dashboard-date-start" class="text-sm font-medium text-gray-700 dark:text-gray-300">From:</label>
+                <input type="date" id="dashboard-date-start" name="start" value="{{.StartDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
                     class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500">
             </div>
 
             <div class="flex items-center space-x-2">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">To:</label>
-                <input type="date" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
+                <label for="dashboard-date-end" class="text-sm font-medium text-gray-700 dark:text-gray-300">To:</label>
+                <input type="date" id="dashboard-date-end" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
                     class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500">
             </div>
 
@@ -68,7 +68,7 @@
 
             <!-- Quick presets -->
             <div class="flex items-center space-x-2 ml-auto">
-                <span class="text-sm text-gray-500 dark:text-gray-400">Quick:</span>
+                <span class="text-sm text-gray-600 dark:text-gray-400">Quick:</span>
                 <button type="button" onclick="shiftWindow(-1)" title="Shift window backward" aria-label="Shift window backward"
                     class="min-w-[2rem] px-1.5 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -143,7 +143,7 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
             <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Spending by Major Expense</h2>
             <div id="chart-major-expense" class="chart-container" data-chart-url="/dashboard/charts/data/major-expense">
-                <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
+                <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
                     Loading chart...
                 </div>
             </div>
@@ -154,7 +154,7 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
             <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Spending Trend</h2>
             <div id="chart-spending-trend" class="chart-container" data-chart-url="/dashboard/charts/data/spending-trend">
-                <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
+                <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
                     Loading chart...
                 </div>
             </div>
@@ -164,7 +164,7 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
             <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Top Spending</h2>
             <div id="chart-merchants" class="chart-container" data-chart-url="/dashboard/charts/data/merchants">
-                <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
+                <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
                     Loading chart...
                 </div>
             </div>
@@ -174,7 +174,7 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 lg:col-span-2">
             <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Cumulative Balance</h2>
             <div id="chart-cumulative" class="chart-container" data-chart-url="/dashboard/charts/data/cumulative">
-                <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
+                <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
                     Loading chart...
                 </div>
             </div>

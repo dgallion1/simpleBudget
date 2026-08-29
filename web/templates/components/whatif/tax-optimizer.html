@@ -4,10 +4,10 @@
 {{if .Analysis.TaxOptimizer}}
 {{$to := .Analysis.TaxOptimizer}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Tax Optimizer</h3>
+    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Tax Optimizer</h2>
 
     {{if not $to.Eligible}}
-    <p class="text-sm text-gray-500 dark:text-gray-400">{{$to.IneligibleReason}}</p>
+    <p class="text-sm text-gray-600 dark:text-gray-400">{{$to.IneligibleReason}}</p>
     {{else}}
     {{$best := $to.Best}}
     {{$baseline := $to.Baseline}}
@@ -45,13 +45,13 @@
         <table class="w-full text-sm">
             <thead>
                 <tr class="border-b dark:border-gray-600">
-                    <th class="text-left py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
+                    <th class="text-left py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "Strategy" "Tip" "Roth conversion strategy: which marginal tax bracket to fill with conversions, and over which ages." "Align" "left")}}
                     </th>
-                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
+                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "SS (P/S)" "Tip" "Social Security claim ages — Primary / Spouse. Single-filer scenarios show only the primary age." "Align" "right")}}
                     </th>
-                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
+                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "End Portfolio" "Tip" "Deterministic projection ending balance in today's dollars (real, inflation-adjusted). Uses your expected return — no randomness." "Align" "right")}}
                     </th>
                     {{if gt $to.MonteCarloRuns 0}}
@@ -59,20 +59,20 @@
                         {{template "taxopt-th-tooltip" (dict "Label" "MC Median ▼" "Tip" (printf "Monte Carlo median ending balance in today's dollars across %d random return paths. THIS is the ranking metric — strategies are sorted by this column." $to.MonteCarloRuns) "Align" "right" "Accent" "indigo")}}
                     </th>
                     {{end}}
-                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
+                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "Lifetime Tax" "Tip" "Total federal + state + NIIT taxes paid over the full projection, in today's dollars. IRMAA is reported separately as a cost and not included here." "Align" "right")}}
                     </th>
-                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
+                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "Peak Rate" "Tip" "Highest per-year effective marginal rate this candidate reaches over the projection. It is measured, not looked up in a bracket table, so capital-gain stacking and the Social Security taxability phase-in can push it above every statutory bracket. Reporting only — not part of the ranking metric." "Align" "right")}}
                     </th>
-                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
+                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "Roth Conv" "Tip" "Total dollars this candidate actually converted to Roth over the projection, in nominal (not inflation-adjusted) dollars, unlike the real-dollar columns. Reflects what the engine realized, not what was planned. Renders as \"—\" when the candidate never converted." "Align" "right")}}
                     </th>
-                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
+                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "Δ vs Baseline" "Tip" "Change in deterministic End Portfolio vs your current saved scenario. Green = improvement, amber = regression." "Align" "right")}}
                     </th>
                     {{if gt $to.MonteCarloRuns 0}}
-                    <th class="text-right py-2 px-2 text-gray-500 dark:text-gray-400 font-medium">
+                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "MC Surv%" "Tip" (printf "Monte Carlo survival rate: percent of %d random return paths in which the portfolio lasted the full projection. Not the ranking metric — strategies are ranked by MC Median, not survival." $to.MonteCarloRuns) "Align" "right")}}
                     </th>
                     {{end}}
@@ -85,7 +85,7 @@
                     <td class="py-2 px-2 text-gray-800 dark:text-gray-200">
                         {{$c.RothStrategy.Label}}
                         {{if eq $i 0}}
-                        <span class="text-xs text-green-600 dark:text-green-400" title="Best strategy by MC median ending balance.">&#9733;</span>
+                        <span class="text-xs text-green-700 dark:text-green-400" title="Best strategy by MC median ending balance.">&#9733;</span>
                         {{end}}
                     </td>
                     <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">
@@ -98,7 +98,7 @@
                     <td class="py-2 px-2 text-right text-red-600 dark:text-red-400">{{formatMoney $c.LifetimeTaxReal}}</td>
                     <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{if eq $c.PeakMarginalBracket 0.0}}&mdash;{{else}}{{printf "%.0f" $c.PeakMarginalBracket}}%{{end}}</td>
                     <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{if eq $c.TotalRothConverted 0.0}}&mdash;{{else}}{{formatMoney $c.TotalRothConverted}}{{end}}</td>
-                    <td class="py-2 px-2 text-right {{if gt $delta 0.0}}text-green-600 dark:text-green-400{{else if lt $delta 0.0}}text-amber-600 dark:text-amber-400{{else}}text-gray-500 dark:text-gray-400{{end}}">
+                    <td class="py-2 px-2 text-right {{if gt $delta 0.0}}text-green-700 dark:text-green-400{{else if lt $delta 0.0}}text-amber-600 dark:text-amber-400{{else}}text-gray-600 dark:text-gray-400{{end}}">
                         {{if gt $delta 0.0}}+{{end}}{{formatMoney $delta}}
                     </td>
                     {{if gt $to.MonteCarloRuns 0}}
@@ -131,7 +131,7 @@
                                         {{end}}
                                     </tbody>
                                 </table>
-                                <p class="mt-2 text-gray-500 dark:text-gray-400">
+                                <p class="mt-2 text-gray-600 dark:text-gray-400">
                                     {{conversionSummary $c.PerYearConversions}}
                                 </p>
                             </div>
@@ -143,12 +143,12 @@
             </tbody>
         </table>
     </div>
-    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">&#9733; Best strategy. Ending portfolio and lifetime tax in today's dollars. {{$to.CandidatesScored}} strategies scored{{if $to.MonteCarloRuns}}, top-5 refined with {{$to.MonteCarloRuns}} Monte Carlo runs each (shared seed across finalists){{end}}.</p>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">&#9733; Best strategy. Ending portfolio and lifetime tax in today's dollars. {{$to.CandidatesScored}} strategies scored{{if $to.MonteCarloRuns}}, top-5 refined with {{$to.MonteCarloRuns}} Monte Carlo runs each (shared seed across finalists){{end}}.</p>
 
     {{/* Glossary — hover-tooltips on headers cover most cases, but a
          visible disclosure helps mobile users and anyone who wants the
          full reference at a glance. */}}
-    <details class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+    <details class="text-xs text-gray-600 dark:text-gray-400 mt-2">
         <summary class="cursor-pointer text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400">What do these columns mean?</summary>
         <dl class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 pl-2">
             <dt class="font-medium text-gray-700 dark:text-gray-200">Strategy</dt>
@@ -158,7 +158,7 @@
             <dt class="font-medium text-gray-700 dark:text-gray-200">End Portfolio</dt>
             <dd>Deterministic projection ending balance in today's dollars (uses your expected return — no randomness).</dd>
             {{if gt $to.MonteCarloRuns 0}}
-            <dt class="font-medium text-indigo-700 dark:text-indigo-300">MC Median &#9660; <span class="text-gray-500 dark:text-gray-400 font-normal">(ranking metric)</span></dt>
+            <dt class="font-medium text-indigo-700 dark:text-indigo-300">MC Median &#9660; <span class="text-gray-600 dark:text-gray-400 font-normal">(ranking metric)</span></dt>
             <dd>Median ending balance across {{$to.MonteCarloRuns}} <strong>M</strong>onte <strong>C</strong>arlo runs in today's dollars. Strategies are sorted by this column — it's the most robust single-number summary because randomized return paths capture sequence-of-returns risk.</dd>
             {{end}}
             <dt class="font-medium text-gray-700 dark:text-gray-200">Lifetime Tax</dt>
@@ -175,19 +175,19 @@
             {{end}}
         </dl>
         {{if gt $to.MonteCarloRuns 0}}
-        <p class="mt-2 text-gray-500 dark:text-gray-400">
+        <p class="mt-2 text-gray-600 dark:text-gray-400">
             <strong>Why MC Median can disagree with End Portfolio:</strong> the deterministic projection assumes you hit your expected return every year. Monte Carlo runs your plan against {{$to.MonteCarloRuns}} randomized return paths — a strategy that does well on the smooth path can still rank lower once volatility and bad sequences are modeled.
         </p>
         {{end}}
     </details>
 
-    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2 caveat">Recommendations are read-only — edit your scenario manually to apply. Survivor-spouse filing-status changes are not modeled in Phase&nbsp;1.</p>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 caveat">Recommendations are read-only — edit your scenario manually to apply. Survivor-spouse filing-status changes are not modeled in Phase&nbsp;1.</p>
     {{end}}
     {{end}}
 </div>
 {{else}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 tax-optimizer-card">
-    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Tax Optimizer</h3>
+    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Tax Optimizer</h2>
     <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Click below to find the Social Security claim pair + Roth conversion strategy that maximizes your Monte Carlo median ending portfolio (the metric most robust to bad market sequences).</p>
     <button hx-post="/whatif/tax-optimize"
             hx-target="#tax-optimizer-panel"

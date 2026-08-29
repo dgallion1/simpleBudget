@@ -14,7 +14,7 @@
             class="flex items-center gap-2">
             <input type="file" name="file" accept=".csv" multiple
                 aria-label="CSV files to upload"
-                class="text-sm text-gray-500 dark:text-gray-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300 hover:file:bg-gray-200 dark:hover:file:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                class="text-sm text-gray-600 dark:text-gray-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300 hover:file:bg-gray-200 dark:hover:file:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <button type="submit"
                 class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors">
                 Upload
@@ -167,7 +167,7 @@
                 Automatic Backups
             </h2>
             <label class="flex items-center gap-2 cursor-pointer select-none">
-                <span class="text-xs text-gray-500 dark:text-gray-400" id="auto-backup-toggle-label">Loading…</span>
+                <span class="text-xs text-gray-600 dark:text-gray-400" id="auto-backup-toggle-label">Loading…</span>
                 <input type="checkbox" id="auto-backup-toggle"
                     class="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
             </label>
@@ -178,7 +178,7 @@
                 &middot; <span id="auto-backup-count" class="font-medium text-gray-800 dark:text-gray-200">…</span> snapshots
                 &middot; <span id="auto-backup-bytes" class="font-medium text-gray-800 dark:text-gray-200">…</span>
             </p>
-            <p class="text-xs text-gray-500 dark:text-gray-500 flex items-center gap-1.5 flex-wrap">
+            <p class="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1.5 flex-wrap">
                 <span>Location:</span>
                 <code id="auto-backup-dir"
                     onclick="copyBackupDir()"
@@ -245,7 +245,7 @@
                 {{end}}
                 Data Encryption
             </h2>
-            <span class="text-xs {{if .IsEncrypted}}{{if .IsLocked}}text-amber-700 dark:text-amber-400{{else}}text-green-700 dark:text-green-400{{end}}{{else}}text-gray-500 dark:text-gray-400{{end}}">
+            <span class="text-xs {{if .IsEncrypted}}{{if .IsLocked}}text-amber-700 dark:text-amber-400{{else}}text-green-700 dark:text-green-400{{end}}{{else}}text-gray-600 dark:text-gray-400{{end}}">
                 {{if .IsEncrypted}}{{if .IsLocked}}Locked{{else}}Unlocked{{end}}{{else}}Not encrypted{{end}}
             </span>
         </div>
@@ -274,7 +274,7 @@
                     {{else if eq .AuthMethod "yubikey"}}Unlock with YubiKey
                     {{else}}Unlock{{end}}
                 </button>
-                <p class="text-xs text-gray-500 dark:text-gray-500">
+                <p class="text-xs text-gray-600 dark:text-gray-400">
                     Method: <span class="font-medium">{{if eq .AuthMethod "age"}}Age Identity File{{else if eq .AuthMethod "ssh"}}SSH Key{{else if eq .AuthMethod "password"}}Password{{else if eq .AuthMethod "yubikey"}}YubiKey{{else}}{{.AuthMethod}}{{end}}</span>
                 </p>
             </form>
@@ -309,7 +309,7 @@
                     class="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors">
                     Disable Encryption
                 </button>
-                <p class="text-xs text-gray-500 dark:text-gray-500 mt-2">
+                <p class="text-xs text-gray-600 dark:text-gray-400 mt-2">
                     Method: <span class="font-medium">{{if eq .AuthMethod "age"}}Age Identity File{{else if eq .AuthMethod "ssh"}}SSH Key{{else if eq .AuthMethod "password"}}Password{{else}}{{.AuthMethod}}{{end}}</span>
                 </p>
             </form>
@@ -327,15 +327,15 @@
                         Password
                     </button>
                     <button onclick="selectMethod('age')" id="tab-age"
-                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
                         Age Key
                     </button>
                     <button onclick="selectMethod('ssh')" id="tab-ssh"
-                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
                         SSH Key
                     </button>
                     <button onclick="selectMethod('yubikey')" id="tab-yubikey"
-                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
                         YubiKey
                     </button>
                 </div>
@@ -348,14 +348,14 @@
                         <input type="password" name="password" id="enc-password" required minlength="8"
                             aria-describedby="enc-password-hint enable-encryption-error"
                             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                        <p id="enc-password-hint" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Minimum 8 characters.</p>
+                        <p id="enc-password-hint" class="text-xs text-gray-600 dark:text-gray-400 mt-1">Minimum 8 characters.</p>
                     </div>
                     <div>
                         <label for="enc-confirm" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm Password</label>
                         <input type="password" name="confirmPassword" id="enc-confirm" required minlength="8"
                             aria-describedby="enc-confirm-hint enable-encryption-error"
                             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                        <p id="enc-confirm-hint" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Minimum 8 characters.</p>
+                        <p id="enc-confirm-hint" class="text-xs text-gray-600 dark:text-gray-400 mt-1">Minimum 8 characters.</p>
                     </div>
                     <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
                         <p class="text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
@@ -444,7 +444,7 @@
                         Use your YubiKey for hardware-backed encryption. Requires <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">age-plugin-yubikey</code>.
                     </p>
                     <div id="yubikey-status" class="mb-3">
-                        <p class="text-sm text-gray-500 dark:text-gray-400">Detecting YubiKey...</p>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Detecting YubiKey...</p>
                     </div>
                     <div id="yubikey-identities" class="hidden space-y-2">
                         <label for="yubikey-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Available YubiKey Identities</label>
@@ -462,7 +462,7 @@
                         </button>
                     </div>
                     <div id="yubikey-ready" class="hidden">
-                        <div class="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm">
+                        <div class="flex items-center gap-2 text-green-700 dark:text-green-400 text-sm">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                             </svg>
@@ -919,12 +919,12 @@ function selectMethod(method) {
     // Update tab styles
     document.querySelectorAll('.method-tab').forEach(tab => {
         tab.classList.remove('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
-        tab.classList.add('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        tab.classList.add('border-transparent', 'text-gray-600', 'dark:text-gray-400');
     });
 
     const activeTab = document.getElementById('tab-' + method);
     if (activeTab) {
-        activeTab.classList.remove('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        activeTab.classList.remove('border-transparent', 'text-gray-600', 'dark:text-gray-400');
         activeTab.classList.add('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
     }
 
@@ -1424,10 +1424,10 @@ document.addEventListener('DOMContentLoaded', function() {
             data-enabled="{{if .Enabled}}1{{else}}0{{end}}">
             <td class="px-3 py-1.5">
                 <span class="font-medium text-gray-900 dark:text-gray-100">{{.Name}}</span>
-                <span class="text-gray-500 dark:text-gray-400 ml-1">({{printf "%.0f" (div (toFloat .Size) 1024.0)}}K)</span>
+                <span class="text-gray-600 dark:text-gray-400 ml-1">({{printf "%.0f" (div (toFloat .Size) 1024.0)}}K)</span>
             </td>
             <td class="px-2 py-1.5 text-center text-gray-600 dark:text-gray-400">{{.Transactions}}</td>
-            <td class="px-2 py-1.5 text-center text-xs text-gray-500 dark:text-gray-400">
+            <td class="px-2 py-1.5 text-center text-xs text-gray-600 dark:text-gray-400">
                 {{if .MinDate}}{{.MinDate}} - {{.MaxDate}}{{else}}-{{end}}
             </td>
             <td class="px-2 py-1.5 text-center">
@@ -1449,7 +1449,7 @@ document.addEventListener('DOMContentLoaded', function() {
         </tr>
         {{else}}
         <tr>
-            <td colspan="5" class="px-3 py-6 text-center text-gray-500 dark:text-gray-400">
+            <td colspan="5" class="px-3 py-6 text-center text-gray-600 dark:text-gray-400">
                 No CSV files found. Upload a file to get started.
             </td>
         </tr>
@@ -1460,7 +1460,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 {{define "import-scan"}}
 {{if .ImportMessage}}
-<p class="text-sm text-gray-500 dark:text-gray-400 py-2">{{.ImportMessage}}</p>
+<p class="text-sm text-gray-600 dark:text-gray-400 py-2">{{.ImportMessage}}</p>
 {{end}}
 {{if .ImportEntries}}
 <ul class="divide-y divide-gray-100 dark:divide-gray-700" role="list">
@@ -1471,15 +1471,15 @@ document.addEventListener('DOMContentLoaded', function() {
             class="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60">
         <label for="import-entry-{{$i}}" class="text-sm flex-1 cursor-pointer select-none">
             <span class="font-medium text-gray-900 dark:text-gray-100">{{$e.Name}}</span>
-            <span class="text-gray-500 dark:text-gray-400 ml-1">({{printf "%.0f" (div (toFloat $e.Size) 1024.0)}}K)</span>
-            {{if $e.MinDate}}<span class="text-xs text-gray-500 dark:text-gray-400 ml-2">{{$e.MinDate}} - {{$e.MaxDate}}</span>{{end}}
-            {{if $e.Exists}}<span class="text-xs text-gray-500 dark:text-gray-400 ml-2">(already present, will be skipped)</span>{{end}}
+            <span class="text-gray-600 dark:text-gray-400 ml-1">({{printf "%.0f" (div (toFloat $e.Size) 1024.0)}}K)</span>
+            {{if $e.MinDate}}<span class="text-xs text-gray-600 dark:text-gray-400 ml-2">{{$e.MinDate}} - {{$e.MaxDate}}</span>{{end}}
+            {{if $e.Exists}}<span class="text-xs text-gray-600 dark:text-gray-400 ml-2">(already present, will be skipped)</span>{{end}}
         </label>
     </li>
     {{end}}
 </ul>
 {{else if not .ImportMessage}}
-<p class="text-sm text-gray-500 dark:text-gray-400 py-2">Click Rescan to list CSV files in the import folder.</p>
+<p class="text-sm text-gray-600 dark:text-gray-400 py-2">Click Rescan to list CSV files in the import folder.</p>
 {{end}}
 {{end}}
 
@@ -1500,6 +1500,6 @@ document.addEventListener('DOMContentLoaded', function() {
     {{end}}
 </ul>
 {{else}}
-<p class="text-sm text-gray-500 dark:text-gray-400">No files were selected for import.</p>
+<p class="text-sm text-gray-600 dark:text-gray-400">No files were selected for import.</p>
 {{end}}
 {{end}}

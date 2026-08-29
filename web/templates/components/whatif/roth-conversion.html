@@ -3,8 +3,8 @@
 {{define "whatif-roth-conversion"}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Roth Conversion Strategy</h3>
-        <span class="text-xs text-gray-400 dark:text-gray-500">Optional tax optimization</span>
+        <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Roth Conversion Strategy</h2>
+        <span class="text-xs text-gray-500 dark:text-gray-400">Optional tax optimization</span>
     </div>
 
     <form hx-post="/whatif/roth-conversion" hx-target="#whatif-results" hx-trigger="change delay:500ms"
@@ -28,14 +28,14 @@
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Annual Conversion Amount</label>
                 <div class="mt-1 relative rounded-md shadow-sm">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span class="text-gray-500 sm:text-sm">$</span>
+                        <span class="text-gray-600 sm:text-sm">$</span>
                     </div>
                     <input type="number" name="annual_amount"
                         value="{{if .Settings.RothConversion}}{{printf "%.0f" .Settings.RothConversion.AnnualAmount}}{{else}}50000{{end}}"
                         min="0" max="1000000" step="1"
                         class="pl-7 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
                 </div>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
                     Amount to convert from tax-deferred to Roth each year
                 </p>
             </div>
@@ -47,7 +47,7 @@
                         value="{{if .Settings.RothConversion}}{{.Settings.RothConversion.StartYear}}{{else}}0{{end}}"
                         min="0" max="50" step="1"
                         class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Years from now (0 = immediately)</p>
+                    <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">Years from now (0 = immediately)</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">End Year</label>
@@ -55,7 +55,7 @@
                         value="{{if .Settings.RothConversion}}{{.Settings.RothConversion.EndYear}}{{else}}0{{end}}"
                         min="0" max="50" step="1"
                         class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">0 = continue indefinitely</p>
+                    <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">0 = continue indefinitely</p>
                 </div>
             </div>
 

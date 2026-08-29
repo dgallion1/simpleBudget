@@ -1,0 +1,202 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: X5
+ATTEMPT: 2
+---
+Toolchain: go version go1.26.6 linux/amd64. Everything ran in scratch copies
+(cp -a, .git kept) under
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/X5/
+  base  - pristine copy of the working tree (oracle, suites, reads)
+  mutA  - base + mutation 2(a)
+  mutB  - base + mutation 2(b)
+The real tree was never built, tested or mutated; the only real-tree write is
+this verdict file.
+
+CRITERION 1 - tier-3 oracle exits 0, ORACLE PASS, all 8 TestOracleX5* pass.
+PASS
+  cmd: cd <base> && bash .swarm/tier3/X5/accept.sh; echo ORACLE_EXIT=$?
+  out: --- PASS for all eight:
+       TestOracleX5LegacyHashKeyedAliasStillApplies,
+       TestOracleX5StableIDKeyedAliasApplies,
+       TestOracleX5SaveRekeysToStableID,
+       TestOracleX5RemovalReachesStableKeyedEntry,
+       TestOracleX5BystanderLegacyEntryRekeyedOnUnrelatedSave,
+       TestOracleX5StableIDEntryWinsCollision,
+       TestOracleX5RemovalByStableIDDoesNotResurrect,
+       TestOracleX5UnresolvableLegacyKeyPreserved
+       CHECK 01-oracle-behaviors: PASS / CHECK 02-package-suite: PASS /
+       CHECK 03-vet-package: PASS / passed=3 failed=0 / ORACLE PASS /
+       ORACLE_EXIT=0
+  Eight === RUN lines, so no oracle name was silently unmatched.
+  Planted file cleaned up:
+    cmd: ls internal/services/dataloader/zz_oracle_x5_test.go
+    out: "No such file or directory"
+    cmd: git status --porcelain -- internal/services/dataloader/
+    out: " M .../loader.go" + "?? .../alias_stable_id_test.go" only.
+  Oracle provenance (no tampering signal): ls -la --time-style on the real
+  tree shows accept.sh 2026-08-29T15:25:42 < alias_stable_id_test.go 15:29:21
+  < loader.go 15:29:51 < manifest X5.2.files 15:30:05; accept.sh is not in
+  X5.2.files.
+
+CRITERION 2 - attempt-1's surviving killers are now dead. PASS (both arms)
+
+  2(a) normalize rekeyToStable deleted from SaveAlias (mutA; SaveAlias body
+       becomes loadAliasesLocked -> key := dl.canonicalKey(hash) -> set/delete
+       -> writeAliasesRawLocked):
+    cmd: cd <mutA> && go test -count=1 -run
+         'TestSaveAlias_BystanderLegacyEntryRekeyedOnUnrelatedSave' -v
+         ./internal/services/dataloader/
+    out: --- FAIL: TestSaveAlias_BystanderLegacyEntryRekeyedOnUnrelatedSave
+         alias_stable_id_test.go:192 "bystander entry was not rekeyed to its
+         StableID: map[8a48c6a90d6fdd92:Bystander
+         file:usaa-checking-2025.csv|2025-06-01|-1875|0:Target]"
+         alias_stable_id_test.go:195 "bystander's legacy hash key survived an
+         unrelated save"
+    cmd: cd <mutA> && bash .swarm/tier3/X5/accept.sh; echo ORACLE_A_EXIT=$?
+    out: --- FAIL: TestOracleX5BystanderLegacyEntryRekeyedOnUnrelatedSave
+         (also --- FAIL TestOracleX5SaveRekeysToStableID,
+          TestOracleX5StableIDEntryWinsCollision,
+          TestOracleX5RemovalByStableIDDoesNotResurrect)
+         CHECK 01-oracle-behaviors: FAIL / CHECK 02-package-suite: FAIL /
+         passed=1 failed=2 / no ORACLE PASS line / ORACLE_A_EXIT=1
+    => the attempt-1 surviving mutant (rekey step deleted) is now killed by
+       BOTH the named bystander test and the oracle's bystander check.
+
+  2(b) attempt-1 bug shape restored: rekey moved AFTER the set/delete
+       (normalize->operate becomes operate->rekey) in mutB:
+         key := dl.canonicalKey(hash); if/else set|delete;
+         rekeyToStable(aliases, dl.stableIDIndex());
+         return dl.writeAliasesRawLocked(tx, aliases)
+    cmd: cd <mutB> && go test -count=1 -run
+         'TestSaveAlias_RemovalByStableIDWithLegacyDupDoesNotResurrect' -v
+         ./internal/services/dataloader/
+    out: --- FAIL: TestSaveAlias_RemovalByStableIDWithLegacyDupDoesNotResurrect
+         alias_stable_id_test.go:256 "aliases after removal-by-StableID =
+         map[file:usaa-checking-2025.csv|2025-06-01|-1875|0:Legacy], want empty"
+         alias_stable_id_test.go:267 "DisplayName = \"Legacy\" after removal,
+         want empty"
+    cmd: cd <mutB> && bash .swarm/tier3/X5/accept.sh; echo ORACLE_B_EXIT=$?
+    out: --- FAIL: TestOracleX5RemovalByStableIDDoesNotResurrect (the other
+         seven oracle behaviors still PASS - the mutation is precisely
+         localized) / CHECK 01-oracle-behaviors: FAIL /
+         CHECK 02-package-suite: FAIL / passed=1 failed=2 / ORACLE_B_EXIT=1
+    => the defect checker-second found at attempt 1 is now pinned by both the
+       named test and the oracle, and reproduces the exact symptom that
+       verdict reported (removal undone, old value "Legacy" resurrected).
+
+CRITERION 3 - all attempt-1 tests plus the new ones pass by name. PASS
+  cmd: cd <base> && go test -count=1 -run 'TestApplyAliases|TestSaveAlias' -v
+       ./internal/services/dataloader/
+  out: 16 === RUN / 16 --- PASS, "ok budget2/internal/services/dataloader
+       0.035s", NAMED_EXIT=0. All five attempt-1 names still present and
+       passing (TestApplyAliases_LegacyHashSidecarStillResolves,
+       TestApplyAliases_StableIDKeyedSidecarApplies,
+       TestSaveAlias_RekeysToStableIDAndDropsLegacyKey,
+       TestSaveAlias_RemovalReachesEntryFiledUnderTheOtherForm,
+       TestSaveAlias_UnresolvableLegacyKeyPreserved), plus the three added at
+       attempt 2 (TestSaveAlias_BystanderLegacyEntryRekeyedOnUnrelatedSave,
+       TestSaveAlias_CollisionStableIDWins,
+       TestSaveAlias_RemovalByStableIDWithLegacyDupDoesNotResurrect), plus the
+       eight pre-existing TestSaveAlias_*/TestApplyAliases_* from the package.
+
+  Tests assert what their names claim (Read of
+  /home/darrell/bin/ai/budget2/internal/services/dataloader/alias_stable_id_test.go):
+   - Bystander (155-197): two-row fixture, len==2 guard, degenerate-fixture
+     guard on row B (Hash != StableID), stages {rowB.Hash: "Bystander"},
+     saves against rowA.Hash, then asserts len(saved)==2,
+     saved[rowB.StableID]=="Bystander" and rowB.Hash absent. This is a
+     genuine bystander case - the save target is a different row - so it
+     cannot be satisfied by canonicalKey alone; proven non-vacuous by 2(a).
+   - CollisionStableIDWins (203-234): stages BOTH forms for one row with
+     DIFFERENT names ("Old name"/"New name"), asserts the read side picks the
+     StableID value, then that a save collapses to exactly 1 entry under the
+     StableID.
+   - RemovalByStableIDWithLegacyDupDoesNotResurrect (241-269): stages
+     {hash:"Legacy", stableID:"Stable name"}, calls SaveAlias(stableID, ""),
+     asserts len(saved)==0 AND that a reload gives DisplayName == "" - i.e.
+     asserts the on-disk map and the observable consumer output; proven
+     non-vacuous by 2(b).
+   - UnresolvableLegacyKeyPreserved (275-296): stages an orphan key, saves an
+     unrelated alias, asserts len==2 (count-before-probe) and the orphan value
+     survives.
+   - Shared aliasFixture (14-39) keeps the degenerate-fixture guard
+     (Hash=="" || StableID=="" -> Fatalf; Hash==StableID -> Fatal), so no
+     assertion is vacuous by the two identity forms coinciding.
+
+CRITERION 4 - SaveAlias read: locking unchanged, no post-persist rekey,
+writeAliasesLocked gone, doc comment truthful. PASS
+  cmd: cd <base> && git diff master -- internal/services/dataloader/loader.go
+  out: 4 hunks (@@ -892, -900, -912, -923), 37 insertions / 5 deletions, all
+       inside the alias block; no other function touched.
+  Locking path unchanged - the diff's unchanged context lines for SaveAlias
+  are `tx, done := dl.beginWrite()` / `defer done()` /
+  `aliases, err := dl.loadAliasesLocked(tx)`; confirmed against master:
+    cmd: git show master:internal/services/dataloader/loader.go | grep -n ...
+    out: master:896 func SaveAlias, master:899 loadAliasesLocked(tx) - same
+         two lines, unmodified. loadAliasesLocked (877-893) and LoadAliases
+         are untouched by the diff, and loadAliasesLocked does no rekey.
+  No post-persist rekey anywhere:
+    cmd: grep -n "rekeyToStable" internal/services/dataloader/loader.go
+    out: exactly one hit, line 921 - inside SaveAlias, BEFORE
+         `key := dl.canonicalKey(hash)` and before the set/delete. The write
+         helper is writeAliasesRawLocked (934-940), which only
+         json.MarshalIndent + tx.WriteFile - no rekey on the way out.
+  writeAliasesLocked truly gone:
+    cmd: grep -rn "writeAliasesLocked" --include=*.go .
+    out: no matches (exit 1). ("writeAliasesRawLocked" does not contain that
+         string, so the grep is not masked by the surviving helper.)
+  Doc comment truthful (loader.go:895-913): it says the map is rekeyed
+  "Before anything else", that only then is the caller's key resolved and the
+  set/delete applied, and that the result is "persisted exactly as computed,
+  with no further rekey pass on the way out" - each clause matches the code
+  read above (rekey at 921, canonicalKey at 922, set/delete 923-927, raw
+  persist 928). It also names the attempt-1 failure mode it is guarding, which
+  mutation 2(b) reproduces exactly.
+  applyAliases (955-958) now resolves via models.ResolveByIdentity, whose body
+  (internal/models/transaction.go:151-168) tries StableID first then Hash -
+  matching the doc comment added above it.
+  Extra (not required): go test -race -count=1
+  ./internal/services/dataloader/ -> "ok ... 2.496s", RACE_EXIT=0.
+
+CRITERION 5 - vet clean, package green, build, full suite green. PASS (all in
+<base>)
+  cmd: go vet ./internal/services/dataloader/        out: VET_EXIT=0, no output
+  cmd: go test -count=1 ./internal/services/dataloader/
+       out: "ok budget2/internal/services/dataloader 1.408s", PKG_EXIT=0
+  cmd: go build ./...                                out: BUILD_EXIT=0
+  cmd: go test ./...
+       out: FULL_EXIT=0; every package "ok", including
+       budget2/internal/services/dataloader 2.535s,
+       budget2/internal/handlers/explorer 1.760s,
+       budget2/internal/services/storage 141.607s,
+       budget2/internal/services/retirement 84.649s. No FAIL line.
+
+CRITERION 6 - scope. PASS (siblings reported, not attributed)
+  cmd: cd <base> && git diff master --stat -- internal/services/dataloader/
+  out: "internal/services/dataloader/loader.go | 42 ++++--" ;
+       "1 file changed, 37 insertions(+), 5 deletions(-)" - loader.go is the
+       ONLY tracked dataloader file that differs from master.
+  cmd: git status --porcelain -- internal/services/dataloader/
+  out: " M internal/services/dataloader/loader.go"
+       "?? internal/services/dataloader/alias_stable_id_test.go"
+  Exactly the two paths in .swarm/manifests/X5.2.files, no more.
+  Other dirty paths - REPORTED, NOT ATTRIBUTED to X5 (sibling X-run tasks):
+    M .swarm/ledger.tsv, M internal/services/mcpsvc/snapshot/snapshot_test.go,
+    M internal/services/retirement/overrides/overrides.go,
+    M internal/services/retirement/settings.go,
+    M internal/services/retirement/settings_load_copy_test.go,
+    M internal/services/retirement/settings_test.go, M swarm/t7-coverage.sh,
+    ?? .swarm/X-RUN-SPEC.md, ?? .swarm/manifests/X{1.2,2.1,3.1,4.1,4.2,5.1,5.2}.files,
+    ?? .swarm/tier3/X5/, ?? .swarm/verdicts/X1.2.*, X4.1.*, X5.1.*
+  critical.globs lists internal/services/dataloader/**; the ledger row
+  `X5  3  tests,second  pending  2  worker-coder
+   attempt1-dual-lane-fail-resurrect-bug-and-unpinned-rekey` is tier 3, the
+  tier that permits touching a critical glob.
+
+SUMMARY: 6 of 6 criteria demonstrated by command output. Both attempt-1
+killers are dead: the rekey-deleting mutant now fails the bystander test and
+the oracle's bystander behavior, and the operate-then-rekey (attempt-1 bug
+shape) mutant now fails the resurrect test and the oracle's resurrect
+behavior. Oracle exits 0 with 8/8 behaviors, full build/vet/suite green,
+scope exactly the manifest.

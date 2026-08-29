@@ -57,7 +57,7 @@
     <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('expenses')">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Monthly Living Expenses</p>
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Monthly Living Expenses</p>
                 <p class="num text-2xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Metrics.ActualMonthly}}</p>
                 {{if .Metrics.HasBudgetTarget}}
                 {{- $prov := .TargetProvenance}}
@@ -74,11 +74,11 @@
                     {{if $prov.Annotate}}<span title="{{$targetAnnotation}}" aria-label="{{$targetAnnotation}}">Target <span class="num">{{formatMoney .Metrics.BudgetTarget}}</span></span>{{else}}Target <span class="num">{{formatMoney .Metrics.BudgetTarget}}</span>{{end}} · <span class="num">{{formatMoney (abs .Metrics.PerMonthDelta)}}</span>/mo {{if gt .Metrics.PerMonthDelta 0.0}}over{{else}}under{{end}}
                 </p>
                 {{else}}
-                <p class="text-sm text-gray-400 dark:text-gray-500 italic">No budget set</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400 italic">No budget set</p>
                 {{end}}
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     {{if ge .PeriodComparison.ActualMonthlyChange 0.0}}+{{else}}-{{end}}<span class="num">{{formatMoney (abs .PeriodComparison.ActualMonthlyChange)}}</span>/mo vs prior
                 </p>
                 {{end}}
@@ -108,9 +108,9 @@
                     Target <span class="num">{{formatMoney .Metrics.HealthcareTarget}}</span> · <span class="num">{{formatMoney (abs .Metrics.HealthcarePerMonthDelta)}}</span>/mo {{if gt .Metrics.HealthcarePerMonthDelta 0.0}}over{{else}}under{{end}}
                 </p>
                 {{else}}
-                <p class="text-sm text-gray-400 dark:text-gray-500 italic">No premium target set</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400 italic">No premium target set</p>
                 {{end}}
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Category: Health Insurance</p>
+                <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Category: Health Insurance</p>
             </div>
             <div class="p-3 bg-rose-100 dark:bg-rose-900/50 rounded-full">
                 <svg class="w-6 h-6 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -138,7 +138,7 @@
         {{else}}border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800{{end}}" onclick="openKPIDetail('expenses')">
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Budget</p>
+                <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Budget</p>
                 {{if .Metrics.HasCombinedTarget}}
                 {{if $budgetOver}}
                 <p class="text-2xl font-bold text-rose-600 dark:text-rose-400"><span class="num">{{formatMoney (abs .Metrics.CombinedCumulativeDelta)}}</span> over</p>
@@ -147,7 +147,7 @@
                 {{else}}
                 <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">On budget</p>
                 {{end}}
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
                     over <span class="num">{{printf "%.1f" .Metrics.MonthsInRange}}</span> mo
                 </p>
                 {{- /* Ruling 2026-08-29a: the over/under/on-target wording AND
@@ -156,7 +156,7 @@
                      no bare >0/<0 comparison here, so the same delta can
                      never render "on target" in one surface and "over" in
                      the other. */}}
-                <div class="text-xs text-gray-500 dark:text-gray-400 mt-2 space-y-0.5 leading-snug">
+                <div class="text-xs text-gray-600 dark:text-gray-400 mt-2 space-y-0.5 leading-snug">
                     {{- if .BudgetVerdict.Living.Configured}}
                     <div class="flex justify-between gap-2">
                         <span>Living: <span class="num">{{formatMoney .Metrics.LivingExpensesTotal}}</span> of <span class="num">{{formatMoney .Metrics.LivingTargetTotal}}</span></span>
@@ -176,13 +176,13 @@
                 </div>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
-                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
                     {{if ge .PeriodComparison.CumulativeDeltaChange 0.0}}+{{else}}-{{end}}<span class="num">{{formatMoney (abs .PeriodComparison.CumulativeDeltaChange)}}</span> vs prior
                 </p>
                 {{end}}
                 {{end}}
                 {{else}}
-                <p class="text-2xl font-bold text-gray-400 dark:text-gray-500 italic">Not set</p>
+                <p class="text-2xl font-bold text-gray-600 dark:text-gray-400 italic">Not set</p>
                 <a href="/whatif" class="text-sm text-indigo-600 dark:text-indigo-400 hover:underline mt-1 inline-block">Set a budget in What-If →</a>
                 {{end}}
                 {{if .Metrics.HasCombinedTarget}}

@@ -716,7 +716,7 @@ func safeJS(s string) template.JS {
 
 func colorClass(v float64) string {
 	if v > 0 {
-		return "text-green-600 dark:text-green-400"
+		return "text-green-700 dark:text-green-400"
 	} else if v < 0 {
 		return "text-red-600 dark:text-red-400"
 	}
@@ -731,7 +731,7 @@ func colorClass(v float64) string {
 func successRateTextClass(v float64) string {
 	switch {
 	case v >= 90:
-		return "text-green-600 dark:text-green-400"
+		return "text-green-700 dark:text-green-400"
 	case v >= 80:
 		return "text-lime-600 dark:text-lime-400"
 	case v >= 70:
@@ -751,21 +751,21 @@ var verdictClasses = map[models.Health]struct{ band, label, value string }{
 	models.HealthGreen: {
 		band:  "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700",
 		label: "text-emerald-700 dark:text-emerald-300",
-		value: "text-emerald-600 dark:text-emerald-400",
+		value: "text-emerald-700 dark:text-emerald-400",
 	},
 	models.HealthAmber: {
 		band:  "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700",
 		label: "text-amber-700 dark:text-amber-300",
-		value: "text-amber-600 dark:text-amber-400",
+		value: "text-amber-700 dark:text-amber-400",
 	},
 	models.HealthRed: {
 		band:  "bg-rose-50 dark:bg-rose-900/20 border-rose-300 dark:border-rose-700",
 		label: "text-rose-700 dark:text-rose-300",
-		value: "text-rose-600 dark:text-rose-400",
+		value: "text-rose-700 dark:text-rose-400",
 	},
 	models.HealthNeutral: {
 		band:  "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700",
-		label: "text-gray-500 dark:text-gray-400",
+		label: "text-gray-600 dark:text-gray-400",
 		value: "text-gray-700 dark:text-gray-200",
 	},
 }

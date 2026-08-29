@@ -102,8 +102,9 @@ func DeepCopy(cfg *models.WhatIfSettings) (*models.WhatIfSettings, error) {
 // Use Clone (not DeepCopy) whenever the copy is handed to a caller that will
 // read those fields WITHOUT first going through From. DeepCopy is only safe
 // when From re-derives them: From runs ComputeAges, so CurrentAge/SpouseAge
-// come back, but nothing re-derives RothConversion.PerYearOverrides — see the
-// re-attach overrides.Apply has to perform by hand after its own DeepCopy.
+// come back, but nothing re-derives RothConversion.PerYearOverrides — which
+// is why overrides.Apply copies via Clone, and why mcpsvc/plan re-attaches
+// the map after From's internal DeepCopy drops it again.
 //
 // The set of carried fields is enforced by TestCloneCarriesEveryJSONOmittedField,
 // which reflects over models.WhatIfSettings rather than hard-coding a list, so

@@ -1,0 +1,133 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: X3
+ATTEMPT: 1
+---
+Repo copied with `cp -a` to a scratchpad working copy (.git preserved); every
+command below ran in that copy. Toolchain: `go version` -> go1.26.6 linux/amd64.
+Only real-tree write is this verdict file.
+
+CRITERION 1 — Apply calls prepare.Clone; hand-rolled re-attach + long comment
+gone; no other behaviour change in overrides.go; mcpsvc/plan untouched. PASS
+  cmd: rtk proxy git diff -- internal/services/retirement/overrides/overrides.go
+  out: single hunk "@@ -45,20 +45,11 @@"; only changes are
+       "-	s, err := prepare.DeepCopy(base)" / "+	s, err := prepare.Clone(base)",
+       removal of the 8-line comment ("prepare.DeepCopy round-trips through JSON
+       ... mirroring analysis/tax_optimizer.go:90-100.") and of the 3-line
+       re-attach block "if base.RothConversion != nil && ... s.RothConversion
+       .PerYearOverrides = base.RothConversion.PerYearOverrides }", plus the new
+       one-line comment "// Clone owns the json:\"-\" carry (CurrentAge,
+       SpouseAge, PerYearOverrides)." No other +/- lines in the file.
+  cmd: rtk proxy git diff master -- internal/services/mcpsvc/plan/
+  out: empty (no output).
+  cmd: rtk proxy git diff --name-only master..HEAD -- \
+         internal/services/retirement/overrides/ internal/services/mcpsvc/plan/
+  out: empty — neither directory was touched by the committed W-run work either,
+       so the working-tree diff above is the whole of X3.
+  Equivalence read of prepare.Clone (prepare.go:127-160): Clone = DeepCopy +
+  carryJSONOmittedFields, same error paths; the old code aliased base's map while
+  carryJSONOmittedFields copies it. No non-test caller mutates the map through
+  Apply's result (`grep -rn PerYearOverrides --include=*.go internal/ | grep -v
+  _test.go` — engine/loop_helpers.go:256 reads it; tax_optimizer_strategies.go:468
+  builds its own), so the alias->copy change is unobservable and strictly safer.
+
+CRITERION 2 — both guard tests still bite (mutation proofs re-run by me). PASS
+  Mutation A, in a second scratch copy: perl-substituted prepare.Clone(base) ->
+  prepare.DeepCopy(base) (confirmed at overrides.go:48).
+    cmd: go test -count=1 -run TestApply_PreservesPerYearOverridesAcrossDeepCopy \
+           ./internal/services/retirement/overrides/
+    out: --- FAIL: TestApply_PreservesPerYearOverridesAcrossDeepCopy (0.00s)
+         overrides_test.go:48: PerYearOverrides lost in copy: &{Enabled:true
+         AnnualAmount:0 StartYear:0 EndYear:0 PerYearOverrides:map[]}   EXIT=1
+    restored: cmp against the unmutated copy -> "RESTORE_A_OK (cmp identical)".
+  Mutation B: deleted the 5-line post-prepare.From re-attach in
+  internal/services/mcpsvc/plan/overrides.go (diff shows exactly those 5 '-' lines).
+    cmd: go test -count=1 \
+           -run TestPreparedWithOverrides_PreservesPerYearOverridesAcrossBoundary \
+           ./internal/services/mcpsvc/plan/
+    out: --- FAIL: TestPreparedWithOverrides_PreservesPerYearOverridesAcrossBoundary
+         (0.00s) overrides_test.go:36: PerYearOverrides lost across the prepare
+         boundary: &{... PerYearOverrides:map[]}   EXIT=1
+    restored: cmp against the unmutated copy -> "RESTORE_B_OK (cmp identical)".
+  This independently confirms the brief's claim that the SECOND re-attach must
+  stay: with Clone in place in Apply, removing it still loses the map.
+  Test-body read (both files opened): overrides_test.go:37-50 seeds
+  base.RothConversion.PerYearOverrides={0:50000}, calls Apply and asserts
+  got.RothConversion.PerYearOverrides[0]==50000 — it asserts what its name claims.
+  plan/overrides_test.go:24-38 does the same through preparedWithOverrides and
+  reads prepared.Settings(), i.e. it genuinely crosses the prepare.From boundary.
+
+CRITERION 3 — CurrentAge/SpouseAge carry is a strict improvement, no caller
+depended on them being zeroed after Apply. PASS
+  Callers of overrides.Apply (cmd: grep -rn "overrides.Apply\|RunWithOverrides"
+  --include=*.go . | grep -v _test.go): settings.go:1185 (SettingsManager
+  .ApplyOverrides) and mcpsvc/plan/overrides.go:19 Apply alias used by
+  preparedWithOverrides -> RunWithOverrides. Both re-derive the ages before any
+  read: prepare.From calls ComputeAges (prepare.go:56) and saveInternal calls
+  ComputeAges (settings.go:769); ComputeAges (normalize.go:14-26) sets CurrentAge
+  from the primary person and unconditionally does "s.SpouseAge = 0" before
+  re-deriving. ValidatePersons (validate.go:26-66) is run on both paths and
+  requires exactly one primary with a parseable BirthMonth not after StartDate,
+  so the CurrentAge derivation cannot silently no-op and leave a carried value.
+  Zero-sentinel grep (CurrentAge/SpouseAge == 0 / <= 0 / > 0) finds only readers
+  of POST-prepare settings (analysis/ss.go:317,330; social_security.go:79;
+  whatif.go:336) plus prepare_test.go assertions — none read Apply's raw output.
+  Empirical probes (temporary test files added in the mutation copy only, never
+  in the real tree):
+    cmd: go test -count=1 -v -run TestX3_ ./internal/services/mcpsvc/plan/
+    out: TestX3_ApplyNowCarriesAges: "new Apply ages: CurrentAge=65 SpouseAge=62
+         (base 65/62)" — PASS (documents the delta)
+         TestX3_AgeCarryInvisibleAcrossPrepareFrom: compares prepare.From(newApply)
+         against prepare.From(old-behaviour output with ages re-zeroed);
+         "after prepare.From both are CurrentAge=65 SpouseAge=62 and DeepEqual"
+         — reflect.DeepEqual of the two prepared settings holds. PASS
+    cmd: go test -count=1 -v -run TestX3_ ./internal/services/retirement/
+    out: TestX3_ApplyOverridesAgeCarryNotObservable: real SettingsManager +
+         storage on a t.TempDir; "loaded ages: CurrentAge=65 SpouseAge=0",
+         "returned ages: CurrentAge=65 SpouseAge=0" (identical to the recomputed
+         values), "saved whatif.json (2150 bytes) contains no age field" — the
+         fields are json:"-" (models/whatif.go:102-103) so the carry cannot reach
+         disk. PASS
+  No call site depends on the zeroing; nothing to name as a failure.
+
+CRITERION 4 — vet / targeted tests / build / full suite. PASS
+  cmd: go build ./...                                        -> BUILD_EXIT=0, no output
+  cmd: go vet ./internal/services/retirement/overrides/...    -> VET_EXIT=0, no output
+  cmd: go test -count=1 ./internal/services/retirement/overrides/... \
+         ./internal/services/mcpsvc/plan/...
+  out: ok budget2/internal/services/retirement/overrides 0.004s
+       ok budget2/internal/services/mcpsvc/plan 2.368s        EXIT=0
+  cmd: go test ./...   (full suite, filtered for non-ok lines)
+  out: no FAIL lines; EXIT=0. The dataloader concurrency caveat did not bite —
+       the copy's dataloader packages passed as taken.
+
+CRITERION 5 — scope. PASS
+  cmd: cat .swarm/manifests/X3.1.files -> the single line
+       "internal/services/retirement/overrides/overrides.go".
+  cmd: rtk proxy git status --porcelain -- internal/services/retirement/overrides/
+  out: " M internal/services/retirement/overrides/overrides.go" — the only dirty
+       path in the package; no test file was added or edited for X3.
+  cmd: cat .swarm/critical.globs -> internal/services/storage/**,
+       internal/services/dataloader/**, internal/services/retirement/engine/**,
+       internal/services/transfers/**, internal/services/accounts/accounts.go,
+       internal/services/mcpsvc/confirm/**. overrides.go matches none of them.
+  cmd: grep -P "^X3\t" .swarm/ledger.tsv -> "X3	2	tests,second	pending	1
+       worker-coder	dispatched-2026-08-29" (Tier 2; no tier-3 oracle expected and
+       .swarm/tier3/X3 does not exist).
+  Other dirty paths belong to concurrent siblings, NOT attributed to X3:
+  .swarm/ledger.tsv, internal/services/dataloader/loader.go,
+  internal/services/mcpsvc/snapshot/snapshot_test.go,
+  internal/services/retirement/settings.go, settings_load_copy_test.go,
+  settings_test.go, swarm/t7-coverage.sh, plus untracked .swarm/* files and
+  internal/services/dataloader/alias_stable_id_test.go.
+
+NOTE (informational, not a criterion, no behaviour impact, outside the manifest):
+two comments elsewhere now describe the pre-X3 world.
+  - prepare.go:105-106: "...nothing re-derives RothConversion.PerYearOverrides —
+    see the re-attach overrides.Apply has to perform by hand after its own
+    DeepCopy." Apply no longer performs that re-attach.
+  - mcpsvc/plan/overrides.go:23: "...a second time even though Apply already
+    re-attached it once" — now it is Clone, not Apply's own code, that re-attaches.
+  The brief required mcpsvc/plan to stay untouched, and it is; flagged for the
+  lead to decide, not treated as a failure.

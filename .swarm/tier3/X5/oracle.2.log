@@ -1,0 +1,24 @@
+=== RUN   TestOracleX5LegacyHashKeyedAliasStillApplies
+--- PASS: TestOracleX5LegacyHashKeyedAliasStillApplies (0.00s)
+=== RUN   TestOracleX5StableIDKeyedAliasApplies
+--- PASS: TestOracleX5StableIDKeyedAliasApplies (0.00s)
+=== RUN   TestOracleX5SaveRekeysToStableID
+--- PASS: TestOracleX5SaveRekeysToStableID (0.00s)
+=== RUN   TestOracleX5RemovalReachesStableKeyedEntry
+--- PASS: TestOracleX5RemovalReachesStableKeyedEntry (0.00s)
+=== RUN   TestOracleX5BystanderLegacyEntryRekeyedOnUnrelatedSave
+--- PASS: TestOracleX5BystanderLegacyEntryRekeyedOnUnrelatedSave (0.00s)
+=== RUN   TestOracleX5StableIDEntryWinsCollision
+--- PASS: TestOracleX5StableIDEntryWinsCollision (0.00s)
+=== RUN   TestOracleX5RemovalByStableIDDoesNotResurrect
+--- PASS: TestOracleX5RemovalByStableIDDoesNotResurrect (0.00s)
+=== RUN   TestOracleX5UnresolvableLegacyKeyPreserved
+--- PASS: TestOracleX5UnresolvableLegacyKeyPreserved (0.00s)
+PASS
+ok  	budget2/internal/services/dataloader	0.022s
+CHECK 01-oracle-behaviors: PASS
+CHECK 02-package-suite: PASS
+CHECK 03-vet-package: PASS
+---
+passed=3 failed=0
+ORACLE PASS

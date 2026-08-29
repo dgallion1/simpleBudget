@@ -1,0 +1,99 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: X1
+ATTEMPT: 2
+---
+All work verified in a `cp -a` copy at
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/x1/budget2
+(branch fix/phase-visibility, go1.26.6 linux/amd64). The only write to the real
+tree is this verdict file.
+
+C1 — both tests run and pass, none skipped. PASS
+  cmd: go test -count=1 -v -run 'TestSnapshotter_FailsWhenSource' ./internal/services/mcpsvc/snapshot/
+  out: === RUN   TestSnapshotter_FailsWhenSourceMissing
+       --- PASS: TestSnapshotter_FailsWhenSourceMissing (0.00s)
+       === RUN   TestSnapshotter_FailsWhenSourceUnreadable
+       --- PASS: TestSnapshotter_FailsWhenSourceUnreadable (0.00s)
+       ok  budget2/internal/services/mcpsvc/snapshot 0.002s
+  No SKIP lines; grep -n -i 'Skip' snapshot_test.go returns no t.Skip (only the
+  unrelated word "SkipPredicate" in a comment at line 83). The old
+  TestSnapshotter_FailsWhenSourceUnreadable body (missing file, no assertions
+  beyond err != nil) is now named TestSnapshotter_FailsWhenSourceMissing
+  (snapshot_test.go:116-124); the name is honest — the fixture writes no file.
+
+C2 — the unreadable test bites (mutation). PASS
+  mutation: in the copy, snapshot.go Ensure's ReadFile error branch replaced with
+  `data = nil` (ignore error, continue with empty content).
+  cmd: go test -count=1 -v -run 'TestSnapshotter_FailsWhenSource' ./internal/services/mcpsvc/snapshot/
+  out: snapshot_test.go:150: expected an error for an unreadable source file
+       --- FAIL: TestSnapshotter_FailsWhenSourceUnreadable (0.00s)
+       (TestSnapshotter_FailsWhenSourceMissing also failed at :122, as expected)
+  restored: `git diff --stat -- internal/services/mcpsvc/snapshot/snapshot.go`
+  empty and `diff -q` against the real tree reports snapshot.go IDENTICAL; the
+  targeted run is green again after restore.
+
+C3 — root-proof, no chmod-dependence. PASS
+  fixture (snapshot_test.go:143-146) is `os.Mkdir(settingsDir/whatif.json, 0o755)`
+  — the source path exists as a directory, so Ensure's first call os.ReadFile(src)
+  fails EISDIR. grep -n -i 'chmod' snapshot_test.go finds chmod only inside the
+  explanatory comment (lines 137,139); there is no os.Chmod call and no
+  os.Geteuid()-based skip.
+  cmd: unshare -r id  ->  uid=0(root) gid=0(root)
+  cmd: unshare -r go test -count=1 -v -run 'TestSnapshotter_FailsWhenSource' ./internal/services/mcpsvc/snapshot/
+  out: --- PASS: TestSnapshotter_FailsWhenSourceMissing / --- PASS:
+       TestSnapshotter_FailsWhenSourceUnreadable / ok ... 0.002s
+  Contrast probe under the same namespace root shows why the choice matters:
+  cmd: unshare -r bash -c '... chmod 000 $f; cat $f ...; cat $dir ...'
+  out: CHMOD000_READABLE_AS_ROOT (chmod fixture would be bypassed)
+       DIR read fails as root: cat: ...: Is a directory
+  Precedent cited by the brief exists and uses the identical pattern:
+  internal/services/mcpsvc/curate/upsert_test.go:144
+  TestUpsertSkipsThePinWhenItsSnapshotCannotBeTaken — same os.Mkdir swap and the
+  same "EISDIR at any uid, including root -- unlike chmod 0000" rationale.
+
+C4 — the no-leak assertion is real, not just an error check. PASS
+  fixture asserts three things: err != nil (:149), err.Error() contains
+  "whatif.json" naming the source (:152-154), and os.ReadDir(snapDir) has zero
+  entries (:156-162).
+  mutation: Ensure's ReadFile error branch made to write
+  snapshotDir/whatif.json.partial.bak before returning the same error (error text
+  and error-naming assertions unchanged).
+  cmd: go test -count=1 -v -run 'TestSnapshotter_FailsWhenSourceUnreadable' ./internal/services/mcpsvc/snapshot/
+  out: snapshot_test.go:161: snapshot dir should still be empty after a failed
+       read, found: [- whatif.json.partial.bak]
+       --- FAIL: TestSnapshotter_FailsWhenSourceUnreadable (0.00s)
+  So the destination-absence assertion independently detects a leaked snapshot.
+  Restored; targeted run green.
+
+C5 — vet, package tests, full build and suite. PASS
+  cmd: go vet ./internal/services/mcpsvc/snapshot/...      out: No issues found
+  cmd: go test -count=1 ./internal/services/mcpsvc/snapshot/...  out: 10 passed in 1 packages
+  cmd: go build ./...                                      out: BUILD_OK
+  cmd: go test ./...   out: 49 "ok" lines, no FAIL, no build errors
+       (go list ./... | wc -l = 49, so every package reported ok), including
+       ok budget2/internal/services/mcpsvc/snapshot 0.008s and
+       ok budget2/internal/services/mcpsvc/curate 0.843s.
+
+C6 — scope. PASS
+  cmd: git status --porcelain internal/services/mcpsvc/snapshot/
+  out:  M internal/services/mcpsvc/snapshot/snapshot_test.go   (only file; snapshot.go
+        untouched, no untracked files in that package)
+  This matches .swarm/manifests/X1.2.files exactly (single line:
+  internal/services/mcpsvc/snapshot/snapshot_test.go).
+  cmd: git diff --name-only  (whole tree)
+  out: .swarm/ledger.tsv, internal/services/dataloader/loader.go,
+       internal/services/mcpsvc/snapshot/snapshot_test.go,
+       internal/services/retirement/overrides/overrides.go,
+       internal/services/retirement/settings.go,
+       internal/services/retirement/settings_load_copy_test.go,
+       internal/services/retirement/settings_test.go, swarm/t7-coverage.sh
+  Every non-X1, non-ledger entry is claimed by a sibling manifest (X2.1:
+  retirement settings x3; X3.1: overrides.go; X4.1: swarm/t7-coverage.sh; X5.1:
+  dataloader/loader.go + untracked alias_stable_id_test.go). Reported, not
+  attributed to X1.
+  .swarm/critical.globs does not cover internal/services/mcpsvc/snapshot/**
+  (it lists mcpsvc/confirm/**, storage, dataloader, retirement/engine, transfers,
+  accounts.go), so X1's single file touches nothing critical. NOTE for the lead,
+  not an X1 finding: dataloader/** IS in critical.globs and is modified by the
+  sibling X5 work on this branch.

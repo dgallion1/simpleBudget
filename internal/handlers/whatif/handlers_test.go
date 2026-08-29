@@ -8792,6 +8792,15 @@ func TestHandleWhatIfTaxOptimize_EligibleReturnsResult(t *testing.T) {
 	}
 }
 
+// TestRenderRecalc_CarriesRevisionHeader pins the settings-write side of the
+// HX-Trigger contract: a route whose SettingsManager call reports the
+// revision its own write produced (UpdateSettings/UpdateSettingsWithPersons
+// for handleWhatIfSettings; SaveWithRevision for the saveAndRecalc
+// callers) must advance the client's baseline so
+// the next poll doesn't redundantly re-render. This is deliberately NOT true
+// of every mutating route — see
+// TestRenderRecalc_ItemCRUDOmitsRevisionHeader for the sentinel routes that
+// must omit the header instead.
 func TestRenderRecalc_CarriesRevisionHeader(t *testing.T) {
 	rm, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
@@ -8808,7 +8817,7 @@ func TestRenderRecalc_CarriesRevisionHeader(t *testing.T) {
 	}
 	trigger := resp.Header.Get("HX-Trigger")
 	if trigger == "" {
-		t.Fatal("a user-initiated mutation must advance the client baseline too, or the poll re-renders redundantly 2s later")
+		t.Fatal("a settings write must advance the client baseline, or the poll re-renders redundantly 2s later")
 	}
 	var parsed map[string]int
 	if err := json.Unmarshal([]byte(trigger), &parsed); err != nil {
@@ -8816,5 +8825,45 @@ func TestRenderRecalc_CarriesRevisionHeader(t *testing.T) {
 	}
 	if parsed["whatif:revision"] != rm.Revision() {
 		t.Fatalf("header revision = %d, want %d", parsed["whatif:revision"], rm.Revision())
+	}
+}
+
+// TestRenderRecalc_ItemCRUDOmitsRevisionHeader pins the other half of the
+// HX-Trigger contract (GitHub issue #25): item-CRUD routes — here,
+// DELETE /whatif/income/{id} — call a SettingsManager method that does not
+// report the revision its write produced, so they pass revisionUnreported
+// into renderRecalc/recalcAndRender and the response must carry NO
+// HX-Trigger header at all.
+//
+// This omission is deliberate, not an oversight. Reading rm.Revision() after
+// the analysis fan-out here would race a concurrent write (e.g. from the
+// MCP server) that bumps the counter in between: the header could then hand
+// the client a baseline that LEADS the state it was just sent. Every later
+// poll would answer 204 (not-modified) against that lead, and the page
+// freezes on pre-change figures with no recovery short of a reload — the
+// frozen-page bug. Omitting the header trades that failure mode for one
+// harmless redundant render on the client's next poll.
+//
+// A well-meaning "fix" that threads a real revision through an item-CRUD
+// route (instead of revisionUnreported) reintroduces that bug with a green
+// suite otherwise; this test is what turns it red. See handlers.go's
+// revisionUnreported doc comment for the full rationale.
+func TestRenderRecalc_ItemCRUDOmitsRevisionHeader(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	src := models.IncomeSource{ID: "no-trigger-inc", Name: "Test", Amount: 1000, Type: models.IncomeFixed}
+	rm.AddIncomeSource(src)
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/income/no-trigger-inc", nil, map[string]string{"id": "no-trigger-inc"})
+	handleWhatIfDeleteIncome(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", resp.StatusCode, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+	if trigger := resp.Header.Get("HX-Trigger"); trigger != "" {
+		t.Fatalf("item-CRUD route must omit HX-Trigger (revisionUnreported), got %q — this reintroduces the frozen-page bug (issue #25)", trigger)
 	}
 }

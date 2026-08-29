@@ -892,7 +892,25 @@ func (dl *DataLoader) loadAliasesLocked(tx *storage.SharedTx) (map[string]string
 	return aliases, nil
 }
 
-// SaveAlias sets or removes an alias for a transaction hash
+// SaveAlias sets or removes an alias for a transaction identity. The key may
+// be either a StableID or a legacy content hash -- the explorer posts
+// Transaction.Hash. Before anything else, every resolvable legacy-hash entry
+// in the loaded map is rekeyed to its StableID (this is the whole migration:
+// no one-shot pass, just every save moving the entries it can identify,
+// leaving the rest to be moved when their rows are next loaded -- same
+// contract as the pins, enrichment, and duplicate-decision sidecars). Only
+// once the map is canonical does the caller's own key get resolved the same
+// way and the set/delete applied.
+//
+// Normalizing FIRST matters: if the rekey ran AFTER the set/delete instead
+// (as an old shape of this method did), a legacy duplicate for the SAME row
+// as the one just removed would still be sitting in the map at delete time,
+// and the rekey pass would then resurrect its value under the stable key on
+// the very same write, silently undoing the removal. Doing it first means
+// the set/delete below always runs against an already-canonical map, so
+// there is nothing left for a rekey to resurrect -- the result is persisted
+// exactly as computed, with no further rekey pass on the way out. An empty
+// displayName removes the alias.
 func (dl *DataLoader) SaveAlias(hash, displayName string) error {
 	tx, done := dl.beginWrite()
 	defer done()
@@ -900,11 +918,20 @@ func (dl *DataLoader) SaveAlias(hash, displayName string) error {
 	if err != nil {
 		return fmt.Errorf("load aliases: %w", err)
 	}
+	rekeyToStable(aliases, dl.stableIDIndex())
+	key := dl.canonicalKey(hash)
 	if displayName == "" {
-		delete(aliases, hash)
+		delete(aliases, key)
 	} else {
-		aliases[hash] = displayName
+		aliases[key] = displayName
 	}
+	return dl.writeAliasesRawLocked(tx, aliases)
+}
+
+// writeAliasesRawLocked marshals and persists the alias map exactly as
+// given. Caller holds the sequence opened by beginWrite and passes its
+// transaction.
+func (dl *DataLoader) writeAliasesRawLocked(tx *storage.SharedTx, aliases map[string]string) error {
 	data, err := json.MarshalIndent(aliases, "", "  ")
 	if err != nil {
 		return err
@@ -912,7 +939,12 @@ func (dl *DataLoader) SaveAlias(hash, displayName string) error {
 	return tx.WriteFile(dl.aliasPath(), data, 0644)
 }
 
-// applyAliases sets DisplayName on transactions that have aliases
+// applyAliases sets DisplayName on transactions that have aliases, resolving
+// each row's identity StableID first and falling back to its legacy content
+// Hash -- so an alias file written before StableID existed keeps applying
+// with no migration step, and one already rekeyed to StableID (the
+// post-description-reformat survivor) applies too. Failure to load is
+// non-fatal: users without an aliases file see no behavior change.
 func (dl *DataLoader) applyAliases(transactions []models.Transaction) []models.Transaction {
 	aliases, err := dl.LoadAliases()
 	if err != nil {
@@ -923,7 +955,7 @@ func (dl *DataLoader) applyAliases(transactions []models.Transaction) []models.T
 		return transactions
 	}
 	for i := range transactions {
-		if name, ok := aliases[transactions[i].Hash]; ok {
+		if name, _, ok := models.ResolveByIdentity(aliases, transactions[i]); ok {
 			transactions[i].DisplayName = name
 		}
 	}

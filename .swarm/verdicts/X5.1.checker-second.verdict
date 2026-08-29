@@ -1,0 +1,85 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: X5
+ATTEMPT: 1
+---
+Reproduced in a scratch copy (/tmp/.../x5check/repo), toolchain go1.26.6.
+
+Confirmed non-defective, per criterion:
+1. Oracle (.swarm/tier3/X5/accept.sh) reruns clean: ORACLE PASS, 5/5 behaviors,
+   package suite, vet. accept.sh not in worker's manifest (X5.1.files lists
+   only loader.go + alias_stable_id_test.go); mtimes are consistent with the
+   oracle predating the worker's edits (accept.sh 14:14 < loader.go 14:54 <
+   test 14:55 < oracle.1.log 15:16), i.e. no tampering signal.
+2. Vacuity, direction 1: deleted the worker's alias_stable_id_test.go and
+   reran accept.sh in the copy -> still ORACLE PASS (oracle is
+   self-contained, not piggybacking on the worker's tests).
+3. Vacuity, direction 2: reverted only loader.go to origin/master (kept the
+   worker's test file) -> TestApplyAliases_StableIDKeyedSidecarApplies,
+   TestSaveAlias_RekeysToStableIDAndDropsLegacyKey,
+   TestSaveAlias_RemovalReachesEntryFiledUnderTheOtherForm all FAIL as
+   expected; the two compat-guard tests still PASS. Matches the X-RUN-SPEC.md
+   pre-dispatch validation note exactly.
+4. `go build ./... && go test ./...` green in the copy (full repo, not just
+   package scope) despite the shared W-run edits present.
+5. `go test -race -count=1 ./internal/services/dataloader/` clean.
+6. Collision (both hash-keyed and StableID-keyed entries for one row, with
+   different names) read via LoadData -> StableID wins, matching the
+   documented contract and rekeyToStable's own doc comment (probe:
+   TestProbeX5CollisionStableWinsOnRead).
+7. Opportunistic rekey side effects: SaveAlias on row A also rekeys row B's
+   coexisting legacy dup within the same load's index; a genuinely
+   out-of-index (out-of-range) legacy key is preserved verbatim by an
+   unrelated save (probes: TestProbeX5CollisionSurvivesUnrelatedSave,
+   TestProbeX5UnresolvableKeyIsIndexMiss) -- correct per contract.
+8. Empty-key edge (SaveAlias("", name)): creates an orphan "" entry (same as
+   pre-existing behavior) but ResolveByIdentity's non-empty guards on both
+   StableID and Hash branches mean it can never spuriously apply to a real
+   row -- no regression (TestProbeX5EmptyKeySave).
+
+DEFECT FOUND (reason for FAIL) -- SaveAlias's own documented contract is
+violated in the collision + StableID-keyed-removal case:
+
+  loader.go's new SaveAlias docstring states explicitly: "The key may be
+  either a StableID or a legacy content hash." But when the caller-supplied
+  key IS ALREADY the StableID form (key == hash, so canonicalKey is a
+  no-op), the `if key != hash { delete(aliases, hash) }` guard that drops a
+  coexisting legacy duplicate is skipped -- it only fires when
+  canonicalKey actually changed the key. If a legacy hash-keyed duplicate
+  for the same row also sits in the map (an anticipated, documented state --
+  see rekeyToStable's own doc: "When both forms are present for one row the
+  StableID entry wins"), a removal issued with the StableID
+  (`SaveAlias(stableID, "")`) deletes only the StableID entry; the untouched
+  legacy dup then survives into writeAliasesLocked, whose rekeyToStable pass
+  resurrects it UNDER THE STABLE KEY on the very same write. Net effect: the
+  removal is silently undone and the OLD alias value reappears.
+
+  Reproduced with TestProbeX5RemovalByStableIDWithLegacyDupResurrects
+  (written fresh in the copy, not part of either party's test files):
+  starting state {hash: "Legacy", stableID: "Stable name"}, calling
+  SaveAlias(stableID, "") leaves {stableID: "Legacy"} instead of {} —
+    saved after removal = map[file:checking-2025.csv|2025-07-01|-3150|0:Legacy]
+    --- FAIL: TestProbeX5RemovalByStableIDWithLegacyDupResurrects (0.00s)
+
+  Scope note: the only current production caller (internal/handlers/explorer
+  /handlers.go handleAlias, fed by web/templates/pages/explorer.html's
+  data-hash="{{.Hash}}") always sends the legacy Hash form, never the
+  StableID, so this exact path is not reachable through today's UI. It IS,
+  however, reachable through the exported method exactly as that method's
+  own new docstring says it should work ("the key may be either a StableID
+  or a legacy content hash"), and the collision state it depends on is a
+  first-class case the implementation itself claims to handle correctly
+  elsewhere (read side, rekeyToStable's own doc comment). A future caller,
+  a hand-migrated aliases.json, or a second writer that already speaks
+  StableID would silently lose a user's alias removal. Per house rules
+  ("default to FAIL on ambiguity" / oracle is narrower than the full
+  documented contract), this is a real defect the Tier-3 oracle did not
+  probe (its removal test only exercises the hash-keyed removal path) and
+  is grounds for FAIL.
+
+Sibling-run dirty files noted, not attributed: .swarm/ledger.tsv,
+snapshot_test.go, overrides.go, settings.go, settings_load_copy_test.go,
+settings_test.go, swarm/t7-coverage.sh, plus untracked X-RUN-SPEC.md and
+X1-X4 manifests belong to other in-flight tasks/runs and were not evaluated
+here.

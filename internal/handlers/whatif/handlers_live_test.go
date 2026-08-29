@@ -65,7 +65,7 @@ func TestHandleWhatIfApply_PersistsAndBumpsRevision(t *testing.T) {
 	defer cleanup()
 
 	before := rm.Revision()
-	resp := postApply(t, `{"monthly_living_expenses": 4200}`)
+	resp := postApply(t, fmt.Sprintf(`{"monthly_living_expenses": 4200, "expected_scenario": %q}`, rm.ActiveFilename()))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -109,7 +109,7 @@ func TestHandleWhatIfApply_PositiveRothAmountLeavesConversionsEnabled(t *testing
 		t.Fatalf("Save: %v", err)
 	}
 
-	if resp := postApply(t, `{"roth_conversion_amount": 50000}`); resp.StatusCode != http.StatusOK {
+	if resp := postApply(t, fmt.Sprintf(`{"roth_conversion_amount": 50000, "expected_scenario": %q}`, rm.ActiveFilename())); resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 
@@ -144,7 +144,7 @@ func TestHandleWhatIfApply_ZeroRothAmountDisablesConversions(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 
-	if resp := postApply(t, `{"roth_conversion_amount": 0}`); resp.StatusCode != http.StatusOK {
+	if resp := postApply(t, fmt.Sprintf(`{"roth_conversion_amount": 0, "expected_scenario": %q}`, rm.ActiveFilename())); resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 
@@ -175,7 +175,7 @@ func TestHandleWhatIfApply_SpouseClaimAgeLeavesSocialSecurityIntact(t *testing.T
 		t.Fatalf("Save: %v", err)
 	}
 
-	if resp := postApply(t, `{"spouse_claim_age": 65}`); resp.StatusCode != http.StatusOK {
+	if resp := postApply(t, fmt.Sprintf(`{"spouse_claim_age": 65, "expected_scenario": %q}`, rm.ActiveFilename())); resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 
@@ -199,17 +199,17 @@ func TestHandleWhatIfApply_SpouseClaimAgeLeavesSocialSecurityIntact(t *testing.T
 }
 
 func TestHandleWhatIfApply_RejectsUnwritableAndInvalid(t *testing.T) {
-	_, cleanup := setupTestEnv(t)
+	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
 
 	for _, tc := range []struct{ name, body, wantIn string }{
-		{"healthcare_inflation", `{"healthcare_inflation": 6}`, "healthcare_inflation"},
-		{"absurd return", `{"investment_return": 900}`, "investment_return"},
-		{"claim age", `{"social_security_claim_age": 40}`, "social_security_claim_age"},
-		{"roth window only", `{"roth_conversion_start_year": 2}`, "roth_conversion_amount"},
+		{"healthcare_inflation", `{"healthcare_inflation": 6, "expected_scenario": %q}`, "healthcare_inflation"},
+		{"absurd return", `{"investment_return": 900, "expected_scenario": %q}`, "investment_return"},
+		{"claim age", `{"social_security_claim_age": 40, "expected_scenario": %q}`, "social_security_claim_age"},
+		{"roth window only", `{"roth_conversion_start_year": 2, "expected_scenario": %q}`, "roth_conversion_amount"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			resp := postApply(t, tc.body)
+			resp := postApply(t, fmt.Sprintf(tc.body, rm.ActiveFilename()))
 			if resp.StatusCode != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400", resp.StatusCode)
 			}

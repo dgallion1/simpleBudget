@@ -295,9 +295,9 @@
         {{end}}
     </div>
 
-    {{/* Update expense sources data for spending trajectory preview */}}
-    <div id="expense-sources-data-wrapper" hx-swap-oob="true">
-        {{template "whatif-expense-sources-data" .}}
+    {{/* Refresh the engine-fed spending trajectory table after a recalc */}}
+    <div id="trajectory-refresh-wrapper" hx-swap-oob="true">
+        {{template "whatif-trajectory-refresh" .}}
     </div>
 
     {{template "whatif-removed-expense-sources" .}}

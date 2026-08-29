@@ -827,6 +827,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/spending-phases/add", handleWhatIfAddPhase)
 	r.Delete("/whatif/spending-phases/{index}", handleWhatIfDeletePhase)
 	r.Post("/whatif/spending-phases/reset", handleWhatIfResetPhases)
+	r.Get("/whatif/spending-trajectory", handleWhatIfSpendingTrajectory)
 	r.Get("/whatif/results-full", handleWhatIfResultsFull)
 	r.Get("/whatif/chart/projection", handleWhatIfProjectionChart)
 	r.Get("/whatif/chart/projection/no-guardrails", handleWhatIfProjectionChartNoGuardrails)

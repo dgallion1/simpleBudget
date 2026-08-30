@@ -1,0 +1,102 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: Y1
+ATTEMPT: 1
+---
+Scope confirmed via `git diff origin/master` in the worktree, restricted to
+the a11y-relevant files in the manifest:
+
+  web/templates/components/kpis.html | 3 ++-  (1 attribute added)
+  web/static/js/charts.js            | 24 +++++++++++++++++++++---
+
+(The remaining manifest files — metrics.go, metrics_test.go, dashboard.go,
+verdict.go, verdict_test.go — are Go data-layer/test changes with no
+templates or markup touched; out of a11y scope, left to checker-tests.)
+
+1. Semantics/ARIA/focus/contrast/text-alt changed by the diff?
+   kpis.html diff (full, verified via `git diff origin/master --
+   web/templates/components/kpis.html`):
+     -                     data-mode="balance"></div>
+     +                     data-mode="balance"
+     +                     data-neutral-band="{{.BudgetVerdict.Eps}}"></div>
+   Only a `data-*` attribute is added to the existing `#sparkline-budget`
+   div (kpis.html:189-193). `data-*` attributes are not exposed to the
+   accessibility tree unless referenced by an `aria-*` attribute, which
+   this div does not have (checked full div block, kpis.html:186-194: no
+   `aria-hidden`, no `role`, no `aria-label`, unchanged by this diff). No
+   heading, landmark, label, or focusable-element change anywhere in the
+   diff. charts.js changes are confined to the `renderSparkline` balance-
+   mode fill-clamping branch and `initSparklines`' attribute parsing —
+   pure JS logic, no DOM text nodes, no ARIA attributes touched. Verdict:
+   no semantics/ARIA/focus/text-alternative change. FINDING: no barrier
+   introduced.
+
+2. WCAG 1.4.1 Use of Color — better, equal, or worse than baseline?
+   `git show origin/master:web/static/js/charts.js` (balance-mode branch,
+   pre-diff) colored strictly by `v > 0` / `v < 0`, i.e. it disagreed with
+   the card's own `onBudgetEps`-based over/under text (see defect record,
+   .swarm/Y-RUN-SPEC.md lines 21-34, and kpis.html:153-159's ruling
+   2026-08-29a comment that headline wording and color must share one
+   classification). Post-diff, `renderSparkline` clamps at
+   `nb = options.neutralBand` (charts.js ~line 288-290): green only for
+   `v > nb`, red only for `v < -nb`; `nb` is threaded end-to-end from
+   `BudgetVerdictView.Eps` (= `onBudgetEps` = 1.0, verdict.go:11,142) via
+   `data-neutral-band` and `initSparklines`' parse-and-guard block
+   (charts.js ~line 563, 580-586: `isFinite(nb) && nb > 0`). This is the
+   task's stated purpose and it is met: the chart's color story can no
+   longer contradict the adjacent card headline ("$X over"/"$X under"/"On
+   budget", kpis.html:144-150) for the on-budget dead band. The card's
+   pre-existing reliance on color-plus-text at the KPI level (ACCESSIBILITY
+   point 8) is untouched by this diff and remains satisfied (headline text
+   sits directly above the sparkline, unchanged). Verdict: equal-or-better,
+   not worse. No new 1.4.1 violation from this diff.
+
+3. Contrast of the changed fill treatment, light + dark:
+   Fill colors are byte-identical before/after in `renderSparkline`:
+   `#ef4444` / `rgba(239, 68, 68, 0.3)` (red) and `#22c55e` /
+   `rgba(34, 197, 94, 0.3)` (green), main trace 2px, unchanged line color
+   parameter. These are inline SVG/Plotly styles, not CSS custom
+   properties, so they are not theme-conditional in either master or this
+   diff — pre-existing dark-mode behavior for this specific chart is
+   unaffected either way (observation, not this task's territory). The
+   diff's only behavioral change is which values feed each fill array:
+   `values.map(v => v > nb ? v : 0)` / `v < -nb ? v : 0` (nb=0 pre-diff).
+   Values inside ±nb now contribute 0 to both fills — i.e., the diff can
+   only REMOVE fill from a data point, never add or recolor one. Removing
+   a fill segment cannot create a new contrast failure. Verdict: no
+   contrast regression, either theme.
+
+4. Template validity:
+   `go build ./...` — clean, no errors.
+   `go test ./internal/handlers/dashboard/... -run 'Kpi|Kpis|Verdict|Render|Sparkline' -v`
+   — all PASS, including `TestDashboardKPIs_BudgetSparkline_BalanceMode`,
+   which issues a real HTTP GET through the chi router to
+   `/dashboard/kpis` and asserts the response body contains
+   `id="sparkline-budget"` and `data-mode="balance"` — i.e. the template
+   with the new `data-neutral-band="{{.BudgetVerdict.Eps}}"` attribute
+   parses and renders through the full handler stack without error.
+   `go test ./web/...` — ok (cached, template-embedding package).
+   `Eps` is a Go constant `onBudgetEps = 1.0` (verdict.go:11), always set
+   unconditionally in `BuildBudgetVerdict` (verdict.go:142), so the
+   rendered attribute is always a well-formed positive decimal
+   (`data-neutral-band="1"`); html/template auto-escapes the interpolation,
+   so no injection/malformation risk.
+
+OBSERVATIONS (pre-existing, not worsened by this diff, not a FAIL of Y1):
+- The `#sparkline-budget` div (and its sibling sparklines) has no
+  `role="img"` / `aria-label` / adjacent data table, so ACCESSIBILITY.md
+  point 11 ("every Plotly chart has a text alternative... adjacent data
+  table") is not met for this chart today. This predates the diff (the div
+  and its data-values/data-color/data-mode attributes are unchanged by
+  Y1) and is squarely the kind of full-site backlog item noted in prior
+  memory (budget2 open items: "sparkline + a11y backlog recorded"). Not
+  in scope for Y1's diff-only audit per the dispatch instructions; flagging
+  for the run-end full-site checker-a11y pass.
+- Dark-mode theming of the Plotly sparkline fills/line generally (not just
+  this diff's neutral-band change) is not re-themed per point 12; also
+  pre-existing and unaffected by this diff.
+
+VERDICT: PASS — this diff introduces no new accessibility barrier and
+improves (does not worsen) the pre-existing 1.4.1 color-alone situation by
+making the chart's color agree with the card's text classification.

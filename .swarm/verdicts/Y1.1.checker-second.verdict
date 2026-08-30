@@ -1,0 +1,120 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: Y1
+ATTEMPT: 1
+---
+Attacks attempted (all in a /tmp scratch copy except where noted; worktree itself
+never mutated):
+
+1. INVARIANT FUZZING (attack surface 1). Wrote a standalone Go test file
+   (adversarial_test.go, deleted after use) exercising: leap-year Feb,
+   single-day range, mid-month start/end, empty-middle-month, >6-month
+   range (cap+carry-in), zero combined target (series must be nil),
+   income-only month, healthcare-only month, and a 500-iteration random
+   fuzz over ranges up to ~400 days with random transaction dates/types/
+   amounts and random targets. All asserted |tail - (-CombinedCumulativeDelta)|
+   <= 0.01. Result: 100% pass, including the 500-case fuzz
+   (`go test ./internal/services/metrics/ -run TestAdversarial -v`).
+   Also tested a 25-year range (300 synthetic monthly transactions) to
+   probe float-accumulation drift: actual diff was 6e-10, nowhere near the
+   $0.01 tolerance the tests use — the tolerance is generous headroom, not
+   a sign the implementation is actually noisy. (First attempt at this
+   25-year case produced a 3631-diff "failure" — traced to my own test bug:
+   I passed an unfiltered TransactionSet with transactions dated past
+   rangeEnd, violating the documented pre-filtered-TransactionSet
+   precondition. Fixed by filtering with FilterByDateRange first, which
+   made the diff vanish to noise level. This confirms the precondition is
+   load-bearing and is correctly documented as such in dashboard.go.)
+
+2. MUTATION TESTING against the ACTUAL project test suite (not my own),
+   in the scratch copy:
+   a. Reintroduced the pre-fix bug shape — capped to last 6 points by
+      re-summing from zero instead of preserving carry-in. Result:
+      `TestCalculateMetrics_CombinedCumulativeBalance_MoreThanSixMonths_CapsAndCarriesIn`
+      correctly FAILed (tail 3045.17 vs want 3983.57). Every other new/
+      tightened test still passed (as expected, since only the >6-month
+      case exercises the cap).
+   b. Replaced fractional accrual (`combinedTarget * MonthsBetween(...)`)
+      with flat integer-month accrual (`combinedTarget`). Result: 5 of 6
+      CombinedCumulativeBalance tests correctly FAILed (Accumulates...,
+      LastIsNegationOf..., MoreThanSixMonths..., PartialMonthRange...,
+      ZeroTransactionMiddleMonth...), each with a clear diff far outside
+      $0.01. Confirms the tightened $0.01 tests genuinely catch
+      month-rounding regressions, not just gross breakage.
+   Both mutations restored before discarding the scratch copy; the real
+   worktree was never touched.
+
+3. CROSS-VERSION TREND IDENTITY (criterion 7, "byte-identical"). Rather
+   than eyeballing the diff, added an identical throwaway test to both
+   this worktree and a `git worktree add --detach origin/master` checkout,
+   generating 200 randomized (range, transaction-set, targets) fixtures
+   and dumping IncomeTrend/ExpensesTrend/SavingsTrend/HealthcareTrend/
+   LivingExpensesTrend/TrendLabels/CumulativeDelta/HealthcareCumulativeDelta/
+   CombinedCumulativeDelta to JSON from each. `diff` of the two JSON
+   files was empty across all 200 cases — the non-balance trend arrays and
+   the delta fields are provably unchanged, not just "looks unchanged in
+   the diff." Scratch worktree removed afterward.
+
+4. JS/TEMPLATE SEAM (attack surface 3). Manually traced initSparklines
+   (charts.js ~563-590) and renderSparkline's balance branch (~283-291):
+   nb defaults to 0 when data-neutral-band is absent/non-finite/<=0, and
+   `v > 0`/`v < 0` (nb=0) is byte-identical to the pre-diff `v>0`/`v<0`
+   fill logic — confirmed by reading both the pre-diff and post-diff
+   branches side by side (`git show origin/master:web/static/js/charts.js`
+   vs current). Grepped the whole template tree for `data-mode="balance"`
+   and `sparkline-`: `#sparkline-budget` is the ONLY balance-mode
+   sparkline on the site; income/expenses/monthly/healthcare sparklines
+   have no `data-mode` attribute and are unaffected. `{{.BudgetVerdict.Eps}}`
+   is a Go float64 constant (1.0) rendered via html/template's default
+   Sprint formatting ("1"), always present (Eps is set unconditionally on
+   every BuildBudgetVerdict return path, including the nil-metrics and
+   no-target early returns — verified in verdict.go and covered by two
+   `Eps != 1.0` assertions in verdict_test.go). No numeric eps literal
+   appears in kpis.html (grepped the diff).
+
+5. DEAD-BAND KNIFE EDGE (attack surface 4). Card classifies on raw
+   CombinedCumulativeDelta vs exactly onBudgetEps=1.0; chart classifies on
+   tail vs neutralBand=1.0 where tail equals -delta only up to float noise
+   (empirically ~1e-9 to 1e-6, per fuzzing above, not $0.01 in practice).
+   A disagreement is only theoretically possible in a sub-cent window
+   around the exact eps boundary, which is below any dollar amount either
+   UI element displays (formatMoney rounds to cents) and is explicitly
+   covered by the spec's own "up to float noise" framing and the tests'
+   $0.01 tolerance. Not a practical defect.
+
+6. SCOPE (attack surface 6). `git diff --name-only origin/master` lists
+   exactly the manifest's 7 files plus `.swarm/ledger.tsv` (lead-owned,
+   excluded per instructions). No out-of-territory files touched.
+
+7. FULL GATES in the actual worktree (not the scratch copy):
+   `go build ./...` — clean.
+   `go vet ./...` — clean.
+   `go test ./...` — all packages ok (including
+   budget2/internal/services/metrics and
+   budget2/internal/handlers/dashboard).
+   `go test ./internal/services/metrics/ -run CombinedCumulativeBalance -v`
+   — all 6 subtests pass, covering exactly the 4 required scenarios from
+   criterion 2 (multi-month, partial-month, >6-month cap+carry-in,
+   empty-middle-month) plus the base negation test and the nil-series
+   test.
+   `grep -n "> 100"` in metrics_test.go — no hits; the old slack literal is
+   gone (criterion 3).
+
+8. Independently reviewed checker-a11y's Y1.1 verdict (PASS) against the
+   actual kpis.html/charts.js diff and agree with its reasoning: only a
+   data-* attribute added (not exposed to the a11y tree, no aria-*
+   reference), fill colors byte-identical, the diff can only remove a fill
+   segment from a data point (never add/recolor), so no new 1.4.1 or
+   contrast regression. Pre-existing missing text-alternative for Plotly
+   sparklines (ACCESSIBILITY point 11) is untouched by this diff and
+   correctly flagged as backlog, not a Y1 defect.
+
+No attack landed. Strongest surviving concern (not a FAIL): the tail/delta
+agreement is proven only "within $0.01," not exactly bit-for-bit, so there
+exists a theoretical sub-cent classification disagreement window at the
+exact ±$1 boundary; empirically the actual noise is 4-6 orders of magnitude
+smaller than that tolerance even at a 25-year range, so this is a
+documented, accepted approximation rather than a live defect.
+
+VERDICT: PASS

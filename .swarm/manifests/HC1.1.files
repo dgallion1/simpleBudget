@@ -1,0 +1,10 @@
+internal/services/metrics/metrics.go
+internal/services/metrics/metrics_test.go
+internal/models/dashboard.go
+internal/handlers/dashboard/handlers.go
+internal/handlers/dashboard/handlers_test.go
+internal/handlers/dashboard/verdict.go
+internal/handlers/dashboard/verdict_fractional_cent_test.go
+internal/services/dataloader/transfers_test.go
+internal/services/mcpsvc/spend/summary.go
+web/templates/components/kpis.html

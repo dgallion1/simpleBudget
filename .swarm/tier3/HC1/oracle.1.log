@@ -1,0 +1,10 @@
+CHECK build: PASS
+CHECK contract-tests: PASS
+CHECK server-up: PASS
+CHECK budget-card-clipped-total: PASS
+CHECK verdict-over-plan: PASS
+CHECK healthcare-card-since: PASS
+CHECK chart-clipped-target: PASS
+CHECK mcp-combined-over: PASS
+checks: 8 passed, 0 failed
+ORACLE PASS

@@ -107,6 +107,9 @@
                 <p class="text-sm {{if gt .Metrics.HealthcarePerMonthDelta 0.0}}text-rose-600 dark:text-rose-400{{else}}text-emerald-600 dark:text-emerald-400{{end}}">
                     Target <span class="num">{{formatMoney .Metrics.HealthcareTarget}}</span> · <span class="num">{{formatMoney (abs .Metrics.HealthcarePerMonthDelta)}}</span>/mo {{if gt .Metrics.HealthcarePerMonthDelta 0.0}}over{{else}}under{{end}}
                 </p>
+                {{if .Metrics.HealthcareCoverageStartInRange}}
+                <p class="text-xs text-gray-600 dark:text-gray-400">since {{formatDate .Metrics.HealthcareCoverageStart}}</p>
+                {{end}}
                 {{else}}
                 <p class="text-sm text-gray-600 dark:text-gray-400 italic">No premium target set</p>
                 {{end}}

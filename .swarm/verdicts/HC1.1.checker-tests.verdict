@@ -1,0 +1,300 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: HC1
+ATTEMPT: 1
+---
+All work verified in a `cp -a` copy of the tree at
+/tmp/.../scratchpad/hc1 (working tree, uncommitted worker changes on
+master). Mutation experiments in separate copies (mutA/mutC/mutV/mutM).
+The real tree was not modified except this verdict file.
+
+=== CRITERION 1 — `go build ./...` and `go test ./...` pass — PASS ===
+
+  $ go build ./...          -> BUILD_EXIT=0 (no output)
+  $ go test -count=1 ./...  -> TEST_EXIT=0, 49 packages, all "ok", cache defeated
+      ok budget2/internal/services/metrics   0.005s
+      ok budget2/internal/handlers/dashboard 0.760s
+      ok budget2/internal/services/mcpsvc/spend 1.033s
+      ok budget2/internal/services/dataloader 1.819s
+
+  Composite target also run (constitution: run the repo's own check target,
+  `check: vet static vuln css-verify test`):
+  $ make check  -> "✓ all checks passed", MAKE_CHECK_EXIT=0
+  (css-verify green, so no stale generated CSS asset.)
+
+=== CRITERION 2 — one exported coverage-start fn + one clipping helper;
+    no other site multiplies the healthcare target by a month count — PASS ===
+
+  $ grep -rn --include=*.go -E "^func (HealthcareCoverageStart|ClippedHealthcareMonths|MonthsBetween)" .
+      internal/services/metrics/metrics.go:218: func HealthcareCoverageStart(ts *models.TransactionSet) (start time.Time, ok bool)
+      internal/services/metrics/metrics.go:246: func ClippedHealthcareMonths(segStart, segEnd, coverageStart time.Time, hasCoverage bool) float64
+  Exactly one of each, both in internal/services/metrics, signatures match
+  the pinned contract verbatim (the oracle's planted contract test compiles
+  against them: CHECK contract-tests: PASS).
+
+  $ grep -rn --include=*.go --include=*.html --include=*.js \
+      -E "[Hh]ealthcareTarget[[:space:]]*[*/]|[*/][[:space:]]*[Hh]ealthcareTarget|HealthcareTarget[[:space:]]*[*/]" . | grep -v _test.go
+  Five real arithmetic sites; every one takes its month count from
+  ClippedHealthcareMonths:
+    metrics.go:306  healthcareTotal - healthcareTarget*coverageMonths
+    metrics.go:470  HealthcareTargetTotal: healthcareTarget * coverageMonths
+        (coverageMonths defined metrics.go:296 = ClippedHealthcareMonths(rangeStart,rangeEnd,coverageStart,hasCoverage))
+    metrics.go:418  healthcareTarget*ClippedHealthcareMonths(segStart, segEnd, ...)   <- combinedCumulativeBalance month walk
+    handlers.go:649 (livingTarget*monthsInRange + healthcareTarget*coverageMonths)/monthsInRange
+        (coverageMonths defined handlers.go:648 = metrics.ClippedHealthcareMonths(...))
+    handlers.go:694 healthcareTarget * metrics.ClippedHealthcareMonths(monthStart, monthEnd, ...) / fullMonth
+  Remaining grep hits in internal/models/dashboard.go (52,53,82) are field
+  COMMENTS, not code. handlers.go:636 `combinedTarget := livingTarget +
+  healthcareTarget` is used only as the `<= 0` empty-state guard (traced:
+  `grep -n "combinedTarget\|proratedTarget" handlers.go` -> 636,637 guard;
+  649,780,781,795,797 all use proratedTarget).
+
+  Enumerated consumers, each read:
+   - metrics.go Calculate + combinedCumulativeBalance walk: clipped (above).
+   - metrics.go Comparison (line 511): derives coverage ONCE from its full
+     `data` param and passes the same value to both Calculate calls (512/513).
+     Both production callers pass data.Active() in (handlers.go:110, 190), so
+     the set is duplicate-resolved.
+   - verdict.go:188/191: consumes m.HealthcareTargetTotal /
+     m.HealthcareCumulativeDelta only; no month arithmetic.
+   - mcpsvc/spend/summary.go:311-321: copies m.* fields through round2; no
+     month arithmetic.
+  Templates: `git diff master -- web/` shows the ONLY template change is the
+  3-line provenance block in kpis.html
+  (`{{if .Metrics.HealthcareCoverageStartInRange}} since {{formatDate ...}}`).
+  dashboard-verdict-bar.html and budget-vs-actual.html are byte-identical to
+  master; grep over both shows pure field rendering, no arithmetic.
+  JS: the only healthcare-adjacent JS is charts.js:565 `data-target`, which
+  reads the MONTHLY target as a sparkline reference line (no month
+  multiplication) and is unchanged from master.
+
+=== CRITERION 3 — unit tests cover earliest-bill, refunds ignored,
+    full-ledger (not window) derivation, duplicates excluded, all four
+    edge cases — FAIL ===
+
+  Covered and mutation-proven:
+    TestHealthcareCoverageStart_EarliestBillSelected      (earliest bill)
+    TestHealthcareCoverageStart_RefundsIgnored            (positive amount ignored)
+    TestHealthcareCoverageStart_NoQualifyingRows_ReturnsFalse
+    TestHealthcareCoverageStart_EmptySet_ReturnsFalse
+    TestHealthcareCoverageStart_IgnoresNonOutflowType
+    TestClippedHealthcareMonths_{NoCoverageFlag,CoverageAfterSegment,
+                                 CoverageBeforeSegment_Unclipped,CoverageInsideSegment}
+    TestCalculateMetrics_CoverageInsideWindow_ClipsHealthcareAccrual
+    TestCalculateMetrics_CoverageBeforeWindow_FullAccrualUnchanged
+    TestCalculateMetrics_CoverageAfterWindow_SuppressesWithoutNaN
+    TestCalculateMetrics_NoCoverageFlag_SuppressesWithoutNaN
+    TestCalculateMetrics_CoverageStartInRange_ExactBoundaries
+    TestDashboardVerdictBar_LivingHealthcareBreakdown_RenderedSumHoldsOnFractionalCentBase
+
+  Mutation proof that the clipping tests are real guards (copy mutM,
+  metrics.go:296 `ClippedHealthcareMonths(...)` -> `monthsInRange`):
+    $ go test -count=1 ./internal/services/metrics/
+      --- FAIL: TestCalculateMetrics_CoverageInsideWindow_ClipsHealthcareAccrual
+          HealthcareTargetTotal = 5946.611909650925, want 1872.6899383983573
+      --- FAIL: TestCalculateMetrics_CoverageAfterWindow_SuppressesWithoutNaN
+      --- FAIL: TestCalculateMetrics_NoCoverageFlag_SuppressesWithoutNaN
+
+  Mutation proof that the fractional-cent test is a real guard (copy mutV,
+  verdict.go: delete the `if v.Living.Configured && v.Healthcare.Configured
+  { v.Healthcare.Delta = ... }` block):
+    $ go test -count=1 ./internal/handlers/dashboard/ -run FractionalCent -v
+      --- FAIL: TestDashboardVerdictBar_..._RenderedSumHoldsOnFractionalCentBase
+      rendered HTML in the failure output:
+        Living: $1,804.41 · Healthcare: $1,804.41 ... $3,608.83 over plan
+  The test parses the RENDERED template string (renderer.RenderToString on
+  "dashboard-verdict-bar", regexp `\$([\d,]+\.\d{2})`), i.e. it asserts on
+  displayed figures, not the floats. Confirmed by reading
+  internal/handlers/dashboard/verdict_fractional_cent_test.go lines 27-47.
+
+  *** MISSING — two of criterion 3's explicitly named coverages have NO
+  test anywhere in the repo. Both proven by mutation: ***
+
+  (3a) "full-ledger (not window) derivation" — UNGUARDED.
+    Copy mutA: replaced all 3 occurrences of
+      metrics.HealthcareCoverageStart(data.Active())
+    with
+      metrics.HealthcareCoverageStart(filtered)     # the RANGE-FILTERED set
+    in internal/handlers/dashboard/handlers.go (lines 99, 184, and the
+    handleChartData site) — i.e. the exact defect the spec's
+    "Both metrics.Calculate call sites ... must derive coverage start from
+    the unfiltered transaction set" sentence forbids.
+      $ go build ./...            -> ok
+      $ go test -count=1 ./...    -> exit 0, ZERO failures (full suite)
+      $ bash .swarm/tier3/HC1/accept.sh (port 18096) -> "checks: 8 passed, 0 failed / ORACLE PASS"
+    Neither the test suite nor the oracle detects it. (The oracle's fixture
+    puts coverage start 2026-05-05 INSIDE its 2026-01-01..2026-06-30 window,
+    so filtering cannot move it — the oracle is structurally blind here.)
+
+  (3b) "duplicates excluded" — UNGUARDED.
+    Copy mutC: replaced the same 3 occurrences with
+      metrics.HealthcareCoverageStart(data)         # includes Suppressed rows
+      $ go build ./... && go test -count=1 ./...  -> exit 0, ZERO failures
+      $ bash .swarm/tier3/HC1/accept.sh (port 18097) -> "checks: 8 passed, 0 failed / ORACLE PASS"
+    Corroborating grep: `grep -rn --include=*_test.go "Suppressed"
+    internal/services/metrics/ internal/handlers/dashboard/
+    internal/services/mcpsvc/spend/` returns only pre-existing accounts-card
+    / summarize / search tests — none touches coverage start.
+
+  Note: the BEHAVIOUR is implemented correctly (see criterion 5's reading of
+  the call sites). What is missing is the test coverage criterion 3 requires.
+
+=== CRITERION 4 — rendered surfaces reflect clipped accrual and agree — PASS ===
+
+  Built cmd/server from source, ran it on 127.0.0.1:18095 against a scratch
+  COPY of .swarm/tier3/HC1/fixture/data (never :8080, never the prebuilt
+  ./budget2 or ./server binaries; process killed afterwards, confirmed with
+  `ss -ltnp` / `pgrep`).
+
+  $ curl -s "http://127.0.0.1:18095/dashboard/kpis?start=2026-01-01&end=2026-06-30"
+    Budget card:          Living: $7,200.00 of $5,946.61
+                          Health: $1,800.00 of $1,872.69
+    Verdict bar:          Living: $1,253.39 over · Healthcare: $72.69 under
+                          "No headroom — $1,180.70 over plan for this period."
+    Monthly Healthcare:   $961.18 | Target $1,000.00 · $38.82/mo under
+                          "since May 5, 2026"
+
+    Cross-check on the RENDERED strings:
+      monthsInRange  = 181/30.4375 = 5.946612 -> living target total 5,946.61 ✓
+      coverageMonths =  57/30.4375 = 1.872690 -> health target total 1,872.69 ✓  (clipped, NOT 5,946.61)
+      1800 / 1.872690 = 961.18                -> card actual ✓; 961.18-1000 = -38.82 ✓
+      7200 - 5946.61  = 1,253.39              -> verdict Living ✓
+      1800 - 1872.69  =   -72.69              -> verdict Healthcare ✓
+      1253.39 + (-72.69) = 1,180.70           -> rendered combined EXACTLY ✓ (rendered-sum rule holds)
+
+  $ curl -s ".../dashboard/charts/data/budget-vs-actual?start=2026-01-01&end=2026-06-30"
+    layout.shapes[0].y0 = y1 = 1314.9171270718232
+    annotation text     = "Target $1315"
+    independently recomputed (1000*5.946612 + 1000*1.872690)/5.946612
+                        = 1314.9171270718232  -> EXACT match ✓
+    (master's flat shape would be 2000; spec's "1,314.90" is the spec's own
+     rounding of the same figure.)
+
+  $ MCP tools/call summarize_spending {2026-01-01 .. 2026-06-30}
+    {"combined_cumulative_delta":1180.7,"healthcare_monthly_actual":961.18,
+     "healthcare_monthly_delta":-38.82,"healthcare_monthly_target":1000,
+     "living_monthly_delta":210.77,"months_in_range":5.95}
+    combined_cumulative_delta 1180.7 == verdict bar $1,180.70 ✓
+    healthcare_monthly_actual 961.18 == Monthly Healthcare card $961.18 ✓
+    healthcare_monthly_delta -38.82  == card "$38.82/mo under" ✓
+
+  All five named surfaces agree. (One non-criterion observation about the
+  chart's Cumulative-balance SERIES is recorded under OBSERVATIONS below.)
+
+=== CRITERION 5 — HasHealthcareTarget=false path renders clean, no
+    division by zero at coverageMonths = 0 — PASS ===
+
+  Call sites read and confirmed to derive coverage from the FULL unfiltered
+  (duplicate-excluded) set BEFORE range filtering:
+    handlers.go:93,99   filtered := data.Active().FilterByDateRange(...)
+                        coverageStart, hasCoverage := metrics.HealthcareCoverageStart(data.Active())
+    handlers.go:181,184 same pattern in handleKPIsPartial
+    summary.go:241,247,272  ts = ts.Active(); coverageStart, hasCoverage :=
+                        metrics.HealthcareCoverageStart(ts); ... filtered := ts.FilterByDateRange(*from,*to)
+  In all three the argument to HealthcareCoverageStart is the .Active()
+  (duplicate-resolved) set, and `filtered` is a separate variable.
+
+  Zero-coverage window rendered on the fixture (window 2026-01-01..2026-03-31
+  ends before coverage start 2026-05-05, so coverageMonths = 0):
+  $ curl -s ".../dashboard/kpis?start=2026-01-01&end=2026-03-31"
+      NaN present: False | Inf present: False
+      'Health:'              -> ABSENT   (Budget card healthcare line gone)
+      'Healthcare:'          -> ABSENT   (verdict-bar bucket gone)
+      'since '               -> ABSENT   (no provenance note)
+      'Monthly Healthcare'   -> "$0.00  No premium target set"
+      verdict                -> "Living: $643.12 over ... $643.12 over plan"
+                                (3600 - 1000*90/30.4375 = 643.12, living only) ✓
+  $ curl -s ".../charts/data/budget-vs-actual?start=2026-01-01&end=2026-03-31"
+      target line y0 = 1000   (living only, healthcare share clipped to 0) ✓
+      any NaN in json: False
+  Unit-level: TestCalculateMetrics_{CoverageAfterWindow,NoCoverageFlag}_
+  SuppressesWithoutNaN assert math.IsNaN/IsInf false on HealthcareActual,
+  HealthcareTargetTotal, HealthcareCumulativeDelta, CombinedCumulativeDelta.
+
+=== CRITERION 6 — oracle exits with final line ORACLE PASS — PASS ===
+
+  My own run, in my own scratch copy, unmodified accept.sh/fixture:
+  $ bash .swarm/tier3/HC1/accept.sh
+      CHECK build: PASS
+      CHECK contract-tests: PASS
+      CHECK server-up: PASS
+      CHECK budget-card-clipped-total: PASS
+      CHECK verdict-over-plan: PASS
+      CHECK healthcare-card-since: PASS
+      CHECK chart-clipped-target: PASS
+      CHECK mcp-combined-over: PASS
+      checks: 8 passed, 0 failed
+      ORACLE PASS
+      ORACLE_EXIT=0
+  Gate preconditions also checked: accept.sh is mode 0775 (executable),
+  oracle.1.log exists at attempt 1 with final line "ORACLE PASS", and there
+  is NO report.md in .swarm/tier3/HC1/ (so the legacy blind-arm contract is
+  not triggered).
+
+=== SCOPE ===
+
+  $ git diff master --name-only --   (working tree; worker output is
+                                      UNCOMMITTED, so master...HEAD is empty)
+    .swarm/ledger.tsv
+    internal/handlers/dashboard/handlers.go
+    internal/handlers/dashboard/handlers_test.go
+    internal/handlers/dashboard/verdict.go
+    internal/models/dashboard.go
+    internal/services/dataloader/transfers_test.go
+    internal/services/mcpsvc/spend/summary.go
+    internal/services/metrics/metrics.go
+    internal/services/metrics/metrics_test.go
+    web/templates/components/kpis.html
+  $ git ls-files --others --exclude-standard
+    .swarm/* run infrastructure + internal/handlers/dashboard/verdict_fractional_cent_test.go
+
+  Reconciled against .swarm/manifests/HC1.1.files: EXACT match, 10 product
+  paths, nothing outside the manifest.
+
+  .swarm/critical.globs: `internal/services/dataloader/**` is listed and
+  internal/services/dataloader/transfers_test.go WAS touched. The diff is
+  two mechanical call-site updates forced by the pinned Calculate signature
+  change (`metrics.Calculate(..., 0, 0)` -> `..., 0, 0, start, true)`);
+  healthcareTarget is 0 in that fixture so coverage is a no-op and the
+  assertions are unchanged. HC1 is Tier 3. Reported for the lead to
+  adjudicate; no production dataloader code changed.
+
+  Pre-existing metrics tests were adapted, not weakened: a `fullCoverage =
+  2000-01-01` sentinel (metrics_test.go:35) passed with `true` at all 33
+  pre-HC1 call sites preserves the old implicit full-window accrual;
+  `grep -n "Calculate(" metrics_test.go | grep -v fullCoverage` returns only
+  the 7 new HC1 tests.
+
+=== OBSERVATIONS (backlog, NOT failures) ===
+
+  O1. Chart "Cumulative balance" series vs the KPI combined figure.
+      On the fixture the series ends at -1129.03 while the Budget/verdict
+      combined delta is +1180.70 (balance is sign-inverted, so -1180.70 is
+      expected). The 51.67 gap is a MONTHS-BASIS difference that is
+      PRE-EXISTING on master: `git show master:internal/handlers/dashboard/
+      handlers.go` shows the loop accrued a flat `combinedTarget` per
+      CALENDAR month, while metrics.Calculate uses day-fraction
+      MonthsBetween. HC1 correctly clipped the healthcare share
+      (handlers.go:694) but left the living share flat, exactly as master
+      had it. Arithmetic: chart living 6x1000 = 6000 vs metrics 5946.61
+      (+53.39); chart healthcare 1871.00 vs metrics 1872.69 (-1.69); net
+      51.70. Criterion 4 names the "budget-vs-actual target LINE", which
+      does agree exactly (1314.9171270718232). Not an HC1 regression.
+
+  O2. The oracle's header comment arithmetic is slightly off (it states
+      monthsInRange 5.94682 / living +1,253.18 / combined +1,130.49 / chart
+      1,314.90; the true rendered figures are 5.946612 / +1,253.39 /
+      +1,180.70 / 1314.9171). The oracle's actual ASSERTIONS are regex- and
+      sign-based, so they are unaffected; only the explanatory comment is
+      imprecise.
+
+  O3. metrics.Comparison calls HealthcareCoverageStart(data) on its raw
+      `data` param rather than data.Active(). Harmless today because both
+      production callers (handlers.go:110, 190) already pass data.Active(),
+      but the derivation would silently pick up suppressed duplicates if a
+      future caller passed a raw set. Related to gap 3b.
+
+  O4. Spec's declared out-of-scope items confirmed not evaluated here: the
+      live MCP-vs-dashboard combined-delta disagreement and the live-binary
+      rebuild figure shift. All my figures are fixture-based.

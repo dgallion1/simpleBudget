@@ -1,0 +1,249 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: HC1
+ATTEMPT: 3
+---
+All work done in place at /home/darrell/bin/ai/budget2 (no tree copy, per the
+concurrent-run freeze rule). Mutations were applied with `cp` backups and
+restored with `mv`; no git checkout/restore/stash was used. Ports 18093 only
+(accept.sh's own port); the repo-root binaries were never executed.
+
+Byte-level restore proof after every mutation: `sha256sum -c` against a
+baseline recorded BEFORE any mutation
+(handlers.go 13aa9053..., metrics.go a6d48730..., summary.go 48925932...)
+returned "OK" for all three files after each of the 12 mutation runs and at
+the end of the session.
+
+== BASELINE (attempt-3 contract, gate items) ==
+
+[B1] Build/vet clean.
+  $ go build ./...   -> exit 0, no output
+  $ go vet ./...     -> exit 0, no output (re-run after the mutation matrix:
+                        "VET_OK")
+
+[B2] Package-scope tests green (full-suite green is NOT required under the
+     shared-tree rule; SY has a live worker in this tree).
+  $ go test -count=1 ./internal/handlers/dashboard/... \
+      ./internal/services/metrics/... ./internal/services/mcpsvc/... \
+      ./internal/models/...
+    ok budget2/internal/handlers/dashboard 0.661s
+    ok budget2/internal/services/metrics   0.003s
+    ok budget2/internal/services/mcpsvc    0.038s
+    ok budget2/internal/services/mcpsvc/admin/confirm/curate/ledger/plan/
+       snapshot/spend  (all ok)
+    ok budget2/internal/models             0.004s
+  Re-run after the whole mutation matrix: same four target packages ok.
+
+[B3] Oracle, run by me, not read from the worker's log.
+  $ timeout 600 bash .swarm/tier3/HC1/accept.sh
+    CHECK build: PASS
+    CHECK contract-tests: PASS
+    CHECK server-up: PASS
+    CHECK budget-card-clipped-total: PASS
+    CHECK verdict-over-plan: PASS
+    CHECK healthcare-card-since: PASS
+    CHECK chart-clipped-target: PASS
+    CHECK mcp-combined-over: PASS
+    CHECK server2-up: PASS
+    CHECK mcp-no-coverage-suppressed: PASS
+    CHECK dashboard-no-coverage-suppressed: PASS
+    CHECK dashboard-no-coverage-nan: PASS
+    CHECK full-ledger-prewindow-accrual: PASS
+    CHECK duplicates-excluded-derivation: PASS
+    checks: 14 passed, 0 failed
+    ORACLE PASS
+    EXIT=0
+  Gate artifacts:
+  $ test -x .swarm/tier3/HC1/accept.sh -> EXECUTABLE
+  $ od -c on the tail of .swarm/tier3/HC1/oracle.3.log ->
+    "...0 failed\nORACLE PASS\n" (final line is exactly ORACLE PASS, at
+    attempt number 3).
+  The planted contract test was cleaned up: `ls
+  internal/services/metrics/zz_oracle_hc1_test.go` -> No such file.
+
+== ATTEMPT-3 CRITERION (a): handlers.go reconstruction ==
+MET.
+  $ git diff --stat master -- internal/handlers/dashboard/handlers.go
+    internal/handlers/dashboard/handlers.go | 66 +++-
+  (i.e. the file is no longer master's revert-state).
+  $ grep -rn "HealthcareCoverageStart" --include=*.go . | grep -v _test.go
+    internal/handlers/dashboard/handlers.go:100: ...HealthcareCoverageStart(data.Active())
+    internal/handlers/dashboard/handlers.go:187: ...HealthcareCoverageStart(data.Active())
+    internal/handlers/dashboard/handlers.go:250: ...HealthcareCoverageStart(data.Active())
+    internal/services/metrics/metrics.go:515:    HealthcareCoverageStart(data.Active())
+    internal/services/mcpsvc/spend/summary.go:247: ...HealthcareCoverageStart(ts)  [ts already .Active(), pre-window-filter]
+  Exactly the 5 contract sites, each on the full active (pre-filter) set.
+  Single-clipping-helper check (SPEC criterion 2) still holds after the
+  reconstruction:
+  $ grep -rn 'ealthcareTarget\s*\*|healthTarget\s*\*|\*\s*coverageMonths|coverageMonths\s*\*' --include=*.go --include=*.html --include=*.js . | grep -v _test.go
+    -> every production multiplication site is metrics.go:306/418/470 or
+       handlers.go:663/716, and both handlers.go sites take their month
+       count from metrics.ClippedHealthcareMonths (handlers.go:660 and
+       handlers.go:714). No template/JS arithmetic.
+  buildBudgetVsActualChartData's new (coverageStart, hasCoverage) signature
+  is proven consistent with handlers_test.go's four pre-existing call sites
+  by `go build ./...` + the green dashboard package.
+
+== ATTEMPT-3 CRITERION (b) / criterion 3b: 10-mutation matrix, RE-RUN BY ME ==
+MET — 10/10 killed, each mutation applied ALONE, each followed by a verified
+byte-identical restore. Each mutation was first checked to still COMPILE
+(`go build ./...`), so no kill is a compile-error artifact.
+
+ #  Site                                   Mutation                Result
+ M1 handlers.go:100 handleDashboard        data.Active()->filtered KILLED
+    --- FAIL: TestCoverageStartFullLedgerNotWindow_AllThreeHandlerSites
+    coverage_start_mutation_test.go:193: /dashboard Health target total =
+      1626.28, want 2661.19...  (+ :198 the "since" note leaked)
+ M2 handlers.go:100 handleDashboard        data.Active()->data     KILLED
+    --- FAIL: TestCoverageStartExcludesSuppressedDuplicate_AllThreeHandlerSites
+    :314 /dashboard Health target total = 2661.19, want 1626.28
+ M3 handlers.go:187 handleKPIsPartial      ->filtered              KILLED
+    :209 /dashboard/kpis Health target total = 1626.28, want 2661.19
+ M4 handlers.go:187 handleKPIsPartial      ->data                  KILLED
+    :329 /dashboard/kpis Health target total = 2661.19, want 1626.28
+ M5 handlers.go:250 handleChartData b-v-a  ->filtered              KILLED
+    :220 budget-vs-actual target line y0 = 2550, want 2900
+ M6 handlers.go:250 handleChartData b-v-a  ->data                  KILLED
+    :339 budget-vs-actual target line y0 = 2900, want 2550
+ M7 summary.go summarize_spending          re-derive from the
+                                           window-filtered set
+                                           after `filtered :=
+                                           ts.FilterByDateRange`  KILLED
+    --- FAIL: TestSummarizeSpendingDerivesCoverageStartFromFullLedgerNotWindow
+ M8 summary.go summarize_spending          `rawTS := ts` inserted
+                                           before `ts = ts.Active()`,
+                                           arg -> rawTS            KILLED
+    --- FAIL: TestSummarizeSpendingCoverageStartExcludesSuppressedDuplicates
+ M9 metrics.go:515 Comparison              ->currentFiltered       KILLED
+    --- FAIL: TestComparisonDerivesCoverageStartFromFullLedgerNotWindow
+ M10 metrics.go:515 Comparison             ->data                  KILLED
+    --- FAIL: TestComparisonCoverageStartExcludesSuppressedDuplicates
+
+  Commands: for each row, `cp <file> <scratch>.bak`; a targeted python edit
+  asserting the exact original text at the exact line; `go build ./...`;
+  `go test -count=1 <pkg>`; `mv <scratch>.bak <file>`; `sha256sum -c`.
+  Mutation semantics were checked against the CONTRACT's definitions
+  (window-filtered set / duplicates-included non-Active set), not against
+  whatever the worker did: M1/M3/M5 substitute the range-filtered
+  `filtered` set; M2/M4/M6/M10 substitute the raw pre-`Active()` set; M9
+  substitutes the current window's filtered set; M7/M8 required the two
+  structural rewrites the manifest describes and I re-derived them
+  independently from the current source.
+
+  Per-site discrimination (stronger than the criterion asks): although each
+  handler test hits all three endpoints, the mutation at site N fired
+  exactly the assertion for site N (line 193/198 for site 1, 209/214 for
+  site 2, 220 for site 3; and 314/318, 329/333, 339 for the duplicates
+  variants). No cross-talk, no accidental kills.
+
+  Test non-vacuity, read not assumed
+  (/home/darrell/bin/ai/budget2/internal/handlers/dashboard/coverage_start_mutation_test.go):
+  - Assertions are on the RENDERED strings, via
+    healthLineRE = `Health:.*?of\s*<span class="num">\$([0-9,]+\.[0-9]{2})</span>`
+    and sinceLineRE = `since ([A-Za-z]+ \d+, \d{4})`, plus the chart JSON's
+    layout.shapes[0].y0 — not on internal floats.
+  - Both tests carry an explicit fixture-precondition guard that t.Fatal's
+    if the correct and mutated figures are not distinguishable
+    (lines 181-184 and 302-305), so they cannot pass vacuously.
+  - The duplicates test uses the REAL dataloader flow
+    (dl.SaveDuplicateDecision with a discovered DuplicatePairKey, outcome
+    kept_winner), and the kept twin is categorized "Other" so it cannot
+    itself define coverage start.
+  - The metrics Comparison tests (metrics_test.go:1550 and :1597) have the
+    same precondition guards and assert on round2(HealthcareTargetTotal).
+  - No `t.Skip` anywhere in the three test files; each of the six named
+    tests exists exactly once (`grep -c` -> 1) and runs:
+    `go test -run <names> -v` shows all six --- PASS on the clean tree.
+
+== ATTEMPT-3 CRITERION (c) / F3: CombinedCumulativeDelta comment ==
+MET. internal/models/dashboard.go:75-82 now reads:
+  "CombinedCumulativeDelta = LivingCumulativeDelta + HealthcareCumulativeDelta
+   = (LivingExpensesTotal - BudgetTarget*MonthsInRange) +
+   (HealthcareTotal - HealthcareTarget*coverageMonths), where coverageMonths
+   is MonthsInRange clipped to actual healthcare coverage
+   (metrics.ClippedHealthcareMonths) -- NOT MonthsInRange itself."
+Verified against the code that produces the value
+(internal/services/metrics/metrics.go):
+  :312 cumulativeDelta := livingTotal - budgetTarget*monthsInRange
+  :306 healthcareCumulativeDelta := healthcareTotal - healthcareTarget*coverageMonths
+  :326 combinedCumulativeDelta := cumulativeDelta + healthcareCumulativeDelta
+The comment's arithmetic matches the code term for term, and the stale
+"CombinedTarget*MonthsInRange" basis is gone (`grep` finds no remaining
+"CombinedTarget*MonthsInRange" in the file).
+
+== ATTEMPT-3 CRITERION (d) / criterion 7: oracle Stage 4 data3/data4 ==
+MET, and DE-BLINDED — I calibrated both new checks myself rather than
+trusting that they pass.
+  Fixtures present:
+    .swarm/tier3/HC1/fixture/data3/transactions.csv (active pre-window
+      premium 2025-12-20 -900.00 Health Insurance)
+    .swarm/tier3/HC1/fixture/data4/transactions.csv + duplicate_decisions.json
+      (same pre-window premium suppressed; kept twin 2025-12-21 categorized
+      "Insurance Premium", i.e. outside Health Insurance)
+  data4 was DETECTED AND APPLIED — accept.sh's guard
+  `[[ ! -f fixture/data4/duplicate_decisions.json ]]` did not fire, so the
+  lead's fallback ("drop data4") was NOT taken; both variants are live.
+  Clean tree: both checks PASS (see [B3]).
+  Under the window-filtered mutation at the endpoint Stage 4 exercises
+  (M3, handleKPIsPartial serves /dashboard/kpis):
+    CHECK full-ledger-prewindow-accrual: FAIL (pattern
+      'Health:.*1,800\.00.*of.*5,94[0-9]\.[0-9]{2}' not found)
+    CHECK duplicates-excluded-derivation: PASS
+    checks: 13 passed, 1 failed / ORACLE FAIL
+  Under the duplicates-included mutation (M4):
+    CHECK full-ledger-prewindow-accrual: PASS
+    CHECK duplicates-excluded-derivation: FAIL (pattern
+      'Health:.*1,800\.00.*of.*1,87[0-9]\.[0-9]{2}' not found)
+    checks: 13 passed, 1 failed / ORACLE FAIL
+  Each check fails under ITS OWN mutation and only its own — exactly the
+  calibration the attempt-3 contract demands. Both mutations were reverted
+  and `sha256sum -c` confirmed byte-identical restore; `go build ./...`
+  clean afterwards.
+
+== SCOPE ==
+`git diff --stat master --` over HC territory:
+  internal/handlers/dashboard/handlers.go        66 +++-
+  internal/handlers/dashboard/handlers_test.go    8 +-
+  internal/handlers/dashboard/verdict.go         46 ++-
+  internal/models/dashboard.go                   88 ++++--
+  internal/services/dataloader/transfers_test.go  4 +-
+  internal/services/mcpsvc/spend/summary.go      34 +-
+  internal/services/mcpsvc/spend/summary_test.go 217 +++
+  internal/services/metrics/metrics.go          184 ++++---
+  internal/services/metrics/metrics_test.go     422 +++++
+  web/templates/components/kpis.html              3 +
+plus untracked internal/handlers/dashboard/coverage_start_mutation_test.go
+and verdict_fractional_cent_test.go. All inside the HC territory list in
+.swarm/HC-RUN-SPEC.md (lines 162-170). This is the cumulative attempts-1..3
+diff; attempt 3's own manifest (5 paths) is a subset.
+critical.globs: the only touched path under a critical glob is
+internal/services/dataloader/transfers_test.go
+(internal/services/dataloader/**) — test-only, pre-existing from attempt 1,
+already adjudicated in ruling 2026-08-30b. Nothing else critical.
+
+FOREIGN (SY run — attributed, NOT counted against HC1):
+  internal/handlers/whatif/sync.go, internal/models/major_expense.go,
+  internal/services/majorexpenses/engine.go,
+  internal/services/dataloader/major_expenses.go,
+  web/templates/components/whatif/sync-preview.html, and the untracked
+  SY tests (sync_plan_exclusions_test.go, plan_sync_exclusion_test.go,
+  plan_sync_test.go). None of these produced a build, vet, or test failure
+  in any of my runs — there was nothing to attribute at the failure level.
+  .swarm/ledger.tsv is modified; not part of HC1's attempt-3 manifest.
+
+== OBSERVATIONS (backlog, not failures) ==
+O1. internal/models/dashboard.go:75 names the left term
+    "LivingCumulativeDelta"; the actual struct field is `CumulativeDelta`
+    (there is no LivingCumulativeDelta field). The comment's expanded form
+    on the next line, "(LivingExpensesTotal - BudgetTarget*MonthsInRange)",
+    is exactly correct and matches the `CumulativeDelta` field's own
+    comment, and HC-RUN-SPEC.md line 111 uses the same informal name — so
+    the semantics are right; only the field label is informal. Cosmetic.
+O2. Stage 4's two variants exercise only the /dashboard/kpis surface
+    (handleKPIsPartial). The /dashboard and budget-vs-actual sites are
+    covered at oracle level only by the original Stage-2 fixture, whose
+    blindness was the attempt-1/2 defect; their de-blinding rests entirely
+    on criterion 3b's Go tests (which I re-ran and which do discriminate
+    per site). This matches the attempt-3 contract as written — noting it
+    so the coverage boundary is on record.

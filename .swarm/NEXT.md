@@ -477,3 +477,11 @@ per user decision 2026-08-30).
   (pre-existing, harmless under its held lock); no test pins the
   global-revision false-positive 409; expectedScenario=="" skips both
   guards (unreachable today).
+
+## HC run (2026-08-30) — pre-existing a11y findings (master-native, out of HC1 scope)
+- base.html nav: select[name="comparison"] has no accessible name (axe select-name, critical).
+- base.html nav: Filemanager/Accounts/Transfers links ~1.1:1 in light mode (white on bg-white/20 over gradient); remaining nav links axe-incomplete on gradient — manual check.
+- kpis.html Monthly Living card: text-rose-600 "Target ... over" line 4.49:1 light — hairline near-fail.
+- kpis.html Monthly Healthcare card: text-emerald-600 "Target ... under" line 3.43:1 light.
+- kpis.html Budget card breakdown: text-rose-500 / text-emerald-500 lines 3.34:1 / 2.31:1 light.
+- budget-vs-actual chart: plotly dashed target-line color contrast never assessed in either theme (JS-rendered).

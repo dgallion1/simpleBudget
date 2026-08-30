@@ -93,7 +93,12 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	filtered := data.Active().FilterByDateRange(startDate, endDate)
 	settings := currentBudgetSettings()
 	target, healthTarget := metrics.BudgetTargets(settings, startDate, endDate)
-	dashMetrics := metrics.Calculate(filtered, startDate, endDate, target, healthTarget)
+	// Coverage start is derived from the FULL active (post duplicate-
+	// resolution) set, never the range-filtered one — coverage start is a
+	// lifetime fact about the ledger, independent of the selected window
+	// (single-source rule, ruling 2026-08-29a).
+	coverageStart, hasCoverage := metrics.HealthcareCoverageStart(data.Active())
+	dashMetrics := metrics.Calculate(filtered, startDate, endDate, target, healthTarget, coverageStart, hasCoverage)
 	// Provenance for the Monthly Living Expenses card's "Target $X" text —
 	// base plan value, effective multiplier, and active phase, so the
 	// number is explained rather than appearing out of nowhere next to the
@@ -177,7 +182,10 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 	filtered := data.Active().FilterByDateRange(startDate, endDate)
 	settings := currentBudgetSettings()
 	target, healthTarget := metrics.BudgetTargets(settings, startDate, endDate)
-	dashMetrics := metrics.Calculate(filtered, startDate, endDate, target, healthTarget)
+	// See handleDashboard: coverage start comes from the full active set,
+	// never the range-filtered one.
+	coverageStart, hasCoverage := metrics.HealthcareCoverageStart(data.Active())
+	dashMetrics := metrics.Calculate(filtered, startDate, endDate, target, healthTarget, coverageStart, hasCoverage)
 	targetProvenance := metrics.TargetProvenance(settings, startDate, endDate)
 
 	var periodComparison *models.PeriodComparison
@@ -237,7 +245,10 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 	case "budget-vs-actual":
 		settings := currentBudgetSettings()
 		livingTarget, healthTarget := metrics.BudgetTargets(settings, startDate, endDate)
-		chartData = buildBudgetVsActualChartData(filtered, startDate, endDate, livingTarget, healthTarget)
+		// See handleDashboard: coverage start comes from the full active
+		// set, never the range-filtered one.
+		coverageStart, hasCoverage := metrics.HealthcareCoverageStart(data.Active())
+		chartData = buildBudgetVsActualChartData(filtered, startDate, endDate, livingTarget, healthTarget, coverageStart, hasCoverage)
 	default:
 		http.Error(w, "Unknown chart type", http.StatusBadRequest)
 		return
@@ -620,13 +631,36 @@ func resolveDateRange(startStr, endStr string, minDate, maxDate time.Time) (time
 // CombinedCumulativeDelta KPI field. Returns a payload with empty data
 // when the combined target is 0 so the front end can branch on
 // len(data)==0 to show its "Set a budget in What-If →" empty state.
-func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, livingTarget, healthcareTarget float64) map[string]interface{} {
-	combinedTarget := livingTarget + healthcareTarget
-	if combinedTarget <= 0 {
+//
+// coverageStart/hasCoverage (from metrics.HealthcareCoverageStart, applied
+// to the full active set -- never the range-filtered ts) clip the
+// healthcare target's contribution to actual coverage via
+// metrics.ClippedHealthcareMonths, the single clipping helper every
+// healthcare-target accrual site goes through (split-classification rule,
+// ruling 2026-08-29a). Living's contribution is never clipped.
+func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, livingTarget, healthcareTarget float64, coverageStart time.Time, hasCoverage bool) map[string]interface{} {
+	// rawCombinedTarget gates emptiness the same way metrics.Calculate's
+	// CombinedTarget/HasCombinedTarget do: the raw monthly-rate sum,
+	// unaffected by coverage timing -- it answers "is a target configured
+	// at all", not "is it accruing this window".
+	rawCombinedTarget := livingTarget + healthcareTarget
+	if rawCombinedTarget <= 0 {
 		return map[string]interface{}{
 			"data":   []map[string]interface{}{},
 			"layout": map[string]interface{}{},
 		}
+	}
+
+	// monthsInRange/coverageMonths feed the dashed target line's prorated
+	// monthly average -- (livingTarget*monthsInRange +
+	// healthcareTarget*coverageMonths) / monthsInRange -- via the same
+	// clipping helper metrics.Calculate uses, over the full [rangeStart,
+	// rangeEnd] window (not per calendar month).
+	monthsInRange := metrics.MonthsBetween(rangeStart, rangeEnd)
+	coverageMonths := metrics.ClippedHealthcareMonths(rangeStart, rangeEnd, coverageStart, hasCoverage)
+	combinedTarget := rawCombinedTarget
+	if monthsInRange > 0 {
+		combinedTarget = (livingTarget*monthsInRange + healthcareTarget*coverageMonths) / monthsInRange
 	}
 
 	outflows := ts.FilterByType(models.Outflow)
@@ -663,7 +697,25 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 		livingValues = append(livingValues, livingMonth)
 		healthcareValues = append(healthcareValues, hcAmt)
 
-		running += combinedTarget - (livingMonth + hcAmt)
+		// Per-month accrual: living's share stays the flat monthly rate
+		// (unchanged from master); healthcare's share clips to actual
+		// coverage via the same helper metrics.Calculate uses, applied to
+		// this calendar month's own segment and normalized to a fraction
+		// of that month (1.0 = fully covered, 0.0 = not covered yet,
+		// fractional when coverage starts mid-month). A full-coverage
+		// fixture (coverageStart before every month) always yields
+		// fraction 1.0, reproducing master's flat-monthly-target sum.
+		monthStart, _ := time.Parse("2006-01", m)
+		monthStart = time.Date(monthStart.Year(), monthStart.Month(), 1, 0, 0, 0, 0, rangeStart.Location())
+		monthEnd := monthStart.AddDate(0, 1, 0).AddDate(0, 0, -1)
+		monthLen := metrics.MonthsBetween(monthStart, monthEnd)
+		healthcareFraction := 0.0
+		if monthLen > 0 {
+			healthcareFraction = metrics.ClippedHealthcareMonths(monthStart, monthEnd, coverageStart, hasCoverage) / monthLen
+		}
+		monthTarget := livingTarget + healthcareTarget*healthcareFraction
+
+		running += monthTarget - (livingMonth + hcAmt)
 		cumulativeValues = append(cumulativeValues, running)
 	}
 

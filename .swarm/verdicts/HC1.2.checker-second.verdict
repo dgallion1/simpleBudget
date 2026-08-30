@@ -1,0 +1,166 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: HC1
+ATTEMPT: 2
+---
+Setup: cp -a of the full tree to a scratch dir (kept .git); built from source;
+server run only on 127.0.0.1:18096 from freshly-built binaries in /tmp; never
+touched .swarm/tier3/HC1/* or ran accept.sh; never ran a prebuilt
+./budget2/./server; port 8080 never touched.
+
+ATTACK 1 — re-run attempt-1 attack + boundary variants (zero HI rows,
+coverage-after-window, window-ends-day-before-earliest-bill, coverage-start
+exactly on window start/end). All PASS — MCP and dashboard agree in every
+case:
+  - zeroHI (2026-01-01..2026-06-30): dashboard "No premium target set", no
+    "Health:" line, no NaN; MCP healthcare_monthly_target/actual/delta all 0,
+    combined_cumulative_delta 1253.39 (living-only, matches).
+  - afterWindow (bill 2026-08-05, window ends 06-30): same suppression on
+    both surfaces, byte-identical to zeroHI case.
+  - dayBefore (window ends 2026-05-04, bill on 2026-05-05): suppressed on
+    both surfaces.
+  - onWindowStart (coverage start == rangeStart): $961.18/mo, target $1,000,
+    consistent on both surfaces — correct non-degenerate clip.
+  - onWindowEnd (coverage start == rangeEnd, single 1-day covered span):
+    BOTH surfaces render an extreme $27,393.75/mo actual (900 / 0.0329
+    months). Verified this is `MonthsBetween`'s pre-existing "+1 day, floor
+    at 1 day" inclusive-range convention (internal/services/metrics/
+    metrics.go:25-31), reused unmodified by HC1's `ClippedHealthcareMonths`
+    per spec instruction ("through the same MonthsBetween helper"); the same
+    floor already produces equally extreme rates for MonthsInRange on any
+    1-day query window today. Both surfaces agree and neither is NaN/Inf, so
+    no cross-surface (split-classification) violation — flagging as a
+    BACKLOG OBSERVATION (pre-existing MonthsBetween degenerate-range
+    behavior, not introduced or worsened by HC1), not a FAIL.
+
+ATTACK 2 — does zeroing corrupt anything else (months_in_range, living
+fields, combined_cumulative_delta)? No corruption found in any state above:
+MonthsInRange always finite and unaffected (it stays on the unclipped
+windows-in-range basis, per spec); living fields track only budgetTarget
+independently; CombinedCumulativeDelta = cumulativeDelta + healthcareCumulativeDelta,
+and healthcareCumulativeDelta is provably 0 whenever coverageMonths is 0
+(`healthcareTotal - healthcareTarget*0`), confirmed both by reading
+metrics.go:307-310 and by the live zeroHI/afterWindow/dayBefore probes above
+(combined delta = living-only figure exactly). No state found where
+HasHealthcareTarget is true with stale fields.
+
+ATTACK 3 — enumerated every non-test reader of HealthcareTarget/Actual/
+PerMonthDelta/CumulativeDelta/TargetTotal via
+`grep -rn "HealthcareTarget\b|HealthcareActual\b|HealthcarePerMonthDelta\b|
+HealthcareCumulativeDelta\b|HealthcareTargetTotal\b" --include=*.go
+--include=*.html | grep -v _test.go`. Readers: kpis.html (gated on
+HasHealthcareTarget for the delta/target lines; HealthcareActual itself is
+shown unconditionally but as "$0.00" when unconfigured — cosmetic, matches
+today's convention), verdict.go's classifyBucket (gated on HasHealthcareTarget,
+confirmed by code read), metrics.go itself (the single source). No new
+unconditional reader found; the attempt-1 gating in Calculate + the
+attempt-2 gating in summary.go together cover every surface. PASS.
+
+ATTACK 4 (the decisive one) — mutation honesty at the DASHBOARD's own call
+sites, not just the summarize_spending path the attempt-2 manifest targets.
+
+Ruling 2026-08-30b's own quoted mutation text — "replacing
+`HealthcareCoverageStart(data.Active())` with `(filtered)` ... or `(data)`"
+— is the LITERAL source at internal/handlers/dashboard/handlers.go lines 99,
+184, 245 (handleDashboard, handleKPIsPartial, handleChartData's
+budget-vs-actual case), not internal/services/mcpsvc/spend/summary.go (whose
+call site reads `metrics.HealthcareCoverageStart(ts)` after a `ts =
+ts.Active()` reassignment, a syntactically different pattern, unchanged
+since attempt 1).
+
+Attempt 2's manifest lists exactly two new mutation-killing tests, both in
+internal/services/mcpsvc/spend/summary_test.go (the MCP/summarize_spending
+path only). I re-ran the ruling's exact mutation at the actual quoted
+location instead:
+
+  sed -i 's/metrics.HealthcareCoverageStart(data.Active())/metrics.HealthcareCoverageStart(filtered)/g' internal/handlers/dashboard/handlers.go
+  go build ./...        # clean
+  go test ./...          # ALL packages print "ok" -- 0 failures anywhere
+
+  (restored, then) sed -i 's/.../metrics.HealthcareCoverageStart(data)/g' ...  # duplicates-included variant
+  go build ./... && go test ./...   # ALL packages print "ok" again -- 0 failures
+
+Both of the ruling's named mutations — full-ledger-vs-window AND
+duplicates-included — survive the ENTIRE go test suite when applied at the
+three handlers.go call sites that actually feed the live dashboard's Budget
+card, Healthcare card, verdict bar, and budget-vs-actual chart (criterion 4's
+named consumers). Confirmed by reading
+internal/handlers/dashboard/handlers_http_test.go (the file with real
+HTTP-level tests for handleDashboard/handleKPIsPartial/handleChartData): its
+only fixture (`defaultRows()`) contains zero Health Insurance category rows,
+and grepping the whole file for "Health Insurance"/"HealthInsurance" matches
+nothing outside the budget-vs-actual chart-container-presence tests — so no
+existing test, at any tier, can tell a full-ledger-derived coverage start
+apart from a window-filtered or duplicates-included one at these three call
+sites.
+
+I also confirmed the oracle itself is blind to this, per the ruling's own
+diagnosis, by manually reproducing its Stage-2 HTTP checks (build a fresh
+binary with the mutation, run on 127.0.0.1:18096 against a COPY of
+.swarm/tier3/HC1/fixture/data — original untouched, accept.sh never
+executed) for the "window-filtered" mutation:
+  dashboard/kpis: "Health: $1,800.00 of $1,872.69", "since May 5, 2026",
+  "over plan for this period" -- MCP: combined_cumulative_delta 1180.7,
+  healthcare_monthly_actual 961.18 -- IDENTICAL to attempt-2's own recorded
+  oracle.2.log values. The fixture's only Health Insurance bill (2026-05-05)
+  already lies inside the query window (2026-01-01..2026-06-30), so
+  window-filtering it changes nothing — exactly the blindness the ruling
+  already named, now reproduced at the location the ruling's own quoted code
+  came from.
+
+Weighing (per the task's explicit instruction to justify either way):
+Criterion 3 reads "Unit tests cover: ... full-ledger (not window)
+derivation, duplicates excluded" with no call site named, and ruling
+2026-08-30b's directive was "Attempt 2 must add mutation-killing tests for
+both" -- not "for the summarize_spending path." The two properties are
+call-site wiring-correctness properties (the exported `HealthcareCoverageStart`
+function itself has no notion of "window" or "call site" -- it just processes
+whatever TransactionSet it is handed), so a test of the function in isolation
+cannot stand in for testing that each of the enumerated consumers wires it
+correctly. HC1's own consumer enumeration (HC-RUN-SPEC.md lines 49-71) names
+handlers.go explicitly and separately from summary.go as its own numbered
+consumer (#3) alongside metrics.go (#1) and summary.go (#4) -- three
+independent wiring sites, only one of which now has regression protection.
+The three unprotected call sites are not a peripheral surface: they are the
+literal rendering path for the Budget KPI card, Healthcare KPI card, verdict
+bar, and budget-vs-actual chart -- the primary consumers criterion 4 names.
+Given the split-classification precedent (ruling 2026-08-29a: "the checker's
+job is to ENUMERATE the surfaces ... not trust the diff") and that this is
+the exact defect class ruling 2026-08-30b already required fixed this
+attempt, I weigh this as a genuine, unresolved criterion-3 gap and not a
+mere residual-risk note -- this is a FAIL, not a backlog item.
+
+ATTACK 5 (other smells) — refund-only ledger (covered by attack 1's zeroHI
+family and the existing refund-must-not-count tests); fractional-cent
+rendered-sum invariant untouched by attempt 2 (attempt 1's
+verdict_fractional_cent_test.go still present, not touched, `go test
+./internal/handlers/dashboard/...` green). No new smell found beyond ATTACK 4.
+
+BACKLOG OBSERVATIONS (not grounds for FAIL, in-scope-but-pre-existing or
+theoretical):
+1. MonthsBetween's inclusive "+1 day, floor 1" convention produces an
+   extreme implied monthly rate when the covered span collapses to exactly
+   one day (coverage start == window end). Pre-existing function, reused per
+   spec instruction, both surfaces agree, no NaN/Inf — flag for a future
+   task, not HC1.
+2. HasCombinedTarget = combinedTarget>0 (budgetTarget+healthcareTarget,
+   UNCLIPPED) gates the verdict card's visibility independently of whether
+   either bucket is actually accruing this window. In the theoretical case
+   budgetTarget==0 AND healthcareTarget configured with zero coverage in the
+   window, HasCombinedTarget could read true (healthcareTarget alone > 0)
+   while TargetTotal (clipped) reads 0, producing a "$X over, red" verdict
+   card with TargetTotal<=0. This requires living target itself to be 0,
+   which does not occur on the live plan and is not one of HC1's edge cases;
+   this gate is unchanged by HC1 (pre-existing `combinedTarget>0` logic).
+   Not reproduced live; theoretical only; flagged for the backlog, not a
+   FAIL.
+
+STRONGEST ATTACK: Attack 4 (dashboard-handler mutation survival). Both of
+ruling 2026-08-30b's named mutations, applied verbatim at the literal call
+site the ruling quoted, survive `go build ./...` clean and `go test ./...`
+green across every package, and (by direct reproduction of the fixture
+arithmetic) would also survive the oracle. This is the same defect class the
+prior attempt was already faulted for, now fixed at one call site
+(summarize_spending) while three siblings supplying the primary dashboard
+surfaces remain unguarded.

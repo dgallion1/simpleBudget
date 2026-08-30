@@ -1,0 +1,90 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: HC1
+ATTEMPT: 3
+---
+Criterion 3b (10-mutation matrix): Independently reproduced ALL 10 mutations
+via `go build/test -overlay` (never editing tracked files), each applied
+alone with `-count=1` to defeat test-cache false negatives (caught one
+transient cache false-"ok" on my first pass at handlers.go:250/filtered,
+which -count=1 resolved to the correct FAIL — a lesson for anyone re-running
+this matrix without it):
+  - handlers.go:100 (handleDashboard) -> filtered: FAIL (killed)
+  - handlers.go:100 -> data (dup-included): FAIL (killed)
+  - handlers.go:187 (handleKPIsPartial) -> filtered: FAIL (killed)
+  - handlers.go:187 -> data: FAIL (killed)
+  - handlers.go:250 (handleChartData budget-vs-actual) -> filtered: FAIL (killed)
+  - handlers.go:250 -> data: FAIL (killed)
+  - metrics.go:515 (Comparison) -> currentFiltered: FAIL (killed)
+  - metrics.go:515 -> data (raw): FAIL (killed)
+  - summary.go (derivation moved after `filtered :=`, arg `filtered`): FAIL (killed)
+  - summary.go (raw pre-Active alias `rawTS`): FAIL (killed)
+All 10 confirmed independently, not merely trusted from HC1.3.manifest.md's
+self-reported table.
+
+Criterion 7 (oracle Stage 4 de-blinding): read accept.sh's Stage 4 (lines
+328-367) and independently re-derived both checks with my own probe server
+(`go build -o /tmp/hc1-probe ./cmd/server`, ports 18097/18098, never
+touching accept.sh or its 18093/18095/18096 ports, never running the repo's
+prebuilt binaries):
+  - fixture/data3 (pre-window active premium, no suppression) rendered
+    "Health: $1,800.00 of $5,946.61" -- matches the claimed full-window
+    accrual pattern 'of.*5,94[0-9]\.[0-9]{2}'.
+  - fixture/data4 (pre-window premium duplicate-suppressed via
+    duplicate_decisions.json, kept twin categorized "Insurance Premium" ==
+    outside HealthInsuranceCategory) rendered "Health: $1,800.00 of
+    $1,872.69" -- matches the claimed active-only-derivation pattern
+    'of.*1,87[0-9]\.[0-9]{2}'.
+Both checks are real discriminators, not calibration artifacts; the
+duplicate-decision JSON's hash actually resolves and suppresses the row.
+
+Enumeration of consumers (split-classification attack): grepped
+web/templates/**, web/static/**/*.js, and internal/services/mcpsvc/** for
+Healthcare/coverage references beyond the 5 named sites. Templates
+(kpis.html, dashboard-verdict-bar.html) do pure field renders, no
+independent arithmetic. No JS file references healthcare figures.
+mcpsvc/plan/register.go's "healthcare" hits are the retirement-projection
+plan's own estimate (unrelated to ledger-derived coverage start) -- not a
+6th consumer. `grep -rn` for `healthcareTarget\s*\*` / `HealthcareTarget\s*\*`
+outside metrics.go/handlers.go turns up nothing extra; handlers.go:716's
+`healthcareTarget*healthcareFraction` still routes through
+`metrics.ClippedHealthcareMonths`, satisfying criterion 2's single-source
+rule.
+
+F3: internal/models/dashboard.go's CombinedCumulativeDelta comment now
+correctly states the living-over-monthsInRange + healthcare-over-
+coverageMonths basis (verified by direct read).
+
+Rendered-string sum invariant (ruling 2026-08-29b): ran
+TestDashboardVerdictBar_LivingHealthcareBreakdown_RenderedSumHoldsOnFractionalCentBase
+directly (1804.415/1804.415 fixture, a genuine %.2f tie) -- PASS.
+verdict.go's Healthcare.Delta-by-subtraction-of-rendered-cents logic
+(unchanged this attempt, already accepted) still holds under HC1's clipped
+figures.
+
+Full build/vet/test: `go build ./...` clean; `go test -count=1
+./internal/handlers/dashboard/... ./internal/services/metrics/...
+./internal/services/mcpsvc/... ./internal/models/...` all ok, no failures.
+No SY-territory files touched by this task (git diff confirms handlers.go,
+handlers_test.go, verdict.go, dashboard.go, summary.go, summary_test.go,
+metrics.go, metrics_test.go, kpis.html are the only HC-territory files
+modified; SY's whatif/sync.go, major_expense.go, majorexpenses/engine.go,
+dataloader/major_expenses.go, sync-preview.html carry the foreign run's own
+uncommitted diffs, correctly left alone).
+
+Scope note (not a FAIL): HC-RUN-SPEC.md's written Attempt-3 contract text
+says "NO product-code changes except the F3 comment fix," but
+handlers.go's diff against HEAD is a full reconstruction of the three
+coverage-start call sites (production code) -- HEAD itself has NO HC1
+feature at all in handlers.go (it matches pre-HC1 master), consistent with
+the dispatch's own framing that the file "had been accidentally reverted to
+master" and needed Phase-1 reconstruction. My dispatch instructions
+explicitly named this reconstruction as an attempt-3 deliverable, so I
+treat it as lead-authorized scope, not a violation -- but flagging for the
+record that HC-RUN-SPEC.md's contract prose was not updated to say so
+before/after the fact, which is a documentation gap the lead may want to
+close in the Rulings section.
+
+No defects found. All acceptance criteria (1-6) independently verified with
+my own commands, not by trusting the manifest or the primary lane.

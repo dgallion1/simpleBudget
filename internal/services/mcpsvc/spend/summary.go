@@ -240,6 +240,12 @@ func registerSummary(s *mcp.Server, deps Deps) {
 		// itself active-only, consistent with search_transactions.
 		ts = ts.Active()
 
+		// Coverage start is a lifetime fact about the ledger -- derived from
+		// the full active set here, before the window filter below, never
+		// from the range-filtered set (see metrics.HealthcareCoverageStart's
+		// doc).
+		coverageStart, hasCoverage := metrics.HealthcareCoverageStart(ts)
+
 		from, to := start, end
 		if from == nil || to == nil {
 			// ts.MinDate()/MaxDate() are the zero time on an empty (post-
@@ -282,7 +288,7 @@ func registerSummary(s *mcp.Server, deps Deps) {
 			}
 		}
 
-		m := metrics.Calculate(filtered, *from, *to, livingTarget, healthTarget)
+		m := metrics.Calculate(filtered, *from, *to, livingTarget, healthTarget, coverageStart, hasCoverage)
 
 		out = summaryOutput{
 			Start:         from.Format("2006-01-02"),
@@ -303,13 +309,33 @@ func registerSummary(s *mcp.Server, deps Deps) {
 		// living target with no healthcare target configured, or vice
 		// versa) -- hence the || below, not &&.
 		if m.HasBudgetTarget || m.HasHealthcareTarget {
+			// HealthcareTarget/Actual/PerMonthDelta on m are populated
+			// unconditionally by metrics.Calculate (HasHealthcareTarget is
+			// the gate, not a zeroing of the fields themselves -- see its
+			// doc) -- so a plan can have a healthcare target CONFIGURED
+			// (m.HealthcareTarget > 0) while HasHealthcareTarget is false
+			// because coverageMonths is 0 (no qualifying Health Insurance
+			// transactions, or the window ends before coverage starts).
+			// Copying those fields unconditionally would report a phantom
+			// healthcare_monthly_target/delta (e.g. target:1000,
+			// delta:-1000) for a category the dashboard correctly omits
+			// entirely (kpis.html gates its Healthcare KPI on the same
+			// flag). Zero them here to match that suppression; living
+			// fields are unaffected -- HasBudgetTarget/LivingTarget/
+			// Actual/Delta carry their own independent gate.
+			var healthcareTarget, healthcareActual, healthcareDelta float64
+			if m.HasHealthcareTarget {
+				healthcareTarget = round2(m.HealthcareTarget)
+				healthcareActual = round2(m.HealthcareActual)
+				healthcareDelta = round2(m.HealthcarePerMonthDelta)
+			}
 			out.Budget = &budgetView{
 				LivingTarget:            round2(m.BudgetTarget),
 				LivingActual:            round2(m.ActualMonthly),
 				LivingDelta:             round2(m.PerMonthDelta),
-				HealthcareTarget:        round2(m.HealthcareTarget),
-				HealthcareActual:        round2(m.HealthcareActual),
-				HealthcareDelta:         round2(m.HealthcarePerMonthDelta),
+				HealthcareTarget:        healthcareTarget,
+				HealthcareActual:        healthcareActual,
+				HealthcareDelta:         healthcareDelta,
 				MonthsInRange:           round2(m.MonthsInRange),
 				CombinedCumulativeDelta: round2(m.CombinedCumulativeDelta),
 			}

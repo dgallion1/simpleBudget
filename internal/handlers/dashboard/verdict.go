@@ -1,6 +1,35 @@
 package dashboard
 
-import "budget2/internal/models"
+import (
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
+
+	"budget2/internal/models"
+)
+
+// centsFromDecimalString derives an integer cent count from v using the
+// EXACT SAME decimal rounding fmt's "%.2f" verb applies -- format then
+// parse -- rather than a second, independent rounding algorithm (e.g.
+// math.Round(v*100)/100). The verdict band renders dollar figures via
+// formatMoney, which itself formats with "%.2f"; deriving cents any other
+// way can disagree with that rendering at floating-point ties. Mirrors
+// analysis.centsFromDecimalString (unexported there, so duplicated here
+// rather than exported across an unrelated package boundary) -- same
+// algorithm, ruling 2026-08-29b.
+func centsFromDecimalString(v float64) int64 {
+	negative := v < 0
+	s := fmt.Sprintf("%.2f", math.Abs(v))
+	parts := strings.SplitN(s, ".", 2)
+	whole, _ := strconv.ParseInt(parts[0], 10, 64)
+	frac, _ := strconv.ParseInt(parts[1], 10, 64)
+	cents := whole*100 + frac
+	if negative {
+		cents = -cents
+	}
+	return cents
+}
 
 // overAmberPct: over budget by up to this fraction of the target total is amber;
 // beyond it is red.
@@ -160,6 +189,21 @@ func BuildBudgetVerdict(m *models.DashboardMetrics) BudgetVerdictView {
 
 	v.Living = classifyBucket(m.CumulativeDelta, m.HasBudgetTarget)
 	v.Healthcare = classifyBucket(m.HealthcareCumulativeDelta, m.HasHealthcareTarget)
+
+	// Rendered-string rule (ruling 2026-08-29b): when both buckets show a
+	// dollar figure alongside the combined total, independently rounding
+	// each of the three floats can make the two DISPLAYED bucket amounts
+	// fail to add up to the DISPLAYED total at a floating-point tie (Living
+	// and Healthcare are exact-float components of Delta, but "%.2f" on
+	// each of the three separately does not distribute over addition).
+	// Deriving Healthcare's displayed cents as Delta's cents minus Living's
+	// cents -- both via the same %.2f-then-parse path formatMoney uses --
+	// makes the identity hold by construction, mirroring
+	// analysis.BudgetFit's base+adjustment=total fix for the same defect
+	// class.
+	if v.Living.Configured && v.Healthcare.Configured {
+		v.Healthcare.Delta = float64(centsFromDecimalString(v.Delta)-centsFromDecimalString(v.Living.Delta)) / 100
+	}
 
 	switch {
 	case v.Delta > onBudgetEps:

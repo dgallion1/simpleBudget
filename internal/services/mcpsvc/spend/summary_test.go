@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/services/metrics"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
 
@@ -515,5 +516,221 @@ func TestSummarizeSpendingByMonthReportsANetRefundMonthAsNegative(t *testing.T) 
 	}
 	if out.ByMonth[0].Amount != -80 {
 		t.Errorf("by_month[2026-03] = %v, want -80 (a net-refund month must report negative, not +80)", out.ByMonth[0].Amount)
+	}
+}
+
+// TestSummarizeSpendingSuppressesPhantomHealthcareWhenNoCoverage guards
+// ruling 2026-08-30a: a plan can have a healthcare target CONFIGURED while
+// the ledger has NO Health Insurance transactions in the queried window (or
+// at all) -- metrics.Calculate then reports HasHealthcareTarget=false, but
+// m.HealthcareTarget/HealthcareActual/HealthcarePerMonthDelta themselves are
+// NOT zeroed by Calculate (only gated), so copying them into the budget
+// block unconditionally leaked a phantom healthcare_monthly_target/delta
+// (e.g. target:1000, delta:-1000) even though the dashboard correctly omits
+// the Health line entirely (kpis.html gates on the same HasHealthcareTarget
+// flag). Living fields must stay intact -- only the healthcare ones zero
+// out.
+func TestSummarizeSpendingSuppressesPhantomHealthcareWhenNoCoverage(t *testing.T) {
+	// searchFixture has ordinary living-category outflows and no Health
+	// Insurance transactions at all, so hasCoverage is false no matter the
+	// window.
+	sm := newSummaryTestManager(t, 200, 1000) // living target $200/mo, healthcare target $1000/mo
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: searchFixture()}, Settings: sm})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "summarize_spending",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("summarize_spending returned an error: %+v", res.Content)
+	}
+
+	var out summaryOutput
+	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+	if out.Budget == nil {
+		t.Fatal("budget = nil, want populated (living target is configured, HasBudgetTarget alone must show the block)")
+	}
+	if out.Budget.LivingTarget != 200 {
+		t.Errorf("living_monthly_target = %v, want 200 (living fields must stay intact)", out.Budget.LivingTarget)
+	}
+	// searchFixture: 15.99 + 204.10 + 15.99 = 236.08 total expenses, none of
+	// it Health Insurance, over Jan 5 - Feb 5 (the ledger's own min/max
+	// window, since no explicit dates were given).
+	if out.Budget.LivingActual == 0 {
+		t.Error("living_monthly_actual = 0, want the fixture's real living spend rate (living fields must stay intact)")
+	}
+	if out.Budget.HealthcareTarget != 0 {
+		t.Errorf("healthcare_monthly_target = %v, want 0 -- no Health Insurance transactions means no coverage, "+
+			"and the plan's configured target must not leak through when HasHealthcareTarget is false", out.Budget.HealthcareTarget)
+	}
+	if out.Budget.HealthcareActual != 0 {
+		t.Errorf("healthcare_monthly_actual = %v, want 0", out.Budget.HealthcareActual)
+	}
+	if out.Budget.HealthcareDelta != 0 {
+		t.Errorf("healthcare_monthly_delta = %v, want 0 (not -1000, the phantom credit this test guards against)", out.Budget.HealthcareDelta)
+	}
+}
+
+// TestSummarizeSpendingDerivesCoverageStartFromFullLedgerNotWindow is a
+// mutation-killing regression for ruling 2026-08-30b's "full-ledger
+// derivation" gap: replacing metrics.HealthcareCoverageStart's argument at
+// the summarize_spending call site with the window-filtered set (instead of
+// the full active ledger, derived before the window filter is applied)
+// leaves the rest of the suite green because every other fixture's earliest
+// Health Insurance bill already sits inside its queried window, so a
+// window-derived coverage start happens to equal the full-ledger one. Here
+// the earliest bill is BEFORE the window and a second bill is inside it, so
+// the two derivations produce materially different coverage starts (and
+// therefore different coverageMonths / HealthcareActual / HealthcareDelta).
+func TestSummarizeSpendingDerivesCoverageStartFromFullLedgerNotWindow(t *testing.T) {
+	day := func(s string) time.Time {
+		d, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			panic(err)
+		}
+		return d
+	}
+	ts := models.NewTransactionSet([]models.Transaction{
+		// Earliest Health Insurance bill: well BEFORE the queried window
+		// below. A window-derived coverage start can never see this row.
+		{Date: day("2025-11-01"), Description: "PREMIUM", Category: metrics.HealthInsuranceCategory, Amount: -1000, TransactionType: models.Outflow},
+		// A second bill, inside the window -- the only one a (buggy)
+		// window-derived coverage start would ever find.
+		{Date: day("2026-01-15"), Description: "PREMIUM", Category: metrics.HealthInsuranceCategory, Amount: -1000, TransactionType: models.Outflow},
+	})
+	sm := newSummaryTestManager(t, 0, 2000) // no living target, healthcare target $2000/mo
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: ts}, Settings: sm})
+
+	windowStart, windowEnd := day("2026-01-01"), day("2026-01-31")
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "summarize_spending",
+		Arguments: map[string]any{"start_date": "2026-01-01", "end_date": "2026-01-31"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("summarize_spending returned an error: %+v", res.Content)
+	}
+
+	var out summaryOutput
+	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+	if out.Budget == nil {
+		t.Fatal("budget = nil, want populated (healthcare target configured, coverage active)")
+	}
+
+	// Correct: coverage start (2025-11-01) predates the window entirely, so
+	// the whole window is covered -- only the Jan 15 bill's $1000 falls
+	// inside the window, spread over the FULL window's months.
+	fullLedgerCoverageStart := day("2025-11-01")
+	wantCoverageMonths := metrics.ClippedHealthcareMonths(windowStart, windowEnd, fullLedgerCoverageStart, true)
+	wantHealthcareActual := round2(1000 / wantCoverageMonths)
+	wantHealthcareDelta := round2(wantHealthcareActual - 2000)
+
+	// What the mutation would produce: coverage start derived only from the
+	// window-filtered set, which can't see the Nov bill and so anchors on
+	// the Jan 15 one instead -- clipping coverageMonths down to the back
+	// half of January and inflating the actual/delta.
+	windowDerivedCoverageStart := day("2026-01-15")
+	mutatedCoverageMonths := metrics.ClippedHealthcareMonths(windowStart, windowEnd, windowDerivedCoverageStart, true)
+	mutatedHealthcareActual := round2(1000 / mutatedCoverageMonths)
+	if wantHealthcareActual == mutatedHealthcareActual {
+		t.Fatalf("test fixture precondition broken: full-ledger and window-derived coverage starts produce the "+
+			"same HealthcareActual (%v) -- fixture can't distinguish them", wantHealthcareActual)
+	}
+
+	if out.Budget.HealthcareActual != wantHealthcareActual {
+		t.Errorf("healthcare_monthly_actual = %v, want %v (coverage start must come from the FULL ledger, "+
+			"not the window-derived %v which a mutated call site would produce)",
+			out.Budget.HealthcareActual, wantHealthcareActual, mutatedHealthcareActual)
+	}
+	if out.Budget.HealthcareDelta != wantHealthcareDelta {
+		t.Errorf("healthcare_monthly_delta = %v, want %v", out.Budget.HealthcareDelta, wantHealthcareDelta)
+	}
+}
+
+// TestSummarizeSpendingCoverageStartExcludesSuppressedDuplicates is a
+// mutation-killing regression for ruling 2026-08-30b's "duplicates
+// excluded" gap: deriving coverage start from the raw (pre-duplicate-
+// resolution) transaction set instead of ts.Active() leaves the rest of the
+// suite green because no other fixture has a suppressed Health Insurance
+// row earlier than an active one. Here the EARLIEST Health Insurance bill
+// is duplicate-suppressed; the correct coverage start must come from the
+// next-earliest ACTIVE bill instead, which lands INSIDE the window rather
+// than before it, producing a materially different coverageMonths.
+func TestSummarizeSpendingCoverageStartExcludesSuppressedDuplicates(t *testing.T) {
+	day := func(s string) time.Time {
+		d, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			panic(err)
+		}
+		return d
+	}
+	ts := models.NewTransactionSet([]models.Transaction{
+		// Earliest Health Insurance bill, but duplicate-suppressed: the
+		// user has already resolved it as a near-duplicate. A coverage-
+		// start derivation reading the raw set would still see this row.
+		{Date: day("2025-06-01"), Description: "PREMIUM (DUP)", Category: metrics.HealthInsuranceCategory, Amount: -1000, TransactionType: models.Outflow, Suppressed: true},
+		// The earliest ACTIVE Health Insurance bill -- this is what
+		// coverage start must actually derive from.
+		{Date: day("2026-01-15"), Description: "PREMIUM", Category: metrics.HealthInsuranceCategory, Amount: -1000, TransactionType: models.Outflow},
+	})
+	sm := newSummaryTestManager(t, 0, 2000) // no living target, healthcare target $2000/mo
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: ts}, Settings: sm})
+
+	windowStart, windowEnd := day("2026-01-01"), day("2026-01-31")
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "summarize_spending",
+		Arguments: map[string]any{"start_date": "2026-01-01", "end_date": "2026-01-31"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("summarize_spending returned an error: %+v", res.Content)
+	}
+
+	var out summaryOutput
+	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+	if out.Budget == nil {
+		t.Fatal("budget = nil, want populated (healthcare target configured, coverage active)")
+	}
+
+	// Correct: coverage start is the earliest ACTIVE bill (2026-01-15),
+	// which lands inside the window -- clipped to the back half of January.
+	activeCoverageStart := day("2026-01-15")
+	wantCoverageMonths := metrics.ClippedHealthcareMonths(windowStart, windowEnd, activeCoverageStart, true)
+	wantHealthcareActual := round2(1000 / wantCoverageMonths)
+	wantHealthcareDelta := round2(wantHealthcareActual - 2000)
+
+	// What the mutation would produce: coverage start derived from the raw
+	// (duplicates-included) set, anchoring on the suppressed 2025-06-01 row,
+	// which predates the window -- the whole window would appear covered.
+	rawCoverageStart := day("2025-06-01")
+	mutatedCoverageMonths := metrics.ClippedHealthcareMonths(windowStart, windowEnd, rawCoverageStart, true)
+	mutatedHealthcareActual := round2(1000 / mutatedCoverageMonths)
+	if wantHealthcareActual == mutatedHealthcareActual {
+		t.Fatalf("test fixture precondition broken: active-only and duplicates-included coverage starts produce "+
+			"the same HealthcareActual (%v) -- fixture can't distinguish them", wantHealthcareActual)
+	}
+
+	if out.Budget.HealthcareActual != wantHealthcareActual {
+		t.Errorf("healthcare_monthly_actual = %v, want %v (coverage start must exclude the suppressed duplicate, "+
+			"not derive %v from it as a mutated call site would)",
+			out.Budget.HealthcareActual, wantHealthcareActual, mutatedHealthcareActual)
+	}
+	if out.Budget.HealthcareDelta != wantHealthcareDelta {
+		t.Errorf("healthcare_monthly_delta = %v, want %v", out.Budget.HealthcareDelta, wantHealthcareDelta)
 	}
 }

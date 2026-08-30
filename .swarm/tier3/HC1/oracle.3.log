@@ -1,0 +1,16 @@
+CHECK build: PASS
+CHECK contract-tests: PASS
+CHECK server-up: PASS
+CHECK budget-card-clipped-total: PASS
+CHECK verdict-over-plan: PASS
+CHECK healthcare-card-since: PASS
+CHECK chart-clipped-target: PASS
+CHECK mcp-combined-over: PASS
+CHECK server2-up: PASS
+CHECK mcp-no-coverage-suppressed: PASS
+CHECK dashboard-no-coverage-suppressed: PASS
+CHECK dashboard-no-coverage-nan: PASS
+CHECK full-ledger-prewindow-accrual: PASS
+CHECK duplicates-excluded-derivation: PASS
+checks: 14 passed, 0 failed
+ORACLE PASS

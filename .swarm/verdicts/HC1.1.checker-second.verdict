@@ -1,0 +1,120 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: HC1
+ATTEMPT: 1
+---
+Scope check: verified against .swarm/HC-RUN-SPEC.md acceptance criteria 1-6,
+working in a `cp -a` copy at
+/tmp/claude-1000/.../scratchpad/hc1check (never ran the tier3 oracle or its
+port 18093; used port 18096 for my own probe server; never touched
+.swarm/tier3/HC1/).
+
+CONFIRMED CORRECT (attacks that did NOT break it):
+- HealthcareCoverageStart / ClippedHealthcareMonths are the single exported
+  derivation+clipping functions; grep confirms every non-test multiplication
+  of a healthcare target by a month count in metrics.go and handlers.go
+  routes through ClippedHealthcareMonths.
+- All non-test call sites (handlers.go x3, metrics.go's Comparison,
+  mcpsvc/spend/summary.go) derive coverage start from `data.Active()` /
+  `ts.Active()` — the full, unfiltered, post-duplicate-resolution set —
+  before any date-range filter. Verified by grep and by reading each site.
+- Comparison() derives coverage start once from the full set and passes the
+  same (coverageStart, hasCoverage) into both the current-window and
+  compare-window Calculate() calls — no per-window leak/re-derivation.
+- verdict.go's rendered-string-sum fix (Healthcare.Delta's cents derived as
+  Delta's cents minus Living's cents) is present and there's a dedicated
+  fractional-cent regression test (verdict_fractional_cent_test.go).
+- Live probe against a "zero Health Insurance transactions, healthcare
+  target=1000/mo configured" fixture (my own scratch data dir, server on
+  127.0.0.1:18096): dashboard /dashboard/kpis correctly rendered "$0.00" /
+  "No premium target set" for the Healthcare card, omitted the Health line
+  from the Budget-card breakdown entirely, and showed no NaN/Inf anywhere.
+  This matches spec's "no coverage" edge case exactly.
+- go build ./... and go test ./... pass (per manifest tail); confirmed the
+  metrics package's own new tests (TestHealthcareCoverageStart_*,
+  TestClippedHealthcareMonths_*, TestCalculateMetrics_Coverage*) cover
+  earliest-bill selection, refunds-ignored, and all four Calculate-level
+  edge cases (before/inside/after window, no-coverage-flag, exact boundary).
+
+DEFECT 1 (concrete, reproducible, in-scope) — cross-surface disagreement in
+summarize_spending on the exact "no coverage" edge case the spec calls out:
+
+Built the same probe fixture above (transactions.csv with income + 6 months
+of groceries, ZERO Health Insurance rows; settings/whatif.json has
+monthly_healthcare=1000, monthly_living_expenses=1000) and hit both surfaces
+for the same window 2026-01-01..2026-06-30:
+
+  $ curl -s "http://127.0.0.1:18096/dashboard/kpis?start=2026-01-01&end=2026-06-30"
+  -> Monthly Healthcare card: "$0.00", "No premium target set", no Health
+     line in the Budget breakdown (correctly suppressed).
+
+  $ curl -s -X POST http://127.0.0.1:18096/mcp ... summarize_spending
+    start_date=2026-01-01 end_date=2026-06-30
+  -> "budget":{"combined_cumulative_delta":1253.39,
+       "healthcare_monthly_actual":0,"healthcare_monthly_delta":-1000,
+       "healthcare_monthly_target":1000,"living_monthly_actual":1210.77,
+       "living_monthly_delta":210.77,"living_monthly_target":1000,
+       "months_in_range":5.95}
+
+summarize_spending reports healthcare_monthly_target=1000 and
+healthcare_monthly_delta=-1000 (i.e. "$1000/mo under a real healthcare
+budget") for a period where there is NO coverage at all — the exact phantom
+figure HC-RUN-SPEC.md's Problem section describes and HC1 exists to kill,
+now surfaced through the MCP tool instead of the dashboard. The dashboard
+correctly reports "no target"; summarize_spending contradicts it on the
+identical window and ledger. This directly violates acceptance criterion 4
+("... and summarize_spending all reflect clipped accrual and agree with
+each other") and the edge-case text ("cards/verdict omit the healthcare
+budget lines exactly as they do today when no target is configured" — this
+was not extended to summary.go's per-field output).
+
+Root cause: internal/services/mcpsvc/spend/summary.go's budgetView
+population gate is `if m.HasBudgetTarget || m.HasHealthcareTarget` (line
+~311, untouched by this diff per `git diff master -- summary.go`), but
+inside that block it unconditionally copies m.HealthcareTarget /
+HealthcareActual / HealthcarePerMonthDelta regardless of
+m.HasHealthcareTarget. Pre-HC1 this was harmless because HasHealthcareTarget
+was true iff healthcareTarget>0, so whenever it was false the raw fields
+were already 0. HC1 changed HasHealthcareTarget's meaning to also require
+coverage, so now HasHealthcareTarget can be false while HealthcareTarget is
+still a positive configured value — and summary.go never zeroes/gates on
+that, unlike kpis.html/verdict.go which do gate on it. This is the
+split-classification defect class named in the run's own recurring-defects
+list, just found on the field-suppression axis rather than the
+month-multiplication axis.
+Confirms via `git diff master -- internal/services/mcpsvc/spend/summary_test.go`
+that this file was NOT touched by the HC1 diff at all — no test exists for
+the (healthTarget configured, hasCoverage=false) combination, so nothing
+caught it.
+
+DEFECT 2 (acceptance-criterion gap, test coverage) — criterion 3 requires
+unit tests covering "duplicates excluded" for the coverage-start
+derivation; none exist:
+
+  $ grep -in "duplicate" internal/services/metrics/metrics_test.go   -> no output
+  $ grep -rln "HealthcareCoverageStart" --include=*_test.go .        -> only metrics_test.go
+  $ grep -rn "Suppressed:" --include=*_test.go internal/handlers/dashboard internal/services/mcpsvc
+      -> only pre-existing, unrelated (Netflix) fixtures
+
+I wrote a throwaway probe test to check whether the underlying MECHANISM is
+actually sound (it is — HealthcareCoverageStart itself does not filter
+Suppressed transactions; every real call site correctly pre-filters via
+.Active() before calling it, confirmed by grep across all non-test call
+sites). So this is a real gap against the written acceptance criterion (no
+test exercises "duplicates excluded"), not a behavioral bug in the shipped
+code path — reported for completeness but Defect 1 is the substantive
+reason for the FAIL.
+
+Backlog observations (out of scope, not grounds for FAIL):
+- The Monthly Healthcare sparkline's `data-target` attribute in kpis.html
+  still renders a flat `HealthcareTarget` reference line across ALL trend
+  months, including any month before coverage started (charts.js
+  renderSparkline draws one constant target line, it cannot vary per
+  point). This is unchanged by HC1 (HealthcareTarget itself is documented
+  to remain the flat un-clipped monthly rate; only totals/cumulative
+  figures are clipped) and is not in the task's enumerated consumer list —
+  flagging for the backlog, not failing on it.
+- handleKPIDetail (/dashboard/kpi/{kpiType}) has no "healthcare"/"budget"
+  kpiType branch at all, so it is not a healthcare-target consumer and is
+  correctly untouched.

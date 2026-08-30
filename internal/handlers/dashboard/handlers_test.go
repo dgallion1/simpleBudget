@@ -400,7 +400,7 @@ func TestBuildCumulativeChartData_NegativeBalance(t *testing.T) {
 func TestBuildBudgetVsActualChartData_Empty(t *testing.T) {
 	ts := makeTransactionSet()
 
-	result := buildBudgetVsActualChartData(ts, time.Time{}, time.Time{}, 0, 0)
+	result := buildBudgetVsActualChartData(ts, time.Time{}, time.Time{}, 0, 0, time.Time{}, false)
 
 	data, ok := result["data"].([]map[string]interface{})
 	if !ok {
@@ -423,7 +423,7 @@ func TestBuildBudgetVsActualChartData_Structure(t *testing.T) {
 		makeTransaction("Premium", -400, feb, models.Outflow, "Health Insurance"),
 	)
 
-	result := buildBudgetVsActualChartData(ts, start, end, 1200, 350)
+	result := buildBudgetVsActualChartData(ts, start, end, 1200, 350, start.AddDate(-1, 0, 0), true)
 
 	data, ok := result["data"].([]map[string]interface{})
 	if !ok {
@@ -487,7 +487,7 @@ func TestBuildBudgetVsActualChartData_NoTarget(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	result := buildBudgetVsActualChartData(ts, start, end, 0, 0)
+	result := buildBudgetVsActualChartData(ts, start, end, 0, 0, time.Time{}, false)
 
 	data := result["data"].([]map[string]interface{})
 	if len(data) != 0 {
@@ -509,7 +509,7 @@ func TestBuildBudgetVsActualChartData_RefundReducesMonthLiving(t *testing.T) {
 		makeTransaction("Refund", 300, jan, models.Outflow, "Housing"),
 	)
 
-	result := buildBudgetVsActualChartData(ts, start, end, 1200, 0)
+	result := buildBudgetVsActualChartData(ts, start, end, 1200, 0, time.Time{}, false)
 
 	data := result["data"].([]map[string]interface{})
 	if len(data) == 0 {

@@ -204,7 +204,67 @@ func BudgetTargets(s *models.WhatIfSettings, rangeStart, rangeEnd time.Time) (li
 	return phaseAdjustedMonthlyTarget(s, rangeStart, rangeEnd), currentHealthcareTarget(s)
 }
 
-func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budgetTarget, healthcareTarget float64) *models.DashboardMetrics {
+// HealthcareCoverageStart returns the date of the EARLIEST outflow-typed,
+// negative-amount transaction in category HealthInsuranceCategory across
+// ts, and ok=false when no such transaction exists. Positive-amount rows
+// (refunds/credits) never count -- coverage begins the day a real premium
+// is actually paid, not when money moves back the other way. Callers must
+// pass the app's full canonical (post duplicate-resolution) transaction
+// set, never a range-filtered one: coverage start is a lifetime fact about
+// the ledger, independent of whatever window the dashboard currently has
+// selected. This is the single derivation every consumer of a healthcare
+// coverage start goes through (split-classification rule, ruling
+// 2026-08-29a).
+func HealthcareCoverageStart(ts *models.TransactionSet) (start time.Time, ok bool) {
+	if ts == nil {
+		return time.Time{}, false
+	}
+	bills := ts.FilterByType(models.Outflow).FilterByCategory(HealthInsuranceCategory)
+	for _, t := range bills.Transactions {
+		if t.Amount >= 0 {
+			continue
+		}
+		if !ok || t.Date.Before(start) {
+			start = t.Date
+			ok = true
+		}
+	}
+	return start, ok
+}
+
+// ClippedHealthcareMonths is the single place a healthcare-target accrual
+// is clipped to actual coverage: the average-calendar-month count of
+// [segStart, segEnd] that falls on/after coverageStart. Returns 0 when
+// hasCoverage is false, or when coverageStart is after segEnd (no covered
+// day in the segment). Returns the segment's full MonthsBetween when
+// coverageStart is at/before segStart (coverage predates the segment, so
+// the segment is unclipped). Every site that multiplies a healthcare
+// target by a month count -- metrics.Calculate's cumulative delta/target-
+// total/per-segment balance walk, and the dashboard's budget-vs-actual
+// chart -- goes through this one function (split-classification rule,
+// ruling 2026-08-29a).
+func ClippedHealthcareMonths(segStart, segEnd, coverageStart time.Time, hasCoverage bool) float64 {
+	if !hasCoverage || coverageStart.After(segEnd) {
+		return 0
+	}
+	start := segStart
+	if coverageStart.After(start) {
+		start = coverageStart
+	}
+	return MonthsBetween(start, segEnd)
+}
+
+// Calculate derives the dashboard's KPI/trend metrics over [rangeStart,
+// rangeEnd]. coverageStart/hasCoverage (from HealthcareCoverageStart,
+// applied to the FULL unfiltered transaction set -- never ts, which is
+// typically already range-filtered) clip every healthcare-target accrual
+// to the window's intersection with actual coverage via
+// ClippedHealthcareMonths: hasCoverage=false, or a coverageStart that
+// leaves zero covered months in [rangeStart, rangeEnd], suppresses the
+// healthcare budget exactly as healthcareTarget==0 does --
+// HasHealthcareTarget=false, and every healthcare-derived field stays
+// finite (no NaN/Inf) because the division below is guarded.
+func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budgetTarget, healthcareTarget float64, coverageStart time.Time, hasCoverage bool) *models.DashboardMetrics {
 	income := ts.FilterByType(models.Income)
 	outflows := ts.FilterByType(models.Outflow)
 
@@ -228,12 +288,23 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 	// living-vs-target variance would silently include non-living costs.
 	monthsInRange := MonthsBetween(rangeStart, rangeEnd)
 
+	// coverageMonths is the healthcare-specific month count -- MonthsInRange
+	// clipped to [coverageStart, rangeEnd] via the single clipping helper.
+	// Every healthcare accrual below (actual rate, target total, cumulative
+	// delta) uses coverageMonths instead of monthsInRange; living arithmetic
+	// keeps monthsInRange unchanged, per the split-classification rule.
+	coverageMonths := ClippedHealthcareMonths(rangeStart, rangeEnd, coverageStart, hasCoverage)
+	healthcareCoverageInRange := hasCoverage && !coverageStart.Before(rangeStart) && !coverageStart.After(rangeEnd)
+
 	healthcareOutflows := outflows.FilterByCategory(HealthInsuranceCategory)
 	healthcareTotal := math.Abs(healthcareOutflows.SumAmount())
-	healthcareActual := healthcareTotal / monthsInRange
+	var healthcareActual float64
+	if coverageMonths > 0 {
+		healthcareActual = healthcareTotal / coverageMonths
+	}
 	healthcarePerMonthDelta := healthcareActual - healthcareTarget
-	healthcareCumulativeDelta := healthcareTotal - healthcareTarget*monthsInRange
-	hasHealthcareTarget := healthcareTarget > 0
+	healthcareCumulativeDelta := healthcareTotal - healthcareTarget*coverageMonths
+	hasHealthcareTarget := healthcareTarget > 0 && coverageMonths > 0
 
 	livingTotal := totalExpenses - healthcareTotal
 	actualMonthly := livingTotal / monthsInRange
@@ -243,11 +314,16 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 
 	// Combined plan variance — single number that nets Living + Healthcare
 	// against their summed targets. Drives the Budget KPI card so a category
-	// being under can offset another being over.
+	// being under can offset another being over. CombinedTarget stays the
+	// raw monthly-rate sum (unaffected by coverage timing -- it answers "is
+	// a target configured at all", not "is it accruing this window").
+	// CombinedCumulativeDelta is the sum of the two cumulative deltas
+	// directly, so it inherits healthcareCumulativeDelta's clipped basis
+	// without re-deriving the arithmetic.
 	combinedTarget := budgetTarget + healthcareTarget
 	combinedActualMonthly := actualMonthly + healthcareActual
 	combinedPerMonthDelta := combinedActualMonthly - combinedTarget
-	combinedCumulativeDelta := (livingTotal + healthcareTotal) - combinedTarget*monthsInRange
+	combinedCumulativeDelta := cumulativeDelta + healthcareCumulativeDelta
 	hasCombinedTarget := combinedTarget > 0
 
 	// Calculate monthly trends
@@ -307,10 +383,12 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 	// Combined cumulative balance — a calendar-month walk over
 	// [rangeStart, rangeEnd], built in its own loop independent of the
 	// transaction-month trend loop above. Each calendar month intersecting
-	// the range contributes a pro-rated target accrual (via the same
-	// MonthsBetween helper MonthsInRange uses, so per-month accruals sum
-	// to combinedTarget*MonthsInRange exactly) less that month's actual
-	// outflow spend (all outflows — living + healthcare — matching
+	// the range contributes a pro-rated target accrual -- living's share via
+	// plain MonthsBetween(seg), healthcare's share via the same
+	// ClippedHealthcareMonths(seg, coverageStart, hasCoverage) helper
+	// Calculate's own healthcare totals use, so a segment before coverage
+	// starts contributes $0 of healthcare accrual -- less that month's
+	// actual outflow spend (all outflows — living + healthcare — matching
 	// CombinedCumulativeDelta's basis). A month with no transactions still
 	// produces a point: the target accrues, nothing is spent. See the
 	// field doc on models.DashboardMetrics.CombinedCumulativeBalance for
@@ -336,7 +414,8 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 				segEnd = rangeEnd
 			}
 
-			accrual := combinedTarget * MonthsBetween(segStart, segEnd)
+			accrual := budgetTarget*MonthsBetween(segStart, segEnd) +
+				healthcareTarget*ClippedHealthcareMonths(segStart, segEnd, coverageStart, hasCoverage)
 
 			spend := 0.0
 			if bucket, ok := monthlyOutflows[cur.Format("2006-01")]; ok {
@@ -356,40 +435,43 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 	}
 
 	return &models.DashboardMetrics{
-		TotalIncome:               totalIncome,
-		TotalExpenses:             totalExpenses,
-		NetSavings:                netSavings,
-		SavingsRate:               savingsRate,
-		TransactionCount:          ts.Len(),
-		StartDate:                 ts.MinDate(),
-		EndDate:                   ts.MaxDate(),
-		IncomeTrend:               incomeTrend,
-		ExpensesTrend:             expensesTrend,
-		SavingsTrend:              savingsTrend,
-		TrendLabels:               trendLabels,
-		MonthsInRange:             monthsInRange,
-		LivingExpensesTotal:       livingTotal,
-		ActualMonthly:             actualMonthly,
-		BudgetTarget:              budgetTarget,
-		PerMonthDelta:             perMonthDelta,
-		CumulativeDelta:           cumulativeDelta,
-		HasBudgetTarget:           hasBudgetTarget,
-		LivingExpensesTrend:       livingTrend,
-		HealthcareActual:          healthcareActual,
-		HealthcareTotal:           healthcareTotal,
-		HealthcareTarget:          healthcareTarget,
-		HealthcarePerMonthDelta:   healthcarePerMonthDelta,
-		HealthcareCumulativeDelta: healthcareCumulativeDelta,
-		HasHealthcareTarget:       hasHealthcareTarget,
-		HealthcareTrend:           healthcareTrend,
-		CombinedTarget:            combinedTarget,
-		CombinedActualMonthly:     combinedActualMonthly,
-		CombinedPerMonthDelta:     combinedPerMonthDelta,
-		CombinedCumulativeDelta:   combinedCumulativeDelta,
-		HasCombinedTarget:         hasCombinedTarget,
-		LivingTargetTotal:         budgetTarget * monthsInRange,
-		HealthcareTargetTotal:     healthcareTarget * monthsInRange,
-		CombinedCumulativeBalance: combinedCumulativeBalance,
+		TotalIncome:                    totalIncome,
+		TotalExpenses:                  totalExpenses,
+		NetSavings:                     netSavings,
+		SavingsRate:                    savingsRate,
+		TransactionCount:               ts.Len(),
+		StartDate:                      ts.MinDate(),
+		EndDate:                        ts.MaxDate(),
+		IncomeTrend:                    incomeTrend,
+		ExpensesTrend:                  expensesTrend,
+		SavingsTrend:                   savingsTrend,
+		TrendLabels:                    trendLabels,
+		MonthsInRange:                  monthsInRange,
+		LivingExpensesTotal:            livingTotal,
+		ActualMonthly:                  actualMonthly,
+		BudgetTarget:                   budgetTarget,
+		PerMonthDelta:                  perMonthDelta,
+		CumulativeDelta:                cumulativeDelta,
+		HasBudgetTarget:                hasBudgetTarget,
+		LivingExpensesTrend:            livingTrend,
+		HealthcareActual:               healthcareActual,
+		HealthcareTotal:                healthcareTotal,
+		HealthcareTarget:               healthcareTarget,
+		HealthcarePerMonthDelta:        healthcarePerMonthDelta,
+		HealthcareCumulativeDelta:      healthcareCumulativeDelta,
+		HasHealthcareTarget:            hasHealthcareTarget,
+		HealthcareTrend:                healthcareTrend,
+		CombinedTarget:                 combinedTarget,
+		CombinedActualMonthly:          combinedActualMonthly,
+		CombinedPerMonthDelta:          combinedPerMonthDelta,
+		CombinedCumulativeDelta:        combinedCumulativeDelta,
+		HasCombinedTarget:              hasCombinedTarget,
+		LivingTargetTotal:              budgetTarget * monthsInRange,
+		HealthcareTargetTotal:          healthcareTarget * coverageMonths,
+		CombinedCumulativeBalance:      combinedCumulativeBalance,
+		HealthcareCoverageStart:        coverageStart,
+		HealthcareHasCoverage:          hasCoverage,
+		HealthcareCoverageStartInRange: healthcareCoverageInRange,
 	}
 }
 
@@ -423,8 +505,16 @@ func Comparison(data *models.TransactionSet, start, end time.Time, compType stri
 	currentTarget := phaseAdjustedMonthlyTarget(settings, start, end)
 	compTarget := phaseAdjustedMonthlyTarget(settings, compStart, compEnd)
 	healthTarget := currentHealthcareTarget(settings)
-	currentMetrics := Calculate(currentFiltered, start, end, currentTarget, healthTarget)
-	compMetrics := Calculate(compFiltered, compStart, compEnd, compTarget, healthTarget)
+	// data.Active() strips duplicate-resolved rows before deriving coverage
+	// start, matching every other consumer's basis (dataloader duplicate
+	// resolution) -- Active() is idempotent, so this is a no-op for callers
+	// that already pass an active-only set (as of this writing, both
+	// handlers.go call sites do), but it means Comparison no longer relies
+	// on that caller discipline. Both windows below then clip against the
+	// same coverage start, not a per-window re-derivation.
+	coverageStart, hasCoverage := HealthcareCoverageStart(data.Active())
+	currentMetrics := Calculate(currentFiltered, start, end, currentTarget, healthTarget, coverageStart, hasCoverage)
+	compMetrics := Calculate(compFiltered, compStart, compEnd, compTarget, healthTarget, coverageStart, hasCoverage)
 
 	incomeChange := PercentChange(currentMetrics.TotalIncome, compMetrics.TotalIncome)
 	expensesChange := PercentChange(currentMetrics.TotalExpenses, compMetrics.TotalExpenses)

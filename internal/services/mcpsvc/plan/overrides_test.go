@@ -81,4 +81,69 @@ func TestRunWithOverrides_HealthcareMonthlyCostMeasurablyChangesAnalysis(t *test
 	}
 }
 
+// baseSettingsWithSS is baseSettings plus a populated SocialSecurity config.
+// FRABenefit > 0 with a valid ClaimAge is what activates the SS-optimizer
+// projection (retirement.SocialSecurityProjectionActive), so without this the
+// FRA-benefit overrides would be applied but never consumed by the engine.
+func baseSettingsWithSS() *models.WhatIfSettings {
+	s := baseSettings()
+	s.SocialSecurity = &models.SocialSecurityConfig{
+		FRABenefit: 2_500,
+		FRA:        67,
+		ClaimAge:   67,
+	}
+	return s
+}
+
+// TestRunWithOverrides_SocialSecurityFRABenefitMeasurablyChangesAnalysis
+// proves the engine actually consumes an overridden FRABenefit through the
+// full run — the claim age (67, person aged 65) falls inside the 5-year
+// projection, so the benefit pays out for the final three years.
+func TestRunWithOverrides_SocialSecurityFRABenefitMeasurablyChangesAnalysis(t *testing.T) {
+	lo, err := RunWithOverrides(baseSettingsWithSS(), Overrides{SocialSecurityFRABenefit: ptr(500.0)})
+	if err != nil {
+		t.Fatalf("RunWithOverrides(low): %v", err)
+	}
+	hi, err := RunWithOverrides(baseSettingsWithSS(), Overrides{SocialSecurityFRABenefit: ptr(5_000.0)})
+	if err != nil {
+		t.Fatalf("RunWithOverrides(high): %v", err)
+	}
+	if hi.Headline.FinalBalance <= lo.Headline.FinalBalance {
+		t.Errorf("higher FRA benefit should increase final balance: low=%v high=%v",
+			lo.Headline.FinalBalance, hi.Headline.FinalBalance)
+	}
+}
+
+// TestRunWithOverrides_SpouseFRABenefitMeasurablyChangesAnalysis is the
+// spouse-side counterpart. The engine only pays a spouse benefit when the
+// household has a spouse person and a valid SpouseClaimAge, so the fixture
+// supplies both on top of baseSettingsWithSS.
+func TestRunWithOverrides_SpouseFRABenefitMeasurablyChangesAnalysis(t *testing.T) {
+	withSpouse := func() *models.WhatIfSettings {
+		s := baseSettingsWithSS()
+		s.Persons = append(s.Persons, models.Person{
+			ID:         "spouse",
+			Name:       "Spouse",
+			Role:       models.PersonRoleSpouse,
+			BirthMonth: models.BirthMonthForAge(s.StartDate, 65),
+		})
+		s.SocialSecurity.SpouseFRABenefit = 2_000
+		s.SocialSecurity.SpouseFRA = 67
+		s.SocialSecurity.SpouseClaimAge = 67
+		return s
+	}
+	lo, err := RunWithOverrides(withSpouse(), Overrides{SpouseFRABenefit: ptr(500.0)})
+	if err != nil {
+		t.Fatalf("RunWithOverrides(low): %v", err)
+	}
+	hi, err := RunWithOverrides(withSpouse(), Overrides{SpouseFRABenefit: ptr(5_000.0)})
+	if err != nil {
+		t.Fatalf("RunWithOverrides(high): %v", err)
+	}
+	if hi.Headline.FinalBalance <= lo.Headline.FinalBalance {
+		t.Errorf("higher spouse FRA benefit should increase final balance: low=%v high=%v",
+			lo.Headline.FinalBalance, hi.Headline.FinalBalance)
+	}
+}
+
 func ptr(f float64) *float64 { return &f }

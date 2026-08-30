@@ -216,6 +216,42 @@ func saveAndRecalc(w http.ResponseWriter, r *http.Request, settings *models.What
 	})
 }
 
+// saveAndRecalcIfScenario is saveAndRecalc for handlers that must not let a
+// scenario switch land their write on a different scenario's file. It saves
+// through SettingsManager.SaveWithRevisionIfScenario, which performs the
+// expectedScenario == active-scenario comparison and the write inside ONE
+// held lock (see that method and ApplyOverrides' doc comment) -- unlike a
+// caller-side check-then-save, no scenario switch can land between the check
+// and the write. A mismatch surfaces as *retirement.ScenarioConflictError,
+// which statusForMutationError already maps to 409.
+//
+// This function has exactly one caller (handleWhatIfSyncApply), so unlike
+// recalcAndRender/saveAndRecalc -- shared by every other mutating whatif
+// handler -- it is safe to special-case here: a *ScenarioConflictError is
+// intercepted BEFORE reaching the shared renderError tail and rendered via
+// renderRetargetedError at "#whatif-sync-preview", the sync-apply guard's
+// own partial. This is the AUTHORITATIVE 409 named in handleWhatIfSyncApply's
+// doc comment (sync.go) -- the race-window guard the handler's own unlocked
+// fast-fail check cannot close -- and without a retarget it renders into a
+// stale preview no user or assistive tech ever sees (see htmx 2.0.4's
+// default responseHandling, web/templates/layouts/base.html). Every other
+// error still falls through to the same shared renderError(..., 500) path
+// every other whatif handler uses.
+func saveAndRecalcIfScenario(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings, expectedScenario string) {
+	revision, err := retirementMgr.SaveWithRevisionIfScenario(settings, expectedScenario)
+	if err != nil {
+		var conflictErr *retirement.ScenarioConflictError
+		if errors.As(err, &conflictErr) {
+			renderRetargetedError(w, err.Error()+". Re-open the sync preview and try again",
+				http.StatusConflict, "#whatif-sync-preview")
+			return
+		}
+		renderError(w, "Failed to save settings: "+err.Error(), statusForMutationError(err))
+		return
+	}
+	renderRecalc(w, r, settings, revision)
+}
+
 func statusForScenarioOperationError(err error) int {
 	var validationErr *retirement.ScenarioValidationError
 	if errors.As(err, &validationErr) {

@@ -63,17 +63,27 @@ func TestWhatIfCalculateAndSync_PreserveActiveScenario(t *testing.T) {
 
 	cases := []struct {
 		name    string
-		path    string
 		handler http.HandlerFunc
+		req     func(t *testing.T) *http.Request
 	}{
-		{"calculate", "/whatif/calculate", handleWhatIfCalculate},
-		{"sync-apply", "/whatif/sync/apply", handleWhatIfSyncApply},
+		{"calculate", handleWhatIfCalculate, func(t *testing.T) *http.Request {
+			return httptest.NewRequest("POST", "/whatif/calculate", nil)
+		}},
+		{"sync-apply", handleWhatIfSyncApply, func(t *testing.T) *http.Request {
+			// The apply guard requires expected_scenario/plan_hash from a
+			// real preview — a plain nil-body POST now gets 400, not 200.
+			previewW := httptest.NewRecorder()
+			handleWhatIfSync(previewW, httptest.NewRequest("POST", "/whatif/sync", nil))
+			if previewW.Code != http.StatusOK {
+				t.Fatalf("preview status = %d, want 200", previewW.Code)
+			}
+			return syncApplyRequest(extractSyncGuardFields(t, previewW.Body.String()))
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest("POST", tc.path, nil)
-			tc.handler(w, req)
+			tc.handler(w, tc.req(t))
 
 			if w.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200; body: %s", w.Code, truncate(w.Body.String(), 300))

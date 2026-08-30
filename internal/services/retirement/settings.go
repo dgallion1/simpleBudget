@@ -731,6 +731,38 @@ func (sm *SettingsManager) SaveWithRevision(settings *models.WhatIfSettings) (in
 	return sm.revision, nil
 }
 
+// SaveWithRevisionIfScenario is SaveWithRevision plus the same
+// expectedScenario guard ApplyOverrides performs: the comparison against the
+// active scenario happens INSIDE the same write lock that performs the save,
+// so a scenario switch that lands between a caller's own (necessarily
+// unlocked) check and this call cannot divert the write onto a different
+// scenario's file. See ApplyOverrides' doc comment for the full rationale.
+//
+// This is for callers that already hold a fully-built settings object to
+// write (unlike ApplyOverrides, there is no load-modify step here, so there
+// is no second reconcile-triggered re-check to make -- the scenario is
+// checked exactly once, immediately before the write, same as
+// SaveWithRevision's write). A mismatch writes nothing and returns a
+// *ScenarioConflictError; empty expectedScenario means "no expectation" and
+// behaves exactly like SaveWithRevision.
+func (sm *SettingsManager) SaveWithRevisionIfScenario(settings *models.WhatIfSettings, expectedScenario string) (int, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if expectedScenario != "" && expectedScenario != sm.filename {
+		return 0, &ScenarioConflictError{Err: fmt.Errorf(
+			"refusing to write: the active scenario is %s, but this change was prepared for %s "+
+				"(the active scenario changed since the check). Nothing was written",
+			sm.filename, expectedScenario)}
+	}
+
+	if err := sm.saveInternalAndBump(settings); err != nil {
+		sm.cache = nil
+		return 0, err
+	}
+	return sm.revision, nil
+}
+
 // Revision returns the current display revision.
 func (sm *SettingsManager) Revision() int {
 	sm.mu.RLock()

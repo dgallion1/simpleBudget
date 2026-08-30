@@ -5956,10 +5956,22 @@ func TestHandleWhatIfSyncApply_SaveError(t *testing.T) {
 	rm, dir, cleanup := setupTestEnvWithDir(t)
 	defer cleanup()
 	primeLoadCache(t, rm)
+
+	// Preview before locking the dir down: it must pass the guard check
+	// and fail only at the save this test is named for.
+	previewW := httptest.NewRecorder()
+	handleWhatIfSync(previewW, httptest.NewRequest("POST", "/whatif/sync", nil))
+	if previewW.Code != http.StatusOK {
+		t.Fatalf("preview status = %d, want 200. body: %s", previewW.Code, previewW.Body.String())
+	}
+	scenario, hash := extractSyncGuardFields(t, previewW.Body.String())
+
 	makeSaveFail(t, dir)
 
+	form := url.Values{"expected_scenario": {scenario}, "plan_hash": {hash}}
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/whatif/sync/apply", nil)
+	req := httptest.NewRequest("POST", "/whatif/sync/apply", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	handleWhatIfSyncApply(w, req)
 
 	if w.Code != http.StatusInternalServerError {
@@ -7594,8 +7606,20 @@ func TestHandleWhatIfGuardrails_AnalysisError(t *testing.T) {
 func TestHandleWhatIfSyncApply_AnalysisError(t *testing.T) {
 	setupItemsThenBreakChain(t, func(rm *retirement.SettingsManager) {})
 
+	// The broken chain only affects analysis (runAnalysisWithCache), not the
+	// dashboard-sync plan computation, so preview passes the guard check
+	// cleanly and the failure this test is named for happens after save.
+	previewW := httptest.NewRecorder()
+	handleWhatIfSync(previewW, httptest.NewRequest("POST", "/whatif/sync", nil))
+	if previewW.Code != http.StatusOK {
+		t.Fatalf("preview status = %d, want 200. body: %s", previewW.Code, previewW.Body.String())
+	}
+	scenario, hash := extractSyncGuardFields(t, previewW.Body.String())
+
+	form := url.Values{"expected_scenario": {scenario}, "plan_hash": {hash}}
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/whatif/sync/apply", nil)
+	req := httptest.NewRequest("POST", "/whatif/sync/apply", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	handleWhatIfSyncApply(w, req)
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500. body: %s", w.Code, w.Body.String())

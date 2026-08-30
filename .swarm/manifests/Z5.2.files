@@ -1,0 +1,5 @@
+internal/models/whatif.go
+internal/services/retirement/engine/stepper.go
+internal/services/retirement/engine/engine_run_test.go
+internal/handlers/whatif/spending_trajectory.go
+internal/handlers/whatif/spending_trajectory_test.go

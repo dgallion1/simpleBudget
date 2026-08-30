@@ -86,6 +86,47 @@ func TestConversionSweepAmounts_InsertsAboveMax(t *testing.T) {
 	}
 }
 
+// ── conversionSweepCurrentAmount ─────────────────────────────────────────
+
+// TestConversionSweepCurrentAmount_DisabledTreatsAmountAsZero covers Z4/D-Z-e:
+// the rates form deliberately preserves AnnualAmount when a user disables
+// conversions (a UI convenience for re-enabling), so a disabled config's
+// stored amount must not be reported as the active current amount — the
+// effective current amount is 0.
+func TestConversionSweepCurrentAmount_DisabledTreatsAmountAsZero(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.RothConversion = &models.RothConversionConfig{Enabled: false, AnnualAmount: 25_000}
+
+	if got := conversionSweepCurrentAmount(settings); got != 0 {
+		t.Errorf("conversionSweepCurrentAmount() = %v, want 0 for a disabled config", got)
+	}
+}
+
+// TestConversionSweepCurrentAmount_EnabledReturnsAmount covers the unchanged
+// enabled path: an enabled config's AnnualAmount is reported as-is.
+func TestConversionSweepCurrentAmount_EnabledReturnsAmount(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.RothConversion = &models.RothConversionConfig{Enabled: true, AnnualAmount: 25_000}
+
+	if got := conversionSweepCurrentAmount(settings); got != 25_000 {
+		t.Errorf("conversionSweepCurrentAmount() = %v, want 25000 for an enabled config", got)
+	}
+}
+
+// TestConversionSweepCurrentAmount_NilCases covers nil settings and nil
+// RothConversion — both must report 0 without panicking.
+func TestConversionSweepCurrentAmount_NilCases(t *testing.T) {
+	if got := conversionSweepCurrentAmount(nil); got != 0 {
+		t.Errorf("conversionSweepCurrentAmount(nil) = %v, want 0", got)
+	}
+
+	settings := models.DefaultWhatIfSettings()
+	settings.RothConversion = nil
+	if got := conversionSweepCurrentAmount(settings); got != 0 {
+		t.Errorf("conversionSweepCurrentAmount() = %v, want 0 for nil RothConversion", got)
+	}
+}
+
 // ── candidateSettingsForConversionAmount ─────────────────────────────────
 
 // TestCandidateSettingsForConversionAmount_DoesNotMutateSaved covers the
@@ -229,6 +270,93 @@ func TestHandleWhatIfConversionSweep_RowCountOrderAndCurrent(t *testing.T) {
 			currentCount++
 			if amount != 50_000 {
 				t.Errorf("unexpected current row at amount %v, want only the 50000 row marked current", amount)
+			}
+		}
+	}
+	if currentCount != 1 {
+		t.Errorf("currentCount = %d, want exactly 1", currentCount)
+	}
+}
+
+// TestHandleWhatIfConversionSweep_DisabledRetainedAmountIsNotCurrent covers
+// Z4/D-Z-e end-to-end: a saved plan with conversions DISABLED but a retained
+// nonzero AnnualAmount (the rates form's re-enable convenience) must not
+// have that amount highlighted as "current" or silently simulated as
+// enabled. $25k is itself a base-ladder value, so it still appears in the
+// amounts list — but the Current marker must land on the $0 row, not $25k.
+func TestHandleWhatIfConversionSweep_DisabledRetainedAmountIsNotCurrent(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	settings := sweepScenarioSettings()
+	settings.RothConversion = &models.RothConversionConfig{Enabled: false, AnnualAmount: 25_000}
+	if err := rm.Save(settings); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/whatif/conversion-sweep", nil)
+	handleWhatIfConversionSweep(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	rows := sweepRowsFromJSON(t, w.Body.Bytes())
+	if len(rows) != 9 {
+		t.Fatalf("len(rows) = %d, want 9 (no insertion — effective current is 0, already in base ladder): %v", len(rows), rows)
+	}
+
+	currentCount := 0
+	for _, row := range rows {
+		amount, _ := row["Amount"].(float64)
+		current, _ := row["Current"].(bool)
+		if current {
+			currentCount++
+			if amount != 0 {
+				t.Errorf("unexpected current row at amount %v, want only the 0 row marked current (25000 disabled must not be treated as current)", amount)
+			}
+		}
+	}
+	if currentCount != 1 {
+		t.Errorf("currentCount = %d, want exactly 1", currentCount)
+	}
+}
+
+// TestHandleWhatIfConversionSweep_EnabledAmountStillMarkedCurrent covers the
+// unchanged-behavior half of Z4: an ENABLED config's AnnualAmount is still
+// reported as current, matching pre-existing behavior for the enabled path.
+func TestHandleWhatIfConversionSweep_EnabledAmountStillMarkedCurrent(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	settings := sweepScenarioSettings()
+	settings.RothConversion = &models.RothConversionConfig{Enabled: true, AnnualAmount: 25_000}
+	if err := rm.Save(settings); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/whatif/conversion-sweep", nil)
+	handleWhatIfConversionSweep(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	rows := sweepRowsFromJSON(t, w.Body.Bytes())
+	if len(rows) != 9 {
+		t.Fatalf("len(rows) = %d, want 9: %v", len(rows), rows)
+	}
+
+	currentCount := 0
+	for _, row := range rows {
+		amount, _ := row["Amount"].(float64)
+		current, _ := row["Current"].(bool)
+		if current {
+			currentCount++
+			if amount != 25_000 {
+				t.Errorf("unexpected current row at amount %v, want only the 25000 row marked current", amount)
 			}
 		}
 	}

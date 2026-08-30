@@ -93,6 +93,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		currentYearSummary.EndingBalanceReal = month.PortfolioBalanceReal
 		currentYearSummary.CumulativeInflation = month.CumulativeInflation
 		currentYearSummary.GuardrailMultiplier = month.GuardrailMultiplier
+		currentYearSummary.PhaseName = st.CurrentPhaseName
 		yearlySummaries = append(yearlySummaries, currentYearSummary)
 	}
 

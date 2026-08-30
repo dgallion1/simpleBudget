@@ -724,6 +724,89 @@ func TestApplyOverrides_RefusesWhenExpectedScenarioIsNotActive(t *testing.T) {
 	}
 }
 
+// TestSaveWithRevisionIfScenario_RefusesWhenExpectedScenarioIsNotActive pins
+// the same atomicity contract ApplyOverrides carries (see
+// TestApplyOverrides_RefusesWhenExpectedScenarioIsNotActive): the comparison
+// happens inside the write lock that performs the save, so a mismatch writes
+// nothing and reports a typed error the HTTP layer maps to 409.
+func TestSaveWithRevisionIfScenario_RefusesWhenExpectedScenarioIsNotActive(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := NewSettingsManager(tmpDir, store)
+	baseline, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	wantExpenses := baseline.MonthlyLivingExpenses
+
+	mutated, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	mutated.MonthlyLivingExpenses = 9999.0
+
+	// Active scenario is "whatif.json" (A); call with expectedScenario "B".
+	rev, err := sm.SaveWithRevisionIfScenario(mutated, "whatif_not-the-active-one.json")
+	if err == nil {
+		t.Fatal("expected a refusal when the expected scenario is not the active one")
+	}
+	var conflict *ScenarioConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("error type = %T, want *ScenarioConflictError so the handler answers 409: %v", err, err)
+	}
+	if rev != 0 {
+		t.Fatalf("a refused save must report no revision, got %d", rev)
+	}
+
+	sm.InvalidateCache()
+	after, err := sm.Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if after.MonthlyLivingExpenses != wantExpenses {
+		t.Fatalf("file NOT written was expected, but on-disk content changed: %v -> %v", wantExpenses, after.MonthlyLivingExpenses)
+	}
+}
+
+// TestSaveWithRevisionIfScenario_SavesWhenScenarioMatches is the positive
+// case: a matching expectedScenario saves and returns a nonzero revision,
+// same shape as SaveWithRevision.
+func TestSaveWithRevisionIfScenario_SavesWhenScenarioMatches(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := NewSettingsManager(tmpDir, store)
+	settings, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	want := 4321.0
+	settings.MonthlyLivingExpenses = want
+
+	rev, err := sm.SaveWithRevisionIfScenario(settings, "whatif.json")
+	if err != nil {
+		t.Fatalf("SaveWithRevisionIfScenario: %v", err)
+	}
+	if rev == 0 {
+		t.Fatal("SaveWithRevisionIfScenario returned revision 0")
+	}
+
+	sm.InvalidateCache()
+	reloaded, err := sm.Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if reloaded.MonthlyLivingExpenses != want {
+		t.Fatalf("value did not persist: got %v, want %v", reloaded.MonthlyLivingExpenses, want)
+	}
+}
+
 // The regression this whole design exists to prevent.
 func TestApplyOverrides_DoesNotLoseAConcurrentUpdate(t *testing.T) {
 	tmpDir := t.TempDir()

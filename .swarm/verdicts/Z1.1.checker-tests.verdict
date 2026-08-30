@@ -1,0 +1,213 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: Z1
+ATTEMPT: 1
+---
+All verification ran in `cp -a` scratch copies; the ONLY write to the real tree is
+this verdict file.
+  full-tree copy : $SP/z1      (all foreign territories present, mirrors real tree)
+  isolated copy  : $SP/z1solo  (foreign territories reverted to master)
+  $SP = /tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad
+
+=== CRITERION 1 — engine-inflated amount, discounted at month Year*12 with the
+=== SAME ordinary-annuity (m+1) convention; no second discounting formula ===
+PASS.
+
+(a) Implementation read: /home/darrell/bin/ai/budget2/internal/services/retirement/analysis/present_value.go
+    lines 74-89. The leg delegates entirely:
+
+        for year := range oneTimeYears {
+            chargeMonth := year * 12
+            if chargeMonth >= months { continue }
+            pvExpenses += presentValueOfMonthlyStream(func(month int) float64 {
+                if month == chargeMonth { return engine.OneTimeExpensesForYear(s, year) }
+                return 0
+            }, discountRate, months)
+        }
+
+(b) No second discounting formula — mechanically confirmed:
+    $ awk 'NR>=74 && NR<=89' .../present_value.go | grep -n 'math\.\|Pow\|\^\|/ *(1'
+    output: "NO discount arithmetic inside the leg — it delegates to
+             presentValueOfMonthlyStream"
+    (grep matched nothing; the leg contains zero rate/exponent arithmetic).
+    presentValueOfMonthlyStream (lines 198-213) is the single formula:
+    monthlyRate := engine.MonthlyCompoundFactorFromDecimal(discountRate/100) - 1
+    pv += amt / math.Pow(1+monthlyRate, float64(m+1))   <-- the (m+1) convention.
+
+(c) Engine rule confirmed at source — internal/services/retirement/engine/expense.go:59
+    total += e.Amount * compoundedFactorFromPercent(s.InflationRate, float64(currentYear*12))
+    and engine/math.go:30-35  math.Pow(1+annualRatePercent/100, months/12.0)
+    i.e. exactly the rule the criterion names. The leg calls
+    engine.OneTimeExpensesForYear rather than re-deriving it.
+
+(d) Tests run with -v (scratch copy $SP/z1, -count=1):
+    $ go test ./internal/services/retirement/analysis/ -count=1 \
+        -run 'TestPresentValue_.*OneTime|TestPresentValue_IncludesOneTimeExpense' -v
+    --- PASS: TestPresentValue_IncludesOneTimeExpense (0.00s)
+    --- PASS: TestPresentValue_OneTimeExpense_ZeroDiscountRate (0.00s)
+    --- PASS: TestPresentValue_OneTimeExpense_AtOrBeyondHorizonContributesNothing (0.00s)
+        --- PASS: .../#00 (0.00s)
+        --- PASS: .../#01 (0.00s)
+    ok  budget2/internal/services/retirement/analysis  0.007s
+
+(e) MUTATION PROOF that the (m+1) convention is actually guarded, not merely
+    present. In $SP/z1 the leg was replaced with its own inline discount using
+    exponent chargeMonth (not chargeMonth+1):
+        amt := engine.OneTimeExpensesForYear(s, year)
+        mr := engine.MonthlyCompoundFactorFromDecimal(discountRate/100) - 1
+        if mr > 0 { amt /= math.Pow(1+mr, float64(chargeMonth)) }
+        pvExpenses += amt
+    Result:
+    --- FAIL: TestPresentValue_IncludesOneTimeExpense (0.00s)
+        present_value_one_time_test.go:50: PVExpenses diff = 45416.078566,
+        want 45231.798620 (rel err 0.004074124) — one-time expense missing or
+        mis-discounted from PVExpenses
+    So a one-month convention slip is caught (0.41% > the 1e-6 tolerance).
+
+(f) MUTATION PROOF that the engine inflation factor is guarded. Replacing
+    engine.OneTimeExpensesForYear(s, year) with a raw un-inflated sum:
+    --- FAIL: TestPresentValue_IncludesOneTimeExpense
+        PVExpenses diff = 39017.346823, want 45231.798620 (rel err 0.137391216)
+    --- FAIL: TestPresentValue_OneTimeExpense_ZeroDiscountRate
+        PVExpenses diff = 20000.000000, want 22510.176200
+    Files restored afterwards; `cmp` against the real tree printed
+    "SCRATCH PV FILE BYTE-IDENTICAL TO REAL TREE".
+
+=== CRITERION 2 — Year >= ProjectionYears contributes 0 ===
+PASS.
+Test exists: TestPresentValue_OneTimeExpense_AtOrBeyondHorizonContributesNothing
+(present_value_one_time_test.go:90-111), subtests year=10 (== horizon) and
+year=15 (> horizon) against ProjectionYears=10, asserting |diff| <= 1e-9.
+Passes — see criterion 1(d) output.
+MUTATION PROOF: replacing `continue` with `chargeMonth = months - 1` (clamp
+instead of skip) in $SP/z1 gives
+    --- FAIL: .../#00  year=10: PVExpenses diff = 24751.442307896, want 0
+    --- FAIL: .../#01  year=15: PVExpenses diff = 28693.705369076, want 0
+So the horizon guard is genuinely asserted, not vacuous.
+NOTE (disclosed, not a defect): this is a negative test, so it necessarily also
+passes on a featureless tree — under mutation A (whole leg deleted) it PASSED
+while tests 1 and 2 FAILED. Its value is proven only by mutation D above.
+
+=== CRITERION 3 — zero discount rate: PV == inflated amount exactly ===
+PASS.
+Test exists: TestPresentValue_OneTimeExpense_ZeroDiscountRate
+(present_value_one_time_test.go:59-85), sets DiscountRate = 0 on both fixtures
+and asserts |diff - amount*inflationFactor| <= 1e-6 (absolute, no discounting).
+Passes — see criterion 1(d).
+Implementation path confirmed: MonthlyCompoundFactorFromDecimal(0) returns 1.0
+(engine/math.go:7-11, `if annualRate == 0 { return 1.0 }`), so monthlyRate == 0
+and presentValueOfMonthlyStream takes the `else { pv += amt }` branch (line 209).
+MUTATION PROOF: mutation (f) above makes exactly this test fail
+    PVExpenses diff = 20000.000000, want 22510.176200
+demonstrating it pins the inflated amount, not the raw amount.
+
+=== CRITERION 4 — test (a) recomputes expectations independently ===
+PASS.
+Read present_value_one_time_test.go:43-47. The expectation is built from literal
+formulas, not from a second call to PresentValue:
+    chargeMonth := year * 12
+    monthlyRate := engine.MonthlyCompoundFactorFromDecimal(withOne.DiscountRate/100) - 1
+    inflationFactor := math.Pow(1+withOne.InflationRate/100, float64(chargeMonth)/12.0)
+    inflatedAmount := amount * inflationFactor
+    want := inflatedAmount / math.Pow(1+monthlyRate, float64(chargeMonth+1))
+PresentValue is called twice only to form the with/without differential fixture;
+`want` is never derived from its output. The inflation factor is re-derived
+literally rather than by calling engine.compoundedFactorFromPercent.
+
+The one production helper reused is engine.MonthlyCompoundFactorFromDecimal (a
+3-line wrapper, engine/math.go:7-20). To prove that reuse masks nothing I wrote
+a throwaway probe in $SP/z1solo using ONLY literal math
+(mr := math.Pow(1+DiscountRate/100, 1.0/12.0) - 1) and brute-forcing the whole
+leg from scratch across five fixtures:
+    $ go test ./internal/services/retirement/analysis/ -count=1 -run TestCheckerProbe -v
+    year0:          got=12294.909019 want=12294.909019
+    year1:          got=8792.748682  want=8792.748682
+    year29_last:    got=22807.834861 want=22807.834861
+    same_year_pair: got=45231.798620 want=45231.798620
+    two_years:      got=31163.632045 want=31163.632045
+    --- PASS: TestCheckerProbe_OneTimeLegMatchesBruteForce (0.00s)
+All five agree to <=1e-6 relative. Probe file deleted after the run (it lived
+only in the scratch copy; the real tree was never touched).
+Bonus finding from that probe: `same_year_pair` (30k + 20k both in year 5)
+yields 45231.798620 — identical to the single 50k-in-year-5 figure — so the
+group-by-year map does prevent the double-count its comment claims.
+
+=== CRITERION 5 — BigTicketItems and the engine package NOT modified by Z1 ===
+PASS.
+(a) $ cd /home/darrell/bin/ai/budget2 && git status --short
+    Modified/untracked attributable to Z1, exactly matching
+    .swarm/manifests/Z1.1.files:
+      M internal/services/retirement/analysis/present_value.go
+      ?? internal/services/retirement/analysis/present_value_one_time_test.go
+    Everything else is declared foreign territory and is attributed, not failed:
+      handlers/whatif/sync.go+sync_test.go (Z3+Z2);
+      handlers/whatif/handlers_sweep.go+_test.go (Z4);
+      models/whatif.go, engine/stepper.go, engine/month.go,
+      engine/engine_run_test.go, handlers/whatif/spending_trajectory.go+_test.go (Z5).
+    git diff --stat shows present_value.go at "28 ++++..." / "28 insertions(+)",
+    additive only, 0 deletions.
+(b) BigTicketItems untouched anywhere in the working tree:
+    $ rtk proxy git --no-pager diff | grep -n "BigTicketItem"   ->  NONE
+    (and the same grep over engine/ + models/ diffs returned count 0).
+    Existing BigTicketItems code (models/whatif.go:195-196,836-837;
+    retirement/chain.go:34,140) is unmodified.
+(c) STRONGEST evidence that Z1's leg does not depend on any engine modification:
+    in $SP/z1solo every foreign territory was reverted to master
+    $ git checkout -- internal/handlers/whatif/ internal/models/whatif.go \
+        internal/services/retirement/engine/
+    leaving ONLY present_value.go + present_value_one_time_test.go changed
+    (git status confirmed). Then:
+    $ go build ./...   -> SOLO BUILD OK
+    $ go test ./internal/services/retirement/analysis/ -count=1 -run '...OneTime...' -v
+    --- PASS: TestPresentValue_IncludesOneTimeExpense (0.00s)
+    --- PASS: TestPresentValue_OneTimeExpense_ZeroDiscountRate (0.00s)
+    --- PASS: TestPresentValue_OneTimeExpense_AtOrBeyondHorizonContributesNothing (0.00s)
+    ok  budget2/internal/services/retirement/analysis  0.004s
+    Z1 compiles and passes against a pristine master engine package.
+(d) .swarm/critical.globs lists internal/services/retirement/engine/** ; Z1's
+    manifest touches only internal/services/retirement/analysis/, so Z1 trips no
+    critical glob. (Z5 is the row already escalated to Tier 2 for that glob.)
+
+=== CRITERION 6 — commands green ===
+PASS. Run in $SP/z1 (full-tree copy incl. foreign territories):
+    $ go build ./...                                   -> "Go build: Success"  BUILD OK
+    $ go vet ./internal/services/retirement/...        -> "No issues found"    VET OK
+    $ go test ./internal/services/retirement/... -count=1
+      ok  budget2/internal/services/retirement              44.956s
+      ok  budget2/internal/services/retirement/analysis     33.718s
+      ok  budget2/internal/services/retirement/completeness  0.002s
+      ok  budget2/internal/services/retirement/engine        0.010s
+      ok  budget2/internal/services/retirement/history       0.002s
+      ok  budget2/internal/services/retirement/overrides     0.003s
+      ok  budget2/internal/services/retirement/prepare       0.003s
+    No "(cached)" lines — the cache was defeated by -count=1.
+
+COMPOSITE CHECK TARGET (beyond the brief's list, per checker protocol):
+    $ cd $SP/z1 && make check   ->  EXIT=0
+    (Makefile:77  check: vet static vuln css-verify test)
+    Log shows staticcheck ./..., govulncheck ./... "No vulnerabilities found.",
+    and 37 `ok` package lines with zero FAIL, including
+      ok budget2/internal/handlers/whatif   17.428s
+      ok budget2/internal/services/retirement 35.625s
+    make aborts on the first non-zero recipe, so EXIT=0 is the proof the whole
+    pipeline passed.
+
+=== OBSERVATIONS (not defects, for the lead's backlog) ===
+O1. Transient artifact: while I was copying the tree, an untracked file
+    internal/services/retirement/analysis/z1_adversarial_probe_test.go appeared
+    in the REAL tree (checker-second's probe). It was gone by my final check
+    (`git ls-files --others --exclude-standard internal/` returned only
+    present_value_one_time_test.go). No action needed; flagging only so it is
+    not accidentally committed if it reappears. My mutation runs were unaffected
+    — the $SP/z1 copy predates it and did not contain it.
+O2. The horizon test (criterion 2) is a pure negative assertion and therefore
+    survives deletion of the entire feature. It is guarded only by the clamp
+    mutation. If the lead wants defence-in-depth, a positive companion asserting
+    the LAST in-horizon year (Year == ProjectionYears-1) DOES contribute would
+    pin the boundary from both sides; my probe's `year29_last` case shows it
+    currently contributes 22807.834861 correctly.
+O3. No behaviour was verified beyond the Go layer: any UI/template surface that
+    renders Total Needs or the coverage ratio was not exercised. If a JS or
+    template consumer re-derives PV independently, that split-classification
+    risk is outside what I could demonstrate here.

@@ -1,0 +1,86 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: Z1
+ATTEMPT: 1
+---
+Read present_value.go's new one-time-expense leg (lines 63-89) plus the
+worker's 3 new tests, then tried to break the design contract from first
+principles rather than trusting the worker's own tests.
+
+1. Timing off-by-one (engine charge month vs PV discount month):
+   - Traced stepper.go: oneTimeExpenseThisMonth is set inside the
+     `if monthInYear == 0` block (stepper.go:226-233), i.e. only at
+     m % 12 == 0, so the engine charges a Year-N one-time expense exactly
+     at month N*12 — matching present_value.go's `chargeMonth := year*12`.
+   - Built a throwaway brute-force probe (not committed) that ran the real
+     engine (engine.New().Run) with and without a Year=5/$50k expense,
+     scanned every month of the actual ProjectionMonth.TotalExpenses for a
+     diff, and asserted (a) exactly one month differs, (b) that month is
+     year*12, (c) discounting the ENGINE's own charged delta by
+     (1+monthlyRate)^(chargeMonth+1) matches the PVExpenses delta produced
+     by PresentValue() to 1e-6 relative error.
+     Result: PASS (had to fix my own probe first — DefaultWhatIfSettings()
+     has PortfolioValue 0, so the engine depletes and stops after month 0;
+     that was a bug in my probe, not in Z1, confirmed by re-running with
+     PortfolioValue=50,000,000 and getting a clean single-month diff at
+     exactly month 60).
+   - Confirms the (m+1) ordinary-annuity convention is applied at the same
+     month the engine actually charges — no off-by-one, no month drift
+     relative to the living-expense/SS-optimizer/tax legs that share
+     presentValueOfMonthlyStream.
+
+2. Same-year double-counting: wrote a probe with two OneTimeExpense entries
+   both Year=5 ($50k + $10k). PVExpenses diff vs. a no-expense fixture
+   matched (60,000 * inflationFactor) discounted once at month 61 — not
+   2x. The `oneTimeYears map[int]bool` dedup does what the comment claims;
+   OneTimeExpensesForYear's internal per-year sum is called once per
+   distinct year, not once per entry. PASS.
+
+3. Boundary conditions:
+   - Worker's own AtOrBeyondHorizon test covers Year==ProjectionYears and
+     Year>ProjectionYears (both contribute 0) for a 10-year horizon —
+     verified chargeMonth>=months skip is `>=` not `>`, so Year==10 with
+     ProjectionYears=10 is correctly excluded (contributes 0), matching
+     "Year >= ProjectionYears contributes 0" from the design contract.
+   - Probed Year=0 separately: chargeMonth=0, and the (m+1) convention
+     still discounts one month out (diff = 10000/(1+monthlyRate)^1 =
+     9959.42, not 10000 flat) — consistent with every other leg in this
+     file, not a special-cased exemption. PASS.
+
+4. Coverage-ratio / other-consumer double-add: grepped every consumer of
+   PVExpenses and PresentValueAnalysis (`grep -rn "PVExpenses"
+   --include=*.go`) — only present_value.go writes it and only
+   web/templates/components/whatif/present-value.html reads it, and that
+   template renders the aggregate total (no separate one-time-expense
+   line item that would need independent updating), so no split-
+   classification risk on this surface.
+
+5. Spending-phase double-count: LivingExpensesAtMonth (engine/loop_helpers.go)
+   is a thin wrapper over the engine-local livingExpensesAtMonth
+   (engine/expense.go), which computes only
+   MonthlyLivingExpenses * spendingMultiplier * inflation — it does NOT
+   fold in oneTimeExpenseThisMonth (that's a separate stepper-local
+   variable added afterward into TotalExpenses, never into
+   CurrentLivingExpenses/livingExpensesAtMonth). So the spending-phase
+   branch of present_value.go (which discounts LivingExpensesAtMonth) and
+   the new one-time-expense leg are additive, not overlapping.
+
+6. BigTicketItems scope: confirmed present_value.go has no reference to
+   BigTicketItems and the diff doesn't touch ApplyBigTicketItemsForYear —
+   deliberately out of scope per the task, untouched.
+
+7. Ran `go build ./...` and `go test ./internal/services/retirement/analysis/...
+   -count=1` after removing my probe file — clean build, all tests pass
+   (29s). Confirmed the working tree was restored to exactly the worker's
+   diff (git status shows only present_value.go modified and the new test
+   file, no probe residue).
+
+Minor non-blocking finding (not grounds for FAIL, reported for backlog):
+models/whatif.go:1136 — the PresentValueAnalysis.PVExpenses doc comment
+("Living + healthcare + property tax + expense sources") is now stale;
+it doesn't mention one-time expenses. Cosmetic only, no behavioral impact,
+and updating doc comments on a struct the task didn't otherwise author was
+not part of Z1's stated scope.
+
+No defect found that falls inside Z1's scope. Verdict: PASS.

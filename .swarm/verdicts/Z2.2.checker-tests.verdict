@@ -1,0 +1,162 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: Z2
+ATTEMPT: 2
+---
+All work verified in a `cp -a` copy at
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/z2/work
+(mutation probes in sibling copies mut/, mut2/, mut3/, since discarded).
+Real tree untouched except this verdict file.
+
+CRITERION 1 — SaveWithRevisionIfScenario: comparison AND write inside ONE
+held lock; no duplicated write path.  PASS.
+  Command: Read internal/services/retirement/settings.go:748-764 and
+           ApplyOverrides at :1187-1229.
+  Evidence (settings.go:748-763, verbatim):
+      func (sm *SettingsManager) SaveWithRevisionIfScenario(settings *models.WhatIfSettings, expectedScenario string) (int, error) {
+          sm.mu.Lock()
+          defer sm.mu.Unlock()
+          if expectedScenario != "" && expectedScenario != sm.filename { ...return 0, &ScenarioConflictError{...} }
+          if err := sm.saveInternalAndBump(settings); err != nil { sm.cache = nil; return 0, err }
+          return sm.revision, nil
+      }
+  There is exactly one Lock and one deferred Unlock in the body; no
+  sm.mu.Unlock() / RUnlock / second acquire appears between the comparison and
+  saveInternalAndBump. Same shape as ApplyOverrides (:1192-1203: Lock, defer
+  Unlock, then the identical expectedScenario != sm.filename guard).
+  No second write path: `git diff HEAD -- internal/services/retirement/settings.go`
+  is +32/-0 and contains no file-writing code — it calls saveInternalAndBump,
+  the same locked helper SaveWithRevision (:727) and all 30-odd other mutation
+  paths call. The write target is sm.filepath() (settings.go:828), derived from
+  the same sm.filename the guard compares, under the same lock — so the guard
+  names the state that decides the destination.
+
+CRITERION 2 — race test is load-bearing (mutation).  PASS.
+  Command (copy mut/, handler save reverted to the attempt-1 non-atomic path
+  `saveAndRecalc(w, r, settings)`):
+    go test ./internal/handlers/whatif/... -run TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected -v -count=1
+  Output:
+    sync_test.go:503: status = 200, want 409. body: <div id="whatif-async-loader" ...
+    --- FAIL: TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected (0.04s)
+  Second probe (same copy, status assert downgraded to t.Logf so the file
+  assertions also execute) proves the byte-unchanged assertions are not
+  vacuous — they fire on the exploit and name its exact signature:
+    sync_test.go:503: MUTPROBE status = 200, want 409 (continuing to file assertions)
+    sync_test.go:515: the OTHER scenario "whatif_other-scenario.json" was written to: MonthlyLivingExpenses 4000.00 -> 1226.16
+    sync_test.go:520: the OTHER scenario "whatif_other-scenario.json" gained a synced income source "insights-salary"
+  Manager-level mutation (copy mut2/, guard block deleted from
+  SaveWithRevisionIfScenario):
+    go test ./internal/services/retirement/ -run TestSaveWithRevisionIfScenario -v -count=1
+    settings_test.go:754: expected a refusal when the expected scenario is not the active one
+    --- FAIL: TestSaveWithRevisionIfScenario_RefusesWhenExpectedScenarioIsNotActive
+  DISCLOSED LIMIT (observation, not a defect): a third probe (copy mut3/)
+  rewrote SaveWithRevisionIfScenario into the check-in-its-own-lock, release,
+  then-SaveWithRevision shape (attempt-1's TOCTOU shape moved down one layer);
+  both the race test and the manager tests still PASS against it
+  ("ok budget2/internal/services/retirement 0.014s", "ok budget2/internal/
+  handlers/whatif 0.029s"). No deterministic test can preempt inside a held
+  mutex without a further seam, so the ATOMICITY property itself rests on the
+  source reading in criterion 1, not on a test. What the tests do pin is that
+  the check exists and happens after the handler's unlocked window.
+
+CRITERION 3 — test runs.  PASS.
+  go test ./internal/handlers/whatif/... -run TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected -v -count=1
+    --- PASS: TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected (0.02s) / ok budget2/internal/handlers/whatif 0.027s
+  go test ./internal/services/retirement/ -run TestSaveWithRevisionIfScenario -v -count=1
+    --- PASS: TestSaveWithRevisionIfScenario_RefusesWhenExpectedScenarioIsNotActive (0.00s)
+    --- PASS: TestSaveWithRevisionIfScenario_SavesWhenScenarioMatches (0.01s)
+  -count=5: "ok budget2/internal/handlers/whatif 0.119s" and
+            "ok budget2/internal/services/retirement 0.032s" (no flake).
+  go test -race ./internal/handlers/whatif/ ./internal/services/retirement/ -run 'Sync|SaveWithRevisionIfScenario|ApplyOverrides' -count=1 -v
+    all --- PASS, "ok budget2/internal/handlers/whatif 1.879s",
+    "ok budget2/internal/services/retirement 1.402s"; zero WARNING: DATA RACE lines.
+
+CRITERION 4 — hook nil-by-default, unreachable from production.  PASS.
+  Command: grep -rn "syncApplyRaceTestHook" internal/ --include=*.go
+  Output: declaration `var syncApplyRaceTestHook func()` (sync.go:367, no
+  initializer => nil); ONE invocation, nil-guarded (sync.go:442-443:
+  `if syncApplyRaceTestHook != nil { syncApplyRaceTestHook() }`); the only
+  assignments are sync_test.go:492 (`defer func() { syncApplyRaceTestHook = nil }()`)
+  and :493. Identifier is unexported, so no other package can set it. No
+  config/flag/env path reaches it.
+
+CRITERION 5 — attempt-1 contract intact.  PASS.
+  From the -race -v run above, every attempt-1 test present and passing:
+    --- PASS: TestHandleWhatIfSyncApply_MissingGuardFieldsRejected (both_missing /
+        blank_expected_scenario / blank_plan_hash subtests — the 400 contract)
+    --- PASS: TestHandleWhatIfSyncApply_WrongExpectedScenarioRejected (409 fast-fail)
+    --- PASS: TestHandleWhatIfSyncApply_StalePlanHashRejected (409 hash)
+    --- PASS: TestHandleWhatIfSyncApply_SavesSyncedSettings (happy path)
+    --- PASS: TestHandleWhatIfSyncApply_SaveError, _AnalysisError
+    --- PASS: TestWhatIfCalculateAndSync_PreserveActiveScenario (calculate / sync-apply)
+    --- PASS: TestApplyOverrides_PersistsAndReturnsItsOwnRevision,
+              _RefusesWhenExpectedScenarioIsNotActive, _DoesNotLoseAConcurrentUpdate
+  Single hash function: grep -rn "syncPlanHash" internal/ --include=*.go →
+  one definition (sync.go:279) and exactly two call sites, preview (sync.go:335)
+  and apply (sync.go:431); `grep -n "func .*[Hh]ash" internal/handlers/whatif/sync.go`
+  returns that one function only.
+  Z3's EqualFold untouched: sync.go:148
+  `if strings.EqualFold(t.Category, metrics.HealthInsuranceCategory) {` is present,
+  and TestSyncSettingsFromDashboard_ExcludesHealthInsuranceCaseInsensitive
+  --- PASS in the -race run.
+
+CRITERION 6 — full acceptance.  PASS.
+  go build ./...                                              → "Go build: Success" (exit 0)
+  go vet ./internal/handlers/whatif/... ./internal/services/retirement/...
+                                                              → "Go vet: No issues found" (exit 0)
+  go test ./internal/handlers/whatif/... ./internal/services/retirement/... -count=1
+                                                              → all 8 packages "ok", EXIT=0
+  Beyond the brief, the repo's own composite target: `make check`
+  (vet static vuln css-verify test, -count=1) → final line "✓ all checks passed",
+  EXIT=0 across the whole module.
+  gofmt -l on the five manifest files → prints ONLY
+  `internal/handlers/whatif/handlers.go`. Attribution verified, not accepted on
+  claim: `gofmt -d` on the working tree shows a single trailing-blank-line
+  deletion at EOF (@@ -1180,4 +1180,3 @@, after `_ = json.NewEncoder(w).Encode(chartData)`),
+  and `git show HEAD:internal/handlers/whatif/handlers.go | gofmt -d` shows the
+  IDENTICAL nit at the same EOF position (@@ -1162,4 +1162,3 @@ — the 18-line
+  offset is exactly this attempt's insertion). PRE-EXISTING on master; not
+  introduced by Z2.2. The +18 lines added here are gofmt-clean.
+
+CRITERION 7 — scope.  PASS.
+  git diff HEAD --stat -- internal/services/retirement/settings.go
+  internal/services/retirement/settings_test.go internal/handlers/whatif/handlers.go
+  internal/handlers/whatif/sync.go internal/handlers/whatif/sync_test.go
+    → 5 files changed, 639 insertions(+), 12 deletions(-)
+  Full-tree `git diff HEAD --stat` lists 18 files; every one outside Z2's five
+  is accounted for by a co-tenant manifest of this same Z run (Z1.1: analysis/
+  present_value.go; Z4.1: handlers_sweep*.go; Z5.1/Z5.2: models/whatif.go,
+  engine/stepper.go, engine/month.go, engine_run_test.go, spending_trajectory*.go;
+  Z2.1: handlers_test.go, tabs_render_test.go, sync-preview.html) plus
+  .swarm/ledger.tsv. Nothing unattributed.
+  critical.globs (storage/**, dataloader/**, retirement/engine/**, transfers/**,
+  accounts/accounts.go, mcpsvc/confirm/**): NONE of Z2's five files falls under
+  any of these — settings.go is internal/services/retirement/settings.go, not
+  under retirement/engine/**. (engine/** IS modified in the tree, by Z5, whose
+  tier governs it — not Z2's scope.)
+  Non-regression of other callers: `grep -rn "saveAndRecalc(" internal/` shows the
+  7 handlers_rates.go call sites (:207,:251,:268,:333,:404,:439,:482) plus the
+  definition, and handlers_rates.go does not appear in `git diff HEAD --stat` at
+  all — untouched, as required.
+  Isolation of attempt-1 vs attempt-2 within sync.go: attempt 1 is uncommitted
+  and was overwritten, so no attempt1→attempt2 diff exists. I read the full
+  `git diff HEAD -U2 -- internal/handlers/whatif/sync.go` (+153/-9) and every
+  hunk belongs to Z2.1 (guard fields, syncPlanHash, syncPreviewResponse,
+  local-midnight pinning, IncomePatterns sort), Z2.2 (the hook, the
+  saveAndRecalcIfScenario swap, the doc comments), or Z3 (EqualFold). Nothing
+  unauthorized.
+
+FINDINGS (backlog, not FAIL — outside this attempt's remedy scope):
+  F1. syncSettingsFromDashboard (sync.go:295) now has NO non-test caller —
+      `grep -rn syncSettingsFromDashboard internal/ --include=*.go | grep -v _test.go`
+      returns only its own definition/comment, whereas at HEAD it was called at
+      sync.go:298. Attempt 1 (Z2.1) replaced that call with
+      computeDashboardSync + applySyncPlan. Production-file code now exercised
+      only by tests (sync_test.go x7, coverage_gaps_test.go).
+  F2. gofmt EOF nit in internal/handlers/whatif/handlers.go is pre-existing on
+      master (proved above against git show HEAD:), so `gofmt -l` is not clean
+      on that file for anyone.
+  F3. Test-seam limitation disclosed under criterion 2: the suite cannot
+      distinguish check-inside-the-write-lock from check-in-its-own-lock-then-save;
+      that property is guaranteed by code structure only.

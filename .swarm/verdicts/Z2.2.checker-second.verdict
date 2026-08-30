@@ -1,0 +1,88 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: Z2
+ATTEMPT: 2
+---
+Attack 1 — lock-path completeness (every writer of active-scenario identity
+serialized under sm.mu?): grep for `sm.filename =` in
+internal/services/retirement/settings.go (non-test) → all four sites
+(SwitchScenario:1887, CreateScenario:1931, and the two delete-active-fallback
+sites:2005/2058-area) are inside functions that `sm.mu.Lock()` at entry with
+`defer sm.mu.Unlock()`. No writer of sm.filename bypasses the lock. The
+locked comparison in SaveWithRevisionIfScenario cannot be raced by any
+identity mutator. PASS.
+
+Attack 2 — recalc-after-save reads/renders the wrong scenario: read
+recalcAndRender/renderRecalc (handlers.go:171-198). renderRecalc operates on
+the `settings` object returned BY the mutate closure (the private, just-saved
+copy), not on a fresh "active scenario" re-read — so even a scenario switch
+immediately after the locked save cannot cause the render to show the wrong
+scenario's data. No poisoned-cache angle found specific to this remedy (no
+scenario-keyed cache introduced by this change).
+
+Attack 3 — lost update within the SAME scenario (revision/CAS): confirmed
+SaveWithRevisionIfScenario does NOT re-check a revision, only scenario
+identity — sync's handleWhatIfSyncApply calls LoadContext OUTSIDE the lock,
+mutates the local copy, and SaveWithRevisionIfScenario writes it verbatim
+inside the lock with no reload-and-merge. Compared against ApplyOverrides
+(settings.go:1187-1229), which DOES load-modify-save entirely inside one
+held lock (safe against same-scenario concurrent writers) — an asymmetry.
+However: (a) this exact contract (`saveAndRecalc`, handlers.go:200-216) is
+the PRE-EXISTING pattern used by 7 other handlers (handlers_rates.go, per
+manifest) and by saveAndRecalc itself, unchanged by this task; (b)
+`saveAndRecalcIfScenario`'s own doc comment explicitly scopes it as
+"saveAndRecalc plus the scenario guard," not a request for general
+optimistic-concurrency control; (c) Z2's remit, per the attempt-1 FAIL being
+remedied, was specifically the scenario-identity TOCTOU (200 + write to an
+un-previewed scenario), not general lost-update protection across the whole
+saveAndRecalc family. Ruling: in-contract — PASS-with-finding, not a FAIL.
+FINDING for backlog: saveAndRecalc-family handlers (sync apply included)
+have no revision-based CAS against concurrent same-scenario writers; if that
+matters it is a separate, class-wide task (candidate for X7-style
+ApplyOverrides-pattern adoption), not a Z2 defect.
+
+Attack 4 — error mapping / errors.As defeat: statusForMutationError →
+statusForScenarioOperationError maps *retirement.ScenarioConflictError to
+409 (handlers.go). saveAndRecalcIfScenario returns SaveWithRevisionIfScenario's
+error unwrapped straight into recalcAndRender's mutate() closure — no
+fmt.Errorf("...: %w", err) wrapping in between that could defeat errors.As
+(and even if wrapped, errors.As unwraps %w chains, so this would still be
+safe). grep confirms SaveWithRevisionIfScenario has exactly one call site.
+PASS.
+
+Attack 5 — seam safety: grep syncApplyRaceTestHook across internal/ — set
+only in sync_test.go (defer-reset to nil), declared as unexported
+package-level `var ... func()` in sync.go with no env/init/build-tag
+activation path, invoked only behind `if syncApplyRaceTestHook != nil`.
+Cannot be reached from production code or configuration. PASS.
+
+Attack 6 — reproduce attempt-1's exact exploit in a copy: ran
+TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected as shipped
+→ PASS (409, both scenarios' files byte-unchanged). Then independently
+reverted handleWhatIfSyncApply's save call from
+`saveAndRecalcIfScenario(...)` back to `saveAndRecalc(w, r, settings)`
+(attempt-1 shape) and re-ran the SAME test in my own cp -a copy: it failed
+with "status = 200, want 409" — reproducing the original vulnerability and
+confirming the regression test is load-bearing, not a tautology. Restored
+the fix; `git diff --stat` afterward matches the original attempt-2 diff
+exactly (162+/-9 sync.go, 32+/-0 settings.go) — round trip left no residue.
+
+Attack 7 — ABA / same-scenario no-op inside the race window: wrote a
+throwaway probe (removed after use) that switches A→B→A inside
+syncApplyRaceTestHook, landing the active scenario back on the originally
+expected one before the locked save. Result: 200, write succeeds — correct,
+since the final write target matches what was reviewed; not a
+false-positive reject nor a false-negative accept of a wrong-scenario write.
+
+Build/test commands run directly (not just trusted from the manifest):
+- go build ./... → clean
+- go vet ./internal/handlers/whatif/... ./internal/services/retirement/... → clean
+- go test ./internal/handlers/whatif/... ./internal/services/retirement/... -count=1 → all ok
+- go test ./internal/handlers/whatif/... ./internal/services/retirement/... -race -count=1 (full packages, not just the Sync|SaveWithRevisionIfScenario|ApplyOverrides filter the manifest used) → all ok, no races
+
+No lock-completeness gap, no error-mapping gap, no production-reachable test
+seam, no false-positive/negative in the ABA variant, and the fix reproducibly
+closes the exact TOCTOU attempt-1 proved. The one asymmetry found (Attack 3)
+is a pre-existing, class-wide gap in the saveAndRecalc contract that Z2 was
+never scoped to close — reported as a finding, not grounds for FAIL.

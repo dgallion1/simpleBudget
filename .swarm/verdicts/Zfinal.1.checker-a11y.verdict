@@ -1,0 +1,155 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: Zfinal
+ATTEMPT: 1
+---
+SCOPE CONFIRMED
+`git diff --stat -- web/` (repo /home/darrell/bin/ai/budget2):
+  web/templates/components/whatif/sync-preview.html | 17 ++++++++++++-----
+  1 file changed, 12 insertions(+), 5 deletions(-)
+No other template/CSS/JS changed anywhere in web/. `internal/handlers/whatif/*.go`
+changed too (handlers.go, handlers_sweep.go, sync.go, spending_trajectory.go +
+tests) — sync.go is in-scope because it is the direct server side of the new
+form (its new guard branches determine what the new form's submission renders);
+the rest are Go-only compute-logic changes with no markup/behavior surface and
+are out of an a11y checker's scope.
+
+CHANGED HUNK REVIEWED (git diff -- web/templates/components/whatif/sync-preview.html)
+  -        <button hx-post="/whatif/sync/apply" hx-target="#whatif-results" hx-swap="innerHTML"
+  -            class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">
+  -            Apply Changes
+  -        </button>
+  +        <form hx-post="/whatif/sync/apply" hx-target="#whatif-results" hx-swap="innerHTML">
+  +            <input type="hidden" name="expected_scenario" value="{{.ExpectedScenario}}">
+  +            <input type="hidden" name="plan_hash" value="{{.PlanHash}}">
+  +            <button type="submit"
+  +                class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">
+  +                Apply Changes
+  +            </button>
+  +        </form>
+
+CHECK 1a — accessible submission mechanism / button semantics: PASS
+  Button retains its visible+accessible name "Apply Changes", is now
+  type="submit" inside a <form hx-post>, mirroring the sibling pattern the
+  worker cited (web/templates/components/whatif/conversion-sweep.html:86-100,
+  the per-row roth-conversion apply forms — <form hx-post> + hidden inputs +
+  <button type="submit">). No change to tab order or keyboard reachability:
+  the button was already focusable; wrapping it in a <form> and adding two
+  `type="hidden"` inputs (non-focusable, excluded from the a11y tree) adds no
+  new tab stops. Verified against a REAL render, not hand-built HTML: added a
+  throwaway Go test in a `cp -a` copy at
+  /tmp/.../scratchpad/a11y-z/repo (internal/handlers/whatif/zzz_a11y_dump_test.go,
+  discarded, not committed) that calls handleWhatIfSync through the actual
+  templates.New() + handler pipeline and dumps the byte-identical partial:
+    <form hx-post="/whatif/sync/apply" hx-target="#whatif-results" hx-swap="innerHTML">
+        <input type="hidden" name="expected_scenario" value="whatif.json">
+        <input type="hidden" name="plan_hash" value="50ffef8e...">
+        <button type="submit" class="...">Apply Changes</button>
+    </form>
+  Wrapped this real render in light and `class="dark"` pages loading the
+  project's actual built web/static/css/tailwind.css and ran
+  `npx @axe-core/cli` (wcag2a/2aa/21aa/22aa) against both:
+    LIGHT: 1 violation — color-contrast on `.text-xs`
+    DARK:  1 violation — color-contrast on `.text-xs`
+  Both hits are the SAME element: the "(12-month average, excluding Health
+  Insurance...)" span, `class="text-xs text-gray-400 dark:text-gray-500"`.
+  `git show HEAD:web/templates/components/whatif/sync-preview.html` shows
+  this exact line (with these exact classes) already present, byte-identical,
+  on master, outside every changed hunk — PRE-EXISTING, not introduced or
+  replicated by this task. Reported as an OBSERVATION below, not a FAIL.
+  No other axe hit in either theme; no new landmark/heading/table issue (this
+  partial has no h1/table — unaffected either way); no motion; no color-only
+  status signaling was touched.
+
+CHECK 1b — hidden inputs are type="hidden", not visually-hidden-but-focusable: PASS
+  Both new inputs use `type="hidden"` — excluded from the accessibility tree
+  and the tab order by the platform, not a CSS visually-hidden trick that
+  would remain keyboard-focusable. No focus trap introduced.
+
+CHECK 1c — 409/error rendering perceivability: FAIL (ACCESSIBILITY.md #5;
+  WCAG 2.2 3.3.1 Error Identification / 4.1.3 Status Messages)
+  Traced (not executed — per the a11y-checker charter, execution is the
+  tests lane's job) the real code path for the new guard branches added in
+  this task's sync.go diff:
+    internal/handlers/whatif/sync.go:401  renderError(..., http.StatusBadRequest)   // expected_scenario missing
+    internal/handlers/whatif/sync.go:404  renderError(..., http.StatusBadRequest)   // plan_hash missing
+    internal/handlers/whatif/sync.go:419  renderError(..., http.StatusConflict)     // active scenario changed
+    internal/handlers/whatif/sync.go:437  renderError(..., http.StatusConflict)     // dashboard data changed since preview
+  These four branches are NEW — pre-task, handleWhatIfSyncApply had no
+  scenario/hash guard at all (it called plain `saveAndRecalc`, not
+  `saveAndRecalcIfScenario`); the 409 conflict path did not exist as a
+  reachable outcome of this handler before Z2.
+  `renderError` (internal/handlers/whatif/handlers.go:680-693) writes the
+  error body but sets no `HX-Retarget` header. Traced the client side, real
+  code, no execution:
+    - web/static/vendor/htmx.min.js ships htmx 2.0.4's default
+      `responseHandling: [{code:"204",swap:false},{code:"[23]..",swap:true},
+      {code:"[45]..",swap:false,error:true}]` — 4xx/5xx do NOT swap by
+      default.
+    - web/templates/layouts/base.html:205-214 only forces a swap on 4xx when
+      `evt.detail.xhr.getResponseHeader('HX-Retarget')` is present.
+    - base.html:224-226's `htmx:responseError` listener only
+      `console.error`s — no toast/banner/live-region fallback exists
+      anywhere in web/templates/layouts/base.html or web/static/js/*.js
+      (checked, only web/static/js/whatif-poll.js references a *different*
+      htmx error event by name in a comment).
+  Net effect: on any of these four new branches (most plausibly the 409s —
+  a second browser tab switching scenario, or dashboard data changing,
+  between preview and apply are ordinary concurrent-use races, not edge
+  cases), clicking "Apply Changes" produces a response body that is never
+  inserted into the DOM at all. Nothing is shown to a sighted user and
+  nothing is announced to assistive tech — worse than an unannounced error,
+  it is a *dropped* one; the button visibly does nothing.
+  This is a new-content replication, not a pass-through of an untouched
+  pre-existing defect: the SAME package already has the correct convention
+  for exactly this situation — `renderRetargetedError` (handlers.go:695-699,
+  used throughout handlers_scenarios.go, handlers_healthcare.go, and
+  handlers_income_expense.go for validation/conflict errors on
+  #whatif-results-shaped forms) sets `HX-Retarget`/`HX-Reswap` so base.html's
+  beforeSwap listener swaps the error in. The worker had a correctly-wired
+  sibling to follow for these four new branches and used the other
+  (non-perceivable) primitive instead. The pre-existing 500 branch in this
+  same handler ("Failed to sync from dashboard...", unchanged by this diff)
+  shares the same underlying flaw and is noted as an OBSERVATION for
+  provenance, but the four new 400/409 branches are what this task added,
+  and they are the ones a normal user will actually hit.
+
+CHECK 2 — no other markup/CSS/JS changed: PASS
+  `git diff --stat -- web/` — sync-preview.html only (shown above).
+  `git diff --stat -- internal/handlers/whatif/*.html` — no matches (no such
+  files; templates are under web/templates).
+
+CHECK 3 — comparison to conversion-sweep.html: PASS on markup pattern (see
+  Check 1a); FAIL on error-handling pattern (see Check 1c) — conversion-sweep's
+  own mutating form (handlers_sweep.go:308, `renderError` inside
+  recalcAndRender) shares the same underlying non-retargeted-error flaw, so
+  the worker's citation of that file did not surface a better pattern to
+  follow; `renderRetargetedError`'s siblings elsewhere in the package did.
+
+OBSERVATIONS (non-blocking)
+  - `.text-xs text-gray-400 dark:text-gray-500` color-contrast failure on the
+    "(12-month average, excluding Health Insurance...)" note, both themes —
+    PRE-EXISTING on master (git show HEAD confirms identical line/classes
+    outside every changed hunk). Backlog item, not this task's doing.
+  - The pre-existing 500 "Failed to sync from dashboard" error branch in the
+    same handler (unchanged by this diff) shares the CHECK 1c flaw
+    (renderError, no HX-Retarget) — pre-existing, not newly introduced, but
+    worth folding into whatever follow-up fixes CHECK 1c since it is the
+    same handler and the same form.
+  - Systemically, `renderError` (vs. `renderRetargetedError`) is used
+    site-wide by every handler that funnels through `recalcAndRender` /
+    `saveAndRecalc` (handlers.go:194) — e.g. handlers_sweep.go:308. That is
+    out of scope for this diff-focused pass (none of those call sites
+    changed) but is the same defect class at large; a future full-site pass
+    should audit it broadly rather than patch sync.go in isolation.
+
+VERDICT RATIONALE
+  The template hunk itself (Check 1a/1b) is clean and correctly mirrors the
+  cited sibling pattern. The FAIL is Check 1c: the task's new server-side
+  guard logic, which exists specifically to serve the new form this task
+  added, funnels its two new failure conditions (400 missing fields, 409
+  conflict) through a rendering primitive that a real, traced render +
+  real, traced client-side code confirms never reaches the DOM — a full
+  ACCESSIBILITY.md #5 failure, not a partial one (no announcement AND no
+  visible text), on new-content code paths.

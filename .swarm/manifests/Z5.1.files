@@ -1,0 +1,7 @@
+internal/models/whatif.go
+internal/services/retirement/engine/stepper.go
+internal/services/retirement/engine/month.go
+internal/handlers/whatif/spending_trajectory.go
+internal/services/retirement/engine/engine_run_test.go
+internal/handlers/whatif/spending_trajectory_test.go
+.swarm/manifests/Z5.1.manifest.md

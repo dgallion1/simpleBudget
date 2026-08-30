@@ -1,0 +1,123 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: Z4
+ATTEMPT: 1
+---
+Method: verified in a `cp -a` copy at
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/z4work
+(mutation lane) plus the exact build/vet/test commands in the real tree.
+No files in the real tree written except this verdict.
+
+CRITERION 1 — Enabled guard exists; doc comment updated. MET.
+  cmd: git diff HEAD -- internal/handlers/whatif/handlers_sweep.go
+  cmd: Read handlers_sweep.go:92-103
+  output (source, line 98-102):
+    func conversionSweepCurrentAmount(settings *models.WhatIfSettings) float64 {
+        if settings == nil || settings.RothConversion == nil || !settings.RothConversion.Enabled {
+            return 0
+        }
+        return settings.RothConversion.AnnualAmount
+    }
+  Doc comment now reads "...or 0 when Roth conversion is unset or disabled."
+  plus the D-Z-e rationale (rates form retains AnnualAmount as a re-enable
+  convenience, not a plan value). Diff is +6/-2 in this file, nothing else.
+
+CRITERION 2 — sweep tests verbose, three claimed scenarios actually asserted. MET.
+  cmd: go test ./internal/handlers/whatif/ -run 'Sweep|Conversion' -v -count=1
+  output (filtered):
+    --- PASS: TestConversionSweepCurrentAmount_DisabledTreatsAmountAsZero (0.00s)
+    --- PASS: TestConversionSweepCurrentAmount_EnabledReturnsAmount (0.00s)
+    --- PASS: TestConversionSweepCurrentAmount_NilCases (0.00s)
+    --- PASS: TestHandleWhatIfConversionSweep_DisabledRetainedAmountIsNotCurrent (0.01s)
+    --- PASS: TestHandleWhatIfConversionSweep_EnabledAmountStillMarkedCurrent (0.01s)
+    ok  budget2/internal/handlers/whatif  0.232s   (whole -run set PASS)
+  Test bodies read (git diff HEAD -- handlers_sweep_test.go, +128 lines):
+    a) disabled: RothConversionConfig{Enabled:false, AnnualAmount:25_000};
+       asserts conversionSweepCurrentAmount(settings) != 0 -> t.Errorf. Real
+       assertion, matches the name.
+    b) enabled: {Enabled:true, AnnualAmount:25_000}; asserts == 25_000.
+    c) nil: conversionSweepCurrentAmount(nil)==0 AND settings with
+       RothConversion=nil ==0; no panic.
+  MUTATION PROOF (scratch copy only): reverted the guard to the pre-Z4
+  `if settings == nil || settings.RothConversion == nil {` and re-ran:
+    handlers_sweep_test.go:101: conversionSweepCurrentAmount() = 25000, want 0 for a disabled config
+    --- FAIL: TestConversionSweepCurrentAmount_DisabledTreatsAmountAsZero (0.00s)
+    handlers_sweep_test.go:317: unexpected current row at amount 25000, want only the 0 row marked current (25000 disabled must not be treated as current)
+    --- FAIL: TestHandleWhatIfConversionSweep_DisabledRetainedAmountIsNotCurrent (0.02s)
+    --- PASS: TestConversionSweepCurrentAmount_EnabledReturnsAmount
+    --- PASS: TestConversionSweepCurrentAmount_NilCases
+    --- PASS: TestHandleWhatIfConversionSweep_EnabledAmountStillMarkedCurrent
+  Both new disabled-path tests fail when the guarded line is removed, and the
+  enabled/nil tests correctly stay green (they guard the unchanged paths).
+  Scratch file restored byte-identical to the worker's version afterwards
+  (diff -q -> RESTORED_IDENTICAL).
+
+CRITERION 3 — base ladder contains 0 and 25000; disabled test's Current lands on the 0 row. MET.
+  cmd: Read handlers_sweep.go:18-20
+    var conversionSweepBaseAmounts = []float64{
+        0, 25_000, 50_000, 75_000, 100_000, 125_000, 150_000, 175_000, 200_000,
+    }
+  cmd: throwaway probe test in the scratch copy (added, run, deleted):
+    BASE_LADDER: [0 25000 50000 75000 100000 125000 150000 175000 200000]
+    DISABLED_AMOUNTS: [0 25000 50000 75000 100000 125000 150000 175000 200000]
+    DISABLED_CURRENT: 0
+    ENABLED_AMOUNTS: [0 25000 50000 75000 100000 125000 150000 175000 200000]
+    ENABLED_CURRENT: 25000
+  So for a disabled config the $25,000 row is still emitted (base-ladder
+  value, 9 rows, no insertion) but the effective current amount is 0.
+  The handler test asserts exactly that on the RENDERED response: it decodes
+  the handler's JSON Rows, requires len(rows)==9, counts rows with
+  Current==true, errors if any current row has Amount!=0, and requires
+  currentCount==1 — i.e. exactly one Current row and it is the $0 row.
+
+CRITERION 4 — enabled-path regression proven unchanged. MET.
+  TestHandleWhatIfConversionSweep_EnabledAmountStillMarkedCurrent saves
+  {Enabled:true, AnnualAmount:25_000}, POSTs /whatif/conversion-sweep through
+  handleWhatIfConversionSweep, requires 200, len(rows)==9, currentCount==1 and
+  errors on any current row whose Amount != 25_000.
+    --- PASS: TestHandleWhatIfConversionSweep_EnabledAmountStillMarkedCurrent (0.01s)
+  It also passes under the mutation (correct: enabled behavior is unchanged),
+  and the unit-level TestConversionSweepCurrentAmount_EnabledReturnsAmount
+  pins the 25000 return directly. Pre-existing
+  TestHandleWhatIfConversionSweep_RowCountOrderAndCurrent (enabled $50k
+  scenario) also still PASSes.
+
+CRITERION 5 — build / vet / package tests green. MET.
+  cmd: cd /home/darrell/bin/ai/budget2 && go build ./... && go vet ./internal/handlers/whatif/... && go test ./internal/handlers/whatif/... -count=1
+  output:
+    BUILD_OK
+    VET_OK
+    ok  budget2/internal/handlers/whatif  10.064s
+  (-count=1 used; no cached pass relied on.)
+
+EXTRA CHECK (defect class #1, split classification) — not required by the
+brief but enumerated: every consumer of the "current amount" classification
+goes through the single function.
+  cmd: grep -rn "conversionSweepCurrentAmount|RothConversion.Enabled" --include=*.go internal/ | grep -v _test.go
+    handlers_sweep.go:79  (conversionSweepAmounts)
+    handlers_sweep.go:234 (buildConversionSweepRows — shared by run-sweep and Apply tail)
+  Both call sites use conversionSweepCurrentAmount; no second classifier.
+  cmd: grep -n "current|Current" web/templates/components/whatif/conversion-sweep.html
+    lines 61/64/85 render `{{if .Current}}` off the row field only — no
+    template- or JS-side recomputation of the current amount.
+  Other `RothConversion.Enabled` sites (tax_optimizer.go:344,
+  loop_helpers.go:246, overrides.go:75) are unrelated engine/analysis gates,
+  untouched by Z4.
+
+SCOPE. Z4's working-tree diff is exactly its two manifest paths:
+  cmd: git diff HEAD --name-only | grep handlers_sweep
+    internal/handlers/whatif/handlers_sweep.go
+    internal/handlers/whatif/handlers_sweep_test.go
+  matching .swarm/manifests/Z4.1.files verbatim. Nothing in
+  .swarm/critical.globs was touched (globs cover storage, dataloader,
+  retirement/engine, transfers, accounts, mcpsvc/confirm; the engine files
+  in the tree belong to Z5, declared foreign). All other modified paths are
+  the declared foreign territories: Z1 (analysis/present_value.go +
+  present_value_one_time_test.go), Z2/Z3 (whatif/sync*.go), Z5
+  (models/whatif.go, engine/stepper.go, engine/month.go,
+  engine/engine_run_test.go, whatif/spending_trajectory*.go), plus the lead's
+  .swarm/ledger.tsv and manifests. Attributed, not counted against Z4.
+  No Tier-3 oracle exists for Z4 (Tier 1; .swarm/tier3/ has no Z4 dir).
+
+FINDINGS: none.

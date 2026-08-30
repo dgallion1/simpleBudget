@@ -1,0 +1,101 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: Z3
+ATTEMPT: 1
+---
+Verification performed in a `cp -a` scratch copy at
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/b2
+for all mutations; the real tree was only read (final re-check below confirms it
+is byte-identical to the worker's delivery). Raw git output obtained via
+`rtk proxy git ...` because the rtk hook rewrites diffs.
+
+CRITERION 1 — comparison is EqualFold and the sync.go diff is MINIMAL: MET.
+`cd /home/darrell/bin/ai/budget2 && rtk proxy git diff -- internal/handlers/whatif/sync.go`
+returns exactly ONE hunk (@@ -124,10 +124,12 @@), 4 insertions / 2 deletions:
+    -		if t.Category == metrics.HealthInsuranceCategory {
+    +		if strings.EqualFold(t.Category, metrics.HealthInsuranceCategory) {
+plus a 3-line comment rewrite explaining the case-insensitivity. Nothing else in
+the file changed. `rtk proxy git diff --numstat` confirms `4	2
+internal/handlers/whatif/sync.go`. No import churn was needed — `strings` is
+already in the import block (sync.go lines 1-17, read directly). This leaves
+task Z2's next edit to sync.go unobstructed.
+The target semantics were confirmed at the source: internal/models/transaction.go
+lines 246-255 show `FilterByCategory` comparing `strings.ToLower(t.Category) ==
+strings.ToLower(category)`, and internal/services/metrics/metrics.go:231 shows the
+dashboard healthcare split calling `outflows.FilterByCategory(HealthInsuranceCategory)`
+with `const HealthInsuranceCategory = "Health Insurance"` (metrics.go:20).
+NOTE (non-blocking): `strings.EqualFold` uses Unicode simple case-folding while
+`FilterByCategory` uses `strings.ToLower`. They agree for every ASCII spelling of
+"Health Insurance"; they could diverge only on exotic runes (e.g. Kelvin sign,
+long s). Not a defect against the written criterion, which names EqualFold.
+
+CRITERION 2 — new test drives the real sync path with both case variants and a
+normal category, asserting the right exclusions/inclusion: MET.
+`cd /home/darrell/bin/ai/budget2 && go test ./internal/handlers/whatif/ -run 'HealthInsurance' -v -count=1`
+    === RUN   TestSyncSettingsFromDashboard_ExcludesHealthInsuranceFromExpenses
+    --- PASS: TestSyncSettingsFromDashboard_ExcludesHealthInsuranceFromExpenses (0.00s)
+    === RUN   TestSyncSettingsFromDashboard_ExcludesHealthInsuranceCaseInsensitive
+    2026/08/30 11:58:13 Loaded 33 transactions from test.csv ...
+    --- PASS: TestSyncSettingsFromDashboard_ExcludesHealthInsuranceCaseInsensitive (0.00s)
+    ok  	budget2/internal/handlers/whatif	0.004s
+I read the test body (sync_test.go, the single +45-line hunk). It is not a unit
+poke at the predicate: it writes a real CSV via the pre-existing helper
+`setupSyncEnvWithCategorizedCSV` (sync_test.go:131-141 — unchanged by this task),
+wires the whatif env, and calls the production entry point
+`syncSettingsFromDashboard(s)`, then asserts on `s.MonthlyLivingExpenses`. The
+33-row fixture is 11 months x {Rent -2000 "Housing", Kaiser Premium -800
+"HEALTH INSURANCE", Dental Premium -100 "health insurance"} — i.e. BOTH an
+all-caps and an all-lowercase variant, neither matching the canonical
+"Health Insurance" under `==`, plus one normal category. The 33-transaction load
+line in the -v output confirms all three rows per month reached the loader (so
+the CSV pipeline did not drop or fold them). The expectation `want = 2000*11/months`
+encodes both halves of the claim simultaneously: Housing must be counted in full
+AND both health-insurance variants must be counted at zero. Tolerance is +/-10.00
+against a ~970/mo signal.
+
+CRITERION 3 — mutation check: the test genuinely fails against the old
+comparison. MET, by execution, both directions.
+(a) Reverted the fix in the scratch copy
+    (perl -pi -e 's/strings\.EqualFold\(t\.Category, metrics\.HealthInsuranceCategory\)/t.Category == metrics.HealthInsuranceCategory/')
+    verified the line reverted (`sync.go:132: if t.Category == metrics.HealthInsuranceCategory {`),
+    then `go test ./internal/handlers/whatif/ -run 'HealthInsurance' -v -count=1`:
+    --- PASS: TestSyncSettingsFromDashboard_ExcludesHealthInsuranceFromExpenses (0.00s)
+        sync_test.go:225: MonthlyLivingExpenses = 3141.15, want 2171.05 (HEALTH INSURANCE and health insurance rows must both be excluded)
+    --- FAIL: TestSyncSettingsFromDashboard_ExcludesHealthInsuranceCaseInsensitive (0.00s)
+    The 970.10 delta (3141.15-2171.05) is exactly the 900/mo of leaked
+    health-insurance premiums, and the pre-existing exact-case test still passes
+    under the mutation — proving the new test, and only the new test, guards the
+    case-insensitivity. This also rules out the alternative explanation that the
+    CSV loader normalizes category case (if it did, the mutant would have passed).
+(b) Inverse mutation, to prove the "normal category included" half is not
+    vacuous: restored EqualFold and additionally skipped Housing
+    (`if strings.EqualFold(...) || t.Category == "Housing" {`):
+        sync_test.go:225: MonthlyLivingExpenses = 0.00, want 2171.05
+    --- FAIL: TestSyncSettingsFromDashboard_ExcludesHealthInsuranceCaseInsensitive
+    So the assertion is two-sided: it fails if the HI rows leak in AND it fails
+    if the normal category is dropped.
+
+CRITERION 4 — build / vet / package tests green: MET.
+`cd /home/darrell/bin/ai/budget2 && go build ./... && go vet ./internal/handlers/whatif/... && go test ./internal/handlers/whatif/... -count=1`
+    BUILD OK
+    VET OK
+    ok  	budget2/internal/handlers/whatif	10.116s
+(-count=1 defeats the test cache; the whatif package compiles and passes WITH the
+foreign uncommitted Z4/Z5 edits present in the same package.)
+
+SCOPE: Z3's footprint is exactly the two manifested files —
+`rtk proxy git diff --numstat` shows `4 2 internal/handlers/whatif/sync.go` and
+`45 0 internal/handlers/whatif/sync_test.go`, matching
+.swarm/manifests/Z3.1.manifest.md line for line. All other working-tree
+modifications attribute to declared foreign territories: Z1
+(internal/services/retirement/analysis/present_value.go + new
+present_value_one_time_test.go), Z4 (handlers_sweep.go, handlers_sweep_test.go),
+Z5 (internal/models/whatif.go, engine/stepper.go, engine/month.go,
+engine/engine_run_test.go, spending_trajectory*.go), plus the lead's
+.swarm/ledger.tsv and manifests. Z3 touches nothing in
+/home/darrell/bin/ai/budget2/.swarm/critical.globs (the only critical-glob path
+with edits is internal/services/retirement/engine/**, which belongs to Z5, not
+Z3). Verified the real tree is unmodified by me: sync.go lines 130-134 still show
+the EqualFold form and the numstat is unchanged after all mutation work. My only
+write to the real tree is this verdict file.

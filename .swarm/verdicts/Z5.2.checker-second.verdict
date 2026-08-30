@@ -1,0 +1,134 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: Z5
+ATTEMPT: 2
+---
+Setup: cp -a copy at /tmp/claude-1000/Z5probe/budget2 (real tree untouched).
+Confirmed the Z5.2 diff is exactly the manifest's 5 files, matching
+.swarm/manifests/Z5.2.files:
+  internal/handlers/whatif/spending_trajectory.go     | 21 +-1
+  internal/handlers/whatif/spending_trajectory_test.go| +271
+  internal/models/whatif.go                           | +11
+  internal/services/retirement/engine/engine_run_test.go | +169
+  internal/services/retirement/engine/stepper.go      | +34
+No scope creep; foreign Z1-Z4 territory (present_value.go, sync*.go,
+handlers_sweep*.go) present but untouched by this diff, per prior run.
+
+Attack 1 — INVERSE overload (disabled primary -> chain into ENABLED linked
+scenario). Not covered by any committed test, so I wrote and ran it against
+the real engine (TestZ5CheckerProbe_DisabledToEnabledInverse, discarded
+after run, never committed):
+  primary phases disabled (year0), chain transitions at year1 into a
+  linked scenario with Enabled-Early/Enabled-Late phases.
+  Result: year0 PhaseName="-" (sentinel, not empty), year1/2="Enabled-Late"
+  (linked scenario's own name, correct StartAge match). PASS — symmetric
+  with the enabled->disabled case fixed in attempt 2; the mechanism
+  (phaseNameOrNoPhaseSentinel wrapping the ACTIVE settings' own
+  GetSpendingPhaseNameAt at both stepper.go sites) is direction-agnostic
+  by construction, confirmed by an actual run, not just by reading.
+  Also probed: every yearly summary across a 10-year no-chain phases-enabled
+  run, and a single-year run exercising ONLY the tail
+  `if len(projection) > 0 { finalizeCurrentYear(...) }` path in month.go
+  (never reached via the mid-loop `m%12==0 && m>0` rotation) — both showed
+  100% non-empty PhaseName on every summary, including the LAST year.
+
+Attack 2 — sentinel collisions.
+  (a) User-named phase literally "-": cosmetically indistinguishable from
+      "no phase" either way (pre- and post-Z5); not a Z5-introduced defect,
+      not pursued further.
+  (b) Enabled-but-unnamed phase (Phases[i].Name == "" with Enabled: true):
+      GetSpendingPhaseNameAt returns "" for this case too (whatif.go:471-483
+      only special-cases nil/disabled/empty-slice, not an empty Name string
+      on a real phase). Reproduced empirically
+      (TestZ5CheckerProbe_EnabledButUnnamedPhaseCollidesWithSentinel,
+      discarded): engine records "-" for this config, where pre-Z5 it
+      recorded "" (silently absent, no dash). Checked reachability: grepped
+      handlers_rates.go's phase-save handler (line 142) — `if name :=
+      r.FormValue(nameKey); name != "" { phase.Name = name }` — a blank
+      posted name field falls through to the PRE-EXISTING base phase name
+      (never blank, sourced from DefaultSpendingPhases() or the current
+      config), so the UI structurally cannot produce this state; no JSON
+      settings-import handler was found either. Not reachable via any
+      consumer this task or its siblings touch. FINDING for the backlog,
+      not a FAIL basis (unreachable, and the display difference is
+      cosmetic — blank cell vs. a dash — even if reached).
+
+Attack 3 — split-classification: two independent `"-"` literals exist,
+  engine/stepper.go's `noPhaseSentinel` and handler
+  spending_trajectory.go's `trajectoryPhaseName`'s `return "-"`. Currently
+  they agree by construction and are exactly what lead ruling D-Z-f
+  specified verbatim ("the engine records the literal no-phase token `-`
+  ... handler preference logic unchanged"), so this is the approved design,
+  not a worker deviation. FINDING for the backlog (a shared exported
+  constant would remove future-drift risk) — not a FAIL basis: no observable
+  divergence today, and the acceptance criteria did not ask for a shared
+  constant.
+
+Attack 4 — other consumers of PhaseName: grepped every phase_name/PhaseName
+  site repo-wide. web/templates/components/kpis.html and
+  portfolio-settings.html read a DIFFERENT PhaseName (budget_fit.go /
+  living_expenses_phase_note.go, calling GetSpendingPhaseNameAt directly,
+  untouched by Z5) — no sentinel leaks there. mcpsvc/plan/view.go's
+  YearView does not carry PhaseName at all — no MCP leak. Confirmed only
+  one true ProjectionYearSummary constructor site touches the stepper's
+  CurrentPhaseName (month.go's runMonthlyLoop); explainability.go's
+  fallback-rebuild path builds a separate LOCAL summaries slice (never
+  assigned back to proj.YearlySummaries) so it cannot leak "" into
+  buildSpendingTrajectoryRows. Both RunFast and RunFull
+  (orchestrator.go) call the same eng.Run(in) -> runMonthlyLoop, so the
+  production spending-trajectory handler (analysisFastOrCached ->
+  RunFast) always gets a stepper-populated projection, not Monte Carlo.
+
+Attack 5 — mutation proof the new engine regression test is real, not
+  cosmetic. Reverted both `phaseNameOrNoPhaseSentinel(...)` call sites in
+  stepper.go back to bare `s.GetSpendingPhaseNameAt(...)` (the attempt-1
+  shape) and reran:
+    TestEngineRunChainTransitionToPhasesDisabledCarriesSentinel -> FAILS
+      (year1/2 PhaseName="" instead of "-") — confirms the test would have
+      caught attempt 1's exact defect.
+    TestBuildSpendingTrajectoryRows_ChainToPhasesDisabledShowsSentinelNotPrimaryLabel
+      still PASSES under the mutation (it's a synthetic-summary handler
+      test, independent of the engine) — this is the test that literally
+      reproduces attempt 1's original failing scenario
+      (YearlySummaries[1].PhaseName="-" synthetic input; asserts row !=
+      "Slow-Go") and passes on the real (unmutated) code.
+  Reverted the mutation; build restored clean.
+
+Attack 6 — full verification, real run in the copy:
+  go build ./...            -> clean
+  go vet ./...               -> clean
+  go test ./internal/services/retirement/... ./internal/handlers/whatif/... -count=1
+    ok  budget2/internal/services/retirement            43.184s
+    ok  budget2/internal/services/retirement/analysis   29.216s
+    ok  budget2/internal/services/retirement/completeness 0.003s
+    ok  budget2/internal/services/retirement/engine     0.012s
+    ok  budget2/internal/services/retirement/history    0.002s
+    ok  budget2/internal/services/retirement/overrides  0.004s
+    ok  budget2/internal/services/retirement/prepare    0.003s
+    ok  budget2/internal/handlers/whatif                15.385s
+  No sync_test.go flake this run (matches manifest's account of an
+  unrelated transient in a foreign Z2/Z3 file, resolved by re-run).
+  gofmt -l on all five touched files: silent (clean).
+
+Acceptance criteria (Z-RUN-SPEC.md Z5 + ruling Z-2026-08-30a/D-Z-f):
+1. ProjectionYearSummary.PhaseName recorded from ACTIVE settings at
+   multiplier-application time, sentinel-wrapped at both sites — MET
+   (stepper.go:174, 269).
+2. buildSpendingTrajectoryRows prefers summary PhaseName, falls back to
+   trajectoryPhaseName only on true "" (legacy/no-data) — MET, and the
+   attempt-1 defect (fallback firing on a legitimate chain-to-disabled "")
+   is closed by the sentinel, proven both by the committed regression test
+   and by my own mutation probe.
+3. Regression tests (chain rename/rearrange, handler reflects summary,
+   no-chain byte-identical) — MET; F-Z5-1 and F-Z5-2 promotions present
+   (TestSpendingTrajectory_PhaseNamesMatchAcrossReferenceModes across all
+   four PhaseAgeReference modes, TestEngineRunChainTransitionRearrangesPhaseBoundaries).
+4. build/vet/test green — MET, reproduced independently.
+
+No FAIL-worthy defect found. Two findings recorded above for the backlog
+(unreachable enabled-but-unnamed-phase collision; duplicated "-" literal
+across packages) — neither is reachable/observable today nor deviates from
+the lead-approved D-Z-f design, so neither is grounds for FAIL per the
+scope rule (a real defect must be reachable through code this task's
+consumers actually exercise).

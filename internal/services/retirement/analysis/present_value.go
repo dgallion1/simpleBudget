@@ -60,6 +60,34 @@ func PresentValue(in engine.Input, proj *models.ProjectionResult) *models.Presen
 		}
 	}
 
+	// One-time expenses (roof, car, wedding) hit a single projection month
+	// (engine.OneTimeExpensesForYear, charged and general-CPI-inflated at
+	// month e.Year*12) rather than forming a stream, but they still reduce
+	// the projected balance, so they belong in Total Needs. Reuse
+	// OneTimeExpensesForYear itself — rather than re-deriving the inflation
+	// factor here — so PV always matches whatever the engine actually
+	// charges, and group by year so two entries sharing a year aren't summed
+	// twice. Route through presentValueOfMonthlyStream so the payment gets
+	// the identical ordinary-annuity discount convention and monthly-rate
+	// derivation as every other leg. A charge at or beyond the horizon is
+	// skipped entirely, contributing 0.
+	oneTimeYears := map[int]bool{}
+	for _, e := range s.OneTimeExpenses {
+		oneTimeYears[e.Year] = true
+	}
+	for year := range oneTimeYears {
+		chargeMonth := year * 12
+		if chargeMonth >= months {
+			continue
+		}
+		pvExpenses += presentValueOfMonthlyStream(func(month int) float64 {
+			if month == chargeMonth {
+				return engine.OneTimeExpensesForYear(s, year)
+			}
+			return 0
+		}, discountRate, months)
+	}
+
 	// Add expense sources
 	for _, source := range s.ExpenseSources {
 		startMonth := source.StartYear * 12

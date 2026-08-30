@@ -90,9 +90,13 @@ func conversionSweepAmounts(settings *models.WhatIfSettings) []float64 {
 }
 
 // conversionSweepCurrentAmount returns the saved plan's current flat annual
-// Roth conversion amount, or 0 when Roth conversion is unset.
+// Roth conversion amount, or 0 when Roth conversion is unset or disabled.
+// The rates form deliberately preserves AnnualAmount when a user disables
+// conversions (a UI convenience for re-enabling later, not a plan value), so
+// a disabled config's stored amount must not be treated as the active
+// current amount here (D-Z-e).
 func conversionSweepCurrentAmount(settings *models.WhatIfSettings) float64 {
-	if settings == nil || settings.RothConversion == nil {
+	if settings == nil || settings.RothConversion == nil || !settings.RothConversion.Enabled {
 		return 0
 	}
 	return settings.RothConversion.AnnualAmount

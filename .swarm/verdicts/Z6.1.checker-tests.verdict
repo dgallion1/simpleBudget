@@ -1,0 +1,147 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: Z6
+ATTEMPT: 1
+---
+All work verified in a `cp -a` copy at
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/b2work
+(git history intact). No file in the real tree was written except this verdict.
+
+CRITERION 1 — four guard branches retargeted; no renderError left on a guard path: PASS
+  $ grep -n "renderError\|renderRetargetedError" internal/handlers/whatif/sync.go
+    401: renderRetargetedError(w, "expected_scenario is required: ...", http.StatusBadRequest, "#whatif-sync-preview")
+    406: renderRetargetedError(w, "plan_hash is required: ...", http.StatusBadRequest, "#whatif-sync-preview")
+    419: renderRetargetedError(w, fmt.Sprintf("refusing to apply: the active scenario is %s ...
+    422:   ... active, expectedScenario), http.StatusConflict, "#whatif-sync-preview")
+    437: renderRetargetedError(w, "refusing to apply: the dashboard data changed ...", http.StatusConflict, "#whatif-sync-preview")
+  The three renderError calls remaining inside handleWhatIfSyncApply are
+  412 (LoadContext), 428 (computeDashboardSync), 433 (syncPlanHash) — all
+  http.StatusInternalServerError, the in-contract pre-existing 500 branches.
+  Lines 325/331/337 are the other three 500s and sit in handleWhatIfSync
+  (the PREVIEW handler, function begins at sync.go:322 per
+  `sed -n '300,340p' internal/handlers/whatif/sync.go`) — not a guard path.
+  Wrapper interception, handlers.go:241-250 (`git diff master -- handlers.go`):
+      revision, err := retirementMgr.SaveWithRevisionIfScenario(settings, expectedScenario)
+      if err != nil {
+          var conflictErr *retirement.ScenarioConflictError
+          if errors.As(err, &conflictErr) {
+              renderRetargetedError(w, err.Error()+". Re-open the sync preview and try again",
+                  http.StatusConflict, "#whatif-sync-preview")
+              return
+          }
+          renderError(w, "Failed to save settings: "+err.Error(), statusForMutationError(err))
+  i.e. the intercept precedes the shared renderError tail, which is retained
+  for every other error.
+  Helper semantics confirmed (handlers.go:713):
+      func renderRetargetedError(...) { w.Header().Set("HX-Retarget", target)
+        w.Header().Set("HX-Reswap", "innerHTML"); renderError(w, message, statusCode) }
+
+CRITERION 2 — errors.As discipline: PASS
+  Chain read: handlers.go:241 calls retirementMgr.SaveWithRevisionIfScenario
+  (retirementMgr is the concrete *retirement.SettingsManager, handlers.go:834).
+  internal/services/retirement/settings.go:748-757 returns the conflict BARE
+  (`return 0, &ScenarioConflictError{Err: fmt.Errorf(...)}`) — no fmt.Errorf %w
+  wrapping anywhere on today's chain, so a bare type switch would also work
+  today; errors.As is the strictly stronger choice and is what is used.
+  Proved errors.As is load-bearing under wrapping with two throwaway probes
+  (both reverted; `git diff --stat` returned to +36/+32 afterwards):
+    Probe A — wrapped the error at settings.go:753 with
+      `fmt.Errorf("save aborted: %w", &ScenarioConflictError{...})`:
+      $ go test ./internal/handlers/whatif/ -run TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected -count=1
+      ok  	budget2/internal/handlers/whatif	0.026s      <- errors.As still matches
+    Probe B — same wrapping PLUS downgrading the intercept to
+      `if _, ok := err.(*retirement.ScenarioConflictError); ok {`:
+      --- FAIL: TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected (0.02s)
+          sync_test.go:507: HX-Retarget = "", want "#whatif-sync-preview"
+  So the implementation survives future wrapping and the type-switch form
+  would not. Discipline satisfied.
+
+CRITERION 3 — tests pass and each asserts the header: PASS
+  $ go test ./internal/handlers/whatif/ -run 'TestHandleWhatIfSyncApply' -v -count=1
+    --- PASS: TestHandleWhatIfSyncApply_MissingGuardFieldsRejected (0.01s)
+        --- PASS: .../both_missing (0.00s)
+        --- PASS: .../blank_expected_scenario (0.00s)
+        --- PASS: .../blank_plan_hash (0.00s)
+    --- PASS: TestHandleWhatIfSyncApply_WrongExpectedScenarioRejected (0.01s)
+    --- PASS: TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected (0.02s)
+    --- PASS: TestHandleWhatIfSyncApply_StalePlanHashRejected (0.00s)
+    ok  	budget2/internal/handlers/whatif	0.079s
+  assertRetargetHeader read at handlers_test.go (pre-existing on master,
+  `git show master:internal/handlers/whatif/handlers_test.go | grep -n "func assertRetargetHeader"` -> 107):
+      if got := w.Header().Get("HX-Retarget"); got != target { t.Fatalf(...) }
+      if got := w.Header().Get("HX-Reswap"); got != "innerHTML" { t.Fatalf(...) }
+  — it asserts the real response header, not a proxy. Call sites in
+  sync_test.go: 377 (inside the t.Run loop, so all three sub-cases), 420,
+  507, 584, each with target "#whatif-sync-preview". Every test also still
+  asserts the status code (400/409) and that nothing was written; the
+  race-window test additionally asserts the OTHER scenario file is unwritten.
+
+CRITERION 4 — mutation checks (each mutation applied alone, then reverted): PASS
+  Reverting EACH of the four guard branches to renderError kills exactly the
+  test that names it:
+    sync.go:401 -> --- FAIL: .../MissingGuardFieldsRejected/both_missing
+                       sync_test.go:377: HX-Retarget = "", want "#whatif-sync-preview"
+                   --- FAIL: .../MissingGuardFieldsRejected/blank_expected_scenario (same message)
+    sync.go:406 -> --- FAIL: .../MissingGuardFieldsRejected/blank_plan_hash
+                       sync_test.go:377: HX-Retarget = "", want "#whatif-sync-preview"
+    sync.go:419 -> --- FAIL: TestHandleWhatIfSyncApply_WrongExpectedScenarioRejected
+                       sync_test.go:420: HX-Retarget = "", want "#whatif-sync-preview"
+    sync.go:437 -> --- FAIL: TestHandleWhatIfSyncApply_StalePlanHashRejected
+                       sync_test.go:584: HX-Retarget = "", want "#whatif-sync-preview"
+  Removing the saveAndRecalcIfScenario interception (leaving only the shared
+  renderError tail) ->
+    --- FAIL: TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected (0.02s)
+        sync_test.go:507: HX-Retarget = "", want "#whatif-sync-preview"
+  All mutations reverted; post-revert `git diff --stat master` returned to
+  handlers.go +36 / sync.go +162 / settings.go +32, matching the pre-mutation
+  state. The scratch copy is discarded.
+
+CRITERION 5 — build / vet / tests / gofmt: PASS (gofmt flag attributed pre-existing)
+  $ go build ./...                                   -> BUILD_OK
+  $ go vet ./internal/handlers/whatif/...            -> VET_OK
+  $ go test ./internal/handlers/whatif/... ./internal/services/retirement/... -count=1
+      ok  budget2/internal/handlers/whatif            13.239s
+      ok  budget2/internal/services/retirement        30.404s
+      ok  budget2/internal/services/retirement/analysis 26.231s (+ completeness,
+          engine, history, overrides, prepare all ok)
+  Repo composite target (Makefile:77 `check: vet static vuln css-verify test`):
+  $ make check   ->  "✓ all checks passed"   EXIT=0   (full suite, -count=1
+      throughout per the Makefile's `go test -count=1`)
+  $ gofmt -l internal/handlers/whatif/{sync.go,sync_test.go,handlers.go}
+      internal/handlers/whatif/handlers.go
+  Attribution verified WITHOUT stash, by comparing against master's own blob:
+  $ git show master:internal/handlers/whatif/handlers.go > /tmp/.../handlers_master.go
+  $ gofmt -l /tmp/.../handlers_master.go
+      /tmp/.../handlers_master.go        <- master is ALSO unformatted
+  $ gofmt -d internal/handlers/whatif/handlers.go
+      @@ -1198,4 +1198,3 @@ ... }
+      -                                  <- sole delta: one trailing blank line at EOF
+  The flag is a pre-existing master defect at the end of the file, not
+  produced by Z6's inserted block. FINDING (backlog), not a FAIL.
+
+CRITERION 6 — scope: PASS
+  $ git diff master -- internal/handlers/whatif/handlers.go | grep -c "^@@"  -> 1
+  The single hunk adds saveAndRecalcIfScenario (36 lines, doc comment + body)
+  at handlers.go:216; nothing else in handlers.go differs from master, so the
+  change is confined to that function and the shared saveAndRecalc /
+  recalcAndRender tail used by the other ~15 whatif handlers is untouched.
+  handleWhatIfSyncApply is the only caller (sync.go:447).
+  Working-tree scope: every modified path in `git status --porcelain`
+  (17 Go/template files) is claimed by the union of the Z-run manifests
+  (`cat .swarm/manifests/Z*.files | sort -u`); Z6.1.files names exactly the
+  three files in the task brief and no file outside that union changed.
+  Z6 is Tier 1 in the ledger (`Z6 1 a11y,tests dispatched 1 worker-coder`),
+  no .swarm/tier3/Z6 oracle exists (none required), and none of Z6's three
+  files matches .swarm/critical.globs (storage, dataloader,
+  retirement/engine, transfers, accounts.go, mcpsvc/confirm).
+
+FINDINGS (backlog, not FAIL)
+  F1 (criterion 5) internal/handlers/whatif/handlers.go is gofmt-unclean on
+     MASTER for a single trailing blank line at EOF (line 1199). Pre-existing,
+     out of Z6's scope, left untouched by the worker.
+  F2 (observation, no criterion) sync.go's handleWhatIfSyncApply doc comment
+     still says "*retirement.ScenarioConflictError, which recalcAndRender maps
+     to 409 via statusForMutationError" (sync.go:388-389). After Z6 the 409 is
+     produced by saveAndRecalcIfScenario's interception, not recalcAndRender.
+     Stale prose only; behavior verified correct by criterion 4.

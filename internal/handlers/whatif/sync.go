@@ -1,7 +1,10 @@
 package whatif
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"sort"
@@ -106,8 +109,21 @@ func computeDashboardSync(settings *models.WhatIfSettings) (*syncPlan, error) {
 		return nil, err
 	}
 
-	// Calculate average monthly values from last 12 months
-	now := time.Now()
+	// Calculate average monthly values from last 12 months, pinned to
+	// LOCAL midnight of today rather than the live instant. Two calls made
+	// minutes apart -- preview, then apply -- must see the identical value
+	// here so they compute the identical plan (and therefore the identical
+	// syncPlanHash); without pinning, "months" below carries live
+	// sub-second time.Now() drift into NewMonthlyExpenses, and the
+	// sync-confirm guard would reject unchanged data as stale on every
+	// apply. This must be a LOCAL calendar day, not time.Now().Truncate
+	// (which rounds to a UTC-epoch boundary): in any zone ahead of UTC that
+	// silently excludes same-day transactions once the wall clock crosses
+	// local midnight but UTC hasn't yet -- FilterByDateRange below already
+	// extends the end bound to 23:59:59.999999999 in this Location, so today
+	// is still fully included.
+	realNow := time.Now()
+	now := time.Date(realNow.Year(), realNow.Month(), realNow.Day(), 0, 0, 0, 0, realNow.Location())
 	yearAgo := now.AddDate(-1, 0, 0)
 	filtered := data.Active().FilterByDateRange(yearAgo, now)
 	outflows := filtered.FilterByType(models.Outflow)
@@ -124,10 +140,12 @@ func computeDashboardSync(settings *models.WhatIfSettings) (*syncPlan, error) {
 	// reduce the total instead of inflating it. Health Insurance outflows
 	// are excluded: the plan's healthcare persons model those premiums, so
 	// folding them into living expenses would double-count them (the spend
-	// summary makes the same living/healthcare split).
+	// summary makes the same living/healthcare split). The comparison is
+	// case-insensitive to match TransactionSet.FilterByCategory, which the
+	// dashboard's healthcare split uses.
 	var totalExpenses float64
 	for _, t := range outflows.Transactions {
-		if t.Category == metrics.HealthInsuranceCategory {
+		if strings.EqualFold(t.Category, metrics.HealthInsuranceCategory) {
 			continue
 		}
 		totalExpenses += t.Amount
@@ -139,8 +157,16 @@ func computeDashboardSync(settings *models.WhatIfSettings) (*syncPlan, error) {
 		NewMonthlyExpenses: totalExpenses / months,
 	}
 
-	// Use insights income pattern detection for individual income sources
+	// Use insights income pattern detection for individual income sources.
+	// IncomePatterns groups by a map internally, so its return order is not
+	// stable across calls; sort here so two calls against unchanged data
+	// produce byte-identical Added/Updated/Skipped/Sources and therefore the
+	// same syncPlanHash -- an unstable order would make the sync-confirm
+	// guard reject unchanged data as "stale".
 	incomePatterns := insights.IncomePatterns(filtered)
+	sort.Slice(incomePatterns, func(i, j int) bool {
+		return incomePatterns[i].Description < incomePatterns[j].Description
+	})
 
 	// Remove old auto-detected sources (prefixed with "insights-" or old "dashboard-income")
 	// Keep user-added sources (no special prefix)
@@ -245,6 +271,20 @@ func computeDashboardSync(settings *models.WhatIfSettings) (*syncPlan, error) {
 	return plan, nil
 }
 
+// syncPlanHash is the single source of what "the same plan" means between
+// preview and apply — both handlers call this, never their own encoding, or
+// the two could drift and pass a plan the user never actually reviewed.
+// SHA-256 over the plan's canonical (struct-order) JSON encoding: syncPlan
+// has no maps, so json.Marshal's field order is already deterministic.
+func syncPlanHash(plan *syncPlan) (string, error) {
+	data, err := json.Marshal(plan)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
 // applySyncPlan writes the plan's proposed values into settings.
 func applySyncPlan(settings *models.WhatIfSettings, plan *syncPlan) {
 	settings.MonthlyLivingExpenses = plan.NewMonthlyExpenses
@@ -261,10 +301,24 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 	return nil
 }
 
+// syncPreviewResponse is the JSON fallback shape for handleWhatIfSync
+// (used when no renderer is wired). It embeds the plan fields at the top
+// level for backward compatibility and adds the two guard values a caller
+// must echo back to /whatif/sync/apply.
+type syncPreviewResponse struct {
+	*syncPlan
+	ExpectedScenario string `json:"expected_scenario"`
+	PlanHash         string `json:"plan_hash"`
+}
+
 // handleWhatIfSync previews the changes a dashboard sync would make —
 // nothing is saved until the user confirms via /whatif/sync/apply. The
 // sync overwrites MonthlyLivingExpenses and rebuilds auto-detected income
 // sources, so a silent save would clobber deliberately set values.
+//
+// ExpectedScenario and PlanHash bind the confirmation to what was actually
+// previewed. handleWhatIfSyncApply rejects a mismatch instead of writing:
+// see its doc comment for why.
 func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.LoadContext(r.Context())
 	if err != nil {
@@ -278,27 +332,118 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	hash, err := syncPlanHash(plan)
+	if err != nil {
+		renderError(w, "Failed to hash sync plan: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	expectedScenario := retirementMgr.ActiveFilename()
+
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "whatif-sync-preview", map[string]any{"Plan": plan})
+		_ = renderer.RenderPartial(w, "whatif-sync-preview", map[string]any{
+			"Plan":             plan,
+			"ExpectedScenario": expectedScenario,
+			"PlanHash":         hash,
+		})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(plan)
+	_ = json.NewEncoder(w).Encode(syncPreviewResponse{
+		syncPlan:         plan,
+		ExpectedScenario: expectedScenario,
+		PlanHash:         hash,
+	})
 }
+
+// syncApplyRaceTestHook, when non-nil, runs in handleWhatIfSyncApply
+// immediately before the confirmed sync is saved -- after every one of the
+// handler's own unlocked pre-checks (expected_scenario, plan_hash) and
+// before saveAndRecalcIfScenario's locked write. It exists only so a test
+// can deterministically land a concurrent scenario switch in the exact
+// window a caller-side check cannot close on its own -- the TOCTOU an
+// earlier attempt at this guard left open, closed by
+// SettingsManager.SaveWithRevisionIfScenario's locked re-check. Production
+// code leaves this nil; it is never invoked outside tests.
+var syncApplyRaceTestHook func()
 
 // handleWhatIfSyncApply performs the confirmed sync: recompute from the
 // dashboard, save, and render the standard results partial.
+//
+// expected_scenario and plan_hash are required (mirrors handleWhatIfApply's
+// expected_scenario guard, internal/handlers/whatif/handlers_live.go): a
+// client that skipped preview, or whose preview is stale, gets 400/409
+// instead of an unreviewed write. Between preview and apply, another
+// tab/MCP call can switch the active scenario or change the transactions
+// the plan was computed from — without this guard the confirmed values
+// could land on a plan the user never looked at.
+//
+// The check below (against retirementMgr.ActiveFilename()) is a fast-fail
+// for UX only — it is NOT what makes this safe, because it releases the lock
+// before computeDashboardSync/applySyncPlan run, leaving a window where a
+// scenario switch lands between the check and the write. The AUTHORITATIVE
+// check is inside saveAndRecalcIfScenario, which re-compares expectedScenario
+// against the active scenario and performs the write in the SAME held lock
+// (SettingsManager.SaveWithRevisionIfScenario) — see that method and
+// ApplyOverrides' doc comment. A mismatch there surfaces as
+// *retirement.ScenarioConflictError, which saveAndRecalcIfScenario itself
+// intercepts and renders as a retargeted 409 into #whatif-sync-preview, and
+// nothing is written.
+//
+// The plan_hash comparison, by contrast, does NOT need to be inside that
+// lock: the plan actually saved is the one recomputed by computeDashboardSync
+// just above (freshly, at apply time, from current settings/transactions),
+// not the one hashed at preview time. The hash only binds this apply to what
+// the user reviewed being still current; it names no mutable manager state
+// that could rot between an unlocked check and the locked write. Only the
+// scenario identity does that, which is exactly what the locked check guards.
 func handleWhatIfSyncApply(w http.ResponseWriter, r *http.Request) {
+	expectedScenario := strings.TrimSpace(r.FormValue("expected_scenario"))
+	if expectedScenario == "" {
+		renderRetargetedError(w, "expected_scenario is required: re-open the sync preview and apply from there", http.StatusBadRequest, "#whatif-sync-preview")
+		return
+	}
+	expectedHash := strings.TrimSpace(r.FormValue("plan_hash"))
+	if expectedHash == "" {
+		renderRetargetedError(w, "plan_hash is required: re-open the sync preview and apply from there", http.StatusBadRequest, "#whatif-sync-preview")
+		return
+	}
+
 	settings, err := retirementMgr.LoadContext(r.Context())
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if err := syncSettingsFromDashboard(settings); err != nil {
-		renderError(w, "Failed to sync from dashboard: "+err.Error(), http.StatusInternalServerError)
+	// Fast-fail only; see the doc comment above for why this is not the
+	// guard that makes the write safe.
+	if active := retirementMgr.ActiveFilename(); active != expectedScenario {
+		renderRetargetedError(w, fmt.Sprintf(
+			"refusing to apply: the active scenario is %s, but this sync was previewed for %s "+
+				"(the active scenario changed since the preview). Re-open the sync preview and try again",
+			active, expectedScenario), http.StatusConflict, "#whatif-sync-preview")
 		return
 	}
 
-	saveAndRecalc(w, r, settings)
+	plan, err := computeDashboardSync(settings)
+	if err != nil {
+		renderError(w, "Failed to sync from dashboard: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	hash, err := syncPlanHash(plan)
+	if err != nil {
+		renderError(w, "Failed to hash sync plan: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if hash != expectedHash {
+		renderRetargetedError(w, "refusing to apply: the dashboard data changed since this sync was previewed. "+
+			"Re-open the sync preview and try again", http.StatusConflict, "#whatif-sync-preview")
+		return
+	}
+
+	if syncApplyRaceTestHook != nil {
+		syncApplyRaceTestHook()
+	}
+
+	applySyncPlan(settings, plan)
+	saveAndRecalcIfScenario(w, r, settings, expectedScenario)
 }

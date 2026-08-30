@@ -121,6 +121,15 @@ type SettingsManager struct {
 	// recomputing the analysis. In-memory and not persisted: it only has to be
 	// monotonic within one process, because a page load reads the current value
 	// as its baseline.
+	//
+	// Scope: this manager's ENTIRE lifetime, not the active scenario -- it is
+	// one counter shared across every scenario file this manager ever writes,
+	// not reset or namespaced on scenario switch. A guard that compares an
+	// expected revision (e.g. SaveWithRevisionIfScenario) can therefore
+	// false-positive-conflict when a save to a DIFFERENT scenario lands
+	// between the read and the guarded write; that is intentionally
+	// conservative rather than a defect (see LoadContextWithRevision and
+	// SaveWithRevisionIfScenario's doc comments).
 	revision int
 }
 
@@ -473,6 +482,58 @@ func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSetti
 	return prepare.Clone(settings)
 }
 
+// LoadContextWithRevision is LoadContext plus the revision the returned
+// snapshot corresponds to, read under the SAME lock as the load.
+//
+// A caller that needs to bind a later write to "this exact snapshot" (the
+// sync preview/apply guard, see sync.go) must use this instead of calling
+// LoadContext and then Revision() separately: between those two calls a
+// concurrent writer can bump the counter, and the caller would echo back a
+// revision that does not describe the snapshot it actually saw -- the same
+// class of TOCTOU that expectedScenario closes for scenario identity, just
+// for revision instead. Revision is a manager-wide counter, not scoped to a
+// scenario (see the revision field's doc comment), so a save to a DIFFERENT
+// scenario between this load and a later guarded save also bumps it and
+// will be reported as a conflict even though the loaded snapshot's own
+// content did not change; that is conservative (an unnecessary 409, never a
+// missed one) and is the accepted tradeoff (D-Z-h) rather than a bug.
+func (sm *SettingsManager) LoadContextWithRevision(ctx context.Context) (*models.WhatIfSettings, int, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	sm.mu.RLock()
+	if sm.cache != nil {
+		rev := sm.revision
+		cloned, err := prepare.Clone(sm.cache)
+		sm.mu.RUnlock()
+		return cloned, rev, err
+	}
+	sm.mu.RUnlock()
+
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	// Double-check cache after acquiring write lock; see LoadContext's own
+	// double-check for why this branch has no deterministic test.
+	if sm.cache != nil {
+		cloned, err := prepare.Clone(sm.cache)
+		return cloned, sm.revision, err
+	}
+
+	settings, err := sm.loadInternalContext(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	sm.cache = settings
+	cloned, err := prepare.Clone(settings)
+	if err != nil {
+		return nil, 0, err
+	}
+	return cloned, sm.revision, nil
+}
+
 // InvalidateCache drops the in-memory settings cache so the next Load
 // re-reads from disk. Call it after anything rewrites the settings file
 // behind the manager's back (e.g. a backup restore).
@@ -723,6 +784,60 @@ func (sm *SettingsManager) Save(settings *models.WhatIfSettings) error {
 func (sm *SettingsManager) SaveWithRevision(settings *models.WhatIfSettings) (int, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+
+	if err := sm.saveInternalAndBump(settings); err != nil {
+		sm.cache = nil
+		return 0, err
+	}
+	return sm.revision, nil
+}
+
+// SaveWithRevisionIfScenario is SaveWithRevision plus two guards that
+// together close the lost-update window a bare Load-then-Save leaves open:
+// the same expectedScenario guard ApplyOverrides performs, AND an
+// expectedRevision guard against the manager's revision counter. Both
+// comparisons happen INSIDE the same write lock that performs the save, so
+// neither a scenario switch NOR a same-scenario concurrent save that lands
+// between a caller's own (necessarily unlocked) load/check and this call can
+// be silently reverted by this write. See ApplyOverrides' doc comment for
+// the scenario-guard rationale, and LoadContextWithRevision for how a caller
+// obtains a (settings, revision) pair that is safe to pass here.
+//
+// This is for callers that already hold a fully-built settings object to
+// write (unlike ApplyOverrides, there is no load-modify step here, so there
+// is no second reconcile-triggered re-check to make -- both guards are
+// checked exactly once, immediately before the write, same as
+// SaveWithRevision's write). Either mismatch writes nothing and returns a
+// *ScenarioConflictError. Empty expectedScenario means "no expectation" and
+// skips BOTH guards, behaving exactly like SaveWithRevision -- expectedRevision
+// is only meaningful paired with a non-empty expectedScenario, matching every
+// current caller (the sync-apply guard, sync.go).
+//
+// Revision is a manager-wide counter, not scoped to the active scenario (see
+// the revision field's doc comment): a concurrent save to a DIFFERENT
+// scenario between the caller's load and this call also bumps it and will be
+// reported as a conflict here even though the scenario this call is writing
+// did not itself change underneath the caller. That is intentionally
+// conservative -- an unnecessary 409 is safe, a missed one is a lost update
+// (D-Z-h) -- not a defect.
+func (sm *SettingsManager) SaveWithRevisionIfScenario(settings *models.WhatIfSettings, expectedScenario string, expectedRevision int) (int, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	if expectedScenario != "" {
+		if expectedScenario != sm.filename {
+			return 0, &ScenarioConflictError{Err: fmt.Errorf(
+				"refusing to write: the active scenario is %s, but this change was prepared for %s "+
+					"(the active scenario changed since the check). Nothing was written",
+				sm.filename, expectedScenario)}
+		}
+		if expectedRevision != sm.revision {
+			return 0, &ScenarioConflictError{Err: fmt.Errorf(
+				"refusing to write: the plan changed since it was loaded (it is now at revision %d, "+
+					"this change was prepared against revision %d). Nothing was written",
+				sm.revision, expectedRevision)}
+		}
+	}
 
 	if err := sm.saveInternalAndBump(settings); err != nil {
 		sm.cache = nil

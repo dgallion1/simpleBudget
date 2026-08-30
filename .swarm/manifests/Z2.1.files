@@ -1,0 +1,5 @@
+internal/handlers/whatif/sync.go
+internal/handlers/whatif/sync_test.go
+internal/handlers/whatif/handlers_test.go
+internal/handlers/whatif/tabs_render_test.go
+web/templates/components/whatif/sync-preview.html

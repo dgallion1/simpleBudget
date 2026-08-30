@@ -1,0 +1,207 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: Z2
+ATTEMPT: 1
+---
+All work verified in a `cp -a` copy at
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/z2work
+(mutation runs) plus read-only command runs in the real tree. No file in the
+real tree was written except this verdict.
+
+C1 — syncPlanHash exists ONCE, both handlers call it. PASS
+  cmd: grep -rn "syncPlanHash" --include=*.go .
+  out: sync.go:279 (definition), sync.go:335 (handleWhatIfSync), sync.go:401
+       (handleWhatIfSyncApply); remaining hits are two doc comments.
+  cmd: grep -rn "sha256|Sum256" internal/handlers/whatif/*.go
+  out: sync.go:4/280/284 (the one path) and handlers.go:240/244/285, which is
+       the pre-existing getSettingsHash/buildEngineInput analysis-cache key
+       over WhatIfSettings — a different value, and handlers.go is NOT in the
+       working-tree diff (`git status --porcelain` does not list it), so it is
+       untouched master code, not a second plan-hash path.
+  cmd: grep -rn "syncSettingsFromDashboard|computeDashboardSync" --include=*.go .
+  out: one producer (computeDashboardSync) consumed by both handlers at
+       sync.go:329 and sync.go:396 — no second plan-computation path.
+  cmd: grep -rn "sync/apply" --include=*.go --include=*.js --include=*.html .
+  out: the only HTTP consumers are the route registration (handlers.go:836) and
+       the template form; no JS/MCP caller exists that would now 400.
+
+C2 — hidden fields in the apply form + JSON fallback. PASS
+  cmd: Read web/templates/components/whatif/sync-preview.html
+  out: lines 76-83: `<form hx-post="/whatif/sync/apply" ...>` containing
+       `<input type="hidden" name="expected_scenario" value="{{.ExpectedScenario}}">`
+       and `<input type="hidden" name="plan_hash" value="{{.PlanHash}}">`, with the
+       Apply button as `type="submit"` INSIDE that form (so both fields are
+       submitted). Rendered-HTML proof, not template reading: the shipped test
+       extracts them from a real rendered body via
+       `name="(expected_scenario|plan_hash)" value="..."` (sync_test.go:23) and
+       the guard tests using setupTestEnvWithRenderer pass.
+  JSON fallback, executed (probe zz_probe2_test.go, renderer == nil):
+    JSON FALLBACK BODY: {"OldMonthlyExpenses":4000,"NewMonthlyExpenses":1952.98...,
+    "Sources":[...],"Added":[...],"Updated":null,"Removed":null,"Skipped":null,
+    "expected_scenario":"whatif.json",
+    "plan_hash":"271db9841db9f9449c6ec765f0c13ddd6961bcb37c42821c9f4d309a80a6a5e4"}
+       — both guard keys present AND every pre-existing plan field still at top
+       level (backward compatible).
+
+C3 — four contract cases exist, pass, and assert no-write. PASS (one finding)
+  cmd: cd /home/darrell/bin/ai/budget2 && go test ./internal/handlers/whatif/ -run 'Sync' -v -count=1
+  out (all --- PASS):
+    TestHandleWhatIfSyncApply_MissingGuardFieldsRejected  (subtests: both missing,
+      blank expected_scenario, blank plan_hash)
+    TestHandleWhatIfSyncApply_WrongExpectedScenarioRejected
+    TestHandleWhatIfSyncApply_StalePlanHashRejected
+    TestHandleWhatIfSyncApply_SavesSyncedSettings
+    ok  budget2/internal/handlers/whatif  0.110s
+  Test bodies read (sync_test.go:351-492): each rejection test loads settings
+  BEFORE via rm.LoadContext, and AFTER the rejected apply re-loads via
+  rm.LoadContext and asserts (a) MonthlyLivingExpenses unchanged and (b) no
+  income source with the "insights-" prefix exists. These are real re-load
+  inspections, not status-code-only checks.
+  "400 before any load/write" proved executably (probe zz_order_test.go): with
+  the package globals `retirementMgr` and `loader` set to nil, both a
+  both-blank and a blank-hash apply returned 400 with no panic —
+    "both blank-param applies returned 400 with retirementMgr==nil and
+     loader==nil: no load occurred".
+  MUTATION PROOF (scratch copy, one mutant at a time, `-run Sync`):
+    A `if hash != expectedHash` -> `if false && ...`
+      => --- FAIL: TestHandleWhatIfSyncApply_StalePlanHashRejected
+         "status = 200, want 409" (and only that test failed)
+    B `active != expectedScenario` -> `false && ...`
+      => --- FAIL: TestHandleWhatIfSyncApply_WrongExpectedScenarioRejected
+    C both `== ""` guards -> `if false`
+      => --- FAIL: TestHandleWhatIfSyncApply_MissingGuardFieldsRejected
+    D midnight pin reverted to `now := time.Now()`
+      => --- FAIL: _SavesSyncedSettings, _SaveError, PreserveActiveScenario
+  FINDING (C3, low): the happy-path test asserts only that the synced income
+  source `insights-salary` was saved; it does NOT assert MonthlyLivingExpenses.
+  The Z2.1 manifest says "(d) ... MonthlyLivingExpenses/income sources updated",
+  which overstates the assertion. The BEHAVIOR is correct — probe
+  zz_probe2_test.go: "BEFORE MonthlyLivingExpenses = 4000.000000" ->
+  "apply status = 200" -> "AFTER MonthlyLivingExpenses = 1952.983725", exactly
+  the plan's NewMonthlyExpenses. Note the missing assertion is pre-existing:
+  `git show HEAD:...sync_test.go` shows master's version of this test asserted
+  only findIncomeSource too; the worker changed only the request construction
+  (the sync_test.go diff deletes exactly 3 lines, all request/comment).
+
+C4 — FLAKINESS HUNT. PASS, no failure reproduced in 190+ runs.
+  cmd: go test ./internal/handlers/whatif/ -run 'Sync' -count=5   -> ok 0.489s (exit 0)
+  cmd: go test ./internal/handlers/whatif/... -count=2            -> ok 19.633s (exit 0)
+  cmd: 6 timezones, -count=2 each (UTC, Pacific/Kiritimati +14, Pacific/Midway -11,
+       Asia/Kathmandu +5:45, America/Los_Angeles, Australia/Lord_Howe +10:30)
+       -> ok in every zone.
+  cmd: TZ=Pacific/Kiritimati|Asia/Tokyo|UTC|America/Anchorage
+       go test -run StalePlanHashRejected -count=10 -> ok in all four.
+  MIDNIGHT-CROSSING PROBE (synthetic POSIX TZ chosen so the local wall clock sat
+  seconds before midnight): 40 full `-run Sync` runs from local 23:59:40 to
+  00:00:02 => TOTAL_FAILS=0; then 120 runs of
+  StalePlanHash|SavesSyncedSettings|WrongExpectedScenario|MissingGuardFields
+  from local 23:59:50 to 00:00:31 => fails=0.
+  Fixture dates (sync_test.go:441-468): the "original" CSV rows are
+  time.Now().AddDate(0,-1,0) and (0,-2,0); the mutation row is dated TODAY
+  (time.Now().Format("2006-01-02"), "Emergency Repair,-1200,Outflow,Housing").
+  The test therefore DOES depend on today-dated rows being inside the window —
+  but that holds in every zone: models.FilterByDateRange (transaction.go:234-235)
+  normalises start to 00:00:00 and end to 23:59:59.999999999 in the end bound's
+  Location, so pinning `now` to local midnight leaves the same calendar-day
+  bound as the old live time.Now(). Verified executably (probe
+  zz_probe_test.go): "today-dated transaction included under the midnight pin:
+  true", "delta txns=0". A same-second midnight crossing between the preview and
+  the apply inside one test would be needed to break it; 120 runs straddling the
+  boundary produced none.
+  DETERMINISM, the mechanism the flake would come from: probe over a 300-row,
+  6-income-description, 12-month CSV computed the plan 60x — "distinct hash
+  drift: none", NewMonthlyExpenses=4051.6904738155 stable. Deeper: with two or
+  more income patterns of EQUAL TotalAmount (insights.IncomePatterns' own sort
+  key, trends.go:261, an unstable sort.Slice), 200 computes gave
+  "distinct hashes over 200 computes: 1" WITH the worker's Description sort and
+  "HASH NOT STABLE: 4 distinct hashes" WITHOUT it. The sort is load-bearing and
+  correct.
+  FINDING (C4, low, test-coverage): no shipped test kills the sort mutation —
+  removing `sort.Slice(incomePatterns, ...)` still leaves `-run Sync -count=20`
+  and the whole package green, because every fixture has distinct pattern
+  totals. Candidate for a V3-style test-only follow-up (my tie-fixture probe
+  reproduces it in one run); not a defect in Z2's deliverables.
+
+C5 — midnight-pin semantics. PASS with a reported, sub-0.2% arithmetic delta.
+  Preview and apply both call the same computeDashboardSync, so both use the
+  same pinned `now` and the hash agrees — demonstrated by the happy path
+  returning 200 (a differing `now` breaks it: mutant D above).
+  Today's transactions: INCLUDED, both before and after the change. Probe
+  zz_probe_test.go compares the OLD live end bound with the NEW pinned one on a
+  fixture containing a today-dated outflow:
+    OLD (time.Now)      : txns_in_window=25 months=11.156044459 NewMonthlyExpenses=2240.848008
+    NEW (local midnight): txns_in_window=25 months=11.138888889 NewMonthlyExpenses=2244.299252
+    delta txns=0  delta avg=3.451244  relative=0.154015%
+    today-dated transaction included under the midnight pin: true
+  So window MEMBERSHIP is unchanged (structurally too: both bounds land on the
+  same calendar day, and FilterByDateRange normalises to that day's edges). The
+  only semantic delta is the `months` divisor in the partial-history branch
+  (`months = now.Sub(filtered.MinDate())/24/30`), which shrinks by up to one
+  day, raising NewMonthlyExpenses by <=1day/months (0.154% on this fixture) and
+  by exactly 0 when the data spans the full 12 months (months is the constant
+  12.0 then). A second, same-magnitude effect: incomePatternStale's gapDays is
+  now measured from midnight, so a pattern is up to 1 day "less stale" at the
+  nominalDays*2+7 boundary. FINDING (C5, informational): a real but sub-0.2%,
+  bounded-by-one-day change in the computed average in the partial-history case.
+  It is not a silent regression in the ordinary sense — the OLD value was not
+  reproducible at all (it drifted with sub-second wall-clock), which is the bug
+  being fixed. Severity: below the acceptance criteria, which demand a stable
+  hash, not identity with the old drifting average.
+  SECOND FINDING (C5, cosmetic): the added Description sort REPLACES
+  insights.IncomePatterns' TotalAmount-descending order, so the preview's
+  "Income sources to add" / "Detected but not synced" lists now render
+  alphabetically instead of largest-first. The top-10 truncation is unaffected
+  (it happens inside IncomePatterns, before the re-sort). Evidence: probe log
+  "first-run Added order: [Alpha Deposit Bravo Deposit Charlie Deposit Delta
+  Deposit]" on a fixture whose insertion order is unrelated to that.
+
+C6 — pre-existing tests not gutted. PASS
+  Bodies read: TestHandleWhatIfSyncApply_SaveError still calls
+  primeLoadCache + makeSaveFail(t, dir) and still asserts 500;
+  _AnalysisError still calls setupItemsThenBreakChain and asserts 500;
+  PreserveActiveScenario still asserts `data-scenario="whatif.json"` present and
+  `data-scenario=""` absent, for BOTH the calculate and sync-apply cases.
+  Proof the 500s still come from the ORIGINAL stage (not from the new guard or
+  a load error): I logged the rendered error bodies in the scratch copy —
+    SaveError:     "Failed to save settings: open /tmp/TestHandleWhatIfSyncApply_
+                    SaveError.../whatif.json.tmp-...: permission denied"
+    AnalysisError: "chained scenario whatif_corrupt.json: parsing scenario
+                    whatif_corrupt.json: invalid character 'n' ..."
+  MUTATION PROOF for PreserveActiveScenario: setting handlers.go:370
+  `activeFilename = retirementMgr.ActiveFilename()` to `""` produced
+    --- FAIL: .../calculate  AND  --- FAIL: .../sync-apply
+  so the sync-apply case still guards scenario preservation end-to-end.
+
+C7 — Z3's EqualFold exclusion untouched. PASS
+  sync.go:148 reads
+    if strings.EqualFold(t.Category, metrics.HealthInsuranceCategory) { continue }
+  with Z3's "case-insensitive to match TransactionSet.FilterByCategory" comment
+  intact. It appears in `git diff HEAD -- internal/handlers/whatif/sync.go`
+  because Z3's work is also uncommitted in this shared tree; Z2's hunks
+  (imports, the now-pin, the sort, syncPlanHash, syncPreviewResponse, both
+  handlers) are disjoint from it. `grep -rn HealthInsuranceCategory
+  internal/handlers/whatif/*.go` returns exactly ONE non-test site — no second
+  classifier was introduced.
+
+C8 — build / vet / gofmt / tests green. PASS
+  cmd: go build ./...                              -> no output, exit 0
+  cmd: go vet ./internal/handlers/whatif/...        -> no output, exit 0
+  cmd: gofmt -l <the 4 changed .go files>           -> no output (silent)
+  cmd: go test ./internal/handlers/whatif/... -count=1 -> ok (see C3/C4 runs)
+  COMPOSITE TARGET (beyond the brief): `make check` (= vet static vuln
+  css-verify test, all with -count=1) run in the scratch copy of the whole tree
+  -> final lines "ok budget2/internal/handlers/accounts 0.720s" and
+  "✓ all checks passed", MAKE_CHECK_EXIT=0. Note this green includes the
+  foreign Z1/Z4/Z5 uncommitted edits riding along in the copy.
+
+SCOPE
+  `git status --porcelain` modifies exactly: Z2's 5 declared files
+  (.swarm/manifests/Z2.1.files matches the diff exactly), plus
+  present_value.go (+ new test) = Z1.1.files, handlers_sweep.go/_test.go =
+  Z4.1.files, models/whatif.go + retirement/engine/{stepper,month,engine_run_test}
+  + spending_trajectory.go/_test.go = Z5.1/Z5.2.files, plus .swarm/ledger.tsv
+  and .swarm/ artifacts. Nothing is unattributed. Z2 touched NO path in
+  .swarm/critical.globs (storage/**, dataloader/**, retirement/engine/**,
+  transfers/**, accounts.go, mcpsvc/confirm/**); the one critical-glob file in
+  the tree, retirement/engine/**, belongs to Z5 and is out of Z2's scope.

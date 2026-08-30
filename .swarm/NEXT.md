@@ -394,3 +394,86 @@ acceptance and X-2026-08-29b dispute economics).
   (agents2-fb session).
 - pre-existing gofmt drift in retirement/analysis, engine, and two
   retirement test files (predates X; left untouched).
+
+## Z run — DONE 2026-08-30 (post-close review findings)
+Spec `.swarm/Z-RUN-SPEC.md`; all five tasks accepted, gate exit 0 each.
+- **Z1** (t2, att1) — PV analysis now includes one-time expenses (engine's
+  inflation rule, discounted at the charge month via the shared stream
+  helper; BigTicketItems deliberately out of scope, see below).
+- **Z2** (t2, att2) — sync apply bound to the preview: expected_scenario +
+  plan_hash (single SHA-256 source), 400/409 contract, and — after a
+  conceded attempt-1 TOCTOU (ruling Z-2026-08-30b) —
+  SaveWithRevisionIfScenario checks scenario identity INSIDE the held
+  lock (ApplyOverrides pattern). computeDashboardSync made deterministic
+  (pattern sort + local-midnight window pin) en route.
+- **Z3** (t1, att1) — Health Insurance sync exclusion now EqualFold,
+  matching FilterByCategory's case-insensitivity.
+- **Z4** (t1, att1) — sweep treats a disabled retained Roth amount as
+  current=0; $0 row is Current; retained amount not force-enabled.
+- **Z5** (t2 escalated critical-glob, att2) — trajectory phase labels
+  follow chain transitions: ProjectionYearSummary.PhaseName recorded from
+  ACTIVE settings at the multiplier site; after conceded attempt-1 ""
+  overload (ruling Z-2026-08-30a), engine records "-" for
+  phases-disabled years; "" reserved for pre-field projections.
+
+### Follow-ups recorded by Z checkers (not tasks in this run)
+- BigTicketItems are ALSO absent from PV (lead decision D-Z-a): balance
+  events with tax treatment + an income type — a modeling question for
+  the user, not a mechanical fix.
+- SaveWithRevisionIfScenario guards scenario identity but not revision —
+  same-scenario lost-update window is the pre-existing saveAndRecalc
+  contract shared by 7 handlers (Z2.2-second).
+- Atomicity of the locked check rests on source reading: no deterministic
+  test can preempt inside a held mutex without another seam (Z2.2-tests
+  disclosed limit).
+- syncSettingsFromDashboard (sync.go:295) now has no non-test caller.
+- Z2 happy-path test asserts income source, not MonthlyLivingExpenses;
+  the IncomePatterns sort.Slice is load-bearing but no committed test
+  kills its removal (V3 candidates). Preview list order changed to
+  alphabetical (was largest-total-first).
+- PV positive-side horizon boundary test (Year==ProjectionYears-1).
+- EqualFold vs ToLower can disagree on exotic runes (Kelvin sign) —
+  agree on all ASCII spellings (Z3 note).
+- Sentinel "-" collisions: enabled-but-unnamed phase unreachable via
+  handlers; dual "-" literals (engine noPhaseSentinel vs
+  trajectoryPhaseName) agree today, could drift; phase_name:"-" now
+  serializes where the key was absent (no golden breakage found);
+  F-Z5-4: promote the composed engine+handler probe to a committed test.
+- **Z6** (t1, att1, final-pass catch) — the guard's 400/409s were never
+  rendered (renderError sets no HX-Retarget; htmx 2.0.4 drops 4xx swaps).
+  All five paths (four handler-local + the locked-save conflict, intercepted
+  in sync-only saveAndRecalcIfScenario via errors.As) now use
+  renderRetargetedError → #whatif-sync-preview, header-asserted in tests.
+  Z6 follow-up observations: the whatif renderError partial has no
+  role="alert"/aria-live package-wide (accounts/filemanager do it right);
+  handlers.go pre-existing trailing-blank-line gofmt nit (line ~1199).
+
+## DB trigger conditions (decision note, 2026-08-30 — no action planned)
+Stay on JSON/CSV files + SaveWithRevision optimistic locking. Revisit
+(SQLite, single file, WAL — never a server DB) only if one of these fires:
+1. A second WRITER PROCESS appears (MCP moved back out-of-process, cron,
+   any automation writing data) — the in-process mutex stops covering.
+2. Multi-object atomicity pain recurs (settings + aliases + decisions
+   cannot commit as one unit; the StableID/orphaned-decisions drift class).
+3. A corruption or partial-write incident (WAL makes crash-mid-write a
+   non-event instead of a restore).
+Rationale: the 2026-08-30 lost-update bug (Z7) was a contract gap, not a
+storage failure — `UPDATE ... WHERE revision=?` requires the same
+discipline; migration would ripple through backup/restore, MCP snapshots,
+aliases, dataloader (storage/** and dataloader/** are critical.globs).
+Swap seam if it ever happens: internal/services/storage.
+Related parked item: revision-guard sweep across the ~7 other
+saveAndRecalc callers (same lost-update window as Z7, sync-only fixed
+per user decision 2026-08-30).
+- **Z7** (t2, att1, user-review P1 on PR #71) — same-scenario lost update
+  closed: LoadContextWithRevision (atomic settings+revision under one
+  lock), expected_revision round-trip, SaveWithRevisionIfScenario compares
+  scenario AND revision inside the held write lock. Revision is
+  GLOBAL-per-manager (different-scenario save → conservative 409,
+  documented). Z7 checker findings for the backlog: ApplyOverrides has a
+  scenario guard but NO revision guard (handlers_live.go + mcpsvc/plan
+  callers — same lost-update class, part of the parked saveAndRecalc
+  sweep); loadInternalContext's migration-on-decode rewrite doesn't bump
+  (pre-existing, harmless under its held lock); no test pins the
+  global-revision false-positive 409; expectedScenario=="" skips both
+  guards (unreachable today).

@@ -1,6 +1,10 @@
 {{/* Sync-from-Dashboard preview: shows the proposed changes and asks for
      confirmation. Nothing is saved until the user clicks Apply, which posts
-     to /whatif/sync/apply. Expects: .Plan (syncPlan). */}}
+     to /whatif/sync/apply. Expects: .Plan (syncPlan), .ExpectedScenario,
+     .PlanHash, .ExpectedRevision. The latter three round-trip through hidden
+     fields so the apply handler can refuse a write if the active scenario,
+     the underlying dashboard data, or the settings themselves (a concurrent
+     same-scenario edit) changed since this preview was rendered. */}}
 {{define "whatif-sync-preview"}}
 <div id="whatif-sync-preview" class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
     <div>
@@ -70,10 +74,15 @@
     {{end}}
 
     <div class="flex items-center gap-3 pt-2">
-        <button hx-post="/whatif/sync/apply" hx-target="#whatif-results" hx-swap="innerHTML"
-            class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">
-            Apply Changes
-        </button>
+        <form hx-post="/whatif/sync/apply" hx-target="#whatif-results" hx-swap="innerHTML">
+            <input type="hidden" name="expected_scenario" value="{{.ExpectedScenario}}">
+            <input type="hidden" name="plan_hash" value="{{.PlanHash}}">
+            <input type="hidden" name="expected_revision" value="{{.ExpectedRevision}}">
+            <button type="submit"
+                class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">
+                Apply Changes
+            </button>
+        </form>
         <button hx-post="/whatif/calculate" hx-target="#whatif-results" hx-swap="innerHTML"
             class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md">
             Cancel

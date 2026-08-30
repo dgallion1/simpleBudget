@@ -992,6 +992,17 @@ type ProjectionYearSummary struct {
 
 	// Roth 5-year rule: taxable Roth earnings withdrawn before the clock matures.
 	TaxableRothEarnings float64 `json:"taxable_roth_earnings,omitempty"`
+
+	// PhaseName is the spending-phase label active for this year, taken from
+	// whichever settings were ACTIVE during the year (the primary scenario,
+	// or a linked scenario after a chain transition) — the same settings
+	// GetSpendingMultiplier drew from. "-" when phases are disabled or
+	// unconfigured on the active settings (the engine's no-phase sentinel;
+	// see engine.NewProjectionState/StepMonth). Empty ("") means the engine
+	// recorded no PhaseName at all — a projection built before this field
+	// existed — and callers should fall back to deriving the label
+	// themselves (see whatif.trajectoryPhaseName).
+	PhaseName string `json:"phase_name,omitempty"`
 }
 
 // ProjectionExplainability contains reconciliation data for the projection UI.
@@ -1126,7 +1137,7 @@ type RMDAnalysis struct {
 
 // PresentValueAnalysis shows PV of expenses vs income
 type PresentValueAnalysis struct {
-	PVExpenses     float64 `json:"pv_expenses"`        // Living + healthcare + property tax + expense sources
+	PVExpenses     float64 `json:"pv_expenses"`        // Living + healthcare + property tax + expense sources + one-time expenses
 	PVTaxes        float64 `json:"pv_taxes,omitempty"` // Discounted income taxes + IRMAA from the projection (0 when no projection is supplied)
 	PVIncome       float64 `json:"pv_income"`
 	PVGap          float64 `json:"pv_gap"`          // (PV Expenses + PV Taxes) - PV Income

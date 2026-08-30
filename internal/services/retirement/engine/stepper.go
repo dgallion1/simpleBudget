@@ -31,6 +31,14 @@ type ProjectionState struct {
 	// CurrentLivingExpenses is this month's base living expense (inflation-
 	// and phase-adjusted, before the guardrail multiplier).
 	CurrentLivingExpenses float64
+	// CurrentPhaseName is the spending-phase label active for the current
+	// year, recorded from the ACTIVE settings (post chain-transition) using
+	// the same phaseAge the multiplier applies. Set to noPhaseSentinel ("-")
+	// when phases are disabled or absent on the active settings — never "",
+	// so "" stays reserved (in ProjectionYearSummary.PhaseName) for "the
+	// engine recorded nothing" (a pre-Z5 projection). Read by the canonical
+	// loop into each year's ProjectionYearSummary.PhaseName.
+	CurrentPhaseName string
 	// CumulativeInflation compounds the injected inflation rate monthly.
 	CumulativeInflation float64
 	// NetCumulativeInflation compounds (inflation − spending decline),
@@ -117,6 +125,27 @@ type MonthOutcome struct {
 	TotalBalance               float64
 }
 
+// noPhaseSentinel is recorded in CurrentPhaseName (and, via it, in
+// ProjectionYearSummary.PhaseName) for a year whose ACTIVE settings have no
+// spending phase in effect — phases disabled or unconfigured. It is
+// distinct from "", which GetSpendingPhaseNameAt itself returns for that
+// case: "" must stay reserved for "the engine recorded nothing at all" (a
+// projection built before PhaseName existed), because
+// buildSpendingTrajectoryRows treats "" as "fall back to deriving the label
+// from the PRIMARY settings" — the wrong label whenever a scenario chain
+// transitions into phases-disabled linked settings (Z5).
+const noPhaseSentinel = "-"
+
+// phaseNameOrNoPhaseSentinel maps GetSpendingPhaseNameAt's "" (phases
+// disabled/unconfigured) to noPhaseSentinel, so every CurrentPhaseName
+// assignment goes through the same substitution.
+func phaseNameOrNoPhaseSentinel(name string) string {
+	if name == "" {
+		return noPhaseSentinel
+	}
+	return name
+}
+
 // NewProjectionState builds the shared loop preamble from a prepared input.
 func NewProjectionState(in Input) *ProjectionState {
 	s := in.Prepared.Settings()
@@ -142,6 +171,7 @@ func NewProjectionState(in Input) *ProjectionState {
 		st.RothFirstFundedYear = ParseStartYear(s.StartDate)
 	}
 	st.CurrentLivingExpenses = livingExpensesAtMonth(s, 0)
+	st.CurrentPhaseName = phaseNameOrNoPhaseSentinel(s.GetSpendingPhaseNameAt(s.GetPhaseReferenceAge(0)))
 	if s.Guardrails != nil && s.Guardrails.Enabled {
 		st.Guardrails = NewGuardrailState(s.PortfolioValue)
 	}
@@ -233,6 +263,10 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 	if m > 0 {
 		st.CumulativeInflation *= monthlyCompoundFactorFromDecimal(p.InflationAnnual)
 		st.NetCumulativeInflation *= monthlyCompoundFactorFromDecimal(p.NetInflationAnnual)
+		// Recorded from the same active settings (s) and phaseAge the
+		// multiplier below draws from, so a chain transition earlier in this
+		// StepMonth call is reflected in both together.
+		st.CurrentPhaseName = phaseNameOrNoPhaseSentinel(s.GetSpendingPhaseNameAt(phaseAge))
 		if s.SpendingPhaseConfig != nil && s.SpendingPhaseConfig.Enabled {
 			st.CurrentLivingExpenses = s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * st.CumulativeInflation
 		} else {

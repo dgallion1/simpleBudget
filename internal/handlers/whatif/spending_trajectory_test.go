@@ -114,6 +114,154 @@ func TestBuildSpendingTrajectoryRows_PhaseNames(t *testing.T) {
 	}
 }
 
+// TestBuildSpendingTrajectoryRows_PrefersSummaryPhaseName is the Z5
+// regression: when the engine has recorded a year's PhaseName in the yearly
+// summary (e.g. because a scenario chain switched to linked settings with a
+// different phase config), the row must show that name — not
+// trajectoryPhaseName(s, yi) computed from the PRIMARY settings passed in.
+func TestBuildSpendingTrajectoryRows_PrefersSummaryPhaseName(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.CurrentAge = 65
+	s.PhaseAgeReference = "primary"
+	s.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+		Enabled: true,
+		Phases: []models.SpendingPhase{
+			{Name: "Go-Go", StartAge: 0, Multiplier: 1.0},
+			{Name: "Slow-Go", StartAge: 66, Multiplier: 0.85},
+		},
+	}
+
+	proj := &models.ProjectionResult{}
+	for m := 0; m < 24; m++ {
+		proj.Months = append(proj.Months, syntheticTrajectoryMonth(m, 1.0, 5000, 2000, 3000, 0, 1_000_000))
+	}
+	// Year 1's summary carries a linked scenario's phase name, which would
+	// NOT match trajectoryPhaseName(s, 1) (that computes "Slow-Go" from the
+	// primary settings passed to the builder).
+	proj.YearlySummaries = []models.ProjectionYearSummary{
+		{Year: 0, StartingBalance: 1_000_000, PhaseName: "Go-Go"},
+		{Year: 1, StartingBalance: 1_000_000, PhaseName: "Chain-Linked-Phase"},
+	}
+
+	rows := buildSpendingTrajectoryRows(s, proj)
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+	if rows[0].PhaseName != "Go-Go" {
+		t.Errorf("year 0 PhaseName = %q; want Go-Go", rows[0].PhaseName)
+	}
+	if rows[1].PhaseName != "Chain-Linked-Phase" {
+		t.Errorf("year 1 PhaseName = %q; want the summary's Chain-Linked-Phase (not the primary settings' Slow-Go)", rows[1].PhaseName)
+	}
+}
+
+// TestBuildSpendingTrajectoryRows_FallsBackWhenSummaryPhaseNameEmpty proves
+// two things: (1) with no chain, projections whose yearly summaries carry no
+// PhaseName (predating this field, or years the engine legitimately left
+// empty) fall back to trajectoryPhaseName(s, yi) with byte-identical
+// results — no behavior change on the common path; and (2) with phases
+// disabled, rows still show "-".
+func TestBuildSpendingTrajectoryRows_FallsBackWhenSummaryPhaseNameEmpty(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.CurrentAge = 65
+	s.PhaseAgeReference = "primary"
+	s.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+		Enabled: true,
+		Phases: []models.SpendingPhase{
+			{Name: "Go-Go", StartAge: 0, Multiplier: 1.0},
+			{Name: "Slow-Go", StartAge: 66, Multiplier: 0.85},
+		},
+	}
+
+	proj := &models.ProjectionResult{}
+	for m := 0; m < 24; m++ {
+		proj.Months = append(proj.Months, syntheticTrajectoryMonth(m, 1.0, 5000, 2000, 3000, 0, 1_000_000))
+	}
+	// No YearlySummaries at all: simulates a projection built before the
+	// PhaseName field existed.
+	rows := buildSpendingTrajectoryRows(s, proj)
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+	if got, want := rows[0].PhaseName, trajectoryPhaseName(s, rows[0].Year); got != want {
+		t.Errorf("year 0 PhaseName = %q; want fallback trajectoryPhaseName result %q", got, want)
+	}
+	if got, want := rows[1].PhaseName, trajectoryPhaseName(s, rows[1].Year); got != want {
+		t.Errorf("year 1 PhaseName = %q; want fallback trajectoryPhaseName result %q", got, want)
+	}
+	if rows[0].PhaseName != "Go-Go" || rows[1].PhaseName != "Slow-Go" {
+		t.Errorf("expected Go-Go/Slow-Go from the fallback path, got %q/%q", rows[0].PhaseName, rows[1].PhaseName)
+	}
+
+	// Phases disabled: unchanged "-" behavior, with or without a summary row
+	// present (summary PhaseName stays empty when the engine sees phases
+	// disabled, since GetSpendingPhaseNameAt returns "" in that case too).
+	disabled := models.DefaultWhatIfSettings()
+	disabled.CurrentAge = 65
+	disabled.SpendingPhaseConfig.Enabled = false
+	disabledProj := &models.ProjectionResult{}
+	for m := 0; m < 12; m++ {
+		disabledProj.Months = append(disabledProj.Months, syntheticTrajectoryMonth(m, 1.0, 5000, 2000, 3000, 0, 1_000_000))
+	}
+	disabledProj.YearlySummaries = []models.ProjectionYearSummary{
+		{Year: 0, StartingBalance: 1_000_000, PhaseName: ""},
+	}
+	disabledRows := buildSpendingTrajectoryRows(disabled, disabledProj)
+	if len(disabledRows) != 1 || disabledRows[0].PhaseName != "-" {
+		t.Fatalf("phases disabled: rows = %+v; want single row with PhaseName \"-\"", disabledRows)
+	}
+}
+
+// TestBuildSpendingTrajectoryRows_ChainToPhasesDisabledShowsSentinelNotPrimaryLabel
+// is the Z5 attempt-2 regression at the handler level: a scenario chain
+// transitions from a phases-ENABLED primary into a phases-DISABLED linked
+// scenario. The engine now records "-" (never "") in that year's summary
+// PhaseName (see engine.phaseNameOrNoPhaseSentinel). The handler must show
+// that "-" as-is through the preference branch — not fall back to
+// trajectoryPhaseName(primary, yi), which would wrongly reproduce the
+// still-enabled primary's label (e.g. "Slow-Go").
+func TestBuildSpendingTrajectoryRows_ChainToPhasesDisabledShowsSentinelNotPrimaryLabel(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.CurrentAge = 65
+	s.PhaseAgeReference = "primary"
+	s.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+		Enabled: true,
+		Phases: []models.SpendingPhase{
+			{Name: "Go-Go", StartAge: 0, Multiplier: 1.0},
+			{Name: "Slow-Go", StartAge: 66, Multiplier: 0.85},
+		},
+	}
+
+	proj := &models.ProjectionResult{}
+	for m := 0; m < 24; m++ {
+		proj.Months = append(proj.Months, syntheticTrajectoryMonth(m, 1.0, 5000, 2000, 3000, 0, 1_000_000))
+	}
+	// Year 1 is post-transition into a phases-disabled linked scenario: the
+	// engine records the sentinel "-", not "". If the handler mishandled
+	// this like the pre-fix "" case, it would fall back to
+	// trajectoryPhaseName(s, 1), which computes "Slow-Go" from these
+	// (still phases-enabled) primary settings — the exact adversarial bug.
+	proj.YearlySummaries = []models.ProjectionYearSummary{
+		{Year: 0, StartingBalance: 1_000_000, PhaseName: "Go-Go"},
+		{Year: 1, StartingBalance: 1_000_000, PhaseName: "-"},
+	}
+
+	rows := buildSpendingTrajectoryRows(s, proj)
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+	if rows[0].PhaseName != "Go-Go" {
+		t.Errorf("year 0 PhaseName = %q; want Go-Go", rows[0].PhaseName)
+	}
+	if rows[1].PhaseName != "-" {
+		t.Errorf("year 1 PhaseName = %q; want the engine's sentinel \"-\" (not the primary's Slow-Go)", rows[1].PhaseName)
+	}
+	// Guard against the specific regression: never the primary's label.
+	if rows[1].PhaseName == "Slow-Go" {
+		t.Fatalf("year 1 PhaseName regressed to the primary's Slow-Go label")
+	}
+}
+
 // conversionHeavySettings returns a fixture where large Roth conversions
 // drain the tax-deferred pool well before RMD age, so the engine projection
 // contains no RMDs at all — the exact scenario the old client-side preview
@@ -235,6 +383,129 @@ func TestSpendingTrajectory_RMDMatchesEngineProjection(t *testing.T) {
 			t.Error("expected at least one displayed row with a nonzero RMD at age 73+")
 		}
 		assertRowsMatchProjection(t, rows, proj)
+	})
+}
+
+// phaseReferenceModeSettings builds a real (no-chain) fixture with a primary
+// and a younger spouse, so the four PhaseAgeReference modes ("primary",
+// "spouse", "older", "younger") select from two genuinely different age
+// sequences across the projection.
+func phaseReferenceModeSettings(mode string) *models.WhatIfSettings {
+	s := models.DefaultWhatIfSettings()
+	s.PortfolioValue = 1_000_000
+	s.MonthlyLivingExpenses = 3000
+	s.Persons = []models.Person{
+		{
+			ID:         "primary",
+			Name:       "Primary",
+			BirthMonth: models.BirthMonthForAge(s.StartDate, 65),
+			Role:       models.PersonRolePrimary,
+		},
+		{
+			ID:         "spouse",
+			Name:       "Spouse",
+			BirthMonth: models.BirthMonthForAge(s.StartDate, 60),
+			Role:       models.PersonRoleSpouse,
+		},
+	}
+	s.PhaseAgeReference = mode
+	s.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+		Enabled: true,
+		Phases: []models.SpendingPhase{
+			{Name: "Go-Go", StartAge: 0, Multiplier: 1.0},
+			{Name: "Slow-Go", StartAge: 70, Multiplier: 0.85},
+			{Name: "No-Go", StartAge: 80, Multiplier: 0.70},
+		},
+	}
+	s.ProjectionYears = 20
+	return s
+}
+
+// TestSpendingTrajectory_PhaseNamesMatchAcrossReferenceModes is the F-Z5-1
+// promotion: a real (no-chain) engine run, across all four
+// PhaseAgeReference modes, asserting every trajectory row's PhaseName goes
+// through the PREFERENCE branch (the engine-recorded summary value, not the
+// "" fallback) and equals trajectoryPhaseName(s, year) — proving the engine
+// and the fallback formula agree on the no-chain path. A companion
+// phases-disabled real run proves the same preference branch now carries
+// the sentinel "-" (previously this reached "-" only via the "" fallback).
+func TestSpendingTrajectory_PhaseNamesMatchAcrossReferenceModes(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	rowsFor := func(t *testing.T, s *models.WhatIfSettings) ([]trajectoryRow, *models.ProjectionResult, *models.WhatIfSettings) {
+		t.Helper()
+		in, _, err := buildEngineInput(s)
+		if err != nil {
+			t.Fatalf("buildEngineInput: %v", err)
+		}
+		analysis, _, err := analysisFastOrCached(s)
+		if err != nil {
+			t.Fatalf("analysisFastOrCached: %v", err)
+		}
+		prepared := in.Prepared.Settings()
+		return buildSpendingTrajectoryRows(prepared, analysis.Projection), analysis.Projection, prepared
+	}
+
+	for _, mode := range []string{"primary", "spouse", "older", "younger"} {
+		t.Run(mode, func(t *testing.T) {
+			rows, proj, prepared := rowsFor(t, phaseReferenceModeSettings(mode))
+			if len(rows) == 0 {
+				t.Fatal("no trajectory rows")
+			}
+			// Sanity: the engine must actually have recorded a PhaseName for
+			// every row's year (non-empty), so the assertion below exercises
+			// the PREFERENCE branch, not the "" fallback.
+			summaryByYear := map[int]string{}
+			for _, ys := range proj.YearlySummaries {
+				summaryByYear[ys.Year] = ys.PhaseName
+			}
+			var sawSlowGo, sawGoGo bool
+			for _, row := range rows {
+				summaryName, ok := summaryByYear[row.Year]
+				if !ok || summaryName == "" {
+					t.Fatalf("year %d: engine summary has no PhaseName (%q, present=%v) — test would exercise the fallback, not the preference branch", row.Year, summaryName, ok)
+				}
+				want := trajectoryPhaseName(prepared, row.Year)
+				if row.PhaseName != want {
+					t.Errorf("year %d: row PhaseName = %q, want trajectoryPhaseName result %q", row.Year, row.PhaseName, want)
+				}
+				if row.PhaseName != summaryName {
+					t.Errorf("year %d: row PhaseName = %q, want the engine summary's %q (preference branch)", row.Year, row.PhaseName, summaryName)
+				}
+				switch row.PhaseName {
+				case "Slow-Go":
+					sawSlowGo = true
+				case "Go-Go":
+					sawGoGo = true
+				}
+			}
+			if !sawGoGo || !sawSlowGo {
+				t.Errorf("fixture invalid: expected both Go-Go and Slow-Go to appear across the 20-year projection for mode %q, got Go-Go=%v Slow-Go=%v", mode, sawGoGo, sawSlowGo)
+			}
+		})
+	}
+
+	t.Run("phases disabled shows sentinel via the preference branch", func(t *testing.T) {
+		s := phaseReferenceModeSettings("primary")
+		s.SpendingPhaseConfig.Enabled = false
+		rows, proj, _ := rowsFor(t, s)
+		if len(rows) == 0 {
+			t.Fatal("no trajectory rows")
+		}
+		summaryByYear := map[int]string{}
+		for _, ys := range proj.YearlySummaries {
+			summaryByYear[ys.Year] = ys.PhaseName
+		}
+		for _, row := range rows {
+			summaryName, ok := summaryByYear[row.Year]
+			if !ok || summaryName != "-" {
+				t.Fatalf("year %d: engine summary PhaseName = %q (present=%v), want the sentinel \"-\" so this exercises the preference branch", row.Year, summaryName, ok)
+			}
+			if row.PhaseName != "-" {
+				t.Errorf("year %d: row PhaseName = %q, want \"-\"", row.Year, row.PhaseName)
+			}
+		}
 	})
 }
 

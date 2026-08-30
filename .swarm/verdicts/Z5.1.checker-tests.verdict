@@ -1,0 +1,197 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: Z5
+ATTEMPT: 1
+---
+All verification run in a `cp -a` copy at
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/z5/repo
+(plus mutation copies mut/mutB/mutC/mutD and probe/). The only write to the
+real tree is this verdict file.
+
+--------------------------------------------------------------------
+CRITERION 1 — single derivation site, ACTIVE settings, same phaseAge
+--------------------------------------------------------------------
+STATUS: MET.
+
+Command: awk on internal/services/retirement/engine/stepper.go
+  187: 	phaseAge := s.GetPhaseReferenceAge(currentYear)     (s := st.active, line 184)
+  204: 			s = prepared                                  (chain transition rebinds s)
+  246: 		st.CurrentPhaseName = s.GetSpendingPhaseNameAt(phaseAge)
+  248: 			st.CurrentLivingExpenses = s.MonthlyLivingExpenses * s.GetSpendingMultiplier(phaseAge) * st.CumulativeInflation
+The label (246) and the multiplier (248) are two consecutive statements in the
+same `if m > 0` block, reading the SAME `s` (post-chain `st.active`) and the
+SAME `phaseAge` local. There is no second derivation of the label inside the
+engine. `st.primary` is not referenced at the site.
+
+Command: awk internal/services/retirement/engine/month.go
+  96: 		currentYearSummary.PhaseName = st.CurrentPhaseName
+  97: 		yearlySummaries = append(yearlySummaries, currentYearSummary)
+and line 103 shows finalizeCurrentYear is invoked at `m%12==0 && m>0` BEFORE
+StepMonth(m) runs, so year N's summary captures the value last written during
+year N's own months — a transition at the start of year N+1 cannot leak
+backwards.
+
+Command: grep GetSpendingPhaseNameAt internal/models/whatif.go
+  471-483: returns "" when config == nil || !config.Enabled || len(Phases)==0
+so recording the label outside the `SpendingPhaseConfig.Enabled` guard is
+safe: disabled phases leave CurrentPhaseName == "" and PhaseName is omitted
+(json tag confirmed at internal/models/whatif.go: `PhaseName string
+json:"phase_name,omitempty"`).
+
+MUTATION PROOF (the split-classification class specifically):
+  mutB: `s.GetSpendingPhaseNameAt(phaseAge)` -> `st.primary.GetSpendingPhaseNameAt(phaseAge)`
+  go test ./internal/services/retirement/engine/ -run ChainTransitionCarriesPhaseName -count=1
+    --- FAIL: engine_run_test.go:184: year 1 (after transition) PhaseName = "Slow-Go", want the linked scenario's Chain-Slow-Go
+    --- FAIL: engine_run_test.go:187: year 2 ... = "Slow-Go", want ... Chain-Slow-Go
+  So the test distinguishes ACTIVE from PRIMARY, not merely "some label present".
+  mutA: delete line 246 entirely ->
+    --- FAIL: year 1 ... PhaseName = "Go-Go", want ... Chain-Slow-Go (and year 2)
+
+Enumeration of every other Go surface that derives a phase LABEL
+(grep -rn "GetSpendingPhaseNameAt|PhaseName" --include=*.go internal/ cmd/):
+  - internal/handlers/whatif/living_expenses_phase_note.go:69 trajectoryPhaseName(s,0)
+  - internal/services/retirement/analysis/budget_fit.go:123 GetSpendingPhaseNameAt(GetPhaseReferenceAge(0))
+  - internal/services/metrics/metrics.go:186-190 phaseWalk returns (mult, name) together
+All three are year-0/present-time labels where primary IS active, and metrics
+derives name and multiplier from one call. No competing classifier found.
+Template consumer confirmed: web/templates/components/whatif/spending-phases.html:176
+renders {{.PhaseName}} for the trajectory row, so the fixed label reaches the page.
+
+--------------------------------------------------------------------
+CRITERION 2 — new tests run verbosely; chain test is genuinely discriminating
+--------------------------------------------------------------------
+STATUS: MET.
+
+cd /..../repo && go test ./internal/services/retirement/engine/ -run 'ChainTransitionCarriesPhaseName' -v -count=1
+  === RUN   TestEngineRunChainTransitionCarriesPhaseName
+  --- PASS: TestEngineRunChainTransitionCarriesPhaseName (0.00s)
+  ok  	budget2/internal/services/retirement/engine	0.003s
+
+cd /..../repo && go test ./internal/handlers/whatif/ -run 'SpendingTrajectoryRows' -v -count=1
+  --- PASS: TestBuildSpendingTrajectoryRows_MatchesSyntheticProjection (0.00s)
+  --- PASS: TestBuildSpendingTrajectoryRows_PhaseNames (0.00s)
+  --- PASS: TestBuildSpendingTrajectoryRows_PrefersSummaryPhaseName (0.00s)
+  --- PASS: TestBuildSpendingTrajectoryRows_FallsBackWhenSummaryPhaseNameEmpty (0.00s)
+  ok  	budget2/internal/handlers/whatif	0.003s
+
+Read of engine_run_test.go:140-189: the linked scenario `next` is given
+SpendingPhaseConfig{Chain-Go-Go@0, Chain-Slow-Go@66} — DIFFERENT names, SAME
+StartAges as base's Go-Go@0/Slow-Go@66, so the label alone identifies which
+settings were active. ResolveChainTransition fires at currentYear==1. It
+asserts BOTH sides of the transition: YearlySummaries[0]=="Go-Go" (pre,
+primary) and [1]==[2]=="Chain-Slow-Go" (post, linked). Because the ages
+coincide, a primary-derived label would read "Slow-Go" for years 1-2 — proven
+by mutB above. Confirmed by mutation, not by reading alone.
+
+Handler test PrefersSummaryPhaseName (spending_trajectory_test.go:122-156)
+sets YearlySummaries[1].PhaseName = "Chain-Linked-Phase" while the primary
+settings would compute "Slow-Go" for year 1, so it cannot pass by accident.
+  mutC: revert to `phaseName := trajectoryPhaseName(s, yi)` ->
+    --- FAIL: spending_trajectory_test.go:154: year 1 PhaseName = "Slow-Go"; want the summary's Chain-Linked-Phase
+
+--------------------------------------------------------------------
+CRITERION 3 — no-chain parity + disabled phases still "-"
+--------------------------------------------------------------------
+STATUS: MET (with a coverage finding, below — not a defect).
+
+Committed guard, spending_trajectory_test.go:164-213
+(TestBuildSpendingTrajectoryRows_FallsBackWhenSummaryPhaseNameEmpty):
+  186-191: rows[i].PhaseName == trajectoryPhaseName(s, rows[i].Year) for both
+           displayed years, phases enabled, no chain;
+  192-194: pins the concrete strings "Go-Go"/"Slow-Go";
+  199-212: phases disabled + a summary row carrying PhaseName:"" -> single row
+           with PhaseName "-".
+Also MatchesSyntheticProjection:82-84 asserts "-" for disabled phases.
+  mutD: delete the fallback branch (`phaseName := phaseNameByYear[yi]` only) ->
+    --- FAIL: TestBuildSpendingTrajectoryRows_PhaseNames: year 0 PhaseName = ""; want Go-Go
+    --- FAIL: ..._FallsBackWhenSummaryPhaseNameEmpty: year 0 = ""; want fallback "Go-Go"
+    --- FAIL: ... phases disabled: rows = [... PhaseName: ...]; want single row with PhaseName "-"
+  So the fallback and the "-" path are both genuinely guarded.
+
+BEHAVIORAL PROOF of spec 3(b) "the no-chain case is byte-identical to today's
+labels" on the path production actually takes (engine-populated summaries, so
+the PREFERENCE branch is used, not the fallback). Throwaway probe
+probe/internal/handlers/whatif/zz_probe_test.go: real engine.New().Run with no
+Chain, 20 projection years, funded portfolio, for each PhaseAgeReference in
+{primary, spouse, older, younger}, three phases (Go-Go@0/Slow-Go@66/No-Go@78),
+asserting every displayed row's label == trajectoryPhaseName(preparedSettings, year):
+  go test ./internal/handlers/whatif/ -run TestProbeNoChainParity -v -count=1
+    primary: months=240 rows=11 prepProjYears=20 20/20 summaries carry a PhaseName
+    spouse:  months=240 rows=11 ... 20/20 summaries carry a PhaseName
+    older:   months=240 rows=11 ... 20/20 summaries carry a PhaseName
+    younger: months=240 rows=11 ... 20/20 summaries carry a PhaseName
+    --- PASS: TestProbeNoChainParity (0.02s)
+  The probe also asserted that a real disabled-phases engine run yields "-" on
+  every row (passed). The probe copy was discarded; it is NOT in the repo.
+
+FINDING (F-Z5-1, coverage only, no behavior defect): no COMMITTED test
+exercises the preference branch with an engine-produced no-chain projection —
+the committed parity test reaches trajectoryPhaseName through the
+empty-summaries fallback, which is the legacy path, while production no-chain
+runs populate PhaseName on 20/20 summaries and take the preference branch. The
+parity is real (probe above), but the guard sits one branch away from where
+production sits. Per CLAUDE.md ("promote the probe"), recommend a test-only
+follow-up that pins engine-run parity across the four PhaseAgeReference modes.
+
+FINDING (F-Z5-2, minor): spec 3(a) says "rename/rearrange phases"; the engine
+test only RENAMES (StartAges deliberately held equal, which is what makes the
+assertion discriminating). Rearranged StartAges are not covered.
+
+--------------------------------------------------------------------
+CRITERION 4 — build / vet / tests green
+--------------------------------------------------------------------
+STATUS: MET.
+
+cd /..../repo && go build ./... && go vet ./... && go test ./internal/services/retirement/... ./internal/handlers/whatif/... -count=1
+  BUILD_OK
+  VET_OK
+  ok  	budget2/internal/services/retirement	44.216s
+  ok  	budget2/internal/services/retirement/analysis	34.319s
+  ok  	budget2/internal/services/retirement/completeness	0.003s
+  ok  	budget2/internal/services/retirement/engine	0.013s
+  ok  	budget2/internal/services/retirement/history	0.003s
+  ok  	budget2/internal/services/retirement/overrides	0.005s
+  ok  	budget2/internal/services/retirement/prepare	0.005s
+  ok  	budget2/internal/handlers/whatif	21.087s
+
+Beyond the brief, the FULL suite over the shared tree (all four Z tasks'
+uncommitted edits riding along):
+  go test ./... -count=1 ; FULL_SUITE_EXIT=0   (no FAIL lines)
+so the additive `phase_name,omitempty` field broke no fixture elsewhere.
+
+gofmt: `gofmt -l` over the six Z5 files (models/whatif.go, engine/stepper.go,
+engine/month.go, engine/engine_run_test.go, whatif/spending_trajectory.go,
+whatif/spending_trajectory_test.go) printed NOTHING — all clean. The
+pre-existing gofmt drift in retirement/analysis+engine is in files Z5 did not
+touch; Z5 did not reformat them either.
+
+--------------------------------------------------------------------
+SCOPE
+--------------------------------------------------------------------
+git status --porcelain / git diff HEAD --stat in the copy. Z5-attributed
+changes are exactly the six files in .swarm/manifests/Z5.1.files:
+  internal/models/whatif.go                      +7 -0
+  internal/services/retirement/engine/stepper.go +11 -0
+  internal/services/retirement/engine/month.go   +1 -0
+  internal/handlers/whatif/spending_trajectory.go +15 -1
+  internal/services/retirement/engine/engine_run_test.go +56
+  internal/handlers/whatif/spending_trajectory_test.go   +98
+No production change outside the Z-RUN-SPEC territory for Z5 ("engine stepper +
+internal/models/whatif.go (ProjectionYearSummary) +
+internal/handlers/whatif/spending_trajectory*.go").
+
+Foreign territories present in the tree and NOT attributed to Z5:
+  Z1  internal/services/retirement/analysis/present_value.go (+ new
+      present_value_one_time_test.go)
+  Z2/Z3 internal/handlers/whatif/sync.go, sync_test.go
+  Z4  internal/handlers/whatif/handlers_sweep.go, handlers_sweep_test.go
+Z5 did not touch any of them.
+
+critical.globs: `internal/services/retirement/engine/**` IS listed in
+.swarm/critical.globs and Z5 touches stepper.go/month.go/engine_run_test.go
+there. This is anticipated: the ledger row already reads
+  Z5	2	tests,second	dispatched	1	worker-coder	escalated tier2: critical-glob engine/** (flag 2026-08-30)
+so the task is already at Tier 2 for exactly this reason. Reported for the
+lead's records, not held against the worker. (My dispatch brief said Tier 1;
+the ledger says Tier 2 — lead to reconcile.)

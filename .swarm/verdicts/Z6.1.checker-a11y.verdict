@@ -1,0 +1,170 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: Z6
+ATTEMPT: 1
+---
+PREDECESSOR FINDING (Zfinal.1, read first)
+CHECK 1c FAILED there: handleWhatIfSyncApply's four new guard branches (two
+400s at sync.go:401/404 in that attempt, two 409s at :419/:437) and the
+race-window conflict from the locked save all called renderError (no
+HX-Retarget) instead of the app's own renderRetargetedError convention.
+Traced (not executed): htmx 2.0.4 default responseHandling drops 4xx swaps,
+and base.html's beforeSwap listener only force-swaps when HX-Retarget is
+present — so all five paths were invisible to every user, sighted or AT.
+
+DIFF ATTRIBUTION (git diff -- the three files; matches Z6.1.manifest.md)
+  internal/handlers/whatif/sync.go: +153/-9. Bulk of the diff (hash pinning,
+  case-insensitive category match, income-pattern sort, syncPlanHash,
+  syncPreviewResponse, doc comments, syncApplyRaceTestHook) belongs to Z2/Z3
+  (the guard-field machinery itself) per the ledger — not re-litigated here.
+  Z6-scoped hunks: the four `renderError(...)` -> `renderRetargetedError(...,
+  "#whatif-sync-preview")` swaps at the two 400 branches (missing
+  expected_scenario / plan_hash) and the two 409 branches (scenario mismatch,
+  stale plan_hash) inside handleWhatIfSyncApply.
+  internal/handlers/whatif/handlers.go: +36/-0, entirely new function
+  saveAndRecalcIfScenario. Confirmed via `git diff master -- handlers.go`
+  that renderError/renderRetargetedError (lines 698-717) are byte-unchanged —
+  only new comment references and new call sites were added. No other
+  function in the file touched (statusForScenarioOperationError and everything
+  else appear only as unchanged diff context).
+  internal/handlers/whatif/sync_test.go: new guard tests, all asserting the
+  retarget header via the pre-existing shared helper
+  assertRetargetHeader(handlers_test.go:107) which checks BOTH
+  `HX-Retarget == target` and `HX-Reswap == "innerHTML"`.
+
+CHECK 1 — all FIVE invisible-error paths now retargeted: PASS
+  Traced every one, real code, current tree:
+    sync.go:401  renderRetargetedError(..., 400, "#whatif-sync-preview")  // expected_scenario missing
+    sync.go:406  renderRetargetedError(..., 400, "#whatif-sync-preview")  // plan_hash missing
+    sync.go:419  renderRetargetedError(..., 409, "#whatif-sync-preview")  // fast-fail scenario mismatch
+    sync.go:437  renderRetargetedError(..., 409, "#whatif-sync-preview")  // stale plan_hash
+    handlers.go:243-246 (inside saveAndRecalcIfScenario) intercepts
+      *retirement.ScenarioConflictError via errors.As BEFORE the shared
+      renderError(...,500) tail and calls
+      renderRetargetedError(..., 409, "#whatif-sync-preview") — this is the
+      race-window path the handler's own unlocked fast-fail cannot close
+      (closed instead inside SaveWithRevisionIfScenario's held lock). All
+      other errors from that save still fall through to the unchanged shared
+      renderError/500 path used by every other whatif mutating handler.
+  Target DOM id confirmed: web/templates/components/whatif/sync-preview.html:8
+  `<div id="whatif-sync-preview" ...>` — the wrapping div of the exact panel
+  the user is looking at when they click "Apply Changes" (the form that
+  posts to /whatif/sync/apply lives inside it), so retargeting there and
+  replacing its innerHTML with the error puts the message exactly where the
+  user's attention already is and correctly discards the now-stale plan data
+  (all five failure reasons mean the previewed plan is no longer valid to
+  apply) — consistent with the messages themselves ("re-open the sync
+  preview and try again").
+
+CHECK 2 — mechanism matches the app's established retargeted-error pattern:
+  PASS. Compared against handlers_scenarios.go:31/37/51/57/71/77/91/97/103
+  (`renderRetargetedError(w, msg, status, "#whatif-scenario-error")`) and
+  handlers_healthcare.go / handlers_income_expense.go (same helper, same
+  header pair). All five Z6 call sites use the IDENTICAL shared helper
+  (handlers.go:713-717, unmodified) that sets HX-Retarget + HX-Reswap:
+  innerHTML — the same primitive, not a reimplementation. The only
+  difference from handlers_scenarios.go is the target's SCOPE (whole preview
+  panel vs. a small dedicated `#whatif-scenario-error` slot); that is a
+  content/design choice appropriate to this handler (the whole previewed
+  plan is invalidated by every one of these failures) and does not deviate
+  from the retargeting MECHANISM itself.
+
+CHECK 3 — htmx 2.0.4 force-swap actually fires: PASS (traced, not executed —
+  execution is the tests lane's job)
+  web/templates/layouts/base.html:205-214: `htmx:beforeSwap` sets
+  `shouldSwap = true; isError = false` whenever
+  `400 <= xhr.status < 500 && xhr.getResponseHeader('HX-Retarget')`. All five
+  Z6 paths return 400 or 409 with HX-Retarget now set, so this branch fires
+  and the swap proceeds against `#whatif-sync-preview` per the header,
+  `innerHTML` swap style per HX-Reswap. (5xx paths, e.g. the pre-existing
+  "Failed to sync from dashboard" 500 branch, remain outside this bracket's
+  `< 500` bound and outside Z6's scope — unchanged, pre-existing, per
+  Zfinal.1's own observation.)
+
+CHECK 4 — perceivability of the rendered partial: PASS on Z6's bar, app-wide
+  gap noted as OBSERVATION (not a Z6 FAIL, per instructions: consistency with
+  sibling handlers is the bar; app-wide gaps are observations)
+  renderError's body (handlers.go:698-712) is visible text (`<p
+  class="...text-red-600 dark:text-red-400">%s</p>`, html-escaped), not
+  hidden from anyone, not screen-reader-only junk — no ACCESSIBILITY.md
+  point-2-style hidden-text abuse. It carries no `role="alert"`/`aria-live`,
+  so ACCESSIBILITY.md #5 ("... focus moves to (or an aria-live region
+  announces) the first error on failed submit") is not fully met for a
+  screen-reader user who isn't watching the DOM. This is NOT new: `git diff
+  master -- handlers.go` shows this function's body untouched by Z6, and
+  every sibling call site this task was told to match
+  (handlers_scenarios.go, handlers_healthcare.go, handlers_income_expense.go)
+  shares the identical gap — it is the app's existing (if imperfect)
+  established pattern for the whatif package specifically. (Contrast:
+  web/templates/pages/accounts.html and filemanager.html DO use
+  role="alert"/aria-live="polite" for their error regions elsewhere in the
+  app — so the gap is not universal to the whole app, but it IS universal to
+  every renderRetargetedError call site inside internal/handlers/whatif/,
+  which is the sibling set Z6 was scoped to match.) Z6 replicates the
+  package's existing convention rather than introducing a new or worse one.
+  OBSERVATION for the backlog below, not a FAIL.
+
+CHECK 5 — tests, executed:
+  `go test ./internal/handlers/whatif/ -run 'TestHandleWhatIfSyncApply' -v -count=1`
+  → PASS, all 4 top-level tests + 3 subtests:
+    TestHandleWhatIfSyncApply_SaveError
+    TestHandleWhatIfSyncApply_AnalysisError
+    TestHandleWhatIfSyncApply_SavesSyncedSettings
+    TestHandleWhatIfSyncApply_MissingGuardFieldsRejected
+      (both_missing / blank_expected_scenario / blank_plan_hash)
+    TestHandleWhatIfSyncApply_WrongExpectedScenarioRejected
+    TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected
+    TestHandleWhatIfSyncApply_StalePlanHashRejected
+  Read all five guard/race tests: each calls
+  `assertRetargetHeader(t, w, "#whatif-sync-preview")`, which asserts both
+  `HX-Retarget == "#whatif-sync-preview"` and `HX-Reswap == "innerHTML"`
+  (handlers_test.go:107-115) — covering all five paths from CHECK 1,
+  including the race-window one (via the deterministic
+  syncApplyRaceTestHook, landing a scenario switch between the handler's
+  fast-fail check and the locked save).
+
+CHECK 6 — shared tail (saveAndRecalc/recalcAndRender, ~15 other handlers)
+  untouched: PASS. `git diff -- internal/handlers/whatif/handlers.go` is a
+  pure 36-line insertion of the new `saveAndRecalcIfScenario` function; no
+  hunk touches `saveAndRecalc`, `recalcAndRender`, `statusForMutationError`,
+  or any other existing function. `saveAndRecalcIfScenario` has exactly one
+  caller (handleWhatIfSyncApply, confirmed by
+  `grep -rn saveAndRecalcIfScenario internal/handlers/whatif/`), so the
+  special-cased conflict interception cannot affect any other handler's
+  error rendering.
+
+OBSERVATIONS (non-blocking, carried/refined from Zfinal.1)
+  - ACCESSIBILITY.md #5 (focus/aria-live on error) is not met by
+    `renderError`/`renderRetargetedError` anywhere in
+    internal/handlers/whatif/ — pre-existing, package-wide, untouched by Z6,
+    shared by every sibling call site cited as the pattern to match. Worth a
+    dedicated follow-up task scoped to the whole whatif package (bring it in
+    line with accounts.html/filemanager.html's role="alert"/aria-live="polite"
+    convention) rather than a per-handler patch.
+  - The pre-existing 500 "Failed to sync from dashboard..." branch in this
+    same handler (unchanged by Z6, same as noted in Zfinal.1) still uses
+    plain renderError and sits outside base.html's `< 500` force-swap
+    bracket entirely, so even a retarget there would not force-swap under
+    current base.html logic — a large enough gap that it likely wants a
+    base.html fix (extend the bracket, or fall back to a toast on
+    htmx:responseError) rather than a per-call-site retarget. Pre-existing,
+    out of Z6's scope.
+  - The target choice (`#whatif-sync-preview`, whole-panel replacement) is a
+    deliberate scope difference from handlers_scenarios.go's dedicated
+    `#whatif-scenario-error` slot; judged appropriate here (see CHECK 1/2),
+    but flagging for the lead in case a future design pass wants a
+    dedicated error slot that preserves the Cancel button on 409/400 so the
+    user isn't forced to fully re-open the preview to retry.
+
+VERDICT RATIONALE
+  All five invisible-error paths identified in Zfinal.1's CHECK 1c FAIL now
+  route through the app's real retargeted-error primitive with a DOM target
+  confirmed to exist and be visually where the user's attention is; traced
+  client-side mechanics (base.html + htmx 2.0.4 defaults) confirm the swap
+  actually fires; executed tests assert the header pair on all five paths
+  and pass; the shared 15-caller tail is provably untouched. The remaining
+  aria-live/focus gap is a real, pre-existing, package-wide shortfall against
+  ACCESSIBILITY.md #5 that Z6 neither introduces nor worsens and that every
+  cited sibling shares — per the task's own instruction this is an
+  OBSERVATION, not a Z6 FAIL.

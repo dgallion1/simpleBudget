@@ -1,0 +1,125 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: Z2
+ATTEMPT: 1
+---
+Work in /tmp/claude-1000/.../scratchpad/budget2-check (cp -a of the real tree). Real tree untouched.
+
+## Decisive finding: TOCTOU window is WEAKER than the established X7 contract, and it is exploitable
+
+handleWhatIfSyncApply (internal/handlers/whatif/sync.go:368-414) does:
+  1. parse+require expected_scenario/plan_hash (400 if blank) — fine
+  2. retirementMgr.LoadContext() — separate lock acquire/release
+  3. retirementMgr.ActiveFilename() vs expectedScenario check (409 on mismatch) — separate lock acquire/release
+  4. computeDashboardSync(settings) — NO LOCK (loads CSVs from disk)
+  5. syncPlanHash(plan) vs expectedHash check (409 on mismatch)
+  6. applySyncPlan(settings, plan) — mutates in-memory struct, no lock
+  7. saveAndRecalc -> retirementMgr.SaveWithRevision(settings) -> saveInternal(),
+     which writes unconditionally to sm.filepath() (i.e. whatever sm.filename
+     currently is) — NO re-check of expectedScenario at all.
+
+Compare X7's established, already-accepted contract (handleWhatIfApply /
+SettingsManager.ApplyOverrides, settings.go:1155-1197): the expected_scenario
+comparison is done TWICE, both times *inside* sm.mu.Lock() -- once before the
+load and once again after the load, immediately before the write -- explicitly
+because "this is the only point at which the check is a guarantee rather than
+an after-the-fact report." That is the atomicity bar the task description
+told the checker to compare against.
+
+Z2's guard is a single early check done via two separate, independently
+lock/unlocked calls (LoadContext, then ActiveFilename), with the entire
+compute-hash-apply-save sequence unguarded until the final SaveWithRevision
+call, which itself never re-verifies the scenario. This is strictly weaker
+than X7, and it means the code's own doc comment is false: "Checked before
+any write: a scenario switch between preview and apply must not divert the
+write to a plan the user never reviewed" — it does divert the write.
+
+### Reproduction (probe, not part of the submission)
+
+Added a single test-only seam (`var syncApplyRaceHook func()`, invoked right
+after the ActiveFilename check, no-op unless set — internal/handlers/whatif/sync.go,
+copy only) and a throwaway test
+(internal/handlers/whatif/z2_race_probe_test.go, copy only):
+
+1. Seed whatif.json to disk, create a second scenario
+   (whatif_other-scenario.json), switch back to whatif.json.
+2. Preview via handleWhatIfSync while whatif.json is active -> get real
+   expected_scenario="whatif.json" + plan_hash.
+3. Set syncApplyRaceHook to call rm.SwitchScenario("whatif_other-scenario.json")
+   — simulating a second tab/MCP call switching scenarios in the window
+   between the up-front check and the save.
+4. POST /whatif/sync/apply with the real (scenario="whatif.json", hash)
+   pair from step 2.
+
+Result:
+  apply status = 200
+  VULNERABLE: apply returned 200 but the write landed on scenario
+  "whatif_other-scenario.json" (never the expected "whatif.json") —
+  MonthlyLivingExpenses 4000.00 -> 1226.16.
+
+No 409 was raised. The confirmed sync silently overwrote the OTHER
+scenario's MonthlyLivingExpenses/income sources — exactly the failure mode
+the task's own acceptance criterion ("409 + no write on scenario or hash
+mismatch") and the handler's doc comment claim is prevented, and exactly
+the failure mode X7's `ApplyOverrides` was written to close (per its doc
+comment, "there is no undo for a write that lands on an unbacked-up plan").
+
+Full test output, build:
+
+  go build ./...                                        -> clean
+  go vet ./internal/handlers/whatif/...                  -> clean
+  go test ./internal/handlers/whatif/... -run TestZ2Probe -v -count=1
+      --- FAIL: TestZ2Probe_ScenarioSwitchDuringApplyWindow (0.04s)
+      z2_race_probe_test.go:98: VULNERABLE: apply returned 200 but the write
+      landed on scenario "whatif_other-scenario.json" (never the expected
+      "whatif.json") — MonthlyLivingExpenses 4000.00 -> 1226.16.
+
+The worker's own new tests (TestHandleWhatIfSyncApply_WrongExpectedScenarioRejected,
+StalePlanHashRejected, etc.) all pass, but they are all *sequential*
+(switch-then-preview-then-apply, or preview-then-mutate-then-apply) — none
+exercises a switch landing *between* the check and the write, so none of
+them could have caught this. Confirmed by re-running the whole non-probe
+Sync-prefixed subset: all PASS (0.092s), consistent with the manifest's
+claim, but that claim does not cover this window.
+
+## Other attack angles tried (none independently dispositive; recorded for completeness)
+
+- **400-before-write**: verified via TestHandleWhatIfSyncApply_MissingGuardFieldsRejected
+  (pre-existing, re-ran, PASS) that a blank param never mutates
+  MonthlyLivingExpenses/adds insights- sources. No counterexample found here.
+- **Hash canonicality**: syncPlan has no maps; Sources/Added/Updated/Removed/Skipped
+  are slices built in patterns-iteration order, which is now sorted
+  (Description). json.Marshal field order is struct-order and stable. Skipped's
+  LastDate (time.Time) marshals via MarshalJSON (RFC3339Nano) — value came
+  from parsed CSV dates (no monotonic reading attached, since these times were
+  constructed by time.Parse in the CSV loader, not time.Now()), so it should
+  be byte-stable across preview/apply calls against the same data. Did not
+  find a hash-flap counterexample in the time available; the manifest's own
+  3x -count=3 rerun plus my rerun found none either.
+- **Midnight pin**: computeDashboardSync's local-midnight pin plus
+  FilterByDateRange's documented extension to 23:59:59.999999999 in-zone
+  (comment at sync.go:120-124) is internally consistent for same-day
+  inclusion; a preview taken at 23:59 vs an apply taken at 00:01 the next day
+  changes the window and will legitimately 409 on hash mismatch, which is
+  acceptable-by-design and the 409 message says "re-open the sync preview and
+  try again" — adequate remedy language. No defect found here.
+- **JSON fallback parity**: syncPreviewResponse embeds *syncPlan plus
+  ExpectedScenario/PlanHash with the same json tags the HTML hidden fields
+  carry (expected_scenario/plan_hash) — parity confirmed by reading sync.go:304-355.
+- **IncomePatterns sort key uniqueness**: sort.Slice (not SliceStable) by
+  Description; if insights.IncomePatterns can ever emit two patterns with an
+  identical Description (did not fully verify against insights package in
+  the time available), equal-key order is unspecified, which could in theory
+  flap the hash. Flagged as unverified, not used as the basis for this FAIL
+  since the decisive TOCTOU finding above is dispositive and in-scope on its
+  own.
+
+## Verdict
+
+FAIL. The apply-guard's core acceptance criterion — "409 + no write on
+scenario ... mismatch" — does not hold across the realistic concurrent case
+the guard's own doc comments claim to defend against, and the implementation
+is demonstrably weaker than the X7 precedent it says it mirrors. This is
+squarely in Z2's scope (the apply handler's guard logic is the task), not a
+pre-existing defect on an untouched path.

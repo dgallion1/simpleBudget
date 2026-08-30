@@ -1,0 +1,200 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: Z5
+ATTEMPT: 2
+---
+Verified in a `cp -a` scratch copy for all mutation work; the only write to the
+real tree is this verdict file. Real tree used read-only for build/vet/test.
+
+## C1 — sentinel at BOTH assignment sites, no bypass. PASS
+
+Command: `grep -rn "CurrentPhaseName\s*=" --include=*.go .`
+Output (exactly two write sites, both routed):
+  engine/stepper.go:174  st.CurrentPhaseName = phaseNameOrNoPhaseSentinel(s.GetSpendingPhaseNameAt(s.GetPhaseReferenceAge(0)))   [NewProjectionState month-0 seed]
+  engine/stepper.go:269  st.CurrentPhaseName = phaseNameOrNoPhaseSentinel(s.GetSpendingPhaseNameAt(phaseAge))                    [StepMonth per-month]
+
+Command: `grep -rn "PhaseName\s*=" --include=*.go . | grep -v _test.go`
+Output adds only `engine/month.go:96  currentYearSummary.PhaseName = st.CurrentPhaseName`
+— the single read-through into ProjectionYearSummary. No assignment bypasses
+the helper.
+
+Helper body read at stepper.go:137-147:
+  const noPhaseSentinel = "-"
+  func phaseNameOrNoPhaseSentinel(name string) string { if name == "" { return noPhaseSentinel }; return name }
+
+Split-classification sweep (recurring defect class 1): enumerated every
+consumer of the field.
+  `grep -rn "\.PhaseName" --include=*.go . | grep -v _test.go` -> only
+  spending_trajectory.go:115-116 reads it (plus month.go's write and doc
+  comments). `grep -rn "phase_name\|phaseName" web/ --include=*.html
+  --include=*.js` -> NO matches. Exactly one consuming surface; no second
+  classifier. (living_expenses_phase_note.go:69 and metrics.go:190 set a
+  different field from trajectoryPhaseName / metrics, not from the summary.)
+
+## C2 — handler preference logic unchanged; comment documents the contract. PASS
+
+`git --no-pager diff master -- internal/handlers/whatif/spending_trajectory.go`
+shows +21/-1: the only non-comment lines are the attempt-1 preference branch
+(`if ys.PhaseName != ""` collect; `if phaseName == ""` fall back to
+trajectoryPhaseName). Attempt 2 adds only the 11-line sentinel-contract
+comment above it. Behavior proved by mutation, not inspection — see C4/M2:
+mutating the collector to `ys.PhaseName != "" && ys.PhaseName != "-"` (i.e.
+re-overloading "-" as no-data) makes the handler repro FAIL with the primary's
+"Slow-Go", so the "-" -> flows-through and "" -> fallback semantics are both
+under test.
+
+## C3 — attempt 1's chain test passes and is byte-unchanged. PASS
+
+`git --no-pager diff --numstat master -- internal/services/retirement/engine/engine_run_test.go`
+  -> `169  0  internal/services/retirement/engine/engine_run_test.go`
+`git --no-pager diff master -- ...engine_run_test.go | grep -c '^-[^-]'`  -> `0`
+Zero deleted lines: attempt 2 is pure addition, so
+TestEngineRunChainTransitionCarriesPhaseName is byte-identical to attempt 1.
+
+`go test ./internal/services/retirement/engine/ -run TestEngineRunChainTransition -v -count=1`:
+  --- PASS: TestEngineRunChainTransitionCarriesPhaseName (0.00s)
+  --- PASS: TestEngineRunChainTransitionToPhasesDisabledCarriesSentinel (0.00s)
+  --- PASS: TestEngineRunChainTransitionRearrangesPhaseBoundaries (0.00s)
+
+## C4 — new tests run, bodies read, mutation-proved. PASS
+
+`go test ./internal/handlers/whatif/ -run 'TestBuildSpendingTrajectoryRows|TestSpendingTrajectory_PhaseNamesMatchAcrossReferenceModes' -v -count=1`:
+  --- PASS: TestBuildSpendingTrajectoryRows_PrefersSummaryPhaseName
+  --- PASS: TestBuildSpendingTrajectoryRows_FallsBackWhenSummaryPhaseNameEmpty
+  --- PASS: TestBuildSpendingTrajectoryRows_ChainToPhasesDisabledShowsSentinelNotPrimaryLabel
+  --- PASS: TestSpendingTrajectory_PhaseNamesMatchAcrossReferenceModes
+      --- PASS: .../primary   --- PASS: .../spouse
+      --- PASS: .../older     --- PASS: .../younger
+      --- PASS: .../phases_disabled_shows_sentinel_via_the_preference_branch
+
+(a) adversarial repro at engine AND handler layer — MET, and each half killed
+by the mutation that guards it.
+
+  MUTATION M1 (scratch copy): phaseNameOrNoPhaseSentinel reverted to identity
+  (`return name`), i.e. attempt-1 behavior.
+    engine: --- FAIL: TestEngineRunChainTransitionToPhasesDisabledCarriesSentinel
+      engine_run_test.go:236: year 1 (after transition, phases disabled on linked settings) PhaseName = "", want the sentinel "-"
+      engine_run_test.go:239: year 2 ... PhaseName = "", want the sentinel "-"
+    handler: --- FAIL: .../phases_disabled_shows_sentinel_via_the_preference_branch
+      spending_trajectory_test.go:503: year 0: engine summary PhaseName = "" (present=true), want the sentinel "-" so this exercises the preference branch
+    (TestEngineRunChainTransitionCarriesPhaseName correctly SURVIVES M1 — it
+    guards enabled->enabled, a different property.)
+
+  MUTATION M2 (scratch copy): handler collector changed to
+  `if ys.PhaseName != "" && ys.PhaseName != "-"` (re-overloads the sentinel).
+    --- FAIL: TestBuildSpendingTrajectoryRows_ChainToPhasesDisabledShowsSentinelNotPrimaryLabel
+      spending_trajectory_test.go:257: year 1 PhaseName = "Slow-Go"; want the engine's sentinel "-" (not the primary's Slow-Go)
+      spending_trajectory_test.go:261: year 1 PhaseName regressed to the primary's Slow-Go label
+    This is literally the conceded attempt-1 defect, reproduced and killed.
+
+  END-TO-END PROBE (throwaway, in scratch copy only, since no shipped test
+  composes the two halves): real engine chain run, phases-ENABLED primary
+  (Go-Go@0 / Slow-Go@66) -> phases-DISABLED linked scenario, output fed to
+  buildSpendingTrajectoryRows with the PRIMARY prepared settings.
+    FIXED tree:      summary y1="-" y2="-";  row y0="Go-Go"  row y2="-"        PASS
+    Under M1:        summary y1=""  y2="";   row y0="Go-Go"  row y2="Slow-Go"  FAIL
+  The primary's label demonstrably leaks through the composed path under the
+  old code and does not under the fix. Probe and scratch tree discarded
+  (`rm -rf`); confirmed absent from the real tree.
+
+(b) F-Z5-1 no-chain parity through the PREFERENCE branch, four
+PhaseAgeReference modes + a real disabled run — MET. Read the body: the
+subtests do a REAL engine run (buildEngineInput + analysisFastOrCached), then
+for every row assert (i) the engine summary for that year is present and
+non-empty — a t.Fatalf explicitly guards "test would exercise the fallback,
+not the preference branch"; (ii) row.PhaseName == trajectoryPhaseName(prepared,
+year); (iii) row.PhaseName == the summary's value. Plus a fixture-validity
+check that both Go-Go and Slow-Go actually occur across the 20-year run (so
+the assertion is not vacuous over a single constant label). The disabled
+subtest asserts the summary itself is "-" (not "") and every row is "-";
+M1 kills it, confirming it rides the preference branch, not the fallback.
+
+(c) F-Z5-2 rearranged StartAges — MET.
+TestEngineRunChainTransitionRearrangesPhaseBoundaries: primary Go-Go@0 /
+Slow-Go@66, linked Linked-Early@0 / Linked-Late@67 (boundary MOVED, not just
+renamed). Asserts y0="Go-Go", y1(age 66)="Linked-Early", y2(age 67)=
+"Linked-Late". Year 1 is the discriminating case: under the primary's own
+boundary it would be Slow-Go, so the assertion proves labels follow the LINKED
+scenario's boundaries. Passes.
+
+## C5 — full acceptance. PASS
+
+`go build ./...`  -> exit 0, no output.
+`go vet ./...`    -> exit 0, no output.
+`go test ./internal/services/retirement/... ./internal/handlers/whatif/... -count=1` -> EXIT=0:
+  ok budget2/internal/services/retirement            31.619s
+  ok budget2/internal/services/retirement/analysis   22.178s
+  ok budget2/internal/services/retirement/completeness 0.003s
+  ok budget2/internal/services/retirement/engine      0.015s
+  ok budget2/internal/services/retirement/history     0.003s
+  ok budget2/internal/services/retirement/overrides   0.004s
+  ok budget2/internal/services/retirement/prepare     0.004s
+  ok budget2/internal/handlers/whatif                13.185s
+
+`go test ./internal/handlers/whatif/ -count=2` -> `ok  budget2/internal/handlers/whatif  20.837s`, EXIT=0.
+No flake observed in TestHandleWhatIfSyncApply_StalePlanHashRejected across
+count=1 + count=2 + `make check` (three independent executions). Nothing to
+attribute to Z2 this run.
+
+Repo composite target (per checker protocol, not just build+test):
+`make check` (= vet static vuln css-verify test) -> `✓ all checks passed`,
+MAKE_CHECK_EXIT=0. Note the `test` target runs `-count=1`, so no cache pass.
+
+`gofmt -l` on the five manifest files (models/whatif.go, engine/stepper.go,
+engine/engine_run_test.go, whatif/spending_trajectory.go,
+whatif/spending_trajectory_test.go) -> no output, exit 0.
+
+## C6 — scope. PASS
+
+`git --no-pager diff --stat master -- .` lists 15 paths. Reconciled against
+every manifest's .files list:
+  Z5 (this task): internal/models/whatif.go, engine/stepper.go,
+    engine/month.go (attempt-1 one-line read-through, in Z5.1.files),
+    handlers/whatif/spending_trajectory.go, engine/engine_run_test.go,
+    handlers/whatif/spending_trajectory_test.go.
+  Z1: analysis/present_value.go (+ new present_value_one_time_test.go).
+  Z2: whatif/sync.go, sync_test.go, handlers_test.go, tabs_render_test.go,
+      web/templates/components/whatif/sync-preview.html.
+  Z4: whatif/handlers_sweep.go, handlers_sweep_test.go.
+  Plus .swarm/ledger.tsv (lead).
+Zero unattributed paths. sync*.go and handlers_sweep*.go are untouched by Z5,
+as required. Z5's diff sits exactly inside its declared territory
+(Z-RUN-SPEC.md:53-55: engine stepper + models/whatif.go ProjectionYearSummary
++ handlers/whatif/spending_trajectory*.go).
+
+critical.globs: `internal/services/retirement/engine/**` IS listed, and Z5
+touches stepper.go / month.go / engine_run_test.go under it. Z5 is Tier 2 in
+the ledger (escalated after the attempt-1 conceded FAIL) and the engine
+stepper is named verbatim in the task's written territory, so the touch is
+authorized. No other critical glob is touched.
+
+No .swarm/tier3/Z5 directory exists — correct, Z5 is not Tier 3; no oracle
+contract applies.
+
+## FINDINGS (observations for the backlog — not FAIL, none in scope of the
+## attempt-2 criteria)
+
+F-Z5-3 (doc drift, cosmetic). internal/handlers/whatif/spending_trajectory_test.go,
+in attempt-1's TestBuildSpendingTrajectoryRows_FallsBackWhenSummaryPhaseNameEmpty,
+still carries the pre-fix comment: "summary PhaseName stays empty when the
+engine sees phases disabled, since GetSpendingPhaseNameAt returns \"\" in that
+case too". Attempt 2's sentinel contract falsifies that sentence — the engine
+now records "-" there. The test itself is a synthetic fixture that hard-codes
+PhaseName: "" and still legitimately covers the legacy-projection path, so it
+passes and is not wrong; only the comment documents dead behavior.
+
+F-Z5-4 (test-coverage gap, V3-promotion candidate). No SHIPPED test composes
+the engine and handler halves: the engine repro asserts summaries, the handler
+repro hand-feeds a synthetic "-" summary. Consequently the handler repro
+SURVIVES mutation M1 (engine identity) and the engine repro survives M2. My
+throwaway probe covered the composed path and showed row y2="Slow-Go" leaking
+under M1. Promoting that probe (real chain run -> buildSpendingTrajectoryRows)
+would make the regression guard single-mutation-proof.
+
+F-Z5-5 (serialization side-effect, informational). PhaseName carries
+`json:"phase_name,omitempty"`, so disabled-phase years now serialize
+`"phase_name":"-"` where they previously omitted the key entirely. Any
+persisted/cached ProjectionResult JSON changes shape for those years. `make
+check` is green (no golden-file breakage observed), and old cached projections
+still deserialize to "" and hit the legacy fallback by design.

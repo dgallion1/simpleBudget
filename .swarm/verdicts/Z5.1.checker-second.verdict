@@ -1,0 +1,110 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: Z5
+ATTEMPT: 1
+---
+Setup: worked in a `cp -a` copy at /tmp/claude-1000/.../z5check/budget2 (real repo untouched).
+Confirmed foreign uncommitted edits (Z1-Z4 territory) present as declared:
+handlers_sweep*.go, sync*.go, present_value.go — not touched by Z5's diff,
+attributed accordingly and not used against this verdict.
+
+git diff --stat for Z5's 6 claimed files matches the manifest (188+/1-,
+6 files). `go build ./...` and `go vet ./...` both clean.
+`go test ./internal/services/retirement/... ./internal/handlers/whatif/...
+-count=1` — all packages pass, including the two new Z5 tests.
+
+Attack angles tried:
+
+1. Stale-name-after-transition-to-disabled (recording site, engine level).
+   Wrote TestZ5Probe_TransitionToDisabledClearsPhaseName: chain from a
+   phases-ENABLED base scenario to a phases-DISABLED linked scenario at a
+   year boundary. Result: year0="Go-Go", year1="", year2="" — the engine
+   correctly CLEARS CurrentPhaseName post-transition (GetSpendingPhaseNameAt
+   returns "" when disabled, and it's recomputed unconditionally every
+   month with m>0). REFUTED at the engine layer — no stale name there.
+
+2. Immediate (year-0 / month-0) transition, where TransitionAge <= primary
+   CurrentAge fires ResolveChain at m=0 itself, outside the `if m > 0`
+   guard that updates CurrentPhaseName. Wrote
+   TestZ5Probe_ImmediateTransitionAtYearZero: year0 correctly shows
+   "Immediate-Phase" (the post-transition scenario), because months 1-11
+   of that same year (all m>0) overwrite the month-0 stale value before
+   finalizeCurrentYear reads it at year-end. REFUTED for any realistic
+   (>=1 full year) run. Noted but not failed on: a depletion at month 0
+   itself combined with an immediate chain transition would read the
+   pre-transition month-0 seed value — this mirrors a PRE-EXISTING `if m >
+   0` convention already used for CurrentLivingExpenses/CumulativeInflation
+   in this same function, not a Z5-introduced gap, and is a maximally
+   degenerate corner case (zero-progress depletion) outside realistic
+   acceptance scope.
+
+3. Mid-year transitions: the chain-resolution call site only runs at
+   `monthInYear == 0` (once per year); TransitionAge comparisons are in
+   whole years (`primarySettings.CurrentAge + currentYear`). Transitions in
+   this engine structurally CANNOT occur mid-year — confirmed by reading
+   engine_hooks.go's nextChainTransitionForEngine. Attack angle inapplicable
+   to this design.
+
+4. Twin derivation-site check (stepper.go ~247 living-expenses multiplier
+   vs ~292-296 expense-sources multiplier) vs the new CurrentPhaseName
+   write (~246): both multiplier call sites and the phase-name write share
+   the same local `s` and the same `phaseAge` computed once at the top of
+   StepMonth. Consistent by construction; no divergence found.
+
+5. FOUND A REAL DEFECT — handler-level fallback conflates two different
+   meanings of an empty PhaseName. buildSpendingTrajectoryRows falls back
+   to trajectoryPhaseName(s, yi) — computed from the PRIMARY settings
+   passed into the handler — whenever the summary's PhaseName is "". But
+   "" is now overloaded: it means EITHER (a) no data (pre-field
+   projection, or no chain — the case the worker tested), OR (b) the
+   engine legitimately recorded no active phase for that year because the
+   CHAIN-ACTIVE settings for that year had phases disabled (proven
+   reachable by probe #1 above). In case (b), the fallback ignores the
+   engine's correct "no phase" determination and instead shows a label
+   computed from the PRIMARY (pre-transition) scenario's phase config —
+   the exact "phase labels must follow scenario-chain transitions"
+   requirement the task exists to satisfy, violated for this case.
+
+   Reproduced directly against the production function with
+   TestZ5Probe_FallbackMasksLegitimateEmptyPhaseName (primary settings:
+   phases enabled Go-Go@0/Slow-Go@66; YearlySummaries: year0
+   PhaseName="Go-Go", year1 PhaseName="" — the exact shape probe #1 proved
+   the engine emits for a chain-transition-to-disabled year):
+     go test ./internal/handlers/whatif/... -run TestZ5Probe_FallbackMasksLegitimateEmptyPhaseName -v
+   Result: row[1].PhaseName == "Slow-Go" (the PRIMARY's post-Slow-Go-age
+   label) instead of "-"/empty (no phase active that year per the engine).
+   FAIL — a plan with a scenario chain into a phases-disabled linked
+   scenario shows a stale, contradicted phase label on the spending
+   trajectory table for every post-transition year.
+
+   This is squarely in scope: same function (buildSpendingTrajectoryRows)
+   and same design point (the "" sentinel and its fallback) the worker
+   wrote for this task; the worker's own two new handler tests exercise
+   only the "chain gives a real name" case and the "everything disabled/no
+   chain, both primary and summary agree" case — never the divergent
+   combination (primary enabled, summary legitimately empty from a
+   disabled post-transition scenario) that actually breaks. The manifest's
+   own note ("falling back to trajectoryPhaseName(s, yi) when the summary
+   has no name (no chain, or a projection built before this field
+   existed)") states an incomplete list of when "" occurs — it omits the
+   chain-to-disabled case, which is the bug.
+
+6. Serialization/consumers: grepped all non-test consumers of
+   YearlySummaries/ProjectionYearSummary (analysis/tax.go,
+   analysis/present_value.go, analysis/tax_optimizer*.go,
+   analysis/explainability.go, mcpsvc/plan/view.go, handlers_sweep.go) —
+   no positional (unkeyed) struct literals of ProjectionYearSummary (build
+   would have failed), no golden-file/testdata fixtures asserting on
+   YearlySummaries JSON shape found repo-wide. No breakage found on this
+   angle.
+
+Probe files (z5_probe_test.go, z5_probe2_test.go) written only in the
+throwaway /tmp copy; not committed to the real tree.
+
+Verdict: FAIL. Item 5 is a real, in-scope, reachable defect — the handler's
+empty-string fallback re-derives a phase label from the primary/pre-transition
+settings for years where the engine correctly recorded "no active phase"
+because the chain transitioned to phases-disabled settings, directly
+contradicting the task's own purpose (labels must follow scenario-chain
+transitions).

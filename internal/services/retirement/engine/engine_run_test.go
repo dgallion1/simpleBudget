@@ -132,6 +132,175 @@ func TestEngineRunAppliesChainTransition(t *testing.T) {
 	}
 }
 
+// TestEngineRunChainTransitionCarriesPhaseName is the Z5 regression: yearly
+// summaries must record the spending-phase label from whichever settings
+// were ACTIVE that year. base and next share the same phase StartAges (0
+// and 66) but use different names, so a year's PhaseName unambiguously
+// reveals which settings were active when it was recorded.
+func TestEngineRunChainTransitionCarriesPhaseName(t *testing.T) {
+	base := richEngineScenario()
+	base.ProjectionYears = 3
+	base.MonthlyLivingExpenses = 1_000
+	base.Guardrails = nil
+	// base.SpendingPhaseConfig (from richEngineScenario): Go-Go@0, Slow-Go@66.
+
+	next := richEngineScenario()
+	next.MonthlyLivingExpenses = 2_500
+	next.Guardrails = nil
+	next.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+		Enabled: true,
+		Phases: []models.SpendingPhase{
+			{Name: "Chain-Go-Go", StartAge: 0, Multiplier: 1.05},
+			{Name: "Chain-Slow-Go", StartAge: 66, Multiplier: 0.80},
+		},
+	}
+
+	proj := New().Run(Input{
+		Prepared: prepare.MustFrom(t, base),
+		Chain: []PreparedChainLink{
+			{
+				ScenarioFilename: "next.json",
+				TransitionAge:    66,
+				Settings:         prepare.MustFrom(t, next),
+			},
+		},
+		Hooks: Hooks{
+			ResolveChainTransition: func(currentYear, nextChainIndex int, _ *models.WhatIfSettings, chain []PreparedChainLink) (int, *models.WhatIfSettings) {
+				if currentYear == 1 && nextChainIndex == 0 {
+					return 1, chain[0].Settings.Settings()
+				}
+				return nextChainIndex, nil
+			},
+		},
+	})
+
+	if len(proj.YearlySummaries) != 3 {
+		t.Fatalf("yearly summaries=%d, want 3: %#v", len(proj.YearlySummaries), proj.YearlySummaries)
+	}
+	if got := proj.YearlySummaries[0].PhaseName; got != "Go-Go" {
+		t.Errorf("year 0 (before transition) PhaseName = %q, want the primary's Go-Go", got)
+	}
+	if got := proj.YearlySummaries[1].PhaseName; got != "Chain-Slow-Go" {
+		t.Errorf("year 1 (after transition) PhaseName = %q, want the linked scenario's Chain-Slow-Go", got)
+	}
+	if got := proj.YearlySummaries[2].PhaseName; got != "Chain-Slow-Go" {
+		t.Errorf("year 2 (after transition) PhaseName = %q, want the linked scenario's Chain-Slow-Go", got)
+	}
+}
+
+// TestEngineRunChainTransitionToPhasesDisabledCarriesSentinel is the Z5
+// attempt-2 regression: when a chain transitions from a phases-ENABLED
+// primary into a phases-DISABLED linked scenario, post-transition year
+// summaries must carry the engine's no-phase sentinel "-" — never "" (which
+// buildSpendingTrajectoryRows would treat as "no data" and wrongly
+// re-derive from the primary's still-enabled phases) and never the
+// primary's phase name.
+func TestEngineRunChainTransitionToPhasesDisabledCarriesSentinel(t *testing.T) {
+	base := richEngineScenario()
+	base.ProjectionYears = 3
+	base.MonthlyLivingExpenses = 1_000
+	base.Guardrails = nil
+	// base.SpendingPhaseConfig (from richEngineScenario): Go-Go@0, Slow-Go@66.
+
+	next := richEngineScenario()
+	next.MonthlyLivingExpenses = 2_500
+	next.Guardrails = nil
+	next.SpendingPhaseConfig = &models.SpendingPhaseConfig{Enabled: false}
+
+	proj := New().Run(Input{
+		Prepared: prepare.MustFrom(t, base),
+		Chain: []PreparedChainLink{
+			{
+				ScenarioFilename: "next.json",
+				TransitionAge:    66,
+				Settings:         prepare.MustFrom(t, next),
+			},
+		},
+		Hooks: Hooks{
+			ResolveChainTransition: func(currentYear, nextChainIndex int, _ *models.WhatIfSettings, chain []PreparedChainLink) (int, *models.WhatIfSettings) {
+				if currentYear == 1 && nextChainIndex == 0 {
+					return 1, chain[0].Settings.Settings()
+				}
+				return nextChainIndex, nil
+			},
+		},
+	})
+
+	if len(proj.YearlySummaries) != 3 {
+		t.Fatalf("yearly summaries=%d, want 3: %#v", len(proj.YearlySummaries), proj.YearlySummaries)
+	}
+	if got := proj.YearlySummaries[0].PhaseName; got != "Go-Go" {
+		t.Errorf("year 0 (before transition) PhaseName = %q, want the primary's Go-Go", got)
+	}
+	if got := proj.YearlySummaries[1].PhaseName; got != "-" {
+		t.Errorf("year 1 (after transition, phases disabled on linked settings) PhaseName = %q, want the sentinel \"-\" (not the primary's Slow-Go, not empty)", got)
+	}
+	if got := proj.YearlySummaries[2].PhaseName; got != "-" {
+		t.Errorf("year 2 (after transition, phases disabled on linked settings) PhaseName = %q, want the sentinel \"-\"", got)
+	}
+}
+
+// TestEngineRunChainTransitionRearrangesPhaseBoundaries is F-Z5-2: the
+// linked scenario doesn't just rename phases, it moves the StartAge
+// boundaries. Post-transition labels must follow the LINKED scenario's
+// boundaries, not the primary's.
+func TestEngineRunChainTransitionRearrangesPhaseBoundaries(t *testing.T) {
+	base := richEngineScenario()
+	base.ProjectionYears = 3
+	base.MonthlyLivingExpenses = 1_000
+	base.Guardrails = nil
+	// base.SpendingPhaseConfig: Go-Go@0, Slow-Go@66. Reference age (default
+	// "older" = spouse, 65) is 65+year, so year0=65, year1=66, year2=67.
+
+	next := richEngineScenario()
+	next.MonthlyLivingExpenses = 2_500
+	next.Guardrails = nil
+	next.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+		Enabled: true,
+		Phases: []models.SpendingPhase{
+			{Name: "Linked-Early", StartAge: 0, Multiplier: 1.05},
+			// The linked scenario's own boundary (67) sits one year later
+			// than the primary's Slow-Go boundary (66), so year 1 (age 66)
+			// proves the label follows the LINKED boundary — it must still
+			// read Linked-Early, not switch the way the primary's own
+			// boundary would.
+			{Name: "Linked-Late", StartAge: 67, Multiplier: 0.75},
+		},
+	}
+
+	proj := New().Run(Input{
+		Prepared: prepare.MustFrom(t, base),
+		Chain: []PreparedChainLink{
+			{
+				ScenarioFilename: "next.json",
+				TransitionAge:    66,
+				Settings:         prepare.MustFrom(t, next),
+			},
+		},
+		Hooks: Hooks{
+			ResolveChainTransition: func(currentYear, nextChainIndex int, _ *models.WhatIfSettings, chain []PreparedChainLink) (int, *models.WhatIfSettings) {
+				if currentYear == 1 && nextChainIndex == 0 {
+					return 1, chain[0].Settings.Settings()
+				}
+				return nextChainIndex, nil
+			},
+		},
+	})
+
+	if len(proj.YearlySummaries) != 3 {
+		t.Fatalf("yearly summaries=%d, want 3: %#v", len(proj.YearlySummaries), proj.YearlySummaries)
+	}
+	if got := proj.YearlySummaries[0].PhaseName; got != "Go-Go" {
+		t.Errorf("year 0 (before transition, age 65) PhaseName = %q, want the primary's Go-Go", got)
+	}
+	if got := proj.YearlySummaries[1].PhaseName; got != "Linked-Early" {
+		t.Errorf("year 1 (post-transition, age 66) PhaseName = %q, want the linked scenario's Linked-Early — its own boundary (67) hasn't hit yet, unlike the primary's (66)", got)
+	}
+	if got := proj.YearlySummaries[2].PhaseName; got != "Linked-Late" {
+		t.Errorf("year 2 (post-transition, age 67) PhaseName = %q, want the linked scenario's Linked-Late, crossed at the LINKED scenario's own boundary", got)
+	}
+}
+
 func TestProjectionAndSteadyStateHelpers(t *testing.T) {
 	s := richEngineScenario()
 	s.ProjectionYears = 4

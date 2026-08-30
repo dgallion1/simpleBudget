@@ -96,9 +96,25 @@ func buildSpendingTrajectoryRows(s *models.WhatIfSettings, projection *models.Pr
 	// Year starting balances: the canonical loop records them in the yearly
 	// summaries; fall back to the prior year's ending balance (year 0: the
 	// configured portfolio value).
+	//
+	// Phase names: the yearly summary records the label from whichever
+	// settings were ACTIVE that year, so a scenario chain's linked settings
+	// are reflected after a transition. The engine's sentinel contract: a
+	// summary PhaseName of "-" means the engine says no phase was active
+	// that year (phases disabled/unconfigured on the ACTIVE settings) — use
+	// it as-is, it already matches what trajectoryPhaseName renders for
+	// disabled phases. A summary PhaseName of "" means the engine recorded
+	// nothing at all (a projection built before this field existed) —
+	// legacy fallback to trajectoryPhaseName (computed from the PRIMARY
+	// settings passed in). Only "" triggers the fallback; "-" flows
+	// straight through.
 	startBalance := map[int]float64{}
+	phaseNameByYear := map[int]string{}
 	for _, ys := range projection.YearlySummaries {
 		startBalance[ys.Year] = ys.StartingBalance
+		if ys.PhaseName != "" {
+			phaseNameByYear[ys.Year] = ys.PhaseName
+		}
 	}
 	prevEnd := s.PortfolioValue
 	for _, yi := range years {
@@ -116,11 +132,15 @@ func buildSpendingTrajectoryRows(s *models.WhatIfSettings, projection *models.Pr
 		}
 		a := byYear[yi]
 		n := float64(a.months)
+		phaseName := phaseNameByYear[yi]
+		if phaseName == "" {
+			phaseName = trajectoryPhaseName(s, yi)
+		}
 		row := trajectoryRow{
 			Year:          yi,
 			PrimaryAge:    s.PrimaryAgeAt(yi),
 			SpouseAge:     s.SpouseAgeAt(yi),
-			PhaseName:     trajectoryPhaseName(s, yi),
+			PhaseName:     phaseName,
 			SpendNominal:  a.spendN / n,
 			SpendReal:     a.spendR / n,
 			IncomeNominal: a.incomeN / n,

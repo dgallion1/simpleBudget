@@ -1,0 +1,97 @@
+VERDICT: OVERRULE
+CHECKER: judge-claude
+FAMILY: anthropic
+TASK: X1
+ATTEMPT: 2
+---
+Correctness lens. I verified every disputed fact myself against the tree at
+fix/phase-visibility. Only write to the tree is this verdict file.
+
+1. THE CHECKER'S FACTUAL FINDING IS SUBSTANTIALLY CORRECT.
+   docs/whatif-mcp-followups-2026-08-09.md:45-56 is "## 3. Data-directory
+   resolution" and contains exactly two bullets: (a) cmd/whatif-mcp passes the
+   settings dir to storage.New so the `.encrypted` marker is looked for in the
+   wrong directory, and the MCP "reads age ciphertext as JSON and reports a
+   parse error instead of 'storage is locked'"; (b) BUDGET_DATA_DIR is not
+   honored. Neither bullet mentions the snapshot package, os.ReadFile, or a
+   read failure. §3's encryption bug is a downstream JSON PARSE error, which
+   presupposes the bytes were read successfully.
+   snapshot.go:47-50 confirms the contradiction the checker names: "It copies
+   the file's raw bytes with os.ReadFile rather than hard-linking it, so the
+   backup is a point-in-time copy that a later in-place rewrite of the source
+   cannot alter. When the store is encrypted the bytes are ciphertext, which is
+   what a hand-restore back into that same store needs." Ciphertext is
+   READABLE and copying it is the DESIRED behavior; the documented reason for
+   ReadFile-over-Link is point-in-time immutability, not unreadability. So the
+   comment at snapshot_test.go:126-131 ("blind copy of unreadable ciphertext
+   must still fail loudly") is factually wrong and misdescribes both the cited
+   doc and the code comment 11 lines above it. That much of the FAIL is right,
+   and the finding is worth keeping.
+
+   One correction to the checker's characterization, which matters because it
+   is the stated GROUND of the FAIL: this is not "fabricated provenance." The
+   document exists, §3 exists, and §3's first bullet genuinely is about this
+   MCP not knowing a store is encrypted. What is wrong is an inference drawn
+   from it, not an invented source. And the worker did not draw that inference.
+
+2. THE ERROR ORIGINATES IN THE BRIEF, NOT THE WORK.
+   `gh api repos/:owner/:repo/issues/26` body: "The reason Snapshotter.Ensure
+   reads the source bytes rather than using os.Link is specifically the
+   **unreadable** case: docs/whatif-mcp-followups-2026-08-09.md §3 records that
+   this MCP detects encryption in the wrong directory, so a blind copy of
+   ciphertext would appear to succeed and the caller's abort-before-write
+   guarantee would silently not fire."
+   .swarm/X-RUN-SPEC.md:52-58 relays it near-verbatim, citation and all. The
+   worker's comment is that same claim with the same citation. The worker
+   implemented the rationale the task gave it. The false claim entered the run
+   upstream of dispatch and is currently sitting in issue #26 and in the SPEC.
+
+3. AGAINST THIS TASK'S ACCEPTANCE CRITERIA, THE WORK PASSES.
+   X1 attempt 2 (X-RUN-SPEC.md:52-58 + amendment :168-175 + D-2026-08-29e
+   :42-45) requires: honest rename of the missing-file case; a genuinely
+   unreadable case (source exists, read fails, error surfaced, no destination
+   leaked); root-proof fixture (EISDIR-via-directory explicitly blessed);
+   package-scope vet and tests green. Every one is met:
+   - rename is honest (fixture writes no file; name now says Missing);
+   - the unreadable fixture is os.Mkdir at the source path, so the path exists
+     and os.ReadFile fails EISDIR at any uid — the exact pattern D-2026-08-29e
+     named as acceptable, and the house pattern at
+     internal/services/mcpsvc/curate/upsert_test.go:144;
+   - I re-ran `go test -count=1 -v -run TestSnapshotter_FailsWhenSource
+     ./internal/services/mcpsvc/snapshot/` myself: both PASS, ok 0.003s;
+   - both lanes independently mutation-tested all three assertions (err,
+     error-names-source, empty snapshot dir) and each bites; checker-second
+     concedes in its own words that the construction is SOUND and that the
+     "short-circuits earlier" attack does not hold;
+   - scope is the single manifest file; snapshot.go is untouched.
+   No acceptance criterion concerns the doc comment's citation. The FAIL rests
+   entirely on a defect the criteria do not reach and the brief itself
+   introduced.
+
+4. WHY UPHOLD WOULD BE THE WRONG REMEDY.
+   Sending this back charges the worker a failed attempt (hard-stop budget: 3)
+   for the lead's own transcription of a wrong issue body. Worse, it is not
+   actionable as a worker fix: the worker cannot resolve "the brief says X,
+   the adjacent code comment says not-X" without the lead first deciding which
+   is true. That decision is adjudication, which the constitution assigns to
+   the lead, not to a re-dispatch. The correct remedy is a six-line doc-comment
+   edit under "final review fixes," plus corrections that a worker could not
+   make at all: issue #26's body and X-RUN-SPEC.md:52-58 both still assert the
+   false rationale and will otherwise re-infect later work.
+
+RULING: OVERRULE. The FAIL is set aside; the test as constructed satisfies
+every stated acceptance criterion and is non-vacuous under two independent
+mutation campaigns.
+
+NOT A LICENSE TO LAND THE COMMENT. The finding is upheld even though the
+verdict is not. Before commit the lead must (a) strip the
+docs/whatif-mcp-followups-2026-08-09.md §3 citation and the encryption/
+"unreadable ciphertext" tie-in from snapshot_test.go:126-131 and ground the
+comment in Ensure's actual guarantee (snapshot.go:52-54, missing-or-unreadable
+source must abort the caller's write) — note the house precedent at
+upsert_test.go:138-143 cites no external doc at all, and this is the only .go
+file in the repo referencing that document; (b) correct or annotate issue #26,
+whose premise about why Ensure uses ReadFile is wrong; (c) record the
+discrepancy in SPEC.md Rulings so the brief is not re-issued. If the lead
+prefers the worker to make edit (a), it should be dispatched as a follow-on
+doc-only task, not as a failed attempt against X1.

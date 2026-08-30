@@ -19,7 +19,7 @@
                             hx-trigger="keyup changed delay:300ms" hx-include="#explorer-filter-form"
                             class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 pr-8 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                         <button type="button" onclick="clearSearch()"
-                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 {{if not .Search}}hidden{{end}}"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 {{if not .Search}}hidden{{end}}"
                             id="clear-search-btn" title="Clear search" aria-label="Clear search">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -69,13 +69,13 @@
                 <!-- Date Range -->
                 <div class="flex items-center space-x-2">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
-                        <input type="date" name="start" value="{{.StartDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
+                        <label for="explorer-date-start" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
+                        <input type="date" id="explorer-date-start" name="start" value="{{.StartDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
                             class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
-                        <input type="date" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
+                        <label for="explorer-date-end" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
+                        <input type="date" id="explorer-date-end" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
                             class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
                     </div>
                     <!-- Step Back/Forward & Quick Date Range Shortcuts -->
@@ -508,7 +508,7 @@
             wrapper.appendChild(document.createTextNode(' '));
 
             const origSpan = document.createElement('span');
-            origSpan.className = 'text-xs text-gray-400 dark:text-gray-500';
+            origSpan.className = 'text-xs text-gray-500 dark:text-gray-300';
             origSpan.textContent = '(' + description + ')';
             wrapper.appendChild(origSpan);
         } else {
@@ -699,7 +699,7 @@
     hx-trigger="revealed" hx-swap="afterend" hx-include="#explorer-filter-form" {{end}} {{end}}>
     <td class="w-24 p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{{formatDate .Date}}</td>
     <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate" data-hash="{{.Hash}}" data-description="{{.Description}}" data-display-name="{{.DisplayName}}" data-major-expense-name="{{.MajorExpenseName}}">
-        <span class="alias-display cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400" onclick="filterByDescription('{{js .Label}}')" title="Click to filter, double-click to rename">{{if ne .Label .Description}}<span class="font-medium">{{.Label}}</span> <span class="text-xs text-gray-400 dark:text-gray-500">({{.Description}})</span>{{else}}{{.Description}}{{end}}</span>
+        <span class="alias-display cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400" onclick="filterByDescription('{{js .Label}}')" title="Click to filter, double-click to rename">{{if ne .Label .Description}}<span class="font-medium">{{.Label}}</span> <span class="text-xs text-gray-500 dark:text-gray-300">({{.Description}})</span>{{else}}{{.Description}}{{end}}</span>
         {{if .DuplicatePairKey}}<a href="/duplicates#{{.DuplicatePairKey}}" class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/60" title="Unresolved duplicate">dup?</a>{{end}}
         {{if .Suppressed}}<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 line-through" title="Suppressed duplicate">suppressed dup</span>{{end}}
     </td>
@@ -713,7 +713,7 @@
     <td class="w-32 p-3 text-sm truncate">
         {{if $me}}<span class="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded text-xs truncate block" title="{{$me}}">{{$me}}</span>{{end}}
     </td>
-    <td class="w-28 p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-600 dark:text-green-400{{else if eq .TransactionType "Transfer"}}text-indigo-600 dark:text-indigo-400{{else}}text-red-600 dark:text-red-400{{end}}">
+    <td class="w-28 p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-700 dark:text-green-400{{else if eq .TransactionType "Transfer"}}text-indigo-600 dark:text-indigo-400{{else}}text-red-600 dark:text-red-400{{end}}">
         {{if eq .TransactionType "Income"}}+{{end}}{{formatMoney .Amount}}
     </td>
     <td class="w-20 p-3 text-center">
@@ -729,12 +729,12 @@
         <span class="px-2 py-1 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded text-xs">Expense</span>
         {{end}}
     </td>
-    <td class="w-36 p-3 text-xs text-gray-400 dark:text-gray-500 text-center truncate" title="{{.SourceFile}}">{{.SourceFile}}</td>
+    <td class="w-36 p-3 text-xs text-gray-500 dark:text-gray-300 text-center truncate" title="{{.SourceFile}}">{{.SourceFile}}</td>
 </tr>
 {{end}}
 {{else if eq .Page 1}}
 <tr>
-    <td colspan="7" class="p-8 text-center text-gray-500 dark:text-gray-400">
+    <td colspan="7" class="p-8 text-center text-gray-600 dark:text-gray-400">
         <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
@@ -750,7 +750,7 @@
 {{define "summary-stats"}}
 <div id="summary-stats" class="flex flex-wrap items-center gap-2 text-sm" hx-swap-oob="true">
     <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5">
-        <span class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Transactions</span>
+        <span class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Transactions</span>
         <span class="num font-bold text-gray-900 dark:text-gray-100 ml-1">{{.TotalCount}}</span>
     </div>
     {{if isPositive .TotalIncome}}
@@ -766,10 +766,10 @@
     </div>
     {{end}}
     <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5">
-        <span class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Net</span>
+        <span class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Net</span>
         <span class="num font-bold {{colorClass .NetAmount}} ml-1">{{formatMoney .NetAmount}}</span>
     </div>
-    <span class="text-gray-400 dark:text-gray-500 text-xs italic ml-auto">
+    <span class="text-gray-500 dark:text-gray-400 text-xs italic ml-auto">
         Scroll for more
     </span>
 </div>

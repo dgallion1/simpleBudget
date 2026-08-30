@@ -1,0 +1,132 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: X6
+ATTEMPT: 1
+---
+Verified in a `cp -a` copy at
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/x6/repo
+(master 8ed11c3 + uncommitted X-run files). go version go1.26.6 linux/amd64.
+Tier 1, checks=tests; no .swarm/tier3/X6 oracle exists (`ls .swarm/tier3/` -> no X6 entry),
+so the repo's own composite target `make check` was used instead.
+
+CRITERION 1 — both tests pass by name, none skipped; omission test drives a REAL
+handler and asserts header ABSENCE; carries test compares to the manager's actual
+revision. MET.
+  cmd: go test -run 'TestRenderRecalc' -v -count=1 ./internal/handlers/whatif/
+  out: "--- PASS: TestRenderRecalc_CarriesRevisionHeader (0.02s)"
+       "--- PASS: TestRenderRecalc_ItemCRUDOmitsRevisionHeader (0.02s)"
+       "ok  	budget2/internal/handlers/whatif	0.047s"   (no SKIP lines)
+  Source read, handlers_test.go:8803-8868:
+   - omission test calls the production handler `handleWhatIfDeleteIncome(w, req)`
+     (defined internal/handlers/whatif/handlers_income_expense.go:129, whose closure
+     returns `revisionUnreported`), via chiRequest (handlers_test.go:118-128, real
+     httptest.NewRequest + chi.RouteCtxKey) and setupTestEnvWithRenderer
+     (handlers_test.go:4428, real storage + retirement.NewSettingsManager). Not a stub.
+   - it asserts absence: `if trigger := resp.Header.Get("HX-Trigger"); trigger != ""`
+     (line 8865), after asserting status 200 (line 8862) so an error render cannot
+     satisfy it vacuously.
+   - carries test asserts equality, not non-emptiness:
+     `if parsed["whatif:revision"] != rm.Revision()` (handlers_test.go:8825).
+  cmd: git --no-pager diff --unified=0 master -- internal/handlers/whatif/handlers_test.go
+  out: 3 hunks, "+49 -1", all inside the two TestRenderRecalc functions
+       (@@ -8794,0 +8795,8 @@ comment; @@ -8811 +8819 @@ fail-message; @@ -8820,0 +8829,40 @@ new test).
+       The stale fail message "a user-initiated mutation must advance the client
+       baseline too" is replaced by "a settings write must advance the client baseline".
+
+CRITERION 2 — bite-proof, redone independently. MET.
+  mutation: handlers_income_expense.go:133 `return settings, revisionUnreported, err`
+            -> `return settings, retirementMgr.Revision(), err` (handleWhatIfDeleteIncome).
+  cmd: go test -run 'TestRenderRecalc' -v -count=1 ./internal/handlers/whatif/
+  out: "handlers_test.go:8866: item-CRUD route must omit HX-Trigger (revisionUnreported),
+        got \"{\\\"whatif:revision\\\":2}\" — this reintroduces the frozen-page bug (issue #25)"
+       "--- FAIL: TestRenderRecalc_ItemCRUDOmitsRevisionHeader (0.02s)"
+  The message names the frozen-page bug and issue #25, as required. The emitted
+  revision 2 (baseline 1 after AddIncomeSource) also proves the handler really wrote
+  and really reached renderRecalc — the test is not passing on an error path.
+  restore: cp of the pre-mutation file + `cmp` -> "RESTORED-CMP-IDENTICAL";
+  `git diff --stat master -- internal/handlers/whatif/handlers_income_expense.go` -> empty.
+
+CRITERION 3 — reverse bite. MET.
+  mutation: handlers_rates.go:53-58 (handleWhatIfSettings) closure changed to discard
+            the reported revision and return `revisionUnreported`.
+  cmd: go test -run 'TestRenderRecalc' -v -count=1 ./internal/handlers/whatif/
+  out: "handlers_test.go:8819: a settings write must advance the client baseline, or the
+        poll re-renders redundantly 2s later"  /  "--- FAIL: TestRenderRecalc_CarriesRevisionHeader"
+       (omission test still PASS in the same run)
+  Extra bite proving the equality assertion (not just non-empty): closure returns
+  `rev + 1` ->
+  out: "handlers_test.go:8826: header revision = 2, want 1" / FAIL.
+  restore + `cmp` -> "CMP-OK"; `git status --porcelain internal/handlers/whatif/` lists
+  only handlers_live.go, handlers_live_test.go, handlers_test.go,
+  spending_trajectory_test.go, ?? handlers_live_expected_scenario_test.go — i.e. both
+  mutated production files are back to HEAD content.
+
+CRITERION 4 — sentinel census; both sides pinned; third category reported. MET, with a finding.
+  cmd: grep -rhn 'return settings, revisionUnreported, err\|renderRecalc(w, r, settings, revisionUnreported)' --include='*.go' . | grep -v _test | wc -l
+  out: 21
+  Breakdown (grep -c per file): handlers_income_expense.go 16, handlers_healthcare.go 3,
+  handlers_rates.go 1 (spending phases, line 168), handlers.go 1 (line 917,
+  handleWhatIfCalculate — a pure recalc, not a mutation). So 20 mutating routes pass the
+  sentinel + 1 pure-recalc direct call: matches the brief's "~20".
+  Real-revision side, via renderRecalc: handleWhatIfSettings (handlers_rates.go:53, through
+  UpdateSettings/UpdateSettingsWithPersons) + 8 saveAndRecalc callers (handlers.go:1179 and
+  handlers_rates.go:207,251,268,333,404,439,482, through SaveWithRevision at handlers.go:212).
+  The two tests pin one representative of each side (DELETE /whatif/income/{id};
+  POST /whatif/settings), and the bites in criteria 2 and 3 show each side is load-bearing.
+  THIRD CATEGORY FOUND (reported, not adjudicated) — routes that emit HX-Trigger WITHOUT
+  going through renderRecalc, so neither test constrains them:
+  cmd: grep -rn 'HX-Trigger' --include='*.go' internal/handlers/whatif/ | grep -v _test.go
+  out: handlers_sweep.go:308 (saveAndRenderConversionSweep — SaveWithRevision then sets the
+       header itself, POST /whatif/roth-conversion with apply_source=conversion-sweep)
+       handlers_live.go:176 (the poll handler; X7's file)
+  cmd: grep -rn 'HX-Trigger' --include='*_test.go' internal/handlers/whatif/
+  out: only handlers_live_test.go:373-382 (covers the poll emitter, X7 scope) and the two
+       X6 tests. The sweep emitter at handlers_sweep.go:308 has NO HX-Trigger assertion
+       anywhere in the package.
+
+CRITERION 5 — TEST-ONLY. MET.
+  cmd: git status --porcelain  (101 entries; reconciled against .swarm/manifests/X*.files)
+  X6's manifest is exactly `internal/handlers/whatif/handlers_test.go`, and that file's
+  entire diff vs master is the 3 hunks in criterion 1 — no production file carries an X6
+  change. Every other tracked modification maps to another X manifest:
+    handlers_live.go, handlers_live_test.go, ?? handlers_live_expected_scenario_test.go -> X7.1
+    spending_trajectory_test.go, internal/templates/render.go, render_verdict_class_test.go,
+    tailwind.config.js, 50 web/templates/** -> X8.1
+    snapshot_test.go -> X1.2; retirement/settings*.go -> X2.1/X2.2; overrides/overrides.go -> X3.1;
+    swarm/t7-coverage.sh -> X4.x; dataloader/loader.go + alias_stable_id_test.go -> X5.x
+  Unattributed (in NO X manifest; reported, not attributed):
+    internal/services/mcpsvc/plan/overrides.go
+    internal/services/retirement/prepare/prepare.go
+    .claude/skills/budget2-mcp/SKILL.md, .claude/skills/budget2-mcp/references/retirement-plan.md
+    (.swarm/NEXT.md, ledger.tsv, X-RUN-SPEC.md, manifests, verdicts are run bookkeeping)
+  .swarm/critical.globs: X6 touches none of it. (internal/services/dataloader/loader.go is
+  under a critical glob but is X5.1/X5.2's manifest file, already accepted — not X6's.)
+
+CRITERION 6 — vet / package tests / full build+test. MET.
+  cmd: go vet ./internal/handlers/whatif/            out: (no output) VET_EXIT=0
+  cmd: go test -count=1 ./internal/handlers/whatif/  out: "ok  budget2/internal/handlers/whatif 11.958s" PKGTEST_EXIT=0
+  cmd: go build ./...                                out: BUILD_EXIT=0
+  cmd: go test -count=1 ./...                        out: no FAIL lines, FULLTEST_EXIT=0
+  cmd: make check   (vet static vuln css-verify test, per Makefile:77)
+       out: "✓ all checks passed"  MAKECHECK_EXIT=0
+
+FINDINGS (for the lead, not FAIL conditions under the stated criteria):
+  F1 (criterion 1, doc accuracy in the newly written comment): handlers_test.go:8796-8798
+     says the carries side reports its revision via "SaveWithRevision, used by
+     handleWhatIfSettings/saveAndRecalc". handleWhatIfSettings — the route this very test
+     exercises — does NOT use SaveWithRevision; it calls
+     retirementMgr.UpdateSettings/UpdateSettingsWithPersons (handlers_rates.go:53-58), which
+     bump and return sm.revision directly under their own write lock
+     (internal/services/retirement/settings.go:1112-1131 and :1202) and never route through
+     SaveWithRevision (settings.go:723). Only saveAndRecalc (handlers.go:212) uses
+     SaveWithRevision. The comment conflates the two revision-reporting paths; since X6's
+     stated purpose included repairing a stale comment on this test, the lead may want it
+     corrected. No effect on any assertion.
+  F2 (criterion 4): the HX-Trigger contract has a third route category the X6 pair does not
+     pin — emitters that bypass renderRecalc. handlers_sweep.go:301-309
+     (saveAndRenderConversionSweep) sets the header itself and has no HX-Trigger test in the
+     package; handlers_live.go:176 has one, but it lives in X7's file.
+  F3 (criterion 5, scope hygiene, not X6's doing): internal/services/mcpsvc/plan/overrides.go
+     and internal/services/retirement/prepare/prepare.go are modified in the working tree and
+     appear in no X manifest.

@@ -4,8 +4,8 @@
 {{if .Analysis.Tax}}
 {{- $t := .Analysis.Tax -}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-    <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Income Taxes</h3>
-    <p class="text-xs text-gray-500 dark:text-gray-300 mb-3">Projected federal and state income tax over the plan. Excludes IRMAA Medicare surcharges (shown separately).</p>
+    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Income Taxes</h2>
+    <p class="text-xs text-gray-600 dark:text-gray-300 mb-3">Projected federal and state income tax over the plan. Excludes IRMAA Medicare surcharges (shown separately).</p>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <div class="text-center p-3 bg-rose-50 dark:bg-rose-900/20 rounded-lg border border-rose-200 dark:border-rose-800">
@@ -21,7 +21,7 @@
             <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{formatDollars $t.TotalStateTaxPaid}}</p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-500 dark:text-gray-300 uppercase">Avg Effective Rate</p>
+            <p class="text-xs text-gray-600 dark:text-gray-300 uppercase">Avg Effective Rate</p>
             <p class="text-xl font-bold text-amber-600 dark:text-amber-400">{{printf "%.1f" $t.AverageEffectiveRate}}%</p>
         </div>
     </div>
@@ -42,7 +42,7 @@
     <div class="overflow-x-auto max-h-96 overflow-y-auto">
         <table class="w-full text-sm">
             <thead>
-                <tr class="text-left text-gray-500 dark:text-gray-300 border-b dark:border-gray-600">
+                <tr class="text-left text-gray-600 dark:text-gray-300 border-b dark:border-gray-600">
                     <th class="pb-2 font-medium">Age</th>
                     <th class="pb-2 font-medium text-right">Year</th>
                     <th class="pb-2 font-medium text-right">Taxable Income</th>
@@ -60,26 +60,26 @@
                 {{range $t.YearlyTaxSummary}}
                 <tr class="text-gray-700 dark:text-gray-300 {{if eq .Age $rmdStartAge}}bg-amber-50 dark:bg-amber-900/20{{end}}">
                     <td class="py-2 font-medium whitespace-nowrap">{{.Age}}{{if eq .Age $rmdStartAge}}<span class="ml-1.5 inline-block rounded bg-amber-100 dark:bg-amber-800/60 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300 align-middle">RMDs begin</span>{{end}}</td>
-                    <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{.Year}}</td>
+                    <td class="py-2 text-right text-gray-600 dark:text-gray-400">{{.Year}}</td>
                     <td class="py-2 text-right">{{formatDollars .TaxableIncome}}</td>
                     <td class="py-2 text-right text-rose-600 dark:text-rose-400">{{formatDollars .FederalTax}}</td>
                     <td class="py-2 text-right text-rose-600 dark:text-rose-400">{{formatDollars .StateTax}}</td>
                     <td class="py-2 text-right font-semibold text-rose-600 dark:text-rose-400">{{formatDollars .TotalTax}}</td>
                     <td class="py-2 text-right">{{printf "%.1f" .EffectiveRate}}%</td>
-                    <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{printf "%.0f" .MarginalRate}}%</td>
-                    <td class="py-2 text-right text-gray-500 dark:text-gray-400">{{printf "%.0f" .MarginalRateLongTermGain}}%</td>
+                    <td class="py-2 text-right text-gray-600 dark:text-gray-400">{{printf "%.0f" .MarginalRate}}%</td>
+                    <td class="py-2 text-right text-gray-600 dark:text-gray-400">{{printf "%.0f" .MarginalRateLongTermGain}}%</td>
                 </tr>
                 {{end}}
             </tbody>
         </table>
     </div>
     {{with $t.ConstantsBasis}}
-    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
         Federal figures: {{.Source}}{{if .VerifiedOn}}, last verified {{.VerifiedOn}}{{end}}.
         {{if .HasProjectedYears}}Years {{.FirstProjectedYear}}&ndash;{{.LastProjectedYear}} are projected from the {{.StatutoryYear}} tables at {{printf "%.1f" .InflationRate}}%/yr &mdash; estimates, not published law. Real indexing rounds in fixed steps and some thresholds are never indexed at all.{{end}}
     </p>
     {{end}}
-    <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
         Taxable Income is estimated MAGI; Federal includes NIIT. Marginal is what the next dollar of ordinary income costs, and On Gains what the next dollar of realized long-term gain costs &mdash; both measured from that year&rsquo;s income, so they account for capital-gain stacking, the Social Security phase-in and NIIT. Neither is a statutory bracket and either can exceed one. State tax is $0 unless a state rate is configured.
     </p>
     {{end}}

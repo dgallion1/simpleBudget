@@ -4,12 +4,12 @@
 {{if .Analysis.HistoricalBacktest}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Historical Backtesting</h3>
-        <span class="text-xs text-gray-500 dark:text-gray-400">
+        <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Historical Backtesting</h2>
+        <span class="text-xs text-gray-600 dark:text-gray-400">
             {{.Analysis.HistoricalBacktest.DataStartYear}}-{{.Analysis.HistoricalBacktest.DataEndYear}} ({{.Analysis.HistoricalBacktest.TotalSequences}} sequences)
         </span>
     </div>
-    <p class="text-xs text-gray-500 dark:text-gray-300 mb-3">Replays your plan through every historical market sequence since 1928 — the share that never run out is the success rate.</p>
+    <p class="text-xs text-gray-600 dark:text-gray-300 mb-3">Replays your plan through every historical market sequence since 1928 — the share that never run out is the success rate.</p>
 
     <!-- Success Rate Comparison -->
     <div class="grid grid-cols-2 gap-4 mb-4">
@@ -17,8 +17,8 @@
             <div class="text-2xl font-bold {{successRateTextClass .Analysis.HistoricalBacktest.SuccessRate}}">
                 {{printf "%.1f" .Analysis.HistoricalBacktest.SuccessRate}}%
             </div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">Historical Success</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <div class="text-xs text-gray-600 dark:text-gray-400">Historical Success</div>
+            <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
                 {{.Analysis.HistoricalBacktest.SurvivedCount}} of {{.Analysis.HistoricalBacktest.TotalSequences}} survived
             </div>
         </div>
@@ -26,7 +26,7 @@
             <div class="text-2xl font-bold {{successRateTextClass .Analysis.HistoricalBacktest.MonteCarloSuccessRate}}">
                 {{printf "%.1f" .Analysis.HistoricalBacktest.MonteCarloSuccessRate}}%
             </div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">Monte Carlo Success</div>
+            <div class="text-xs text-gray-600 dark:text-gray-400">Monte Carlo Success</div>
         </div>
     </div>
 
@@ -47,7 +47,7 @@
     <!-- Worst Starting Years -->
     {{if .Analysis.HistoricalBacktest.WorstStartYears}}
     <div class="mb-3">
-        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Worst Starting Years</h4>
+        <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Worst Starting Years</h3>
         <div class="flex flex-wrap gap-2">
             {{range .Analysis.HistoricalBacktest.WorstStartYears}}
             <span class="px-2 py-1 text-xs rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
@@ -55,7 +55,7 @@
             </span>
             {{end}}
         </div>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+        <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
             These years are scenario-specific and reflect the worst starting sequences for your horizon, cash flow, and allocation mix.
         </p>
     </div>
@@ -64,7 +64,7 @@
     <!-- Best Starting Years -->
     {{if .Analysis.HistoricalBacktest.BestStartYears}}
     <div class="mb-3">
-        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Best Starting Years</h4>
+        <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Best Starting Years</h3>
         <div class="flex flex-wrap gap-2">
             {{range .Analysis.HistoricalBacktest.BestStartYears}}
             <span class="px-2 py-1 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
@@ -98,7 +98,7 @@
                         <td class="px-2 py-1 text-gray-800 dark:text-gray-200">{{.StartYear}}</td>
                         <td class="px-2 py-1">
                             {{if .Survives}}
-                            <span class="text-green-600 dark:text-green-400">Survived</span>
+                            <span class="text-green-700 dark:text-green-400">Survived</span>
                             {{else}}
                             <span class="text-red-600 dark:text-red-400" title="Year the portfolio was depleted">Failed in {{.DepletionYear}}</span>
                             {{end}}
@@ -116,7 +116,7 @@
                     {{end}}
                 </tbody>
             </table>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+            <p class="text-xs text-gray-600 dark:text-gray-400 mt-2">
                 <strong>Real:</strong> Inflation-adjusted to start-year purchasing power
             </p>
         </div>

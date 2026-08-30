@@ -386,10 +386,13 @@ func (sm *SettingsManager) decodeSettings(data []byte) (*models.WhatIfSettings, 
 // Context-less convenience wrapper around LoadContext for non-request callers.
 //
 // The returned pointer is a PRIVATE deep copy. Every call allocates a fresh
-// object; the manager's cached object never escapes through Load. Callers may
-// mutate what they get and hand it back to Save/SaveWithRevision, and nothing
-// else — no concurrent reader, no later Load — observes the mutation until
-// Save publishes it.
+// object; the manager's cached object never escapes the manager, full stop —
+// not through Load, and not through any mutator's return value either (every
+// mutator that saves also returns prepare.Clone(settings), not settings
+// itself). Callers may mutate what they get and hand it back to
+// Save/SaveWithRevision, and nothing else — no concurrent reader, no later
+// Load, no other holder of a mutator's return value — observes the mutation
+// until Save publishes it.
 //
 // That is what makes a published settings object effectively immutable: once
 // saveInternal stores a pointer in sm.cache, nothing mutates that object
@@ -815,7 +818,7 @@ func (sm *SettingsManager) AddIncomeSource(source models.IncomeSource) (*models.
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // RemoveIncomeSource moves an income source to the removed list by ID and saves atomically
@@ -843,7 +846,7 @@ func (sm *SettingsManager) RemoveIncomeSource(id string) (*models.WhatIfSettings
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // RestoreIncomeSource moves an income source back from the removed list atomically.
@@ -884,7 +887,7 @@ func (sm *SettingsManager) RestoreIncomeSource(id string) (*models.WhatIfSetting
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // PurgeRemovedIncomeSource permanently removes an income source from the
@@ -917,7 +920,7 @@ func (sm *SettingsManager) PurgeRemovedIncomeSource(id string) (*models.WhatIfSe
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // UpdateIncomeSource updates an existing income source by ID atomically
@@ -948,7 +951,7 @@ func (sm *SettingsManager) UpdateIncomeSource(id string, startYear int, endYear 
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // AddExpenseSource adds a new expense source and saves atomically
@@ -967,7 +970,7 @@ func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*model
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // UpdateExpenseSource updates an existing expense source by ID atomically
@@ -998,7 +1001,7 @@ func (sm *SettingsManager) UpdateExpenseSource(id string, startYear int, endYear
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // RemoveExpenseSource moves an expense source to the removed list by ID and saves atomically
@@ -1026,7 +1029,7 @@ func (sm *SettingsManager) RemoveExpenseSource(id string) (*models.WhatIfSetting
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // RestoreExpenseSource moves an expense source back from the removed list atomically.
@@ -1066,7 +1069,7 @@ func (sm *SettingsManager) RestoreExpenseSource(id string) (*models.WhatIfSettin
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // PurgeRemovedExpenseSource permanently removes an expense source from the
@@ -1099,7 +1102,7 @@ func (sm *SettingsManager) PurgeRemovedExpenseSource(id string) (*models.WhatIfS
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // UpdateSettings updates all settings fields from form data and saves
@@ -1121,7 +1124,11 @@ func (sm *SettingsManager) UpdateSettings(updates map[string]interface{}) (*mode
 		return nil, 0, err
 	}
 
-	return settings, sm.revision, nil
+	cloned, err := prepare.Clone(settings)
+	if err != nil {
+		return nil, 0, err
+	}
+	return cloned, sm.revision, nil
 }
 
 // ApplyOverrides applies a sparse override set to the active scenario and saves
@@ -1182,7 +1189,11 @@ func (sm *SettingsManager) ApplyOverrides(o overrides.Overrides, expectedScenari
 	if err := sm.saveInternalAndBump(updated); err != nil {
 		return nil, "", 0, err
 	}
-	return updated, sm.filename, sm.revision, nil
+	cloned, err := prepare.Clone(updated)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	return cloned, sm.filename, sm.revision, nil
 }
 
 // UpdateSettingsWithPersons is UpdateSettings plus the household fields. It
@@ -1205,7 +1216,11 @@ func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interfac
 		return nil, 0, err
 	}
 
-	return settings, sm.revision, nil
+	cloned, err := prepare.Clone(settings)
+	if err != nil {
+		return nil, 0, err
+	}
+	return cloned, sm.revision, nil
 }
 
 func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings, updates map[string]interface{}) {
@@ -1418,7 +1433,7 @@ func (sm *SettingsManager) UpdateSpendingPhases(enabled bool, phases []models.Sp
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // AddHealthcarePerson adds a new healthcare person and saves atomically
@@ -1437,7 +1452,7 @@ func (sm *SettingsManager) AddHealthcarePerson(person models.HealthcarePerson) (
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // UpdateHealthcarePerson updates an existing healthcare person by ID atomically
@@ -1461,7 +1476,7 @@ func (sm *SettingsManager) UpdateHealthcarePerson(id string, updates map[string]
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 func applyHealthcareUpdates(person *models.HealthcarePerson, updates map[string]interface{}) {
@@ -1519,7 +1534,7 @@ func (sm *SettingsManager) RemoveHealthcarePerson(id string) (*models.WhatIfSett
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // AddBigTicketItem adds a new big ticket item and saves atomically
@@ -1538,7 +1553,7 @@ func (sm *SettingsManager) AddBigTicketItem(item models.BigTicketItem) (*models.
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // RemoveBigTicketItem moves a big ticket item to the removed list by ID and saves atomically
@@ -1566,7 +1581,7 @@ func (sm *SettingsManager) RemoveBigTicketItem(id string) (*models.WhatIfSetting
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // RestoreBigTicketItem moves a big ticket item back from the removed list atomically.
@@ -1606,7 +1621,7 @@ func (sm *SettingsManager) RestoreBigTicketItem(id string) (*models.WhatIfSettin
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // PurgeRemovedBigTicketItem permanently removes a big ticket item from the
@@ -1639,7 +1654,7 @@ func (sm *SettingsManager) PurgeRemovedBigTicketItem(id string) (*models.WhatIfS
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // AddOneTimeExpense adds a new planned one-time expense and saves atomically.
@@ -1658,7 +1673,7 @@ func (sm *SettingsManager) AddOneTimeExpense(expense models.OneTimeExpense) (*mo
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // RemoveOneTimeExpense removes a one-time expense by ID and saves atomically.
@@ -1683,7 +1698,7 @@ func (sm *SettingsManager) RemoveOneTimeExpense(id string) (*models.WhatIfSettin
 		return nil, err
 	}
 
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // slugify converts a scenario name to a URL-safe filename slug
@@ -1888,7 +1903,7 @@ func (sm *SettingsManager) CreateScenario(name string) (*models.WhatIfSettings, 
 	}
 
 	log.Printf("Created scenario %q as %s", name, filename)
-	return settings, nil
+	return prepare.Clone(settings)
 }
 
 // scenariosReferencingFile returns the filenames of all whatif*.json scenarios

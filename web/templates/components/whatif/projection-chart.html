@@ -8,8 +8,8 @@
     data-final-balance-real="{{if .Analysis.ProjectionExplainability}}{{printf "%.2f" .Analysis.ProjectionExplainability.FinalBalanceReal}}{{else}}0{{end}}">
     <div class="flex items-start justify-between gap-3 mb-4">
         <div>
-            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Portfolio Longevity</h3>
-            <p class="text-xs text-gray-500 dark:text-gray-300">After-tax projection. Toggle between future dollars and today's dollars.</p>
+            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Portfolio Longevity</h2>
+            <p class="text-xs text-gray-600 dark:text-gray-300">After-tax projection. Toggle between future dollars and today's dollars.</p>
         </div>
         <div class="flex items-center gap-2">
             <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-gray-600 overflow-hidden" role="group" aria-label="Display dollars mode">
@@ -33,13 +33,13 @@
         </div>
     </div>
     <div id="chart-projection" class="chart-container" data-chart-url="/whatif/chart/projection?display_dollars=nominal">
-        <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
+        <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
             Loading chart...
         </div>
     </div>
     {{with .Analysis.ProjectionExplainability}}
     <div class="mt-4 space-y-3">
-        <div class="space-y-1 text-xs text-gray-500 dark:text-gray-300">
+        <div class="space-y-1 text-xs text-gray-600 dark:text-gray-300">
             <p id="projection-display-caption"
                 data-caption-nominal="Viewing future dollars. Real mode removes {{printf "%.1f" .InflationLossPercent}}% of inflation distortion from the final balance."
                 data-caption-real="Viewing today's dollars. Inflation has been removed from the displayed path.">
@@ -65,8 +65,8 @@
     {{end}}
     <div class="mt-4 grid grid-cols-2 gap-4 text-center">
         <div>
-            <p class="text-sm text-gray-500 dark:text-gray-300">Portfolio Longevity</p>
-            <p class="text-2xl font-bold {{if .Analysis.Projection.Survives}}text-green-600 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
+            <p class="text-sm text-gray-600 dark:text-gray-300">Portfolio Longevity</p>
+            <p class="text-2xl font-bold {{if .Analysis.Projection.Survives}}text-green-700 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
                 {{if .Analysis.Projection.Survives}}
                 {{.Settings.ProjectionYears}}+ years
                 {{else}}
@@ -75,9 +75,9 @@
             </p>
         </div>
         <div>
-            <p id="projection-final-balance-label" class="text-sm text-gray-500 dark:text-gray-300">Final Balance (Nominal)</p>
+            <p id="projection-final-balance-label" class="text-sm text-gray-600 dark:text-gray-300">Final Balance (Nominal)</p>
             <p id="projection-final-balance-value"
-                class="text-2xl font-bold {{if gt .Analysis.Projection.FinalBalance 0.0}}text-green-600 dark:text-green-400{{else}}text-gray-600 dark:text-gray-300{{end}}">
+                class="text-2xl font-bold {{if gt .Analysis.Projection.FinalBalance 0.0}}text-green-700 dark:text-green-400{{else}}text-gray-600 dark:text-gray-300{{end}}">
                 {{formatMoney .Analysis.Projection.FinalBalance}}
             </p>
         </div>

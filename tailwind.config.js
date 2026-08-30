@@ -46,13 +46,13 @@ module.exports = {
     // `${rmdColorClass}` (lines ~635-636).
     'text-red-600', 'dark:text-red-400',
     'text-amber-600', 'dark:text-amber-400',
-    'text-green-600', 'dark:text-green-400',
+    'text-green-700', 'dark:text-green-400',
     'text-blue-600', 'dark:text-blue-400',
 
     // --- web/templates/components/whatif/rate-assumptions.html ---
     // `colorClass` (line ~858) is a JS string literal spliced into a
     // template-literal `class="..."` via `${colorClass}` (line ~864).
-    // ('text-green-600 dark:text-green-400' and 'text-red-600
+    // ('text-green-700 dark:text-green-400' and 'text-red-600
     // dark:text-red-400' already covered above.)
 
     // --- internal/templates/render.go: colorClass(v float64) ---
@@ -60,7 +60,7 @@ module.exports = {
     // web/templates/pages/explorer.html) returns one of three literal
     // strings defined in Go source, outside the scanned content globs.
     'text-gray-600', 'dark:text-gray-400',
-    // ('text-green-600 dark:text-green-400' and 'text-red-600
+    // ('text-green-700 dark:text-green-400' and 'text-red-600
     // dark:text-red-400' already covered above.)
 
     // --- internal/templates/render.go: successRateTextClass(v float64) ---
@@ -86,16 +86,23 @@ module.exports = {
     // whatif/rate-assumptions.html, whatif/tax-optimizer.html) look up one of
     // four {band, label, value} class-string triples from a Go map, keyed by
     // models.Health (Green/Amber/Red/Neutral), defined in Go source.
+    // Ruling 2026-08-29e / X8: the map's per-health `value` field (and the
+    // Neutral `label`) moved to darker shades to clear 4.5:1 against their
+    // own band backgrounds (the insights/major-expenses/whatif verdict-bar
+    // value tiles read this map via verdictValueClass; dashboard-verdict-bar.html
+    // does not use verdictValueClass and was fixed separately in its own
+    // markup) — text-emerald-600/text-amber-600/text-rose-600 are no
+    // longer emitted by this map (700 replaces them); text-gray-500 (label,
+    // Neutral) is now text-gray-600.
     'bg-emerald-50', 'dark:bg-emerald-900/20', 'border-emerald-300', 'dark:border-emerald-700',
-    'text-emerald-700', 'dark:text-emerald-300', 'text-emerald-600', 'dark:text-emerald-400',
+    'text-emerald-700', 'dark:text-emerald-300', 'dark:text-emerald-400',
     'bg-amber-50', 'dark:bg-amber-900/20', 'border-amber-300', 'dark:border-amber-700',
     'text-amber-700', 'dark:text-amber-300',
-    // ('text-amber-600 dark:text-amber-400' already covered above.)
+    // ('dark:text-amber-400' already covered above.)
     'bg-rose-50', 'dark:bg-rose-900/20', 'border-rose-300', 'dark:border-rose-700',
-    'text-rose-700', 'dark:text-rose-300', 'text-rose-600', 'dark:text-rose-400',
+    'text-rose-700', 'dark:text-rose-300', 'dark:text-rose-400',
     'bg-gray-50', 'dark:bg-gray-800', 'border-gray-200', 'dark:border-gray-700',
-    'text-gray-500',
-    // ('dark:text-gray-400' and 'text-gray-700 dark:text-gray-200' below.)
+    // ('text-gray-600 dark:text-gray-400' already covered above.)
     'text-gray-700', 'dark:text-gray-200',
   ],
 }

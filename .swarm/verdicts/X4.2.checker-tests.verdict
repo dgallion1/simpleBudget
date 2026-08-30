@@ -1,0 +1,168 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: X4
+ATTEMPT: 2
+---
+All validation in a `cp -a` copy (keeping .git) at
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/x4/repo
+Copy's swarm/t7-coverage.sh confirmed byte-identical to the real tree
+(`diff swarm/t7-coverage.sh /home/darrell/bin/ai/budget2/swarm/t7-coverage.sh`
+-> "Files are identical", run before and after every plant experiment).
+Every plant was reverted; final copy run is clean. Real-tree writes: this
+verdict file only.
+
+C1 -- syntax clean + clean run exit 0 with the OK line (55 whitelisted): PASS
+  cmd: bash -n swarm/t7-coverage.sh          -> syntax exit: 0
+  cmd: bash swarm/t7-coverage.sh
+  out: "OK: 732 literal utility-looking class tokens covered (55 whitelisted,
+       50 dynamic-safelist entries verified present)."   run exit: 0
+
+C2 -- the attempt-1 failing plant now bites: PASS
+  plant (new file internal/templates/plantx_prod.go, non-test, under internal/):
+        func plantA() string { x := "text-fuchsia-333"; return x }
+  cmd: bash swarm/t7-coverage.sh
+  out: "UNCOVERED literal class tokens (not in tailwind.css, not whitelisted):
+          - text-fuchsia-333"                            exit: 1
+  cmd: rm plantx_prod.go && bash swarm/t7-coverage.sh
+  out: "OK: 732 ... (55 whitelisted ...)"                exit: 0
+  This is exactly the form that FAILed attempt 1.
+
+C3 -- prose immunity + adversarial in-between literals: PASS WITH FINDING
+  Each planted alone into internal/templates/plantx_prod.go, run, reverted.
+  cmd: bash swarm/t7-coverage.sh (per plant)
+  NOT flagged (exit 0, "OK: 732 ..."):
+    msg := "please retry-the-request now"        <- brief's prose case
+    s   := "2026-08-29"                          <- brief's date case
+    u   := "3f52c4ef-9a1b-4c2d-8e3f-0a1b2c3d4e5f" (UUID)
+    ver := "v1.2.3"          algo := "sha256-abc123"
+    k   := "en-US"           iso  := "P30D"
+    f   := "account_id-2"    q    := "SELECT * FROM t"
+    u   := "report-2026.csv" u    := "--max-retries=3"
+  FLAGGED (exit 1) -- FINDING:
+    id  := "task-3f52c4ef"   -> "- task-3f52c4ef"   <- brief's ID case
+    u   := "utf-16"          -> "- utf-16"          <- brief's utf-16 case
+    also: "iso-8859-1", "gpt-4", "http-2", "acct-1", "sha-256", "GMT-5",
+          "budget-v2", struct field Name: "phase-2"
+  The residual false-positive class is narrow and exactly characterisable
+  (swarm/t7-coverage.sh:371-379, looks_like_utility_word): a purely
+  ALPHABETIC first segment, then hyphen-joined [A-Za-z0-9] segments, with at
+  least one digit, and only in `ident := "..."` / `ident = "..."` /
+  `ident: "..."` position in production (non-test) Go. Dotted versions,
+  underscores, slashes, spaces, digit-leading tokens (dates, UUIDs, sha256-*)
+  are all immune -- verified above.
+  JUDGEMENT (the criterion delegates this): NOT flood-prone in this repo.
+  Measured, cmd: a perl sweep (scratchpad/x4/shape.pl) applying the script's
+  own looks_like_utility_word/literal_looks_like_utility_list to EVERY
+  double-quoted literal in EVERY production .go file under internal/ and cmd/
+  (comments stripped), i.e. a superset of what the gate actually harvests:
+  out: "TOTAL distinct utility-shaped literals in production Go: 25" -- 24 of
+  which are genuine Tailwind class strings (render.go colorClass/verdict maps,
+  the w-5 h-5 text-red-500 ... banner in accounts/majorexpenses/whatif) and
+  exactly ONE is a false positive ("utf-8"). Precision today 24/25; the whole
+  false-positive pressure cost one whitelist line. X-RUN-SPEC.md X4 explicitly
+  anticipates this: "expect Go false-positive pressure -- extend the
+  whitelist, do not weaken the matcher".
+  LATENT PRESSURE, recorded for the lead: the same sweep over _test.go files
+  (which the scan EXCLUDES) finds 66 distinct utility-shaped literals, almost
+  all fixture IDs ("expense-1" x12, "bt-1" x8, "correct-password-1" x8,
+  "ote-1" x5, "inc-2", "brokerage-9", ...). That convention is confined to
+  tests today, but if any such ID moves into production Go the gate will
+  false-positive on it and need a whitelist line. Not a present defect; the
+  reason this criterion is PASS-with-finding rather than a clean PASS.
+
+C4 -- comment/test scoping intact: PASS
+  (a) prod .go with only comment plants:
+        // plant: <div class="text-fuchsia-666"></div> and class := "text-fuchsia-667"
+        /* block: class="text-fuchsia-668" and x := "text-fuchsia-669" */
+      cmd: bash swarm/t7-coverage.sh -> "OK: 732 ..."     exit: 0
+  (b) internal/templates/plantx_test.go with class := "text-fuchsia-777",
+      x := "text-fuchsia-779", backtick `<div class="text-fuchsia-778">`
+      cmd: bash swarm/t7-coverage.sh -> "OK: 732 ..."     exit: 0
+  (c) CONTROL, byte-identical content renamed to plantx_prod.go:
+      cmd: bash swarm/t7-coverage.sh -> exit 1, listing
+           "- text-fuchsia-777 / - text-fuchsia-778 / - text-fuchsia-779"
+      proving (b)'s silence is the _test.go exclusion, not a dead scanner.
+
+C5 -- attempt-1 positives still bite: PASS
+  plant `class := "text-fuchsia-444"`
+    cmd: bash swarm/t7-coverage.sh -> "- text-fuchsia-444"   exit: 1
+  plant ``return `<div class="text-fuchsia-555">x</div>` ``
+    cmd: bash swarm/t7-coverage.sh -> "- text-fuchsia-555"   exit: 1
+
+C6 -- the utf-8 whitelist entry is real, load-bearing and narrow: PASS
+  cmd: grep -rn "utf-8" --include=*.go internal cmd | grep -v _test.go
+  out: 10 hits; the only ones in harvestable `ident="value"` form are
+       internal/handlers/approval/handlers.go:70 and :85, both
+       `<meta charset="utf-8"><meta name="viewport" ...>` inside the raw
+       backtick HTML templates. The other 8 are
+       `w.Header().Set("Content-Type", "text/html; charset=utf-8")` -- whole
+       literal is not utility-shaped and is not in assignment position, so it
+       is not the source. Two occurrences, one file, charset attributes, not
+       class attributes -- matches the whitelist comment at
+       swarm/t7-coverage.sh:131-139 exactly.
+  cmd: perl -i -pe "s/^\s*'utf-8',\s*$//" swarm/t7-coverage.sh
+       bash swarm/t7-coverage.sh
+  out: "UNCOVERED literal class tokens ...\n  - utf-8"       exit: 1
+       (utf-8 and nothing else -> the entry is load-bearing and hides exactly
+       one token). Script restored; `diff` vs real tree -> identical.
+  cmd: grep -c '\.utf-8' web/static/css/tailwind.css -> 0 (no such selector,
+       so no genuine Tailwind class is being hidden).
+
+C7 -- the %-drop leniency is gone: PASS
+  cmd: perl extraction of `sub add_go_tokens` from the current script
+  out: body is `next if $w eq ''; $tokens{$w} = 1;` -- no '%' filter remains.
+  plant `w := "w-[50%]"`
+    cmd: bash swarm/t7-coverage.sh -> "- w-[50%]"             exit: 1
+    i.e. harvested AND reported UNCOVERED, which is correct (tailwind.css has
+    no such selector). This is the attempt-1 observation now closed.
+
+C8 -- shared paths unchanged; whitelist diff documented: PASS
+  cmd: git diff master --stat -- swarm/t7-coverage.sh
+  out: "1 file changed, 229 insertions(+), 3 deletions(-)"
+  cmd: perl -0777 extraction of `sub harvest_from_text` from
+       `git show master:swarm/t7-coverage.sh` vs current, diffed
+  out: "harvest_from_text: BYTE-IDENTICAL to master" (class=/className=/
+       classList.add|remove|contains/classList.toggle all untouched)
+  same method for section 3 and the HTML loop:
+  out: "section 3 (css_escape/covered/reporting): BYTE-IDENTICAL to master"
+       "HTML loop: BYTE-IDENTICAL"
+  cmd: grep -n "my @candidates" master vs current
+  out: identical line `grep { $_ ne '' && !/[\$\{\}`]/ } keys %tokens`
+  cmd: perl -ne "print if /^-[^-]/" on `git diff master -- swarm/t7-coverage.sh`
+  out: the ONLY deleted lines are the 3 header-comment lines replaced by the
+       updated header. Everything else is pure insertion.
+  Identifier gate unchanged in spirit: is_class_ident (lines 338-342) is still
+  `^(?:class|className)$/i` plus the end-anchored Class/Classes/ClassName
+  rule; the content-shape fallback (b2) is added as an OR alongside it
+  (lines 406-425), it does not replace or loosen it, and
+  looks_like_utility_word is documented as used "only by the content-shape
+  fallback (b2) ... never by the HTML/JS harvest_from_text() paths".
+  Whitelist set diff vs master (comm on extracted token lists):
+    ADDED (10, no removals): conversion-sweep-card, danger, detail, note,
+    primary, tool, traj-nominal, traj-real, traj-view-real, utf-8
+    -- the first 9 were justified in X4.1's verdict (traj-* styled by
+    spending-phases.html's own inline <style>; tool/detail/primary/danger/note
+    are rules in approval/handlers.go's hand-rolled pageCSS); utf-8 is
+    justified under C6. Each carries an inline source comment.
+  conversion-sweep-card comment fix confirmed (line 116 now reads
+  "unreferenced marker class (cf. tax-optimizer-card)", replacing the
+  inaccurate "JS/scoping hook"); re-verified: cmd
+  `grep -rn conversion-sweep-card web internal cmd` -> exactly one hit,
+  web/templates/components/whatif/conversion-sweep.html:9, no JS reference;
+  `grep -c '\.conversion-sweep-card' web/static/css/tailwind.css` -> 0.
+
+SCOPE: PASS
+  .swarm/manifests/X4.2.files lists exactly `swarm/t7-coverage.sh`.
+  cmd: git status --short -- swarm/  -> only " M swarm/t7-coverage.sh".
+  swarm/t7-coverage.sh matches no pattern in .swarm/critical.globs
+  (storage, dataloader, retirement/engine, transfers, accounts.go,
+  mcpsvc/confirm), so the Tier-1 scope is respected.
+  Other dirty paths (dataloader/loader.go + alias_stable_id_test.go,
+  mcpsvc/snapshot, retirement/*) belong to sibling X-run tasks per
+  X-RUN-SPEC.md territories and are expected per the brief.
+  Informational only (shared mid-edit tree, per ruling X-2026-08-29a):
+  `go build ./...` exit 0, `go vet ./...` exit 0 in the copy.
+  This task adds no Go code and no Go tests, so there is no worker-added test
+  whose name-vs-assertion honesty could be audited; the script's behaviour was
+  established by the 25 plant/revert experiments above, each with a control.

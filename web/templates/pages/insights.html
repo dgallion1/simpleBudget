@@ -1,4 +1,5 @@
 {{define "insights-content"}}
+<h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100 mb-4">Insights</h1>
 <div id="insights-wrapper" class="space-y-6">
     <!-- Date Range Selector -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
@@ -6,8 +7,8 @@
               class="flex flex-wrap items-center gap-4">
 
             <div class="flex items-center space-x-2">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">From:</label>
-                <input type="date" name="start" value="{{.StartDate}}"
+                <label for="insights-date-start" class="text-sm font-medium text-gray-700 dark:text-gray-300">From:</label>
+                <input type="date" id="insights-date-start" name="start" value="{{.StartDate}}"
                        min="{{.MinDate}}" max="{{.MaxDate}}"
                        oninput="document.querySelector('input[name=preset]').value=''"
                        hx-get="/insights" hx-target="#insights-wrapper" hx-select="#insights-wrapper"
@@ -17,8 +18,8 @@
             </div>
 
             <div class="flex items-center space-x-2">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">To:</label>
-                <input type="date" name="end" value="{{.EndDate}}"
+                <label for="insights-date-end" class="text-sm font-medium text-gray-700 dark:text-gray-300">To:</label>
+                <input type="date" id="insights-date-end" name="end" value="{{.EndDate}}"
                        min="{{.MinDate}}" max="{{.MaxDate}}"
                        oninput="document.querySelector('input[name=preset]').value=''"
                        hx-get="/insights" hx-target="#insights-wrapper" hx-select="#insights-wrapper"
@@ -30,7 +31,7 @@
             <!-- Quick presets -->
             <input type="hidden" name="preset" value="{{.Preset}}">
             <div class="flex items-center space-x-2 ml-auto">
-                <span class="text-sm text-gray-500 dark:text-gray-400">Quick:</span>
+                <span class="text-sm text-gray-600 dark:text-gray-400">Quick:</span>
                 <button type="button" onclick="shiftInsightWindow(-1)" title="Shift window backward" aria-label="Shift window backward"
                         class="min-w-[2rem] px-1.5 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -184,9 +185,9 @@
         <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Daily Spending</p>
-                    <p class="num text-2xl font-bold text-gray-400 dark:text-gray-500">$0.00</p>
-                    <p class="text-xs text-gray-400 dark:text-gray-500">No data</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Daily Spending</p>
+                    <p class="num text-2xl font-bold text-gray-500 dark:text-gray-400">$0.00</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">No data</p>
                 </div>
                 <div class="p-3 bg-gray-100 dark:bg-gray-700 rounded-full">
                     <svg class="w-6 h-6 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -217,9 +218,9 @@
         <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Month Projection</p>
-                    <p class="num text-2xl font-bold text-gray-400 dark:text-gray-500">$0.00</p>
-                    <p class="text-xs text-gray-400 dark:text-gray-500">No data</p>
+                    <p class="text-[10px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Month Projection</p>
+                    <p class="num text-2xl font-bold text-gray-500 dark:text-gray-400">$0.00</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">No data</p>
                 </div>
                 <div class="p-3 bg-gray-100 dark:bg-gray-700 rounded-full">
                     <svg class="w-6 h-6 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -234,13 +235,13 @@
     <!-- Subscriptions -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
         <div class="p-4 border-b dark:border-gray-700 flex items-center justify-between">
-            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
+            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
                 <svg class="w-5 h-5 mr-2 text-rose-500 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
                 </svg>
                 Subscriptions
-            </h3>
-            <span class="text-sm text-gray-500 dark:text-gray-400">{{len .Insights.Subscriptions}} active &middot; {{formatMoney .Insights.MonthlySubscriptions}}/mo</span>
+            </h2>
+            <span class="text-sm text-gray-600 dark:text-gray-400">{{len .Insights.Subscriptions}} active &middot; {{formatMoney .Insights.MonthlySubscriptions}}/mo</span>
         </div>
         <div class="overflow-y-auto max-h-80">
             {{if .Insights.Subscriptions}}
@@ -258,7 +259,7 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                                 </svg>
                             </div>
-                            <p class="text-xs text-gray-400 dark:text-gray-500">
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
                                     {{if eq .Frequency "monthly"}}bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300
                                     {{else if eq .Frequency "yearly"}}bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300
@@ -271,13 +272,13 @@
                     </div>
                     <div class="text-right flex-shrink-0 ml-2">
                         <p class="text-sm font-semibold text-rose-600 dark:text-rose-400">{{formatMoney .Amount}}</p>
-                        <p class="text-xs text-gray-400 dark:text-gray-500">{{formatMoney .AnnualCost}}/yr</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">{{formatMoney .AnnualCost}}/yr</p>
                     </div>
                 </div>
                 {{end}}
             </div>
             {{else}}
-            <div class="p-8 text-center text-gray-500 dark:text-gray-400">
+            <div class="p-8 text-center text-gray-600 dark:text-gray-400">
                 <svg class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
                 </svg>
@@ -293,32 +294,32 @@
         <!-- Recurring Payments (Bills) -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
             <div class="p-4 border-b dark:border-gray-700 flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
+                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
                     <svg class="w-5 h-5 mr-2 text-purple-500 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                     </svg>
                     Bills & Recurring
-                </h3>
-                <span class="text-sm text-gray-500 dark:text-gray-400">{{len .Insights.RecurringPayments}} detected</span>
+                </h2>
+                <span class="text-sm text-gray-600 dark:text-gray-400">{{len .Insights.RecurringPayments}} detected</span>
             </div>
             <div class="overflow-y-auto max-h-96">
                 {{if .Insights.RecurringPayments}}
                 <table id="recurring-payments-table" class="w-full">
                     <thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
                         <tr>
-                            <th class="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('description')" data-sort="description">
+                            <th class="text-left p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('description')" data-sort="description">
                                 <span class="flex items-center gap-1">Description <span class="sort-icon" data-col="description"></span></span>
                             </th>
-                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('amount')" data-sort="amount">
+                            <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('amount')" data-sort="amount">
                                 <span class="flex items-center justify-end gap-1">Amount <span class="sort-icon" data-col="amount"></span></span>
                             </th>
-                            <th class="text-center p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('frequency')" data-sort="frequency">
+                            <th class="text-center p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('frequency')" data-sort="frequency">
                                 <span class="flex items-center justify-center gap-1">Freq <span class="sort-icon" data-col="frequency"></span></span>
                             </th>
-                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('monthly')" data-sort="monthly">
+                            <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('monthly')" data-sort="monthly">
                                 <span class="flex items-center justify-end gap-1">Monthly <span class="sort-icon" data-col="monthly"></span></span>
                             </th>
-                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('annual')" data-sort="annual">
+                            <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('annual')" data-sort="annual">
                                 <span class="flex items-center justify-end gap-1">Annual <span class="sort-icon" data-col="annual"></span></span>
                             </th>
                         </tr>
@@ -333,7 +334,7 @@
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                                     </svg>
                                 </div>
-                                <div class="text-xs text-gray-400 dark:text-gray-500">Next: {{formatDate .NextExpected}}</div>
+                                <div class="text-xs text-gray-500 dark:text-gray-400">Next: {{formatDate .NextExpected}}</div>
                             </td>
                             <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .Amount}}</td>
                             <td class="p-3 text-center">
@@ -354,7 +355,7 @@
                     </tbody>
                 </table>
                 {{else}}
-                <div class="p-8 text-center text-gray-500 dark:text-gray-400">
+                <div class="p-8 text-center text-gray-600 dark:text-gray-400">
                     <svg class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
@@ -368,23 +369,23 @@
         <!-- Income Patterns -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
             <div class="p-4 border-b dark:border-gray-700 flex items-center justify-between">
-                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
+                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
                     <svg class="w-5 h-5 mr-2 text-emerald-500 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
                     Income Sources
-                </h3>
-                <span class="text-sm text-gray-500 dark:text-gray-400">{{len .Insights.IncomePatterns}} sources</span>
+                </h2>
+                <span class="text-sm text-gray-600 dark:text-gray-400">{{len .Insights.IncomePatterns}} sources</span>
             </div>
             <div class="overflow-y-auto max-h-96">
                 {{if .Insights.IncomePatterns}}
                 <table class="w-full">
                     <thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
                         <tr>
-                            <th class="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Source</th>
-                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Avg</th>
-                            <th class="text-center p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Freq</th>
-                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Total</th>
+                            <th class="text-left p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Source</th>
+                            <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Avg</th>
+                            <th class="text-center p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Freq</th>
+                            <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Total</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -397,7 +398,7 @@
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                                     </svg>
                                 </div>
-                                <div class="text-xs text-gray-400 dark:text-gray-500">{{.Occurrences}} occurrences</div>
+                                <div class="text-xs text-gray-500 dark:text-gray-400">{{.Occurrences}} occurrences</div>
                             </td>
                             <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .AvgAmount}}</td>
                             <td class="p-3 text-center">
@@ -412,7 +413,7 @@
                     </tbody>
                 </table>
                 {{else}}
-                <div class="p-8 text-center text-gray-500 dark:text-gray-400">
+                <div class="p-8 text-center text-gray-600 dark:text-gray-400">
                     <svg class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
@@ -427,13 +428,13 @@
     <!-- Category Trends -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
         <div class="p-4 border-b dark:border-gray-700">
-            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
+            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
                 <svg class="w-5 h-5 mr-2 text-indigo-500 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
                 </svg>
                 Category Spending Trends
-                <span class="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">(vs previous period)</span>
-            </h3>
+                <span class="ml-2 text-sm font-normal text-gray-600 dark:text-gray-400">(vs previous period)</span>
+            </h2>
         </div>
 
         <!-- Chart -->
@@ -441,7 +442,7 @@
              hx-get="/insights/trends/chart?start={{.StartDate}}&end={{.EndDate}}"
              hx-trigger="load"
              hx-swap="none">
-            <div class="flex items-center justify-center h-64 text-gray-400 dark:text-gray-500">
+            <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
                 Loading chart...
             </div>
         </div>
@@ -453,16 +454,16 @@
                 <table id="category-trends-table" class="w-full">
                     <thead class="bg-gray-50 dark:bg-gray-900">
                         <tr>
-                            <th class="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('category')" data-sort="category">
+                            <th class="text-left p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('category')" data-sort="category">
                                 <span class="flex items-center gap-1">Category <span class="sort-icon" data-col="category"></span></span>
                             </th>
-                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('current')" data-sort="current">
+                            <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('current')" data-sort="current">
                                 <span class="flex items-center justify-end gap-1">Current <span class="sort-icon" data-col="current"></span></span>
                             </th>
-                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('previous')" data-sort="previous">
+                            <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('previous')" data-sort="previous">
                                 <span class="flex items-center justify-end gap-1">Previous <span class="sort-icon" data-col="previous"></span></span>
                             </th>
-                            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('change')" data-sort="change">
+                            <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('change')" data-sort="change">
                                 <span class="flex items-center justify-end gap-1">Change <span class="sort-icon" data-col="change"></span></span>
                             </th>
                         </tr>
@@ -479,12 +480,12 @@
                                 </div>
                             </td>
                             <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .CurrentAmount}}</td>
-                            <td class="p-3 text-sm text-right text-gray-500 dark:text-gray-400">{{formatMoney .PreviousAmount}}</td>
+                            <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">{{formatMoney .PreviousAmount}}</td>
                             <td class="p-3 text-sm text-right">
                                 <span class="inline-flex items-center
                                     {{if eq .Direction "up"}}text-rose-600 dark:text-rose-400
                                     {{else if eq .Direction "down"}}text-emerald-600 dark:text-emerald-400
-                                    {{else}}text-gray-500 dark:text-gray-400{{end}}">
+                                    {{else}}text-gray-600 dark:text-gray-400{{end}}">
                                     {{if eq .Direction "up"}}
                                     <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path>
@@ -515,36 +516,36 @@
     <!-- Spending Velocity Gauge -->
     {{with .Insights.Velocity}}
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4 flex items-center">
+        <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4 flex items-center">
             <svg class="w-5 h-5 mr-2 text-amber-500 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
             </svg>
             Spending Velocity
-        </h3>
+        </h2>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div class="text-center">
-                <p class="text-sm text-gray-500 dark:text-gray-400">Current Daily Avg</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Current Daily Avg</p>
                 <p class="text-3xl font-bold {{if lt .BurnRateChange 0.0}}text-emerald-600 dark:text-emerald-400{{else if gt .BurnRateChange 10.0}}text-rose-600 dark:text-rose-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
                     {{formatMoney .DailyAverage}}
                 </p>
             </div>
             <div class="text-center">
-                <p class="text-sm text-gray-500 dark:text-gray-400">Historical Daily Avg</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Historical Daily Avg</p>
                 <p class="text-3xl font-bold text-gray-600 dark:text-gray-300">{{formatMoney .HistoricalDaily}}</p>
             </div>
             <div class="text-center">
-                <p class="text-sm text-gray-500 dark:text-gray-400">Month Projection</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Month Projection</p>
                 <p class="text-3xl font-bold text-emerald-800 dark:text-emerald-200">{{formatMoney .MonthProjection}}</p>
             </div>
             <div class="text-center">
-                <p class="text-sm text-gray-500 dark:text-gray-400">Days Remaining</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Days Remaining</p>
                 <p class="text-3xl font-bold text-gray-800 dark:text-gray-100">{{.DaysRemaining}}</p>
             </div>
         </div>
 
         <!-- Burn Rate Indicator -->
         <div class="mt-6">
-            <div class="flex justify-between text-sm text-gray-500 dark:text-gray-400 mb-1">
+            <div class="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
                 <span>Burn Rate vs Historical</span>
                 <span class="{{if lt .BurnRateChange 0.0}}text-emerald-600 dark:text-emerald-400{{else if gt .BurnRateChange 10.0}}text-rose-600 dark:text-rose-400{{else}}text-amber-600 dark:text-amber-400{{end}}">
                     {{if gt .BurnRateChange 0.0}}+{{end}}{{printf "%.1f" .BurnRateChange}}%
@@ -567,7 +568,7 @@
                     style="width: {{if lt $pct -50.0}}0{{else if gt $pct 50.0}}100{{else}}{{printf "%.0f" (add 50 $pct)}}{{end}}%">
                 </div>
             </div>
-            <div class="flex justify-between text-xs text-gray-400 dark:text-gray-500 mt-1">
+            <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
                 <span>-50% (Under)</span>
                 <span>Average</span>
                 <span>+50% (Over)</span>
@@ -830,11 +831,11 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
     <table class="w-full">
         <thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
             <tr>
-                <th class="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Description</th>
-                <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Amount</th>
-                <th class="text-center p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Freq</th>
-                <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Monthly</th>
-                <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Annual</th>
+                <th class="text-left p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Description</th>
+                <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Amount</th>
+                <th class="text-center p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Freq</th>
+                <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Monthly</th>
+                <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Annual</th>
             </tr>
         </thead>
         <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -844,7 +845,7 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
                     <div class="flex items-center gap-1">
                         <span class="text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="{{.Description}}">{{if .MajorExpenseName}}{{.MajorExpenseName}}{{else}}{{.Description}}{{end}}</span>
                     </div>
-                    <div class="text-xs text-gray-400 dark:text-gray-500">Next: {{formatDate .NextExpected}}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">Next: {{formatDate .NextExpected}}</div>
                 </td>
                 <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .Amount}}</td>
                 <td class="p-3 text-center">
@@ -865,7 +866,7 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
         </tbody>
     </table>
     {{else}}
-    <div class="p-8 text-center text-gray-500 dark:text-gray-400">
+    <div class="p-8 text-center text-gray-600 dark:text-gray-400">
         No recurring payments detected.
     </div>
     {{end}}
@@ -876,16 +877,16 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
 <table id="category-trends-table" class="w-full">
     <thead class="bg-gray-50 dark:bg-gray-900">
         <tr>
-            <th class="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('category')" data-sort="category">
+            <th class="text-left p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('category')" data-sort="category">
                 <span class="flex items-center gap-1">Category <span class="sort-icon" data-col="category"></span></span>
             </th>
-            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('current')" data-sort="current">
+            <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('current')" data-sort="current">
                 <span class="flex items-center justify-end gap-1">Current <span class="sort-icon" data-col="current"></span></span>
             </th>
-            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('previous')" data-sort="previous">
+            <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('previous')" data-sort="previous">
                 <span class="flex items-center justify-end gap-1">Previous <span class="sort-icon" data-col="previous"></span></span>
             </th>
-            <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('change')" data-sort="change">
+            <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortTrendsTable('change')" data-sort="change">
                 <span class="flex items-center justify-end gap-1">Change <span class="sort-icon" data-col="change"></span></span>
             </th>
         </tr>
@@ -895,8 +896,8 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" data-category="{{.Category}}" data-current="{{.CurrentAmount}}" data-previous="{{.PreviousAmount}}" data-change="{{.ChangePercent}}">
             <td class="p-3 text-sm text-gray-800 dark:text-gray-200">{{.Category}}</td>
             <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .CurrentAmount}}</td>
-            <td class="p-3 text-sm text-right text-gray-500 dark:text-gray-400">{{formatMoney .PreviousAmount}}</td>
-            <td class="p-3 text-sm text-right {{if eq .Direction "up"}}text-rose-600 dark:text-rose-400{{else if eq .Direction "down"}}text-emerald-600 dark:text-emerald-400{{else}}text-gray-500 dark:text-gray-400{{end}}">
+            <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">{{formatMoney .PreviousAmount}}</td>
+            <td class="p-3 text-sm text-right {{if eq .Direction "up"}}text-rose-600 dark:text-rose-400{{else if eq .Direction "down"}}text-emerald-600 dark:text-emerald-400{{else}}text-gray-600 dark:text-gray-400{{end}}">
                 {{if gt .ChangePercent 0.0}}+{{end}}{{printf "%.1f" .ChangePercent}}%
             </td>
         </tr>
@@ -908,19 +909,19 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
 {{define "spending-velocity"}}
 <div class="grid grid-cols-4 gap-6">
     <div class="text-center">
-        <p class="text-sm text-gray-500 dark:text-gray-400">Current Daily Avg</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Current Daily Avg</p>
         <p class="text-3xl font-bold text-amber-600 dark:text-amber-400">{{formatMoney .Velocity.DailyAverage}}</p>
     </div>
     <div class="text-center">
-        <p class="text-sm text-gray-500 dark:text-gray-400">Historical Daily Avg</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Historical Daily Avg</p>
         <p class="text-3xl font-bold text-gray-600 dark:text-gray-300">{{formatMoney .Velocity.HistoricalDaily}}</p>
     </div>
     <div class="text-center">
-        <p class="text-sm text-gray-500 dark:text-gray-400">Month Projection</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Month Projection</p>
         <p class="text-3xl font-bold text-emerald-800 dark:text-emerald-200">{{formatMoney .Velocity.MonthProjection}}</p>
     </div>
     <div class="text-center">
-        <p class="text-sm text-gray-500 dark:text-gray-400">Days Remaining</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Days Remaining</p>
         <p class="text-3xl font-bold text-gray-800 dark:text-gray-100">{{.Velocity.DaysRemaining}}</p>
     </div>
 </div>
@@ -932,10 +933,10 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
     <table class="w-full">
         <thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
             <tr>
-                <th class="text-left p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Source</th>
-                <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Avg</th>
-                <th class="text-center p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Freq</th>
-                <th class="text-right p-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Total</th>
+                <th class="text-left p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Source</th>
+                <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Avg</th>
+                <th class="text-center p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Freq</th>
+                <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Total</th>
             </tr>
         </thead>
         <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -943,7 +944,7 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td class="p-3">
                     <div class="text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs">{{.Description}}</div>
-                    <div class="text-xs text-gray-400 dark:text-gray-500">{{.Occurrences}} occurrences</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{{.Occurrences}} occurrences</div>
                 </td>
                 <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .AvgAmount}}</td>
                 <td class="p-3 text-center">
@@ -958,7 +959,7 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
         </tbody>
     </table>
     {{else}}
-    <div class="p-8 text-center text-gray-500 dark:text-gray-400">
+    <div class="p-8 text-center text-gray-600 dark:text-gray-400">
         No income patterns detected.
     </div>
     {{end}}

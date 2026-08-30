@@ -13,7 +13,7 @@
             {{else}}
             <span class="num">{{printf "%.0f" $v.TrackedPercent}}%</span> of spending tracked
             {{if $v.UnmatchedCount}}
-            <span class="text-sm font-normal text-gray-500 dark:text-gray-400">— {{$v.UnmatchedCount}} txn{{if ne $v.UnmatchedCount 1}}s{{end}} unmatched</span>
+            <span class="text-sm font-normal text-gray-600 dark:text-gray-400">— {{$v.UnmatchedCount}} txn{{if ne $v.UnmatchedCount 1}}s{{end}} unmatched</span>
             {{end}}
             {{end}}
         </div>
@@ -22,12 +22,12 @@
     {{if $v.HasSpend}}
     <div class="flex items-center gap-6 ml-auto">
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Declared</div>
+            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Declared</div>
             <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{formatMoney $v.DeclaredTotal}}</div>
         </div>
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Unmatched</div>
-            <div class="num text-base font-bold {{if gt $v.UnmatchedTotal 0.0}}text-amber-600 dark:text-amber-400{{else}}text-gray-700 dark:text-gray-200{{end}}">{{formatMoney $v.UnmatchedTotal}}</div>
+            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Unmatched</div>
+            <div class="num text-base font-bold {{if gt $v.UnmatchedTotal 0.0}}text-amber-700 dark:text-amber-400{{else}}text-gray-700 dark:text-gray-200{{end}}">{{formatMoney $v.UnmatchedTotal}}</div>
         </div>
     </div>
     {{end}}

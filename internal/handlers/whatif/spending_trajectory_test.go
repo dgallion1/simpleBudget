@@ -275,7 +275,7 @@ func TestSpendingTrajectoryEndpoint_RendersRowsFromEngine(t *testing.T) {
 		t.Error("expected RMD cells marked with data-col=\"rmd\"")
 	}
 	// Withdrawal-rate coloring survives the rewrite.
-	if !strings.Contains(out, "text-green-600") && !strings.Contains(out, "text-amber-600") && !strings.Contains(out, "text-red-600") {
+	if !strings.Contains(out, "text-green-700") && !strings.Contains(out, "text-amber-600") && !strings.Contains(out, "text-red-600") {
 		t.Error("expected WR% color classes in rendered rows")
 	}
 }

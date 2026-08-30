@@ -3,8 +3,8 @@
 {{define "whatif-onetime-card"}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">One-Time Expenses</h3>
-        <span class="text-xs text-gray-400 dark:text-gray-500">Roof, car, wedding...</span>
+        <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">One-Time Expenses</h2>
+        <span class="text-xs text-gray-500 dark:text-gray-400">Roof, car, wedding...</span>
     </div>
 
     {{template "whatif-onetime-list" .}}
@@ -18,7 +18,7 @@
     {{range .Settings.OneTimeExpenses}}
     {{template "whatif-onetime-item" (dict "Settings" $.Settings "Item" .)}}
     {{else}}
-    <p class="text-sm text-gray-500 dark:text-gray-300 italic">No one-time expenses added</p>
+    <p class="text-sm text-gray-600 dark:text-gray-300 italic">No one-time expenses added</p>
     {{end}}
 </div>
 {{end}}
@@ -57,23 +57,23 @@
 <form hx-post="/whatif/onetime" hx-target="#whatif-results" hx-on::after-request="if(event.detail.successful) this.reset()"
     class="space-y-2 border-t dark:border-gray-700 pt-3">
     <div>
-        <label for="onetime-description" class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Description</label>
+        <label for="onetime-description" class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Description</label>
         <input type="text" id="onetime-description" name="description" placeholder="e.g., New Roof"
             class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" required>
     </div>
     <div class="grid grid-cols-2 gap-2">
         <div>
-            <label for="onetime-year" class="block text-xs text-gray-500 dark:text-gray-300 mb-1">
+            <label for="onetime-year" class="block text-xs text-gray-600 dark:text-gray-300 mb-1">
                 Projection year (0 = {{if .Settings.StartDate}}{{startYear .Settings.StartDate}}{{else}}first year{{end}})
             </label>
             <input type="number" id="onetime-year" name="year"
                 class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0" max="99">
         </div>
         <div>
-            <label for="onetime-amount" class="block text-xs text-gray-500 dark:text-gray-300 mb-1">Amount (today's dollars)</label>
+            <label for="onetime-amount" class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Amount (today's dollars)</label>
             <div class="relative">
                 <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
-                    <span class="text-gray-500 dark:text-gray-400 text-sm">$</span>
+                    <span class="text-gray-600 dark:text-gray-400 text-sm">$</span>
                 </div>
                 <input type="number" id="onetime-amount" name="amount" placeholder="Amount"
                     class="pl-6 w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" min="0" required>

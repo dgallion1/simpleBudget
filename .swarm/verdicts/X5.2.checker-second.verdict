@@ -1,0 +1,98 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: X5
+ATTEMPT: 2
+---
+Reproduced in a scratch copy (cp -a, .git preserved), toolchain go1.26.6.
+Manifest (.swarm/manifests/X5.2.files) = loader.go + alias_stable_id_test.go,
+matches `git diff --stat HEAD -- internal/services/dataloader/` exactly (only
+loader.go modified; the test file is the only untracked dataloader file
+besides my own scratch probes) -- no undeclared touch.
+
+Fix mechanism verified by reading the code, not just re-running tests:
+SaveAlias now calls rekeyToStable(aliases, dl.stableIDIndex()) BEFORE
+computing key := dl.canonicalKey(hash) and before the set/delete, so the
+map is already canonical (StableID wins, at most one entry per row) by the
+time the caller's own key is resolved and applied. `git diff HEAD --
+loader.go` shows this is a structural reorder, not a patch on top of
+attempt 1's guard: the old `if key != hash { delete(aliases, hash) }`
+partial guard is gone entirely, replaced by the unconditional
+normalize-then-mutate sequence. Locking pattern (`tx, done :=
+dl.beginWrite(); defer done()`) is byte-identical to before -- confirmed
+unchanged.
+
+Attempt-1 defect, re-attacked and confirmed dead:
+- Exact attempt-1 probe rerun: {hash: "Legacy", stableID: "Stable name"},
+  SaveAlias(stableID, "") -> map EMPTY, and stays empty after a LoadData
+  reload cycle (TestProbeSecond_ResurrectRerun). Traced by hand too:
+  rekeyToStable sees the legacy hash resolves to the taken stable slot,
+  drops "Legacy" (StableID wins), leaving {stableID: "Stable name"}; then
+  canonicalKey(stableID) is a no-op and the delete lands on that same key
+  -> {}.
+- Order-of-operations edges, both directions:
+  - {hash: "Legacy"} only + SaveAlias(stableID, "") -> normalize creates
+    the stable slot first, delete still lands on it -> empty
+    (TestProbeSecond_RemoveByStableWithOnlyLegacyStaged).
+  - {stableID: "Stable name"} only + SaveAlias(hash, "") -> canonicalKey
+    resolves hash to stable, delete lands correctly -> empty
+    (TestProbeSecond_RemoveByHashWithOnlyStableStaged).
+- Unresolvable-key preservation under a REMOVAL specifically (oracle only
+  checks preservation under an add): {orphan, stableID} staged, remove by
+  hash -> orphan survives, exactly 1 entry left
+  (TestProbeSecond_UnresolvableKeyPreservedUnderRemoval). Independently
+  reconfirms TestOracleX5UnresolvableLegacyKeyPreserved's add-side case too.
+- SaveAlias("", "") -> no "" key materializes, 0 entries.
+  SaveAlias("", "orphan-name") -> "" key DOES materialize (same as
+  attempt-1's tolerated behavior) but stays inert: a subsequent LoadData
+  never applies it to the real row, matching ResolveByIdentity's non-empty
+  key guards (TestProbeSecond_EmptyKeySaves). No regression from attempt 1.
+- Concurrent hammer: 20 goroutines alternating SaveAlias(hash/stableID,
+  name-i) with 20 concurrent LoadData calls, `-race`, no data race, final
+  state has at most 1 surviving entry, always filed under hash or stableID
+  (TestProbeSecond_ConcurrentSaveAliasLoadDataHammer). Locking claim holds.
+
+Novel finding, investigated and ruled NOT a defect in this task (documented
+for the record, not held against the verdict): rekeyToStable's own
+collision-resolution loop is order-dependent when TWO DIFFERENT legacy hash
+keys in the same map both resolve, via the index, to the SAME StableID --
+which of the two colliding values survives depends on Go's randomized map
+iteration order (confirmed nondeterministic: 173/27 split over 200 runs
+calling the unexported rekeyToStable directly with a hand-built {hashA,
+hashB} -> same-stableID index). Traced whether this is reachable through
+SaveAlias's real code path and it is not: all 4 production call sites
+(loader.go, amazon_enrichment.go, transaction_pins.go feed
+dl.stableIDIndex(); duplicate_decisions.go feeds a different pair-key
+index) read only dl.stableByHash, which is written exclusively by
+`dl.setStableIndex(nil)` or `dl.setStableIndex(assignStableIDs(allTransactions))`
+-- never merged or accumulated across loads. assignStableIDs assigns each
+row's StableID from an occurrence counter keyed on (account-slot, date,
+cents) that increments per row processed regardless of hash, so two rows
+with DIFFERENT hashes in the same load structurally cannot land on the same
+StableID, and same-hash exact duplicates collapse to one index entry
+("first occurrence wins", documented in assignStableIDs' own comment). The
+index rekeyToStable is actually fed in production is therefore provably
+injective on Hash, so the ambiguous-winner precondition can never arise
+through SaveAlias, applyAliases, or LoadData -- only through directly
+calling the unexported helper with an index no loader code can produce.
+Per the bar the attempt-1 FAIL itself used ("reachable through the
+documented contract exactly as the method's own docstring says it should
+work"), this does not clear that bar and is not grounds for FAIL here.
+
+Oracle integrity: .swarm/tier3/X5/accept.sh has exactly 8 TestOracleX5*
+functions; oracle.2.log's RUN lines list the same 8 names 1:1 (oracle.1.log
+has only 5 -- the pre-strengthening version, consistent with the X5.1 FAIL
+having triggered the addition of the collision/resurrect/bystander tests).
+Reran accept.sh fresh in the copy -> ORACLE PASS, all 3 checks, ends
+"ORACLE PASS". No sign the worker edited the oracle (not in X5.2.files, and
+its content matches oracle.2.log exactly).
+
+Baseline: `go build ./...` clean; `go test ./...` (full repo, all packages)
+green despite shared W-run edits present in the tree; `go vet
+./internal/services/dataloader/...` clean; `go test -race -count=1
+./internal/services/dataloader/` clean (worker's + oracle's + my probe
+tests together, aside from my own out-of-scope synthetic probe above).
+
+No defect found in the claim under attack. Attempt-1's resurrect bug is
+killed by the reorder, in every shape I could construct through the actual
+SaveAlias contract.

@@ -1,0 +1,190 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: X7
+ATTEMPT: 1
+---
+Toolchain go1.26.6 (go version -> "go version go1.26.6 linux/amd64").
+All work done in a cp -a copy at
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/b2-x7
+(copy restored byte-identical to the real tree after every mutation; only
+real-tree write is this file). No .swarm/tier3/X7/accept.sh exists (ls
+.swarm/tier3 -> X5 is the only X-run oracle), so no oracle was run; X7 is
+tier 2, checks tests,second.
+
+C1 -- new tests pass by name; 400 asserted, body names the field, no-write
+     assertion checks PERSISTED state. PASS.
+  go test -count=1 -run 'TestHandleWhatIfApply_MissingExpectedScenarioIs400AndWritesNothing|TestHandleWhatIfApply_BlankExpectedScenarioIs400AndWritesNothing' -v ./internal/handlers/whatif/
+    --- PASS: TestHandleWhatIfApply_MissingExpectedScenarioIs400AndWritesNothing (0.00s)
+    --- PASS: TestHandleWhatIfApply_BlankExpectedScenarioIs400AndWritesNothing (0.00s)
+  Read internal/handlers/whatif/handlers_live_expected_scenario_test.go in
+  full (81 lines). Both tests: (a) status assert
+  `if resp.StatusCode != http.StatusBadRequest` (lines 32, 64); (b) body
+  assert `strings.Contains(string(body), "expected_scenario")` (lines 36,
+  68); (c) no-write assert reads back through
+  `rm.InvalidateCache(); after, _ := rm.Load()` and compares
+  `after.MonthlyLivingExpenses` to the pre-request value (lines 40-47,
+  72-79).
+  That read-back is on-disk state, not a cached object: settings.go:479
+  InvalidateCache sets `sm.cache = nil`, and LoadContext (settings.go:444-473)
+  falls through to `sm.loadInternalContext(ctx)` when cache is nil. Proven
+  empirically, not by inspection, in C2 mutation B below, where the same
+  read-back observed 4000 -> 9999 after a write was allowed through.
+  Rendered 400 body captured with a throwaway probe test (removed after the
+  run):
+    req={"monthly_living_expenses": 9999} -> status=400 body="expected_scenario is required: send the active scenario filename reported by GET /whatif/state's \"active\" field\n"
+    req={... "expected_scenario": "   "}  -> status=400 (same body)
+    req={... "expected_scenario": "\t\n"} -> status=400 (same body)  [tabs/newlines also trimmed]
+
+C2 -- bite-proof, redone by me. PASS (two independent mutations).
+  Mutation A (guard block deleted verbatim from handleWhatIfApply, plus the
+  now-unused "strings" import):
+    go test -count=1 -run 'TestHandleWhatIfApply_(Missing|Blank)ExpectedScenario' -v ./internal/handlers/whatif/
+      handlers_live_expected_scenario_test.go:33: status = 200, want 400
+      --- FAIL: TestHandleWhatIfApply_MissingExpectedScenarioIs400AndWritesNothing
+      handlers_live_expected_scenario_test.go:65: status = 409, want 400
+      --- FAIL: TestHandleWhatIfApply_BlankExpectedScenarioIs400AndWritesNothing
+  Mutation B (guard MOVED to after the ApplyOverrides call -- still returns
+  400, but after the write): this is the mutation that proves the no-write
+  assertion is load-bearing rather than decorative:
+      handlers_live_expected_scenario_test.go:46: a rejected apply still wrote: monthly_living_expenses 4000 -> 9999
+      --- FAIL: TestHandleWhatIfApply_MissingExpectedScenarioIs400AndWritesNothing
+      --- PASS: TestHandleWhatIfApply_BlankExpectedScenarioIs400AndWritesNothing
+    (the Blank case survives mutation B because "   " reaches ApplyOverrides'
+    own mismatch check and returns 409 before any write; the Missing case is
+    the one that carries the ordering guarantee.)
+  Restore: `cp <orig> handlers_live.go && cmp <copy>/internal/handlers/whatif/handlers_live.go /home/darrell/bin/ai/budget2/internal/handlers/whatif/handlers_live.go`
+    -> RESTORED_IDENTICAL_TO_REAL_TREE (cmp silent, exit 0).
+
+C3 -- ordering: guard runs before ANY state change. PASS.
+  Read handleWhatIfApply (handlers_live.go:82-129). Sequence is exactly:
+    82-86  nil-manager check (returns 500; reads a package var, mutates nothing)
+    88-94  json.NewDecoder(r.Body).DisallowUnknownFields().Decode(&req)
+    96-100 the new guard: strings.TrimSpace(req.ExpectedScenario) == "" -> 400 + return
+    102    retirementMgr.ApplyOverrides(...)   <- first call that can load or write
+  Nothing between the decode and the guard touches the manager, the cache or
+  the disk. Confirmed dynamically by mutation B: with the guard placed one
+  statement later, the persisted value changed (4000 -> 9999), i.e. the
+  current placement is the only one that satisfies the test.
+
+C4 -- 409 path / ApplyOverrides untouched beyond X2's Clone hunks. PASS.
+  `git diff -U0 master -- internal/services/retirement/settings.go` piped
+  through a filter that drops comment lines and every Clone-conversion line
+  (return settings, nil / return settings, sm.revision, nil /
+  return updated, sm.filename... -> prepare.Clone + cloned/err scaffolding)
+  produced EMPTY output: every changed line in settings.go is either a
+  comment or an X2 Clone conversion.
+  Function-level proof for ApplyOverrides specifically: extracted the whole
+  body from `git show master:...settings.go` and from the branch file and
+  diffed them (python difflib). The ONLY hunk is the terminal return:
+    -	return updated, sm.filename, sm.revision, nil
+    +	cloned, err := prepare.Clone(updated)
+    +	if err != nil { return nil, "", 0, err }
+    +	return cloned, sm.filename, sm.revision, nil
+  Both ScenarioConflictError branches (settings.go:1166-1171 pre-load and
+  1180-1184 post-load) and the `expectedScenario != ""` semantics are
+  byte-identical to master.
+  Existing mismatch test still green:
+    go test -count=1 -v -run TestHandleWhatIfApply_MismatchedExpectedScenarioIs409AndWritesNothing ./internal/handlers/whatif/
+      --- PASS: TestHandleWhatIfApply_MismatchedExpectedScenarioIs409AndWritesNothing (0.00s)
+    (also --- PASS: TestHandleWhatIfApply_MatchingExpectedScenarioIsAccepted)
+
+C5 -- the five patched tests still test their subjects. PASS.
+  All five green:
+    --- PASS: TestHandleWhatIfApply_PersistsAndBumpsRevision
+    --- PASS: TestHandleWhatIfApply_PositiveRothAmountLeavesConversionsEnabled
+    --- PASS: TestHandleWhatIfApply_ZeroRothAmountDisablesConversions
+    --- PASS: TestHandleWhatIfApply_SpouseClaimAgeLeavesSocialSecurityIntact
+    --- PASS: TestHandleWhatIfApply_RejectsUnwritableAndInvalid (+4 subtests)
+  Read the two named ones. ZeroRothAmountDisablesConversions
+  (handlers_live_test.go:134-159): the added field is
+  `fmt.Sprintf(..., rm.ActiveFilename())` on the SAME manager the handler was
+  wired to, so the request proceeds past the guard and past the 409 check;
+  its real subject -- the assertion at 156-158 that amount 0 disables
+  conversions, read back after InvalidateCache -- still executes.
+  RejectsUnwritableAndInvalid (201-222): the table now carries `%q` bodies
+  formatted with rm.ActiveFilename() at line 212; each subtest still asserts
+  400 AND that the body names its own field (tc.wantIn at 217), so a 400
+  coming from the new guard instead of from validation would fail the body
+  check.
+  Proved the field value is genuinely the ACTIVE scenario rather than any
+  non-empty filler: replaced all 7 `rm.ActiveFilename()` with
+  "not-the-active-scenario.json" and re-ran ->
+    handlers_live_test.go:70/113/148/179: status = 409  (4 tests FAIL)
+    RejectsUnwritableAndInvalid/absurd_return, /claim_age: status = 409, want 400  (FAIL)
+  i.e. the value is load-bearing and correct. (healthcare_inflation and
+  roth_window_only still pass under that mutation because
+  overrides.ValidateWritable runs at settings.go:1156, before the lock and
+  the scenario comparison -- their subjects are unaffected either way.)
+  File restored: cmp handlers_live_test.go against the real tree -> identical.
+
+C6 -- caller citation. PASS (with a factual clarification, see FINDING 2).
+  Read internal/services/mcpsvc/plan/register.go:195-244 myself. Lines
+  212-215 are verbatim:
+      expected := in.Scenario
+      if expected == "" {
+          expected = deps.Settings.ActiveFilename()
+      }
+  ActiveFilename (settings.go:1830-1834) returns sm.filename, which
+  NewSettingsManager initialises to defaultWhatIfFilename (settings.go:131)
+  and SwitchScenario only ever sets to a validated existing file -- so the
+  fallback cannot yield "". The citation in the brief is accurate.
+    go test -count=1 ./internal/services/mcpsvc/plan/
+      ok  	budget2/internal/services/mcpsvc/plan	4.342s
+
+C7 -- vet/test/build. PASS.
+    go vet ./internal/handlers/whatif/            -> VET_CLEAN (no output)
+    go test -count=1 ./internal/handlers/whatif/  -> ok  budget2/internal/handlers/whatif  0.061s
+    go build ./...                                -> BUILD_OK
+    go test -count=1 ./...                        -> GO_TEST_EXIT=0, 49 packages "ok", zero FAIL lines
+  Composite target (per house rule, not just build+test):
+    make check   (vet static vuln css-verify test, test target uses -count=1)
+      -> MAKE_CHECK_EXIT=0, final line "✓ all checks passed"
+
+C8 -- scope. PASS for X7.
+  git status --porcelain in the copy, reconciled in python against the union
+  of .swarm/manifests/X*.files:
+    X7 manifest files present in changed set: all three
+      internal/handlers/whatif/handlers_live.go
+      internal/handlers/whatif/handlers_live_test.go
+      internal/handlers/whatif/handlers_live_expected_scenario_test.go (untracked/new)
+    X7 files claimed by another manifest too: [] (no overlap)
+  numstat for the two tracked X7 files: 16/3 in handlers_live.go, 10/10 in
+  handlers_live_test.go. Every changed line in handlers_live_test.go printed
+  with `git diff -U0` and inspected: 7 ActiveFilename insertions, the
+  `_, cleanup` -> `rm, cleanup` binding, nothing else. handlers_live.go: the
+  guard, the doc-comment updates, the "strings" import.
+  critical.globs: none of the three X7 paths matches any glob (checked with
+  fnmatch against .swarm/critical.globs -> no-match for all three).
+  Not attributed to X7, per the brief: handlers_test.go is X6.1's manifest;
+  spending_trajectory_test.go / templates/render.go / web/templates/** /
+  tailwind.config.js are X8.1's; settings.go + settings_*_test.go are X2's;
+  dataloader/** X5's; snapshot_test.go X1's; overrides/overrides.go X3's;
+  swarm/t7-coverage.sh X4's.
+
+FINDINGS (not X7 failures -- for the lead's backlog):
+  F1 (scope hygiene, ties to C8). Two files are modified in the working tree
+    and appear in NO X-run manifest:
+      internal/services/mcpsvc/plan/overrides.go        (numstat 2/2)
+      internal/services/retirement/prepare/prepare.go   (numstat 3/2)
+    Both diffs are COMMENT-ONLY (verified by reading the full raw diff: they
+    reword the DeepCopy/PerYearOverrides narrative to match X3's/X2's
+    Clone conversion; no statement changes). They are not X7's files and I do
+    not attribute them; they look like X2/X3 spill that was never added to
+    those manifests.
+  F2 (accuracy of the brief's C6 phrasing, not a defect in the code).
+    apply_changes calls deps.Settings.ApplyOverrides IN-PROCESS
+    (register.go:236); it does not go through POST /whatif/apply. Grepping
+    web/, cmd/ and all *.go for "whatif/apply" finds only the route
+    registration (handlers.go:851) and the test helper -- there is no
+    in-repo HTTP client of the endpoint at all (consistent with
+    docs/superpowers/specs/2026-08-12-app-wide-mcp-design.md:83, "retained
+    without a consumer"). So the new 400 cannot break a live caller, which is
+    the substance of the criterion and is satisfied; but apply_changes is a
+    caller of ApplyOverrides, not of the guarded endpoint.
+  F3 (residual, by design of this task's scope). ApplyOverrides itself still
+    treats expectedScenario == "" as "no expectation" (settings.go:1166,
+    unchanged from master). The requirement now lives only in the HTTP
+    handler, so any future in-process caller that passes "" still gets an
+    unguarded write. The brief explicitly scopes ApplyOverrides as untouched,
+    so this is a note, not a miss.

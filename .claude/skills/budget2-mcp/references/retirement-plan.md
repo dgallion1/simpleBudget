@@ -36,6 +36,23 @@ fields keep the scenario's value.
 
 Params: `scenario`, `overrides`.
 
+### Spending phases multiply living expenses — the #1 "numbers don't match" trap
+
+`monthly_living_expenses` (in the scenario file, the UI slider, and the
+`overrides` field) is the **pre-phase base**. When the scenario has
+`spending_phase_config.enabled`, every figure the engine reports —
+`get_analysis`'s `budget.monthly_expenses`, the what-if page's Monthly
+Budget Analysis, the dashboard's budget **target** — uses base × the
+active phase multiplier (e.g. Go-Go ×1.1 now, Slow-Go ×0.9 at 70, keyed
+to `phase_age_reference`). So a $7,386 base legitimately reports as
+$8,124.60/mo of living expense today. Before telling the user two
+living-expense numbers disagree, check the phase config; before setting
+`monthly_living_expenses` via `run_scenario`/`apply_changes`, remember the
+engine will spend multiplier × your value, not your value. (Since
+2026-08-29 the UI breaks this out — sub-rows in the budget panel, a note
+under the slider, provenance on the dashboard target — quote those rather
+than re-deriving.)
+
 ### overrides fields worth knowing the gotchas for
 
 Most `overrides` fields are self-explanatory scalars (`monthly_living_expenses`,

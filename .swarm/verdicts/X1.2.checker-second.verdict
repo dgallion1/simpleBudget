@@ -1,0 +1,99 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: X1
+ATTEMPT: 2
+---
+Scope: internal/services/mcpsvc/snapshot/snapshot_test.go (manifest .swarm/manifests/X1.2.files, single file). Verified in a scratch copy at /tmp/claude-1000/.../scratchpad/x1-check/budget2 (repo copied with `cp -a`, kept .git, worked entirely in the copy; only real-tree write is this verdict file).
+
+TECHNICAL CONSTRUCTION OF THE NEW TEST — SOUND
+1. TestSnapshotter_FailsWhenSourceMissing is an honest rename of the old
+   TestSnapshotter_FailsWhenSourceUnreadable (git diff confirms body
+   unchanged, only the name and doc reference moved).
+2. EISDIR-as-proxy-for-unreadable does NOT short-circuit on a different
+   branch than a genuine unreadable regular file. Empirically confirmed
+   (small probe program + read of os/file.go semantics): os.Open succeeds on
+   a directory; the failure happens inside the subsequent Read(), which is
+   exactly the call os.ReadFile(src) makes inside Ensure. Ensure calls
+   `data, err := os.ReadFile(src)` as a single unit — whether the underlying
+   failure is EACCES-on-Open (chmod 0000) or EISDIR-on-Read (directory), the
+   err != nil branch taken in Ensure is identical, and no different earlier
+   branch exists. The "short-circuits earlier" attack does not hold.
+3. No-leak assertion is a real assertion, not decorative: mutation-tested
+   two ways in the sandbox and reverted after each:
+   a. Swallow the read error and proceed with empty data → new test fails
+      with "expected an error for an unreadable source file" (confirms it
+      checks err, not just byte content).
+   b. Reorder Ensure to touch/write the destination file before reading the
+      source, so a read failure now leaves a stray .bak behind → new test
+      fails with "snapshot dir should still be empty after a failed read,
+      found: [... .bak]" (confirms the leak check is live against the real
+      snapshotDir, not a stale/empty-by-construction assertion).
+   Both mutations reverted; diff against pre-mutation snapshot.go confirmed
+   clean (`diff` exit 0) before re-running the full suite.
+4. Error-naming assertion verified against the real produced message:
+   "cannot snapshot whatif.json before writing: read
+   .../whatif.json: is a directory" — contains "whatif.json" as claimed.
+5. Baseline green: `go build ./...` clean; `go test -count=1 ./...` full
+   suite green (all packages ok, including
+   budget2/internal/services/mcpsvc/snapshot); `go test -count=1 -v
+   ./internal/services/mcpsvc/snapshot/...` green, both old and new
+   subtests present and passing. Toolchain go1.26.6 confirmed
+   (`go version`).
+6. Uncommitted files outside the manifest (dataloader/loader.go,
+   retirement/overrides.go, retirement/settings*.go,
+   dataloader/alias_stable_id_test.go, swarm/t7-coverage.sh, ledger.tsv,
+   X2-X5 manifests, X5 tier3 dir) are sibling-task X2-X5 artifacts per the
+   dispatch note — not attributed to X1, not touched, not counted against
+   this verdict.
+
+DEFECT FOUND — fabricated citation used to justify the new test
+The new test's doc comment claims it "covers the case Ensure's doc comment
+gives as the reason it reads bytes instead of hard-linking: if the store is
+encrypted in a directory this MCP doesn't know is encrypted, a blind copy of
+unreadable ciphertext must still fail loudly rather than silently
+'succeeding' with a useless backup (docs/whatif-mcp-followups-2026-08-09.md
+§3)." I read that document directly (in the scratch copy). §3
+("Data-directory resolution") is about two unrelated bugs: (a) cmd/whatif-mcp
+detecting the `.encrypted` marker in the wrong directory, causing a JSON
+parse error instead of a "storage is locked" message, and (b)
+BUDGET_DATA_DIR not being honored. Neither sub-point says or implies anything
+about os.ReadFile aborting on an unreadable source, and neither is about the
+snapshot package at all. This citation does not support the claim it is
+attached to — it is fabricated provenance.
+
+Worse, the rationale is also internally contradicted by the very
+snapshot.go doc comment it claims to be summarizing. Ensure's own comment
+(lines 47-50) says: "It copies the file's raw bytes with os.ReadFile rather
+than hard-linking it... When the store is encrypted the bytes are
+ciphertext, which is what a hand-restore back into that same store needs."
+That is: an encrypted source file is NOT an unreadable-source case at all —
+os.ReadFile happily reads ciphertext bytes; that's the documented reason
+Ensure copies raw bytes instead of decrypting. The new test's comment
+conflates "encrypted" with "unreadable," inventing a scenario (encrypted →
+read failure) that contradicts the code comment sitting eleven lines above
+it in the same package.
+
+The technical test itself (directory-as-source, EISDIR) is a legitimate,
+mutation-verified proxy for "source cannot be read," and would have been
+sound on its own steam citing Ensure's actual missing-file-must-abort
+guarantee (lines 52-54: "A missing source file is an error, and the caller
+must abort its write on it... every caller snapshots BEFORE writing
+precisely so that a failure here prevents an unrecoverable change") extended
+naturally to any read failure. It did not need the encryption tie-in at all.
+But as committed, the comment attaches a false documentary citation and a
+factually wrong rationale to an otherwise-correct test. A maintainer trusting
+this comment would misunderstand both what docs/whatif-mcp-followups-2026-08-
+09.md actually says and what Ensure actually guarantees about encrypted
+stores. Given this task's own framing turns on the rename being done
+"honestly," a fabricated/contradicted citation in the new test's justification
+is exactly the kind of defect this lane exists to catch, and defaults to FAIL
+on the ambiguity of whether "honest" test provenance was maintained.
+
+VERDICT: FAIL — technical assertions in the new test are correct and
+mutation-verified, but its doc comment cites docs/whatif-mcp-followups-
+2026-08-09.md §3 for a claim that document does not make, and states a
+rationale (encrypted-store bytes are "unreadable") that directly contradicts
+Ensure's own neighboring doc comment. Recommend: strip the §3 citation and
+the encryption tie-in, and ground the comment in Ensure's actual
+missing-source-must-abort guarantee instead.

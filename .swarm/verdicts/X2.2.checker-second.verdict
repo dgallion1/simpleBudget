@@ -1,0 +1,92 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: X2
+ATTEMPT: 2
+---
+Isolated cp -a copy at /tmp/claude-1000/.../scratchpad/x2check/budget2 (+ five
+disposable mutation copies), go1.26.6, .git preserved. Re-verified my own
+X2.1 PASS is still sound (that attempt's defect was found by checker-tests,
+not by me: the len(Persons)==0 guard was vacuous because
+DefaultWhatIfSettings() also populates Persons — confirmed by reading
+X2.1.checker-tests.verdict). Attacked attempt 2's fix directly:
+
+1. Seed-guard genuinely seeded-only (not re-vacuated).
+   - Traced DefaultWhatIfSettings (models/whatif.go:786-802): PortfolioValue
+     0, CurrentAge 65 (fixed constant, never 62/500000).
+   - Traced decodeSettings -> normalizeLoadedWhatIfSettings -> ComputeAges ->
+     DeriveAgeAtStartDate (whatif.go:263-276): pure string-date arithmetic,
+     no time.Now() anywhere in the path -> CurrentAge==62 is NOT
+     clock-dependent (StartDate "2024-01" is a literal in the test, so
+     BirthMonthForAge/DeriveAgeAtStartDate produce 62 forever, not just today).
+   - Deleted the seed block only (settings_test.go legacy:=[]byte(...) +
+     WriteFile, in a throwaway copy): test FAILS —
+     "seed file was not decoded: PortfolioValue = 0, want 500000" — proves
+     the guard is not vacuous.
+   - Corrupted the seed JSON (invalid trailing commas) in a second throwaway
+     copy: test FAILS LOUDLY — "second Load: invalid character ','..." — it
+     does NOT silently fall through to the defaults path and pass. Confirmed
+     against source: decodeSettings's json.Unmarshal error propagates through
+     loadInternalContext (returns DefaultWhatIfSettings()+err, not nil-err)
+     and LoadContext (`if err != nil { return nil, err }`), so sm.Load()
+     returns a non-nil error and the test's own `t.Fatalf("second Load: %v",
+     err)` fires.
+   - No path found where defaults or empty-file migration produce 500000 or
+     62; empty-file takes the os.IsNotExist branch straight to
+     DefaultWhatIfSettings(), never through decodeSettings at all.
+
+2. 3-mutator table (settings_load_copy_test.go:278-394) reaches nested
+   state, not just top-level scalars.
+   - AddIncomeSource case mutates result.IncomeSources[0].Name (slice
+     element field).
+   - AddBigTicketItem case mutates result.BigTicketItems[0].Amount (slice
+     element field).
+   - UpdateSpendingPhases case mutates BOTH SpendingPhaseConfig.Enabled (ptr
+     field) and SpendingPhaseConfig.Phases[0].Multiplier (slice element
+     behind a pointer) in one subtest.
+   - Mutation-tested all three independently in separate throwaway copies:
+     reverted AddBigTicketItem's `return prepare.Clone(settings)` to `return
+     settings, nil` -> only the AddBigTicketItem subtest fails (others still
+     PASS); same for UpdateSpendingPhases (only that subtest fails, message
+     cites SpendingPhaseConfig.Enaled leak). Each subtest is a real,
+     independent guard on its own mutator, not a shared/tautological one.
+   - RothConversion.PerYearOverrides map itself isn't in this specific table
+     (it's covered by the separate, pre-existing
+     TestLoadReturnsAPrivateCopy/TestCloneCarriesEveryJSONOmittedField, per
+     my X2.1 verdict) — the task text (.swarm/X-RUN-SPEC.md X2) only requires
+     "a test that mutates a mutator's return value" (singular); three
+     independent, nested-reaching subtests exceeds that bar. Not a gap
+     against the written acceptance criteria.
+
+3. TEST-ONLY claim held up.
+   - .swarm/manifests/X2.2.files lists only settings_test.go and
+     settings_load_copy_test.go.
+   - Current settings.go's audited landmarks (loadInternalContext's `changed`
+     branch at line 618, the three multi-return `cloned, err :=
+     prepare.Clone(...)` sites at 1131/1196/1223) match line-for-line what
+     X2.1.checker-tests.verdict recorded as the attempt-1 state -- consistent
+     with settings.go being untouched since attempt 1 (X2.1.files vs
+     X2.2.files: settings.go dropped off the manifest between attempts).
+
+4. Required commands, all green in the copy:
+   - go test -count=1 -v -run
+     'TestRevision_DoesNotBumpOnCacheMissLoad|TestMutatorReturnDoesNotAliasCache'
+     ./internal/services/retirement/ -> both PASS, all 3 subtests PASS, no
+     SKIP.
+   - go test -race -count=1 ./internal/services/retirement/ -> ok (63.4s),
+     no races.
+   - go build ./... -> clean. go vet ./internal/services/retirement/... ->
+     clean.
+
+FINDING (not FAIL-worthy, reported for the record): `gofmt -l` flags
+settings_load_copy_test.go (one line, settings_load_copy_test.go:347 —
+`" +"` vs `"+ "` string-concat spacing before the trailing `+`). This is not
+in the task's stated acceptance criteria (go vet + go test only), and the
+same package already has two PRE-EXISTING gofmt violations untouched by X2
+(projection_planned_test.go, roth_five_year_integration_test.go) --
+gofmt-cleanliness is not an enforced house norm in this package today, and
+`make check`'s `static` target runs staticcheck, not gofmt/golangci-lint.
+Cosmetic only; does not affect vet, build, or test outcomes.
+
+No FAIL-worthy defect found against attempt 2's claim after mutation testing
+of both the seed-guard and the widened aliasing table.

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"budget2/internal/services/retirement/overrides"
 )
@@ -51,15 +52,16 @@ type applyResponse struct {
 	Revision int                 `json:"revision"`
 }
 
-// applyRequest is the POST /whatif/apply body: the override set, plus an
-// optional expectation about which scenario is being written.
+// applyRequest is the POST /whatif/apply body: the override set, plus the
+// required expectation about which scenario is being written.
 //
 // expected_scenario is what makes the write safe rather than merely audited. A
 // client snapshots the scenario the server reports active, then POSTs; if the
 // browser switches scenario in between, the write would otherwise land on a
 // plan that was never backed up, and there is no undo. Sending the expectation
 // moves the comparison inside the manager's write lock, where it can still
-// prevent the write. Omitting it preserves the previous behavior.
+// prevent the write. It is required (issue #24): omitting it used to skip the
+// guard entirely and made the guarantee an unenforced client convention.
 type applyRequest struct {
 	overrides.Overrides
 	ExpectedScenario string `json:"expected_scenario,omitempty"`
@@ -72,6 +74,11 @@ type applyRequest struct {
 // non-spec-driven handlers "field absent" and "field is zero" are
 // indistinguishable. A partial post to /whatif/roth-conversion disables
 // conversions; one to /whatif/social-security deletes the config outright.
+//
+// expected_scenario is required: a request with it missing or blank is
+// rejected with 400 before any load or write. See applyRequest's doc for why
+// the field exists; making it required closes the gap where a caller that
+// forgot to send it got an unguarded write instead of a 400.
 func handleWhatIfApply(w http.ResponseWriter, r *http.Request) {
 	if retirementMgr == nil {
 		http.Error(w, "settings manager not initialized", http.StatusInternalServerError)
@@ -83,6 +90,12 @@ func handleWhatIfApply(w http.ResponseWriter, r *http.Request) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		http.Error(w, "invalid overrides JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.ExpectedScenario) == "" {
+		http.Error(w, "expected_scenario is required: send the active scenario filename "+
+			"reported by GET /whatif/state's \"active\" field", http.StatusBadRequest)
 		return
 	}
 

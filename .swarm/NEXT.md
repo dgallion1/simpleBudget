@@ -306,8 +306,10 @@ All three tasks accepted, `gate.sh done` exits 0. Spec: `.swarm/V-RUN-SPEC.md`.
   itself; every new test bites.
 
 Escalate-scan note for future runs: V3's test-only edit under
-`dataloader/**` did NOT trigger escalation — the gate escalates on the
-diff, not the path (agents2 31e9954).
+`dataloader/**` did NOT trigger escalation — the exemption is PATH-based
+(test-glob paths under a critical glob don't escalate; the gate never
+inspects diff content — see agents2 TIERS.md, which is the accurate
+statement; "escalates on the diff" is just 31e9954's commit title).
 
 ## W run — DONE 2026-08-29 (branch fix/phase-visibility)
 
@@ -338,3 +340,57 @@ the W checkers: text-gray-400/500 caption pair sitewide, master's banner
 text on tinted bands, Net Savings coloring 3.4-4.3:1, unlabeled date-range
 inputs, #steady-state-slider label, healthcare-person Source chip
 contrast; W2 oracle helper zzCanonWhole mis-groups negatives (test-only).
+
+## X run — DONE 2026-08-29 (backlog close-out; concurrent with the W run)
+
+All eight tasks accepted; `gate.sh done` exits 0 across the full ledger.
+Spec + rulings: `.swarm/X-RUN-SPEC.md` (incl. X-2026-08-29a shared-tree
+acceptance and X-2026-08-29b dispute economics).
+
+- **X1** (t2, att2, judges 3-0 overrule) — mcpsvc/snapshot: unreadable-source
+  test is now real (EISDIR directory fixture, root-proof). The overruled FAIL
+  was a wrong-citation comment inherited from issue #26's own text; comment
+  rewritten by the lead per the judges' order. Issue #28 closed as obsolete
+  (whatifmcp/live.go deleted in 0e6fb48).
+- **X2** (t2, att2) — #27's revision test genuinely reaches the decode-time
+  migration re-save (seed-guard asserts seeded-only values); #31: all 24
+  mutators return prepare.Clone — "the cached object never escapes the
+  manager" now unqualified, pinned by a 3-mutator table.
+- **X3** (t2, att1) — #29: overrides.Apply uses prepare.Clone; the second
+  re-attach in mcpsvc/plan stays (both guard tests bite-proofed).
+- **X4** (t1, att2) — t7-coverage.sh scans Go string literals (identifier
+  gate + content-shape fallback); traj-*/conversion-sweep-card whitelisted
+  as hand-written hooks.
+- **X5** (t3, att2) — aliases.json rekeyed to StableID (SaveAlias
+  normalize-first; applyAliases resolves both identity forms). Attempt 1's
+  removal-resurrect bug was found by the adversarial lane and is oracle-
+  pinned (`.swarm/tier3/X5/accept.sh`, 8 behaviors).
+- **X6** (t1, att1) — #25: both sides of the HX-Trigger contract pinned.
+- **X7** (t2, att1) — #24: expected_scenario REQUIRED on POST /whatif/apply
+  (400 before any write; 409 unchanged; sole caller unaffected).
+- **X8** (t1, att3) — a11y close-out: h1s + full heading-hierarchy promotion
+  on /whatif + /insights; text-green-600 sweep (67/68); gray caption sweep
+  BOTH themes (attempts 2+3 fixed 118 dark-mode sites the attempt-1 sweep
+  missed — the lesson: sweep completeness must be grep-the-token, not
+  spot-check); labels for date inputs + steady-state slider; verdict-bar
+  label/value contrast via the shared render.go map.
+
+### Follow-ups recorded by X checkers (not tasks in this run)
+- explorer.html suppressed-duplicate rows: opacity-50 on the <tr> caps small
+  text at 3.63:1 (improved from 1.73) — full AA needs opacity moved off text
+  nodes, or a documented de-emphasis exception. (X8.3 residual.)
+- saveAndRenderConversionSweep emits HX-Trigger with no test assertion
+  anywhere (X6 F2).
+- successRateTextClass's one tinted-band use (whatif/verdict-bar.html) was
+  outside X8's named scope (X8.1 note).
+- ApplyOverrides still treats expectedScenario=="" as "no expectation" for
+  IN-PROCESS callers; the requirement lives at the HTTP handler (X7 F3).
+- mcpsvc/plan has no test of apply_changes' empty-Scenario fallback branch
+  (dead-by-invariant, X7-second note).
+- rate-assumptions.html:752 text-green-400 (no dark: pair) — wrong-shade
+  defect outside the green-600 sweep (X8.1 note).
+- Budget sparkline basis mismatch: chip task_2139e108 (W-run ruling 29d).
+- low_balance flags credit-kind accounts permanently: chip task_3f52c4ef
+  (agents2-fb session).
+- pre-existing gofmt drift in retirement/analysis, engine, and two
+  retirement test files (predates X; left untouched).

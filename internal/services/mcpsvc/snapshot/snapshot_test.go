@@ -113,12 +113,52 @@ func TestSnapshotter_RejectsTraversalInScenarioName(t *testing.T) {
 	}
 }
 
-func TestSnapshotter_FailsWhenSourceUnreadable(t *testing.T) {
+func TestSnapshotter_FailsWhenSourceMissing(t *testing.T) {
 	settingsDir := t.TempDir()
 	snapDir := t.TempDir()
 	// No scenario file written: Ensure must fail so the caller aborts before
 	// the POST rather than writing unbacked.
 	if _, err := New(settingsDir, snapDir).Ensure("whatif.json", time.Now()); err == nil {
 		t.Fatal("expected an error for a missing source file")
+	}
+}
+
+// TestSnapshotter_FailsWhenSourceUnreadable covers the half of Ensure's
+// abort-before-write guarantee the missing-file test cannot: the source
+// EXISTS but its bytes cannot be read. Ensure must surface that error and
+// leave no snapshot behind, so the caller refuses the write instead of
+// proceeding on a backup that was never taken. (An encrypted store is NOT
+// this case — ciphertext reads fine, and copying it verbatim is Ensure's
+// documented behavior.)
+func TestSnapshotter_FailsWhenSourceUnreadable(t *testing.T) {
+	settingsDir := t.TempDir()
+	snapDir := t.TempDir()
+
+	// Swap the source file for an empty directory of the same name instead
+	// of chmod 0o000. Ensure's first move is os.ReadFile(src); a directory
+	// there fails that call with EISDIR at any uid, including root -- unlike
+	// chmod 0000, which root's CAP_DAC_OVERRIDE lets it read straight
+	// through. The path genuinely exists on disk throughout, matching the
+	// test's premise that the source "exists but cannot be read," as
+	// distinct from TestSnapshotter_FailsWhenSourceMissing above.
+	srcPath := filepath.Join(settingsDir, "whatif.json")
+	if err := os.Mkdir(srcPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := New(settingsDir, snapDir).Ensure("whatif.json", time.Now())
+	if err == nil {
+		t.Fatal("expected an error for an unreadable source file")
+	}
+	if !strings.Contains(err.Error(), "whatif.json") {
+		t.Errorf("error %q should name the unreadable source", err)
+	}
+
+	entries, rerr := os.ReadDir(snapDir)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("snapshot dir should still be empty after a failed read, found: %v", entries)
 	}
 }

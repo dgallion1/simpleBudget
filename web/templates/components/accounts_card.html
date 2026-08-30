@@ -32,16 +32,16 @@
                 <div class="min-w-0">
                     <p class="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
                         {{.Account.Name}}
-                        {{if .Institution}}<span class="text-gray-500 dark:text-gray-400 font-normal">&middot; {{.Institution}}</span>{{end}}
+                        {{if .Institution}}<span class="text-gray-600 dark:text-gray-400 font-normal">&middot; {{.Institution}}</span>{{end}}
                     </p>
                     {{/* Data freshness: "data through Aug 12". Empty when no
                          transactions belong to the account. */}}
                     {{if .HasFreshness}}
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
                         Data through {{formatDate .Freshness}}
                     </p>
                     {{else}}
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
                         No transactions loaded for this account
                     </p>
                     {{end}}
@@ -54,8 +54,8 @@
                     {{if .Available}}
                     <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{formatMoney .Balance}}</p>
                     {{else}}
-                    <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Balance unknown</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">Set an anchor on the <a href="/accounts" class="underline text-indigo-600 dark:text-indigo-400">accounts page</a></p>
+                    <p class="text-sm font-semibold text-gray-600 dark:text-gray-400">Balance unknown</p>
+                    <p class="text-xs text-gray-600 dark:text-gray-400">Set an anchor on the <a href="/accounts" class="underline text-indigo-600 dark:text-indigo-400">accounts page</a></p>
                     {{end}}
                 </div>
             </div>

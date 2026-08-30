@@ -1,0 +1,152 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: X4
+ATTEMPT: 1
+---
+All work validated in a `cp -a` copy at
+/tmp/claude-1000/-home-darrell-work-agents2/618365ad-6f8f-4e3e-9fd1-e51df797b09e/scratchpad/b2
+(copy confirmed byte-identical to the real tree's swarm/t7-coverage.sh via
+`diff`; all plants reverted, copy restored to its starting dirty-file set).
+Real-tree writes: this verdict file only.
+
+C1 — syntax clean + exits 0 with counts: PASS
+  cmd: bash -n swarm/t7-coverage.sh    -> syntax exit: 0
+  cmd: bash swarm/t7-coverage.sh
+  out: "OK: 732 literal utility-looking class tokens covered (54 whitelisted,
+       50 dynamic-safelist entries verified present)."  run exit: 0
+
+C2 — Go scanning bites on the brief's stated plant: FAIL
+  The brief's exact plant is NOT caught.
+  cmd: appended to internal/templates/render.go:
+         func plantA() string { x := "text-fuchsia-333"; return x }
+       bash swarm/t7-coverage.sh
+  out: "OK: 732 literal utility-looking class tokens covered ..."  exit: 0
+       (expected: non-zero listing text-fuchsia-333)
+  Cause (script lines 262-287, 338-365): a bare string literal is harvested
+  ONLY when its enclosing identifier is "class-shaped" -- is_class_ident()
+  requires exactly class/className, or a name ENDING in Class/Classes/
+  ClassName. `x` matches neither, so `x := "..."` is never examined. This is a
+  deliberate, documented scoping choice by the worker, but it is not what the
+  criterion states, and X-RUN-SPEC.md X4 likewise says "show a planted fake
+  utility class in a Go literal in the copy IS caught" -- a bare `x := "..."`
+  is a Go literal and is not caught.
+
+  What DOES bite (same file, same token shape, each reverted after):
+    plant `return `<div class="text-fuchsia-333">x</div>`` -> exit 1,
+      "UNCOVERED ... - text-fuchsia-333"
+    plant `class := "text-fuchsia-444"`                     -> exit 1,
+      "UNCOVERED ... - text-fuchsia-444"
+    plant `func plantColorClass() string { return "text-fuchsia-555" }`
+                                                            -> exit 1,
+      "UNCOVERED ... - text-fuchsia-555"
+    revert all -> "OK: 732 ..." exit 0
+  Mitigating evidence for the lead's adjudication (does the scoping hide a
+  REAL hole today?): a strict Tailwind-shape sweep of every string literal in
+  every production .go file under internal/ and cmd/ found 17 genuinely
+  Tailwind-shaped tokens (bg-red-50, border-red-200, dark:bg-red-900/30,
+  dark:border-red-800, dark:text-red-300, dark:text-red-400, font-medium, h-5,
+  mr-2, mt-2, p-4, rounded-lg, text-red-500, text-red-600, text-red-700,
+  text-sm, w-5) and ALL 17 appear in the script's harvested candidate set
+  (checked against an instrumented dump of @candidates, 780 entries). So the
+  narrowed extraction produces no actual coverage hole in this repo as it
+  stands; the gap is between the implementation and the criterion as written,
+  not a demonstrated missed class.
+
+C3 — scoping is honest (comments and _test.go not scanned): PASS
+  (a) appended to internal/templates/render.go:
+        // plant: <div class="text-fuchsia-666"></div> and class := "text-fuchsia-667"
+        /* block: class="text-fuchsia-668" */
+      cmd: bash swarm/t7-coverage.sh -> "OK: 732 ..." exit 0
+  (b) created internal/templates/plantx_test.go with
+        class := "text-fuchsia-777" and `<div class="text-fuchsia-778"></div>`
+      cmd: bash swarm/t7-coverage.sh -> "OK: 732 ..." exit 0
+  CONTROL (proves the plants would otherwise bite): same file renamed to
+      internal/templates/plantx_prod.go
+      cmd: bash swarm/t7-coverage.sh -> exit 1, "UNCOVERED ...
+      - text-fuchsia-777 / - text-fuchsia-778"
+  Both plants removed; final run "OK: 732 ..." exit 0.
+
+C4 — the 4 lead-added whitelist entries are justified: PASS
+  cmd: grep -rn <token> web internal --include=*.html --include=*.js
+       --include=*.css --include=*.go ; grep -c "\.<token>" web/static/css/tailwind.css
+  traj-real / traj-nominal / traj-view-real: defined AND consumed by
+    spending-phases.html's OWN inline <style> block, confirmed at
+    web/templates/components/whatif/spending-phases.html:119-123:
+      <style>
+        #phase-preview-panel .traj-real { display: none; }
+        #phase-preview-panel.traj-view-real .traj-real { display: inline; }
+        #phase-preview-panel.traj-view-real .traj-nominal { display: none; }
+      </style>
+    traj-view-real is applied at line 266 via
+      panel.classList.toggle('traj-view-real', mode === 'today')
+    grep -c in tailwind.css = 0 for all three; no match in web/static/css at
+    all. Correct: these are hand-written component CSS, not Tailwind output.
+  conversion-sweep-card: single occurrence repo-wide,
+    web/templates/components/whatif/conversion-sweep.html:9
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 conversion-sweep-card">
+    tailwind.css count 0; no rule in web/static/css; no JS reference. It is a
+    semantic component-marker class, structurally identical to the ALREADY-
+    whitelisted 'tax-optimizer-card' at tax-optimizer.html:189 (same div, same
+    sibling utilities, no rule, no JS). No Tailwind build could ever emit
+    `.conversion-sweep-card`, so the entry hides no genuine missing Tailwind
+    class. NOTE for the record: the inline comment calls it a "JS/scoping
+    hook", but grep finds no JS referencing it -- it is an unreferenced marker.
+    That is a comment-accuracy nit, not a coverage defect.
+
+C5 — no matcher weakening: PASS
+  cmd: git diff master -- swarm/t7-coverage.sh
+  The diff contains exactly four kinds of hunk: (1) header comment update,
+  (2) whitelist additions, (3) the @go_files collection block, (4) the new
+  section 2b (strip_go_comments / is_class_ident / add_go_tokens /
+  harvest_from_go_text + the Go file loop). harvest_from_text (class=/
+  className=/classList.add|remove|contains/classList.toggle), the HTML
+  {{...}}-stripping loop, the JS loop, the @candidates interpolation filter,
+  css_escape() and covered() are ALL unchanged -- zero -/+ lines inside them.
+  Whitelist additions are 9, not 4: the 4 lead entries above plus 5 worker
+  entries (tool, detail, primary, danger, note). Those 5 are justified --
+  each is a real rule in the hand-rolled pageCSS <style> block in
+  internal/handlers/approval/handlers.go (rules at lines 49, 52, 66 and the
+  primary/danger button rules; consumed at lines 73, 75, 77, 78, 80, 89, 90
+  as class="tool"/"detail"/"primary"/"danger"/"note"), entirely separate from
+  the Tailwind build. No genuine Tailwind class hidden.
+  One new leniency confined to the Go path: add_go_tokens drops any token
+  containing '%' (Sprintf-verb guard). A Tailwind arbitrary-value class such
+  as w-[50%] emitted from Go would be silently skipped. Currently theoretical:
+  a scan of every class="..." in web/templates and web/static/js found ZERO
+  tokens containing '%'. Reported as an observation, not a criterion failure.
+
+C6 — identifier false-positive guard: PASS
+  Identifiers confirmed present in the repo:
+    internal/handlers/dashboard/verdict.go:53  func classifyBucket(...)
+    internal/services/transfers/transfers.go:53  ClassPaired = "paired"
+    internal/handlers/transfers/handlers.go:408  t.TransferClass == transfers.ClassExternal
+  cmd: instrumented copy of the script printing all @candidates (780 tokens),
+       then grep -i for classif|ClassPaired|ClassExternal|Transactions|Bucket
+  out: "(NONE - no classify-style identifier harvested)"
+  cmd: grep -i "^CANDIDATE: .*class" on the same dump
+  out: "(none)" -- not one harvested token contains the substring "class".
+  Also checked the adjacent risk (TransferClass ends in "Class", so a
+  `TransferClass: "paired"` struct literal would qualify): neither "paired"
+  nor "external" appears in the candidate dump.
+
+SCOPE: PASS
+  Manifest .swarm/manifests/X4.1.files lists exactly swarm/t7-coverage.sh.
+  swarm/t7-coverage.sh is not matched by any pattern in .swarm/critical.globs
+  (storage, dataloader, retirement/engine, transfers, accounts.go,
+  mcpsvc/confirm). The other dirty paths in the tree (dataloader/loader.go,
+  mcpsvc/snapshot, retirement/*) map to sibling tasks X1/X2/X3/X5 per
+  X-RUN-SPEC.md territories and are expected per the brief.
+  Informational only (per ruling X-2026-08-29a the shared tree makes the full
+  suite non-binding): `go build ./...` in the copy exits 0. This task adds no
+  Go code and no Go tests, so there is no worker-added test to audit for
+  name-vs-assertion honesty; the script's own behaviour was verified by the
+  plant/revert experiments above.
+
+REQUIRED TO PASS: make the Go scan catch a Tailwind-utility token in a bare
+Go string literal such as `x := "text-fuchsia-333"` (the form named in the
+criterion and implied by X-RUN-SPEC.md X4), extending the whitelist for the
+resulting false-positive pressure rather than leaving the extraction scoped to
+class-shaped identifiers -- OR have the lead amend the criterion to the
+scoped-extraction contract the worker actually implemented and documented at
+swarm/t7-coverage.sh:262-287.

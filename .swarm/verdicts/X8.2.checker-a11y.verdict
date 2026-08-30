@@ -1,0 +1,216 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: X8
+ATTEMPT: 2
+---
+Audited in a fresh `cp -a` copy at scratch/x8/budget2 (kept .git; the first
+attempt at this copy was a stale leftover from a prior session and was
+discarded/redone before any conclusions were drawn from it).
+
+## Summary
+
+Attempt 2's own, narrowly-scoped fix (the 12 sites in kpis.html /
+guardrails.html that attempt 1 FAILed) is CORRECT, COMPLETE, and introduces
+no regressions — verified independently below. But a live-render sweep of
+the rest of task X8's own manifest surfaced the *same defect class*,
+introduced by the *same X8 sweep*, at roughly 9x the scale (106 more sites
+across 26 more files) that attempt 1's own audit did not catch and attempt 2
+was never asked to fix. Since it is squarely X8's own replicated content
+(not pre-existing baggage — see attribution below) and directly fails
+ACCESSIBILITY.md points 7/12 (WCAG 1.4.3 AA), the task as a whole cannot be
+accepted yet, so this pass is a FAIL despite attempt 2 doing its assigned
+job correctly.
+
+## 1. Independent contrast recomputation for the 12 sites attempt 1 FAILed (own math, not trusting the claim)
+
+Colors pulled straight from the shipped `web/static/css/tailwind.css`
+(`grep -o '\.dark\\:text-gray-400[^{]*{[^}]*}' ...` etc.):
+- `dark:text-gray-400` = rgb(156,163,175); `dark:text-gray-500` =
+  rgb(107,114,128); `dark:bg-gray-800` (solid) = rgb(31,41,55); body
+  `bg-gray-900` = rgb(17,24,39) (`web/templates/layouts/base.html:57`);
+  `dark:bg-rose-900/20` = rgba(136,19,55,.2); `dark:bg-red-900/20` =
+  rgba(127,29,29,.2); `dark:bg-green-900/20` = rgba(20,83,45,.2).
+
+Compositing sanity check (read the templates, not assumed): kpis.html's
+rose card (`bg-rose-50 dark:bg-rose-900/20`, line 101) is a top-level grid
+item, so it composites over the page body `bg-gray-900` — confirmed.
+guardrails.html's red/green boxes (lines 18, 38) are nested *inside* the
+parent `bg-white dark:bg-gray-800` card (line 3), so they composite over
+`gray-800`, not the body — confirmed by reading the template structure.
+
+Using WCAG relative-luminance formula (own Python, sRGB->linear, standard
+weights), with dark:text-gray-500 (the *pre-fix* color) reproduces attempt
+1's own FAIL numbers exactly: gray-800 solid 3.04:1, rose-900/20-over-body
+3.48:1, red-900/20-nested 2.96:1, green-900/20-nested 2.80:1 — confirms my
+compositing model matches the one attempt 1 used.
+
+With dark:text-gray-400 (attempt 2's fix), the same 4 surfaces:
+  gray-800 solid card (kpis.html:60,77,81,141,150,159,179,185;
+    guardrails.html:6,72,89,114,120)        -> 5.78:1
+  rose-900/20 over body (kpis.html:111,113)  -> 6.62:1
+  red-900/20 nested in gray-800 (guardrails floor box, 22,26,29,33) -> 5.64:1
+  green-900/20 nested in gray-800 (guardrails ceiling box, 42,46,49,53) -> 5.34:1
+All 12 sites clear 4.5:1 (they're text-xs/text-sm/text-[10px], no large-text
+carve-out applies). Matches attempt 2's claimed 5.34-6.62:1 range.
+
+## 2. Delta discipline
+
+`grep -n 'dark:text-gray-500' web/templates/components/kpis.html
+web/templates/components/whatif/guardrails.html` -> zero hits in both files.
+`git diff master` for the two files (206-line diff, read in full) shows
+every hunk accounted for: the 12 dark-token swaps (500->400) with light
+halves left exactly as attempt 1's own quoted before/after (e.g. "text-
+gray-400 dark:text-gray-500 (master) -> text-gray-600 dark:text-gray-500
+(X8) at line 111" in the X8.1 verdict matches current line 111 verbatim
+except for the dark token, which is the only change attempt 2 made there),
+plus attempt-1-authored, already-reviewed content (h3->h2 heading
+promotions consistent with the whatif-page heading audit, text-green-600
+->text-green-700 consistent with attempt 1's own PASS section, other
+light-side gray-400->500/600 sweep edits). No attempt-2 changes exist
+outside the 12 dark tokens.
+
+## 3. No new dark-mode regressions on the same cards (≥4 samples, own computation)
+
+  kpis 2xl value dark:text-gray-100 on gray-800 solid card         -> 13.34:1
+  kpis 2xl value dark:text-gray-100 on rose-900/20-over-body card  -> 15.27:1
+  guardrails h2 dark:text-gray-100 on gray-800 card                -> 13.34:1
+  guardrails Floor label dark:text-red-300 on red-900/20 nested    ->  7.54:1
+  guardrails Ceiling label dark:text-green-300 on green-900/20     ->  9.65:1
+  guardrails event row dark:text-red-400 on red-900/20 nested      ->  5.17:1
+  guardrails event row dark:text-green-400 on green-900/20 nested  ->  7.78:1
+All clear. No regression introduced by the 12-token fix.
+
+## 4. Scope check: no template outside the two files changed since attempt 1
+
+`git status --short` in the copy, cross-referenced against the union of all
+`.swarm/manifests/X*.files`: every modified file is accounted for by some
+X-run manifest or is lead/sibling-task bookkeeping (`.claude/skills/*`,
+`.swarm/*`, two `.go` files belonging to other X-tasks) — no template file
+appears modified outside the union of manifests. Within that, kpis.html and
+guardrails.html are the only two files X8.2 itself touched (X8.2.files).
+
+## 5. Build hygiene — all green in the copy
+
+- `make css-verify` -> "tailwind.css is up to date"
+- `bash swarm/t7-coverage.sh` -> exit 0, "OK: 732 literal utility-looking
+  class tokens covered..."
+- `go build ./cmd/server` -> clean
+- `go test -count=1 ./internal/templates/... ./web/...` -> both `ok`
+
+## 6. Real render + axe (not template source, not guessed CSS)
+
+Built and ran `cmd/server` against an empty `BUDGET_DATA_DIR` (200 OK,
+empty-state render, confirmed via server log). Curled `/dashboard` and
+`/whatif`, wrapped each in light and `class="dark"` HTML documents loading
+the actual shipped `web/static/css/tailwind.css`, ran
+`npx @axe-core/cli ... --tags wcag2a,wcag2aa,wcag21a,wcag21aa,wcag22aa`
+against all 4 pages. None of axe's reported `color-contrast` violation
+selectors reference anything from kpis.html or guardrails.html (confirmed
+by grepping the full axe output for guardrail/floor/ceiling/kpi terms —
+zero hits) — the 12-site fix is clean in a real render, not just in theory.
+Heading check on the live `whatif` render: 1 h1, all-h2 sections in
+sequence including "Drop/rise guardrails (simple)" (now h2, promoted from
+h3 by attempt 1's earlier work) fits correctly with no skipped level.
+
+Remaining axe hits on these 4 pages (chart-placeholder color-contrast x5,
+label x9, select-name x6) are all in files/elements untouched by X8.2 and
+most predate X8 entirely (`git diff master -- <file>` shows the specific
+placeholder lines byte-identical to master, e.g. the chart-loading divs on
+dashboard.html); reported as OBSERVATION, not attributed to this attempt.
+
+## 7. FAIL — ACCESSIBILITY.md points 7 & 12 (WCAG 1.4.3 AA), site-wide, attributable to X8's own sweep
+
+While confirming "attempt 1's clean audit of the other 52 files still
+stands" (verify step 4), a live-render/grep sweep for the *same* defect
+pattern attempt 1 found (light-mode caption color swept up, paired
+`dark:text-gray-500` caption color left behind) turned up 110 more
+occurrences of `dark:text-gray-500` outside kpis.html/guardrails.html,
+across 26 files:
+
+  `grep -rc 'dark:text-gray-500' web/templates/` -> 110 occurrences / 28 files
+  (kpis.html and guardrails.html are 2 of the 28, now clean; the other 26
+  files still have it)
+
+Attribution (git diff master, per-line, not per-file): wrote a script that,
+for every line containing `dark:text-gray-500`, checks whether that exact
+line existed verbatim anywhere in `git show master:<file>`. Result: **106
+of 110 lines do NOT exist in master** — i.e. these lines were edited by
+X8's own sweep (the light-mode class was changed on the same line, e.g.
+`text-gray-400 dark:text-gray-500` (master) -> `text-gray-500
+dark:text-gray-500` (current) in
+`web/templates/components/whatif/rate-assumptions.html:106` and 40+ other
+lines in that one file alone). This is the *identical* pattern — same root
+cause, same mechanism — that attempt 1 itself ruled was not "inherited
+baggage the sweep walked past" but "the sweep's own... decision," and
+FAILed on in kpis.html/guardrails.html. Only 4 of 110 lines are genuinely
+untouched (byte-identical to a master line) and are properly PRE-EXISTING/
+OBSERVATION.
+
+All 28 affected files are in X8's own `.swarm/manifests/X8.1.files`
+manifest — this is not out-of-scope content:
+  `comm -12 <(files with dark:text-gray-500) <(sort X8.1.files)` -> 28 of 28.
+
+Compositing verified by direct template read for two more samples (in
+addition to the 12 already-fixed sites): `budget-vs-actual.html:13` and
+`whatif/income-chart.html:25` both sit in a top-level `bg-white
+dark:bg-gray-800` solid card, same background as the fixed kpis/guardrails
+solid-card sites. Contrast recomputed with the same script as #1:
+`dark:text-gray-500` (rgb(107,114,128)) on `dark:bg-gray-800`
+(rgb(31,41,55)) = **3.04:1** — fails 4.5:1 for the text-xs/text-[10px]
+captions ("Loading chart...", "No data", "Recently Removed",
+"Simulation parameters", etc — the overwhelming majority of the 106
+sites); a handful of text-2xl font-bold instances (e.g.
+`insights.html:189` "$0.00") clear the 3:1 large-text floor at 3.04:1 but
+that is a razor's-edge pass on a value the constitution would still flag
+under point 12 (dark parity — light-mode gray-500 on white is nowhere near
+this close to its own floor).
+
+Representative sites (file:line, all still `dark:text-gray-500`, all
+verified via template read to sit on a `dark:bg-gray-800` or darker
+composited surface, all text-xs/text-sm/text-[10px] unless noted):
+  budget-vs-actual.html:13,18 (chart loading / empty-state captions)
+  whatif/income-chart.html:25 (chart loading caption)
+  whatif/projection-chart.html:36 (chart loading caption)
+  whatif/monte-carlo.html:104,105,140,145,150,155 (simulation detail captions)
+  whatif/rate-assumptions.html: 18 sites (helper text under every rate input)
+  whatif/budget-analysis.html: 12 sites (tax/withdrawal breakdown captions)
+  whatif/social-security.html, whatif/roth-conversion.html,
+  whatif/portfolio-settings.html, whatif/rmd.html, whatif/tax-summary.html,
+  whatif/present-value.html, whatif/healthcare-person.html,
+  whatif/income-sources-list.html, whatif/expense-sources-list.html,
+  whatif/bigticket-card.html, whatif/onetime-card.html,
+  whatif/scenario-chain-card.html, whatif/conversion-sweep.html,
+  whatif/projection-breakdown.html, whatif/tax-optimizer.html,
+  pages/dashboard.html, pages/insights.html, pages/major-expenses.html,
+  pages/transfers.html, pages/filemanager.html, pages/unlock.html,
+  pages/explorer.html — each carries multiple instances (full per-line list
+  reproducible via the attribution script above; omitted here for length).
+
+This is a real, currently-shipping WCAG 1.4.3 AA failure at a scale ~9x
+larger than the one attempt 1 caught, self-inflicted by X8's own contrast
+sweep, still present after attempt 2. Attempt 2 did exactly what its
+manifest asked (kpis.html + guardrails.html only) and did it correctly —
+that piece is not in question — but the task cannot be marked accepted
+while its own sweep leaves ~100+ AA-failing caption instances live across
+26 other files it already touched. This needs to go back to a worker
+(full-file sweep of `dark:text-gray-500` -> `dark:text-gray-400` mirroring
+the fix just verified, with a fresh completeness check that greps for the
+literal token pattern rather than spot-checking specific colors) before
+re-verification.
+
+## Observations (non-blocking)
+
+- Attempt 1's "Sweep completeness" section (point 3 of its verdict) checked
+  only `grep -rn 'text-green-600'`; it did not run the equivalent grep for
+  `dark:text-gray-500`, which is why this scale of the same defect class
+  went uncaught. Worth tightening the checker's own completeness-check
+  methodology for future sweeps, not just re-running it here.
+- monte-carlo.html:268 decorative svg still lacks `aria-hidden="true"`;
+  byte-identical to master both before and after this attempt, pre-existing,
+  out of scope.
+- axe's 5 chart-placeholder color-contrast hits, 9 `label` hits, and 6
+  `select-name` hits on dashboard/whatif are all in files/lines
+  byte-identical to master (`git diff master` confirms per-file) — genuine
+  pre-existing defects, not attributable to X8, reported for the lead's
+  backlog only.

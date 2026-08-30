@@ -20,8 +20,8 @@ var Apply = overrides.Apply
 
 // preparedWithOverrides applies the overrides and prepares the result for the
 // engine. prepare.From runs its own DeepCopy internally, which drops
-// PerYearOverrides (json:"-") a second time even though Apply already
-// re-attached it once. Re-attach it again onto the prepared snapshot,
+// PerYearOverrides (json:"-") even though Apply's prepare.Clone carried it
+// across the first copy. Re-attach it onto the prepared snapshot,
 // following the same shape as analysis/tax_optimizer.go's
 // cloneSettingsWithSSAndRoth (lines 90-100): the override map is
 // reconstructed in-memory and never persisted, so this is a deliberate,

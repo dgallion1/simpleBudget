@@ -13,13 +13,13 @@
             <a href="/whatif" class="text-sm font-normal text-indigo-600 dark:text-indigo-400 hover:underline">— set one in What-If →</a>
             {{else if $v.IsOver}}
             <span class="num">{{formatMoney (abs $v.Delta)}}</span> over budget
-            <span class="text-sm font-normal text-gray-500 dark:text-gray-400">over {{printf "%.1f" $v.Months}} months</span>
+            <span class="text-sm font-normal text-gray-600 dark:text-gray-400">over {{printf "%.1f" $v.Months}} months</span>
             {{else if $v.IsUnder}}
             <span class="num">{{formatMoney (abs $v.Delta)}}</span> under budget
-            <span class="text-sm font-normal text-gray-500 dark:text-gray-400">over {{printf "%.1f" $v.Months}} months</span>
+            <span class="text-sm font-normal text-gray-600 dark:text-gray-400">over {{printf "%.1f" $v.Months}} months</span>
             {{else}}
             On budget
-            <span class="text-sm font-normal text-gray-500 dark:text-gray-400">over {{printf "%.1f" $v.Months}} months</span>
+            <span class="text-sm font-normal text-gray-600 dark:text-gray-400">over {{printf "%.1f" $v.Months}} months</span>
             {{end}}
         </div>
         {{- if $v.HasTarget}}
@@ -45,17 +45,17 @@
     <div class="flex items-center gap-6 ml-auto">
         {{if $v.HasTarget}}
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Spent</div>
-            <div class="num text-base font-bold {{if $v.IsOver}}text-rose-600 dark:text-rose-400{{else}}text-gray-700 dark:text-gray-200{{end}}">{{formatMoney $v.SpentTotal}}</div>
+            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Spent</div>
+            <div class="num text-base font-bold {{if $v.IsOver}}text-rose-700 dark:text-rose-400{{else}}text-gray-700 dark:text-gray-200{{end}}">{{formatMoney $v.SpentTotal}}</div>
         </div>
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Target</div>
+            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Target</div>
             <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{formatMoney $v.TargetTotal}}</div>
         </div>
         {{end}}
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Net Savings</div>
-            <div class="num text-base font-bold {{if ge $v.NetSavings 0.0}}text-emerald-600 dark:text-emerald-400{{else}}text-rose-600 dark:text-rose-400{{end}}">{{formatMoney $v.NetSavings}}</div>
+            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Net Savings</div>
+            <div class="num text-base font-bold {{if ge $v.NetSavings 0.0}}text-emerald-700 dark:text-emerald-400{{else}}text-rose-700 dark:text-rose-400{{end}}">{{formatMoney $v.NetSavings}}</div>
         </div>
     </div>
 </div>

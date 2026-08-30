@@ -75,9 +75,12 @@ W1	3	tests,a11y,second	accepted	3	worker-coder	gate-ok-tier3-attempt-3-oracle-pa
 W2	3	tests,a11y,second	accepted	4	worker-coder	gate-ok-tier3-attempt-4-locale-pin-tri-lane
 W3	1	tests,a11y	accepted	2	worker-coder	gate-ok-attempt-2-after-aria-label-fix
 W4	3	tests,a11y,second	accepted	4	worker-coder	gate-ok-tier3-attempt-4-judges-overrule-3-0
-X1	2	tests,second	pending	1	worker-coder	dispatched-2026-08-29
-X2	2	tests,second	pending	1	worker-coder	dispatched-2026-08-29
-X3	2	tests,second	pending	1	worker-coder	dispatched-2026-08-29
-X4	1	tests	pending	1	worker-coder	dispatched-2026-08-29
-X5	3	tests,second	pending	1	worker-coder	oracle-authoring-2026-08-29
+X1	2	tests,second	accepted	2	worker-coder	gate-ok-attempt-2-judges-overrule-3-0-comment-fix-to-lead
+X2	2	tests,second	accepted	2	worker-coder	gate-ok-attempt-2-dual-lane-pass-seed-guard-fixed
+X3	2	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-dual-lane-pass
+X4	1	tests	accepted	2	worker-coder	gate-ok-attempt-2-content-shape-fallback
+X5	3	tests,second	accepted	2	worker-coder	gate-ok-attempt-2-oracle-pass-dual-lane-after-resurrect-fix
+X6	1	tests	accepted	1	worker-coder	gate-ok-attempt-1-both-contract-sides-pinned
+X7	2	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-dual-lane-pass
+X8	1	a11y	accepted	3	worker-coder	gate-ok-attempt-3-grep-complete-dark-sweep
 Y1	2	tests,a11y,second	accepted	1	worker-coder	gate-ok-attempt-1-tri-lane-pass

@@ -523,13 +523,48 @@ func TestRevision_DoesNotBumpOnCacheMissLoad(t *testing.T) {
 	if _, err := sm.Load(); err != nil {
 		t.Fatalf("first Load: %v", err)
 	}
+
+	// Seed a legacy-shaped file with no "persons" key. decodeSettings's
+	// normalizeLoadedWhatIfSettings synthesizes Persons from the legacy
+	// current_age field on decode and reports changed=true, which makes the
+	// NEXT cache-miss load take the decode-time-migration re-save branch in
+	// loadInternalContext (see the "changed" branch there) rather than the
+	// no-op os.IsNotExist branch this test exercised before. That re-save
+	// path is the one the assertion below is actually about: a read must not
+	// bump the revision just because decode found something to migrate.
+	legacy := []byte(`{
+		"portfolio_value": 500000,
+		"monthly_living_expenses": 4000,
+		"monthly_healthcare": 0,
+		"start_date": "2024-01",
+		"current_age": 62
+	}`)
+	if err := store.WriteFile(filepath.Join(tmpDir, "whatif.json"), legacy, 0644); err != nil {
+		t.Fatalf("seeding legacy whatif.json: %v", err)
+	}
+
 	sm.InvalidateCache()
 	afterInvalidate := sm.Revision()
 
 	// A cache-miss load may internally re-save when decode reports a migration.
 	// That is a read, not a change: the page must not re-render for it.
-	if _, err := sm.Load(); err != nil {
+	settings, err := sm.Load()
+	if err != nil {
 		t.Fatalf("second Load: %v", err)
+	}
+	// These two checks must be TRUE only when the legacy seed above was
+	// actually decoded and migrated, not merely when Load fell back to
+	// models.DefaultWhatIfSettings() (PortfolioValue 0, CurrentAge 65): if
+	// the seeding block above were deleted, both would fail. PortfolioValue
+	// pins the decode of the seed file itself; CurrentAge ties the migration
+	// specifically to the legacy current_age field, since ComputeAges derives
+	// it from the BirthMonth normalizeLoadedWhatIfSettings synthesized from
+	// legacy.CurrentAge.
+	if settings.PortfolioValue != 500000 {
+		t.Fatalf("seed file was not decoded: PortfolioValue = %v, want 500000 (the seeded value)", settings.PortfolioValue)
+	}
+	if settings.CurrentAge != 62 {
+		t.Fatalf("decode-time migration did not run: CurrentAge = %d, want 62 (derived from the legacy current_age field via the synthesized Persons[0])", settings.CurrentAge)
 	}
 	if got := sm.Revision(); got != afterInvalidate {
 		t.Fatalf("a cache-miss load bumped the revision: %d -> %d", afterInvalidate, got)

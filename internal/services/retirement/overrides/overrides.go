@@ -45,20 +45,11 @@ func Apply(base *models.WhatIfSettings, o Overrides) (*models.WhatIfSettings, er
 		return nil, err
 	}
 
-	s, err := prepare.DeepCopy(base)
+	s, err := prepare.Clone(base)
 	if err != nil {
 		return nil, fmt.Errorf("copy settings: %w", err)
 	}
-	// prepare.DeepCopy round-trips through JSON, so fields tagged json:"-" do
-	// not survive. PerYearOverrides is the known instance; re-attach it here
-	// so Apply's own return value is correct. NOTE: this does not survive a
-	// subsequent prepare.From (RunWithOverrides calls it) — that runs its own
-	// DeepCopy and drops the map again. The re-attach that actually matters
-	// for the engine run is the post-boundary one in preparedWithOverrides,
-	// mirroring analysis/tax_optimizer.go:90-100.
-	if base.RothConversion != nil && base.RothConversion.PerYearOverrides != nil && s.RothConversion != nil {
-		s.RothConversion.PerYearOverrides = base.RothConversion.PerYearOverrides
-	}
+	// Clone owns the json:"-" carry (CurrentAge, SpouseAge, PerYearOverrides).
 
 	if o.MonthlyLivingExpenses != nil {
 		s.MonthlyLivingExpenses = *o.MonthlyLivingExpenses

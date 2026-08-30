@@ -15,6 +15,12 @@ description: >-
 # budget2 MCP tools
 
 The budget2 server exposes 32 tools over MCP. This skill is a router: find
+
+> Maintenance: the tool COUNT lives in three places that drift
+> independently — this file, the repo README, and the want-list in
+> `internal/services/mcpsvc/server_test.go`. When tools are added or
+> removed, move all three in lockstep (the Q1 run fixed exactly this
+> drift once already).
 the branch that matches what the user is asking, then read that branch's
 reference file before calling its tools — every branch has gotchas that are
 cheaper to read than to rediscover.

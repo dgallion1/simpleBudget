@@ -1,0 +1,15 @@
+VERDICT: OVERRULE
+CHECKER: judge-impact
+FAMILY: impact
+TASK: X1
+ATTEMPT: 2
+---
+The disputed comment is factually defective: it cites docs/whatif-mcp-followups-2026-08-09.md §3 for a claim that document does not make (§3 addresses .encrypted detection and BUDGET_DATA_DIR resolution, not os.ReadFile behavior), and it contradicts snapshot.go's own documented guarantee that encrypted bytes ARE readable (lines 47-50: "When the store is encrypted the bytes are ciphertext, which is what a hand-restore back into that same store needs").
+
+From user-impact lens: The shipped test behavior is correct. The EISDIR fixture genuinely prevents reads, mutation testing proves the test catches real bugs (swallowed error, leaked snapshots), assertions are clear and self-documenting (err != nil, filename in message, destination empty). The shipped snapshot protection works correctly and protects the critical abort-before-write contract.
+
+Maintainer impact is low. The test's own assertions are transparent — a maintainer reading the test sees it fails on directories without needing the comment. The neighboring Ensure() function doc (lines 47-50) directly contradicts the false "unreadable ciphertext" rationale, making the defect discoverable. No silent failure or misleading runtime guarantee exists.
+
+A real user (including future maintainer) is not blocked or harmed by the shipped result despite the comment defect. The test will continue to guard the critical path correctly. The lead can correct the comment trivially (strip §3 citation and encryption tie-in; ground in Ensure's actual missing-source-must-abort guarantee per lines 52-54) without requiring a worker re-run.
+
+The defect is real and should not have shipped, but does not rise to blocking user impact.

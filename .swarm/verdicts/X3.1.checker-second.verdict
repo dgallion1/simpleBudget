@@ -1,0 +1,70 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: X3
+ATTEMPT: 1
+---
+Diff reviewed: internal/services/retirement/overrides/overrides.go, Apply()
+swaps prepare.DeepCopy + hand-rolled PerYearOverrides re-attach for
+prepare.Clone. X3 territory is overrides.go only; confirmed
+internal/services/mcpsvc/plan/overrides.go is untouched (git diff empty),
+so the second re-attach in preparedWithOverrides genuinely "stays" as claimed.
+
+Attack 1 — error-path divergence (Clone vs DeepCopy): NOT EXPLOITABLE.
+prepare.Clone (prepare.go:127-137) is literally `out, err := DeepCopy(cfg);
+... carryJSONOmittedFields(cfg, out); return out, nil` — carryJSONOmittedFields
+never errors, so Clone's error surface is byte-for-byte DeepCopy's. Probed a
+NaN MonthlyLivingExpenses (json.Marshal-rejects) against both the new code and
+a locally-reverted-to-DeepCopy copy of Apply: identical error
+("marshal: json: unsupported value: NaN") both ways. No regression.
+
+Attack 2 — behavior delta (CurrentAge/SpouseAge now survive Apply where
+DeepCopy used to zero them): real semantic change to Apply's return value,
+but traced every consumer and found none observes it today:
+  - settings.go:1185 ApplyOverrides -> the returned `cloned` (Clone of Apply's
+    output) is discarded by handlers_live.go:89 (`_, scenario, revision, err`)
+  - register.go:236 apply_changes feeds the same `settings` through
+    prepare.From(settings), which runs its OWN internal DeepCopy (dropping
+    CurrentAge/SpouseAge again) then ComputeAges (recomputing them from
+    StartDate+BirthMonth) — so whatever Apply carried is overwritten before
+    anything reads it.
+  - RunWithOverrides/preparedWithOverrides same path (prepare.From).
+No test asserts CurrentAge/SpouseAge either way (grep of overrides_test.go,
+plan/overrides_test.go, settings_test.go: zero hits), so this is an
+undocumented latent behavior change, but I could not construct a currently
+reachable case where it changes observable output — reporting as a finding,
+not a blocking defect, per the instruction to demonstrate a real regression
+before failing on it.
+
+Attack 3 — aliasing: NOT EXPLOITABLE. carryJSONOmittedFields (prepare.go:154-158)
+builds a fresh map and copies k/v pairs, never assigns src's map directly.
+Probed by mutating Apply()'s returned PerYearOverrides[0] after the call and
+confirming base's map is untouched, then mutating base's map after Apply and
+confirming the returned clone is untouched. Both directions clean.
+
+Attack 4 — guard-test strength: both tests assert map CONTENTS
+(`PerYearOverrides[0] != 50_000`), not mere non-nil, so an empty-but-non-nil
+carry would fail them. Verified both are load-bearing by temporarily breaking
+each carry and re-running:
+  - Reverted Apply's prepare.Clone -> prepare.DeepCopy (no re-attach):
+    TestApply_PreservesPerYearOverridesAcrossDeepCopy FAILS
+    ("PerYearOverrides lost in copy: ... PerYearOverrides:map[]")
+  - Deleted the base.RothConversion.PerYearOverrides re-attach block in
+    mcpsvc/plan/overrides.go's preparedWithOverrides:
+    TestPreparedWithOverrides_PreservesPerYearOverridesAcrossBoundary FAILS
+    ("PerYearOverrides lost across the prepare boundary: ... map[]")
+  Both files restored byte-identical to the pre-probe state afterward
+  (diff -q confirmed against /home/darrell/bin/ai/budget2 original).
+
+Commands run (in a cp -a copy, .git kept, toolchain go1.26.6):
+  go vet ./internal/services/retirement/overrides/...        -> clean
+  go test -race -count=1 ./internal/services/retirement/overrides/...
+    ./internal/services/mcpsvc/plan/...                      -> ok, ok
+  go build ./...                                              -> exit 0
+  go test ./...                                                -> exit 0
+    (full suite green; no dataloader/t7-coverage failures observed to
+    attribute under the concurrency caveat — nothing needed recopying)
+
+No caller of overrides.Apply broken; grep for `overrides.Apply(` /
+`plan.Apply(` across the whole tree (excluding tests and worktree copies)
+finds exactly settings.go:1185, traced above.

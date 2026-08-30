@@ -1,0 +1,207 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: X8
+ATTEMPT: 3
+---
+Audited in a `cp -a` copy at scratch (kept .git). Read X8.1/X8.2 verdicts and
+ACCESSIBILITY.md first. All 5 verify steps below were run against a REAL
+render: built `cmd/server`, seeded a throwaway `BUDGET_DATA_DIR` from
+`testdata/`, curled/rendered `/dashboard` and `/explorer` live, and drove a
+real Chromium (Playwright, chromium-1234 already cached) through the site's
+OWN dark-mode toggle mechanism (`localStorage.setItem('theme','dark')` then
+reload, matching `web/templates/layouts/base.html:20-27` exactly) before
+running `@axe-core/cli`'s axe-core 4.13.0 engine in-page.
+
+## 1. Completeness
+
+`grep -rn 'dark:text-gray-500' web/templates/` → exactly 4 hits, matching the
+claim precisely:
+  insights.html:193,226 · dashboard.html:13 · explorer.html:738
+All 4 read in context: purely decorative SVG icons (fill=none/stroke=
+currentColor) with an adjacent text alternative already present ("No data",
+"Drop CSV or backup ZIP files here...", "No transactions found") — not the
+sole conveyor of information. `git show master:<file>` line-for-line compare
+(diff, not eyeball): all 4 lines byte-identical to master. Genuinely exempt,
+count matches claim.
+
+## 2. Family arithmetic (own math from shipped `web/static/css/tailwind.css`
+   RGB values, WCAG relative-luminance formula, cross-validated against a
+   real render — see below)
+
+  solid gray-800, dark:text-gray-400          → 5.78:1  PASS (matches X8.2's own number)
+  solid gray-700, dark:text-gray-400          → 4.06:1  FAILS 4.5 → escalation to gray-300 required
+  solid gray-700, dark:text-gray-300          → 6.995:1 PASS — confirmed live-render via
+    getComputedStyle (bg rgb(55,65,81) exact gray-700, color rgb(209,213,219)
+    exact gray-300) AND raw PNG pixel sampling of explorer.html's date-range
+    buttons in dark mode — sampled background pixel (55,65,81) exact match,
+    peak text pixel ≈(204,208,214) vs gray-300 (209,213,219), confirms 6.995:1
+    for real
+  dark:bg-gray-700/50-in-gray-800 (rate-assumptions.html glide-path box),
+    dark:text-gray-400                        → 4.88:1  PASS, correctly NOT escalated
+  opacity-60 box (own bg-gray-800 nested in bg-gray-800 card; CSS `opacity`
+    blends the WHOLE box incl. text with the ancestor backdrop, not just the
+    fill):
+      dark:text-gray-400  → 3.03:1  FAILS → escalation required
+      dark:text-gray-300  → 4.57:1  PASSES (barely) — matches attempt 3's
+        choice in bigticket-card.html/expense-sources-list.html/
+        income-sources-list.html (3 of the 9 gray-300 escalations)
+  opacity-50 row (explorer.html suppressed-duplicate rows — the disclosed
+    residual, see #4 below)
+  large-text case: insights.html:189/222 `text-2xl font-bold` "$0.00" on
+    solid gray-800 → same 5.78:1 as the solid-gray-800 family, clears both
+    3:1 and 4.5:1 comfortably.
+
+Spot-checked all 9 gray-300 escalations by category (3 opacity-60 boxes:
+bigticket-card/expense-sources-list/income-sources-list; 3 gray-700-surface
+sites: healthcare-person.html's "Coverage Timeline" captions, confirmed via
+template read that the enclosing card is `bg-gray-50 dark:bg-gray-700`
+solid, not gray-800; 3 opacity-50 rows: explorer.html, the disclosed
+residual). All 9 check out — correct family, correct color, correct math.
+
+IMPORTANT CORRECTION TO MY OWN FIRST AXE PASS: my first live axe run showed
+21 `color-contrast` violations on `/dashboard#dark` that did not match my
+hand math (axe reported background colors like `#523e4f`/`#384a50` that
+match NEITHER `getComputedStyle` NOR real rendered pixels). Root cause: my
+harness set `localStorage`+`class="dark"` via JS on an already-painted LIGHT
+page and ran axe immediately, catching Tailwind's `transition-colors
+duration-200` mid-transition. Fixed by reloading after setting the theme (so
+the real inline head-script at `base.html:20-27` sets the class BEFORE first
+paint, exactly like a real user re-visiting with the cookie already set —
+zero transition). After the fix: 0 color-contrast violations on
+`/dashboard#dark`, 0 attributable ones on `/explorer#dark` (see #5).
+Independently re-verified the corrected numbers three ways (WCAG formula
+math from shipped CSS values, `getComputedStyle` on the live dark DOM, and
+raw PNG pixel sampling of screenshots) — all three agree to within rounding
+for every site checked (kpis.html's rose-900/20 caption: 6.64:1 sampled vs
+6.62:1 computed; dashboard-verdict-bar's emerald-900/20 caption: matches;
+explorer's solid-gray-700 button: matches).
+
+## 3. Delta discipline
+
+Sampled 6 files across the 28 (budget-vs-actual.html, whatif/rate-
+assumptions.html [158-line diff, read in full], whatif/monte-carlo.html,
+whatif/healthcare-person.html, pages/dashboard.html, pages/explorer.html),
+full `git diff master` on each. Every changed line falls into exactly one of:
+  (a) attempt-1's already-audited light-side sweep (text-gray-400/500→500/600,
+      green-600→700) — unchanged by this attempt
+  (b) attempt-1's heading promotions (h3→h2, h4→h3) — unchanged by this attempt
+  (c) attempt-1's `for`/`id` label association fix (dashboard.html,
+      explorer.html date inputs) — unchanged by this attempt
+  (d) this attempt's `dark:text-gray-500`→`dark:text-gray-400` or
+      `dark:text-gray-300` token swap
+No other kind of change in any of the 6 sampled files. healthcare-person.html
+confirmed 3 of its dark-token swaps are the gray-700-surface 500→300
+escalation (matches family #2).
+
+## 4. The disclosed residual (explorer.html suppressed-duplicate rows,
+   lines ~511, 702, 732 — `opacity-50` applied to the `<tr>`, composited
+   over the enclosing `bg-white dark:bg-gray-800` card)
+
+Verified the worker's numbers three ways — WCAG formula, and (new) a real
+Chromium render of the exact structure (`<tr class="opacity-50">` inside a
+`bg-gray-800` card, real shipped `tailwind.css`), sampled via raw PNG pixels:
+  master state, dark:text-gray-500 under opacity-50  → 1.73:1 (computed;
+    matches master's `git show master:web/templates/pages/explorer.html`
+    class at these lines)
+  dark:text-gray-300 (X8.3's fix)                     → 3.63:1 computed AND
+    3.63:1 live-rendered-pixel-sampled (peak text pixel (120,127,137) exact
+    match to the predicted 0.5×gray-300 + 0.5×gray-800 blend) — the model is
+    exactly right, not an approximation
+  dark:text-gray-100 (lightest gray token)             → 4.48:1 — still FAILS
+  white (not a gray token)                             → 4.81:1 — the only
+    thing that would pass, and it isn't "gray" text
+No Tailwind gray shade reaches 4.5:1 under 50%-opacity `<tr>` compositing on
+this card. Confirmed.
+
+Judged against ACCESSIBILITY.md point 7 (4.5:1) and 12 (dark parity) plus
+WCAG 1.4.3's "inactive user interface component" exception: the exception
+does NOT cleanly apply here — the suppressed row still has a live
+`onclick="filterByDescription(...)"` handler and a live `/duplicates` link,
+so it is not an inactive/disabled control, it is de-emphasized active
+content. Strictly read, this remains a non-conforming site under 1.4.3.
+
+Distinguishing the two questions the brief asks me to keep separate:
+  - Did THIS ATTEMPT satisfy its own declared spec (token-only dark-color
+    swap, disclosed residual, strict improvement, no scope creep)? YES —
+    1.73:1→3.63:1 is a genuine >2x improvement, it is honestly disclosed as
+    non-compliant rather than misrepresented as fixed, and the worker's own
+    stated reason a full fix is out of scope (opacity sits on the `<tr>`,
+    not the text node — fixing it means restructuring which element carries
+    the suppression styling, not swapping a color token) is architecturally
+    correct per my own trace of the template.
+  - Does the SITE still need further work? YES — recorded as a FINDING for
+    the lead's backlog, not a FAIL of this attempt: move the `opacity-50`
+    off the `<tr>` (e.g. onto a background-only class, or drop the row's own
+    text color further while keeping full text opacity and using a
+    lower-alpha background/strikethrough+icon to signal "suppressed" per
+    ACCESSIBILITY.md point 8 instead of relying on opacity for meaning).
+Per the checker brief's explicit instruction ("FAIL only if... a fixed site
+still fails its threshold") this is not a fixed-and-claimed-compliant site,
+so it is not a FAIL condition.
+
+## 5. Rendering unbroken
+
+  `go test -count=1 ./internal/templates/... ./web/...` → both `ok`
+  `make css-verify` → "tailwind.css is up to date"
+  `bash swarm/t7-coverage.sh` → exit 0, "OK: 732 literal utility-looking
+    class tokens covered (55 whitelisted, 50 dynamic-safelist entries
+    verified present)."
+  Built `cmd/server`, ran against throwaway `BUDGET_DATA_DIR` seeded from
+    `testdata/transactions.csv` + `testdata/settings/whatif.json`. `/explorer`
+    and `/dashboard` both 200, parse cleanly (Chromium `networkidle`, no JS
+    console errors observed). Served-HTML grep confirms the changed classes
+    are live: 32 `dark:text-gray-400|300` instances in `/dashboard`'s body,
+    29 in `/explorer`'s body — not just present in template source.
+
+  Real axe-core run (light AND dark, via the site's actual toggle) on both
+  pages, corrected for the transition-timing artifact described in #2:
+    /dashboard#light: color-contrast(10 nodes, all `text-emerald-600/500`
+      in kpis.html, byte-identical to master, light-mode only — pre-existing,
+      unrelated to X8's dark-token sweep) + select-name(1, byte-identical to
+      master) — OBSERVATIONS
+    /dashboard#dark: 0 color-contrast violations; select-name(1,
+      byte-identical to master) — OBSERVATION
+    /explorer#light: select-name(2, byte-identical to master) — OBSERVATION
+    /explorer#dark: color-contrast(1 node: the JS-driven "active" date-range
+      button, `bg-indigo-600`/white text, 4.46:1 — `updateDateRangeButtons()`
+      in explorer.html byte-identical to master, uses indigo not gray, wholly
+      unrelated to this sweep) + select-name(2, byte-identical to master) —
+      OBSERVATIONS
+
+No color-contrast violation in a real dark-mode render is attributable to
+X8.3's own changes. Every remaining axe hit traces to master-identical
+markup outside this attempt's scope.
+
+## Verdict
+
+Attempt 3 completed the grep-driven completion sweep correctly: exactly 4
+legitimate exemptions remain, all 97 gray-400 fixes and all 9 gray-300
+escalations check out against real math AND a real render (including a
+correction I had to make to my own harness, documented above, which
+resolved to zero net regressions), the delta is scope-clean across every
+file sampled, the one disclosed residual is honestly reported with correct
+numbers and appropriately out of this attempt's declared scope, and the
+build/test/render pipeline is fully green. PASS.
+
+## Observations (non-blocking, for the lead)
+
+- FINDING (not a FAIL): explorer.html's suppressed-duplicate rows remain
+  non-conformant under WCAG 1.4.3 because `opacity-50` sits on the `<tr>`
+  rather than being expressed as a background-only/icon-based suppression
+  cue; recommend a follow-up task scoped to restructure that specific
+  pattern (not a token swap).
+- Pre-existing, byte-identical-to-master, out of X8's scope: kpis.html's
+  `text-emerald-600/500` light-mode captions (10 axe nodes); explorer.html's
+  JS-driven active-button `bg-indigo-600`/white (4.46:1, just under
+  threshold); missing accessible names on 3 `<select>` elements across
+  dashboard/explorer (WCAG 4.1.2 / ACCESSIBILITY.md point 4); monte-
+  carlo.html's decorative svg still lacking `aria-hidden="true"` (repeated
+  from X8.1/X8.2's own observations, still unaddressed, still out of scope).
+- Tooling note for future a11y checkers: setting `class="dark"` via JS on an
+  already-painted page and running axe immediately can catch Tailwind
+  `transition-colors` mid-flight and produce false-positive color-contrast
+  violations with background colors that match neither `getComputedStyle`
+  nor real pixels. Always reload after setting the theme so the real
+  head-inline script (`base.html:20-27`) sets the class pre-paint, or
+  disable transitions, before trusting an axe dark-mode run.

@@ -258,3 +258,139 @@ func TestLoadPreservesPerYearOverrides(t *testing.T) {
 		t.Fatalf("Load aliased PerYearOverrides: another caller's map now %v", got)
 	}
 }
+
+// TestMutatorReturnDoesNotAliasCache extends the Load invariant above to the
+// ~20 SettingsManager mutators (AddIncomeSource and friends): each loads,
+// mutates, calls saveInternalAndBump — which publishes the mutated object as
+// sm.cache — and used to return that same object to its caller. A caller
+// mutating its return value was therefore mutating sm.cache directly, the
+// same hazard TestLoadReturnsAPrivateCopy guards for Load, just reachable
+// from every mutator instead of only from Load.
+//
+// A table over three mutators from different families exercises the fix
+// (return prepare.Clone(settings) instead of settings) across the family
+// rather than trusting one representative to stand in for all ~20: income
+// (AddIncomeSource), big-ticket (AddBigTicketItem), and a multi-field update
+// (UpdateSpendingPhases, which sets both Enabled and Phases in one call).
+// Each case mutates a field that the mutator under test just wrote — not an
+// unrelated canary — so a failure also demonstrates that specific mutator's
+// aliasing hazard, not a generic one.
+func TestMutatorReturnDoesNotAliasCache(t *testing.T) {
+	cases := []struct {
+		name string
+		// call invokes the mutator under test and returns its result.
+		call func(sm *SettingsManager) (*models.WhatIfSettings, error)
+		// mutate corrupts the returned object using a field this mutator
+		// just wrote.
+		mutate func(result *models.WhatIfSettings)
+		// verify asserts the given settings (a fresh Load, or the second
+		// call's return value) still show the pre-mutation state.
+		verify func(t *testing.T, s *models.WhatIfSettings)
+		// second re-invokes the mutator family in a way that does not
+		// itself overwrite the field mutate touched, so a leaked mutation
+		// would still be visible in its return value.
+		second func(sm *SettingsManager) (*models.WhatIfSettings, error)
+	}{
+		{
+			name: "AddIncomeSource",
+			call: func(sm *SettingsManager) (*models.WhatIfSettings, error) {
+				return sm.AddIncomeSource(models.IncomeSource{ID: "inc-1", Name: "Pension"})
+			},
+			mutate: func(result *models.WhatIfSettings) {
+				result.IncomeSources[0].Name = "CORRUPTED"
+			},
+			verify: func(t *testing.T, s *models.WhatIfSettings) {
+				t.Helper()
+				if len(s.IncomeSources) == 0 || s.IncomeSources[0].Name != "Pension" {
+					t.Fatalf("mutating the return value leaked into the manager's state: "+
+						"IncomeSources = %+v, want [0].Name = \"Pension\"", s.IncomeSources)
+				}
+			},
+			second: func(sm *SettingsManager) (*models.WhatIfSettings, error) {
+				return sm.AddIncomeSource(models.IncomeSource{ID: "inc-2", Name: "Annuity"})
+			},
+		},
+		{
+			name: "AddBigTicketItem",
+			call: func(sm *SettingsManager) (*models.WhatIfSettings, error) {
+				return sm.AddBigTicketItem(models.BigTicketItem{ID: "bt-1", Name: "Roof", Amount: 20000, Year: 2, Type: models.BigTicketExpense})
+			},
+			mutate: func(result *models.WhatIfSettings) {
+				result.BigTicketItems[0].Amount = 999999999
+			},
+			verify: func(t *testing.T, s *models.WhatIfSettings) {
+				t.Helper()
+				if len(s.BigTicketItems) == 0 || s.BigTicketItems[0].Amount != 20000 {
+					t.Fatalf("mutating the return value leaked into the manager's state: "+
+						"BigTicketItems = %+v, want [0].Amount = 20000", s.BigTicketItems)
+				}
+			},
+			second: func(sm *SettingsManager) (*models.WhatIfSettings, error) {
+				return sm.AddBigTicketItem(models.BigTicketItem{ID: "bt-2", Name: "Car", Amount: 30000, Year: 4, Type: models.BigTicketExpense})
+			},
+		},
+		{
+			name: "UpdateSpendingPhases",
+			call: func(sm *SettingsManager) (*models.WhatIfSettings, error) {
+				return sm.UpdateSpendingPhases(true, []models.SpendingPhase{
+					{Name: "Go-Go", StartAge: 61, Multiplier: 1.0},
+					{Name: "Slow-Go", StartAge: 75, Multiplier: 0.85},
+				})
+			},
+			mutate: func(result *models.WhatIfSettings) {
+				// A multi-field mutator: corrupt both fields it just set.
+				result.SpendingPhaseConfig.Enabled = false
+				result.SpendingPhaseConfig.Phases[0].Multiplier = 0.01
+			},
+			verify: func(t *testing.T, s *models.WhatIfSettings) {
+				t.Helper()
+				if !s.SpendingPhaseConfig.Enabled {
+					t.Fatalf("mutating the return value leaked into the manager's state: " +
+						"SpendingPhaseConfig.Enabled = false, want true")
+				}
+				if got := s.SpendingPhaseConfig.Phases[0].Multiplier; got != 1.0 {
+					t.Fatalf("mutating the return value leaked into the manager's state: "+
+						"Phases[0].Multiplier = %v, want 1.0", got)
+				}
+			},
+			// nil phases: UpdateSpendingPhases only overwrites Phases when
+			// len(phases) > 0, so this second call reads Phases straight from
+			// whatever the manager published — a mutation leaked from the
+			// first call's return value would still show up here.
+			second: func(sm *SettingsManager) (*models.WhatIfSettings, error) {
+				return sm.UpdateSpendingPhases(true, nil)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sm := newAgedManager(t)
+
+			result, err := tc.call(sm)
+			if err != nil {
+				t.Fatalf("%s: %v", tc.name, err)
+			}
+
+			// Mutate the object the mutator handed back.
+			tc.mutate(result)
+
+			// A fresh Load reads the manager's own published state, not the
+			// caller's copy. If the mutator had returned the cached object
+			// itself, this mutation would be visible here.
+			fresh, err := sm.Load()
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			tc.verify(t, fresh)
+
+			// Same check from a second call instead of Load, so the guard is
+			// not accidentally specific to Load's own copy-on-return path.
+			again, err := tc.second(sm)
+			if err != nil {
+				t.Fatalf("second call: %v", err)
+			}
+			tc.verify(t, again)
+		})
+	}
+}

@@ -23,15 +23,15 @@
     {{if $v.HasData}}
     <div class="flex items-center gap-6 ml-auto">
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Daily Avg</div>
+            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Daily Avg</div>
             <div class="num text-base font-bold {{verdictValueClass $v.Health}}">{{formatMoney $v.DailyAverage}}</div>
         </div>
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Usual Daily</div>
+            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Usual Daily</div>
             <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{formatMoney $v.HistoricalDaily}}</div>
         </div>
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Month Projection</div>
+            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Month Projection</div>
             <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{formatMoney $v.MonthProjection}}</div>
         </div>
     </div>

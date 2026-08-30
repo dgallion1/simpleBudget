@@ -255,6 +255,7 @@ func IncomePatterns(ts *models.TransactionSet) []models.IncomePattern {
 			IsRegular:   isRegular,
 			Occurrences: len(txns),
 			TotalAmount: total,
+			LastDate:    txns[len(txns)-1].Date,
 		})
 	}
 

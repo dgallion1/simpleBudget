@@ -1,0 +1,83 @@
+{{/* Sync-from-Dashboard preview: shows the proposed changes and asks for
+     confirmation. Nothing is saved until the user clicks Apply, which posts
+     to /whatif/sync/apply. Expects: .Plan (syncPlan). */}}
+{{define "whatif-sync-preview"}}
+<div id="whatif-sync-preview" class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-4">
+    <div>
+        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Review Sync from Dashboard</h3>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            These changes are computed from the last 12 months of transactions.
+            Nothing has been saved yet — review and apply, or cancel to keep your current plan.
+        </p>
+    </div>
+
+    {{if not .Plan.HasChanges}}
+    <p class="text-sm text-gray-600 dark:text-gray-300">Your plan already matches the dashboard — applying would change nothing.</p>
+    {{end}}
+
+    <div class="space-y-1">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-200">Monthly living expenses</h4>
+        <p class="text-sm text-gray-600 dark:text-gray-300">
+            ${{formatNumber .Plan.OldMonthlyExpenses}}
+            <span class="text-gray-400 dark:text-gray-500">&rarr;</span>
+            ${{formatNumber .Plan.NewMonthlyExpenses}}
+            <span class="text-xs text-gray-400 dark:text-gray-500">(12-month average, excluding Health Insurance — premiums are modeled under Healthcare)</span>
+        </p>
+    </div>
+
+    {{if .Plan.Added}}
+    <div class="space-y-1">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-200">Income sources to add</h4>
+        <ul class="text-sm text-gray-600 dark:text-gray-300 list-disc list-inside">
+            {{range .Plan.Added}}
+            <li>{{.Name}} — ${{formatNumber .Amount}}/mo</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    {{if .Plan.Updated}}
+    <div class="space-y-1">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-200">Income sources to update</h4>
+        <ul class="text-sm text-gray-600 dark:text-gray-300 list-disc list-inside">
+            {{range .Plan.Updated}}
+            <li>{{.Name}} — ${{formatNumber .OldAmount}}/mo <span class="text-gray-400 dark:text-gray-500">&rarr;</span> ${{formatNumber .NewAmount}}/mo</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    {{if .Plan.Removed}}
+    <div class="space-y-1">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-200">Auto-detected sources to remove</h4>
+        <ul class="text-sm text-gray-600 dark:text-gray-300 list-disc list-inside">
+            {{range .Plan.Removed}}
+            <li>{{.Name}} — ${{formatNumber .Amount}}/mo (no longer detected in recent deposits)</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    {{if .Plan.Skipped}}
+    <div class="space-y-1">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-200">Detected but not synced</h4>
+        <ul class="text-sm text-gray-600 dark:text-gray-300 list-disc list-inside">
+            {{range .Plan.Skipped}}
+            <li>{{.Name}} — {{.Reason}} (last deposit {{formatDate .LastDate}})</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    <div class="flex items-center gap-3 pt-2">
+        <button hx-post="/whatif/sync/apply" hx-target="#whatif-results" hx-swap="innerHTML"
+            class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">
+            Apply Changes
+        </button>
+        <button hx-post="/whatif/calculate" hx-target="#whatif-results" hx-swap="innerHTML"
+            class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md">
+            Cancel
+        </button>
+    </div>
+</div>
+{{end}}

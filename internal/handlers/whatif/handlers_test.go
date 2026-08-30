@@ -5952,15 +5952,15 @@ func TestHandleWhatIfResetPhases_SaveError(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfSync_SaveError(t *testing.T) {
+func TestHandleWhatIfSyncApply_SaveError(t *testing.T) {
 	rm, dir, cleanup := setupTestEnvWithDir(t)
 	defer cleanup()
 	primeLoadCache(t, rm)
 	makeSaveFail(t, dir)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/whatif/sync", nil)
-	handleWhatIfSync(w, req)
+	req := httptest.NewRequest("POST", "/whatif/sync/apply", nil)
+	handleWhatIfSyncApply(w, req)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500. body: %s", w.Code, w.Body.String())
@@ -7591,12 +7591,12 @@ func TestHandleWhatIfGuardrails_AnalysisError(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfSync_AnalysisError(t *testing.T) {
+func TestHandleWhatIfSyncApply_AnalysisError(t *testing.T) {
 	setupItemsThenBreakChain(t, func(rm *retirement.SettingsManager) {})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/whatif/sync", nil)
-	handleWhatIfSync(w, req)
+	req := httptest.NewRequest("POST", "/whatif/sync/apply", nil)
+	handleWhatIfSyncApply(w, req)
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500. body: %s", w.Code, w.Body.String())
 	}

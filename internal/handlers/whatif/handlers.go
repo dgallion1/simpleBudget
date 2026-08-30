@@ -31,7 +31,6 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
-	"budget2/internal/services/insights"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/retirement/completeness"
 	"budget2/internal/services/retirement/engine"
@@ -834,6 +833,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Get("/whatif/chart/projection/no-guardrails", handleWhatIfProjectionChartNoGuardrails)
 	r.Get("/whatif/chart/income", handleWhatIfIncomeChart)
 	r.Post("/whatif/sync", handleWhatIfSync)
+	r.Post("/whatif/sync/apply", handleWhatIfSyncApply)
 	r.Post("/whatif/montecarlo", handleWhatIfMonteCarlo)
 	r.Post("/whatif/roth-conversion", handleWhatIfRothConversion)
 	r.Post("/whatif/bigticket", handleWhatIfAddBigTicket)
@@ -1163,109 +1163,3 @@ func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Requ
 	_ = json.NewEncoder(w).Encode(chartData)
 }
 
-func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.LoadContext(r.Context())
-	if err != nil {
-		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Sync expenses and income from dashboard
-	if err := syncSettingsFromDashboard(settings); err != nil {
-		renderError(w, "Failed to sync from dashboard: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	saveAndRecalc(w, r, settings)
-}
-
-// syncSettingsFromDashboard updates settings with values from dashboard data
-func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
-	data, err := loader.LoadData()
-	if err != nil {
-		return err
-	}
-
-	// Calculate average monthly values from last 12 months
-	now := time.Now()
-	yearAgo := now.AddDate(-1, 0, 0)
-	filtered := data.Active().FilterByDateRange(yearAgo, now)
-	outflows := filtered.FilterByType(models.Outflow)
-
-	months := 12.0
-	if filtered.MinDate().After(yearAgo) {
-		months = now.Sub(filtered.MinDate()).Hours() / 24 / 30
-		if months < 1 {
-			months = 1
-		}
-	}
-
-	// Calculate and set average monthly expenses.
-	// Signed sum + math.Abs so refunds reduce the total instead of inflating it.
-	totalExpenses := math.Abs(outflows.SumAmount())
-	settings.MonthlyLivingExpenses = totalExpenses / months
-
-	// Use insights income pattern detection for individual income sources
-	incomePatterns := insights.IncomePatterns(filtered)
-
-	// Remove old auto-detected sources (prefixed with "insights-" or old "dashboard-income")
-	// Keep user-added sources (no special prefix)
-	// BUT preserve user modifications (EndMonth, StartMonth, COLARate, Type) from existing insights sources
-	userSources := make([]models.IncomeSource, 0)
-	existingMods := make(map[string]models.IncomeSource)
-
-	for _, src := range settings.IncomeSources {
-		if strings.HasPrefix(src.ID, "insights-") || src.ID == "dashboard-income" {
-			// Save user modifications for this auto-detected source
-			existingMods[src.ID] = src
-		} else {
-			userSources = append(userSources, src)
-		}
-	}
-
-	// Convert detected income patterns to income sources
-	for _, pattern := range incomePatterns {
-		// Only include regular income patterns (skip one-time or irregular)
-		if !pattern.IsRegular {
-			continue
-		}
-
-		// Convert to monthly amount based on frequency
-		monthlyAmount := pattern.AvgAmount
-		switch pattern.Frequency {
-		case "weekly":
-			monthlyAmount = pattern.AvgAmount * 52 / 12
-		case "biweekly":
-			monthlyAmount = pattern.AvgAmount * 26 / 12
-			// monthly is already correct
-		}
-
-		// Create a stable ID from the description
-		id := "insights-" + strings.ToLower(strings.ReplaceAll(pattern.Description, " ", "-"))
-
-		newSource := models.IncomeSource{
-			ID:     id,
-			Name:   cases.Title(language.English).String(pattern.Description),
-			Amount: monthlyAmount,
-			Type:   models.IncomeFixed,
-		}
-
-		// Preserve user modifications from existing source with same ID
-		if existing, ok := existingMods[id]; ok {
-			newSource.EndMonth = existing.EndMonth
-			newSource.StartMonth = existing.StartMonth
-			newSource.COLARate = existing.COLARate
-			newSource.InflationAdjusted = existing.InflationAdjusted
-			// Preserve Type only if user changed it from default
-			if existing.Type != "" && existing.Type != models.IncomeFixed {
-				newSource.Type = existing.Type
-			}
-		}
-
-		userSources = append(userSources, newSource)
-	}
-
-	settings.IncomeSources = userSources
-
-	return nil
-}

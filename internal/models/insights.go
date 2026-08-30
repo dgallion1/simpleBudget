@@ -28,12 +28,13 @@ type CategoryTrend struct {
 
 // IncomePattern represents detected income sources and their regularity
 type IncomePattern struct {
-	Description string  `json:"description"`
-	AvgAmount   float64 `json:"avg_amount"`
-	Frequency   string  `json:"frequency"` // "weekly", "biweekly", "monthly", "irregular"
-	IsRegular   bool    `json:"is_regular"`
-	Occurrences int     `json:"occurrences"`
-	TotalAmount float64 `json:"total_amount"`
+	Description string    `json:"description"`
+	AvgAmount   float64   `json:"avg_amount"`
+	Frequency   string    `json:"frequency"` // "weekly", "biweekly", "monthly", "irregular"
+	IsRegular   bool      `json:"is_regular"`
+	Occurrences int       `json:"occurrences"`
+	TotalAmount float64   `json:"total_amount"`
+	LastDate    time.Time `json:"last_date"` // most recent occurrence; tells ended income from ongoing
 }
 
 // SpendingVelocity tracks the burn rate and projections

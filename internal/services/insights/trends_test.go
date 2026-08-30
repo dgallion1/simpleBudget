@@ -623,3 +623,33 @@ func keysOf(m map[string]models.CategoryTrend) []string {
 	}
 	return out
 }
+
+// IncomePatterns must report each pattern's most recent occurrence so
+// consumers (the what-if sync) can tell ended income from ongoing income.
+func TestAnalyzeIncomePatterns_LastDate(t *testing.T) {
+	base := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	last := base.AddDate(0, 3, 0)
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			income("employer", 5000, base.AddDate(0, 2, 0)),
+			income("employer", 5000, base),
+			income("employer", 5000, last),
+			income("employer", 5000, base.AddDate(0, 1, 0)),
+		},
+	}
+
+	patterns := IncomePatterns(ts)
+
+	found := false
+	for _, p := range patterns {
+		if p.Description == "employer" {
+			found = true
+			if !p.LastDate.Equal(last) {
+				t.Errorf("LastDate = %v, want %v", p.LastDate, last)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected employer pattern")
+	}
+}

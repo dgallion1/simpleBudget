@@ -19,9 +19,15 @@ type MajorExpense struct {
 	// charts. The entry is hidden from spending rollups but still shown
 	// in the Major Expenses list so the user can see what's being
 	// filtered and edit it.
-	IsInternalTransfer bool      `json:"is_internal_transfer,omitempty"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	IsInternalTransfer bool `json:"is_internal_transfer,omitempty"`
+	// ExcludeFromPlanSync marks this entry as modeled separately in the
+	// what-if plan (an ExpenseSource, e.g. a car loan). The dashboard sync
+	// (internal/handlers/whatif/sync.go) must not fold its matched
+	// transactions into living expenses, or the plan double-counts them —
+	// once via the ExpenseSource, once via the trailing-12-month average.
+	ExcludeFromPlanSync bool      `json:"exclude_from_plan_sync,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 // MajorExpenseStore is the persisted shape of major_expenses.json. The

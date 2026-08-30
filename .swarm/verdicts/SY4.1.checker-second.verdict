@@ -1,0 +1,127 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: SY4
+ATTEMPT: 1
+---
+Scope per manifest: internal/services/metrics/metrics.go (+test),
+internal/handlers/dashboard/handlers.go (+tests), internal/services/mcpsvc/spend/register.go +
+summary.go (+test), internal/models/dashboard.go (gofmt-only touch), plus the sanctioned
+mechanical `, nil` in internal/services/dataloader/transfers_test.go. Confirmed via
+`git status --porcelain` + reading every diff hunk — no file outside this list is dirty beyond
+the sanctioned deviations and pre-existing HC-merged/SY1-SY3-accepted state.
+
+ATTACK 1 — Surfaces the enumeration might have missed. Independently grepped
+`web/static/js` and both templates (kpis.html, dashboard-verdict-bar.html) for "living"/"Living"
+and any client-side re-summing of outflows: no hits beyond what the manifest's table already
+lists as CLEARED (rendering already-adjusted server fields). Independently confirmed
+verdict.go (`BuildBudgetVerdict`) takes only `*models.DashboardMetrics` fields as input — no
+local transaction arithmetic to re-classify. No missed surface found.
+
+ATTACK 2 — HI + flagged overlap precedence, proven with a fixture rather than trusting the
+test's name. Read TestCalculateMetrics_PlanExclusions_HIOverlapExcludedOnceNotDoubleSubtracted
+in full: it builds a row that is BOTH Category="Health Insurance" AND present in
+planExclusions, and asserts LivingExpensesTotal=3000 with an explicit comment that "a
+double-subtraction bug would show 2300" — this is a genuine discriminating assertion, not a
+name-trusting one, and PlanExcludedOutflows' HI-continue-before-map-lookup ordering (read
+directly in metrics.go) matches it. Not a defect.
+
+ATTACK 3 — Filtered-vs-unfiltered / twin-Hash leak. planExclusions is built by each of the
+three call sites over the UNFILTERED active set (verified directly: handlers.go:126 and :217
+pass `data.Active()`, handlers.go:284 passes `data.Active()` into the chart's planSyncExclusions
+call, summary.go:246 passes `ts` — confirmed by reading the surrounding code that at that point
+`ts` is `deps.load().Active()`, BEFORE `filtered := ts.FilterByDateRange(...)` a few lines
+below). Re-verified (not re-assumed from the SY1 review) that
+`internal/services/dataloader/loader.go:717-732` (`deduplicateTransactions`, unchanged, called
+unconditionally inside every load) still keeps only the first transaction of any exact-Hash
+collision, globally, before any range filter runs -- so a Hash claimed by the classifier always
+corresponds to exactly one physical transaction with one fixed date; there is no "twin only
+partly in range" scenario reachable through the real load pipeline. Not a defect.
+
+ATTACK 4 — Comparison() reusing one map across both periods. Read metrics.go's diff: the SAME
+`planExclusions` is threaded unmodified into both the current-window and comparison-window
+`Calculate` calls. This is CORRECT, not a bug: a transaction's flagged classification is a
+Hash-keyed fact about the ledger, independent of which window is being displayed (identical to
+how coverageStart is a single lifetime fact reused across both windows) -- reusing one map is
+the period-appropriate behavior here, not a shortcut that skips work.
+
+ATTACK 5 — Cumulative-walk algebra cross-check between metrics.go and handlers.go (two
+independent formulas for "actual spend minus plan-excluded" in the combined-cumulative walk:
+metrics.go does `spend -= math.Abs(pe.SumAmount())` directly; handlers.go achieves the same
+netting implicitly via `running += monthTarget - (livingMonth + hcAmt)` where livingMonth
+already had excludedAmt subtracted). Verified algebraically these two paths compute the
+identical mathematical quantity (`expAmt - excludedAmt`, hcAmt cancels). Float
+non-associativity could in principle produce sub-cent divergence between the two paths, but
+this is invisible at any rendered precision and the two figures are never displayed side by
+side requiring bitwise equality — not a FAIL-worthy defect, noted only as a structural
+observation.
+
+ATTACK 6 — SIGN-CONVENTION DEFECT ON A NET-REFUND FLAGGED GROUP (CONFIRMED, FAILS AC5(a)).
+`PlanExcludedOutflows` collects every matched row regardless of sign, and every consuming site
+computes `excludedAmt`/`planExcludedTotal` as `math.Abs(planExcludedSet.SumAmount())` --
+the ABSOLUTE VALUE of the flagged group's NET (signed) sum -- then SUBTRACTS that abs'd
+quantity from an ALREADY-abs'd total (`totalExpenses`/`expAmt`, themselves
+`math.Abs(outflows.SumAmount())`). This is only algebraically valid when the flagged group's
+net and the remaining total's net have the SAME sign (the ordinary case: both represent real
+spend). When a flagged group's refunds exceed its spend WITHIN THE WINDOW (net positive, "a
+net refund" -- exactly the case SY1's ruling SY-2026-08-30a explicitly anticipated and
+authorized for the sync-preview's ExcludedGroups display), the abs-then-subtract shortcut
+produces the WRONG figure, because `|S + F| - |F| != |S|` when S and F have opposite signs
+(only equal when same-signed, by the triangle-inequality boundary case).
+
+PROOF (throwaway probe, added/run/deleted inside internal/services/metrics/, deletion
+confirmed via `git status --porcelain` before writing this verdict; used the REAL
+`metrics.Calculate`, not a reimplementation):
+  Fixture: $8000 income; $3000 non-flagged rent (true remaining living spend); a flagged
+  "Car Loan" group with one $2000 payment (Amount=-2000) and one $2500
+  reversal/refund (Amount=+2500, same description, still typed Outflow) -- net for the
+  flagged group = +500 (a net refund).
+  Expected LivingExpensesTotal (the flagged group excluded entirely, whatever its own net):
+  $3000 (just the rent).
+  Actual result from the real Calculate():
+    LivingExpensesTotal = 2000.00 (want 3000.00); PlanExcludedTotal = 500.00
+    DEFECT: LivingExpensesTotal = 2000.00, want 3000.00
+    TotalExpenses = 2500.00
+  A $1000 error in the Monthly Living Expenses KPI -- money that should count fully as living
+  spend (the $3000 rent) is silently under-reported by a third, purely because an unrelated
+  flagged group happened to have a net refund in the same window. This directly contradicts
+  AC5(a)'s literal requirement: "living actual drops by exactly the flagged net" -- here it
+  drops by an amount that is neither the flagged net (500) nor zero, but a figure with no
+  documented meaning (1000, which is exactly 2x the flagged group's abs'd net in this fixture --
+  the generic error term is `|S+F| - (|S| - |F|)` whenever S,F have opposite signs).
+  This same `math.Abs(...SumAmount())`-then-subtract pattern is used verbatim at EVERY
+  consuming site (confirmed by direct read, not just this one probe): ActualMonthly/
+  PerMonthDelta/CumulativeDelta (all derived from the same broken LivingExpensesTotal),
+  LivingExpensesTrend's per-month bucket (`excludedAmt := math.Abs(pe.SumAmount())` inside
+  Calculate's month loop), the combined-cumulative walk (`spend -= math.Abs(pe.SumAmount())`),
+  handlers.go's buildBudgetVsActualChartData (identical per-month pattern), and MCP
+  summarize_spending's living_monthly_actual/budget block (same Calculate call) -- so this is
+  one root-cause defect that reaches every enumerated consumer, not an isolated corner case.
+  None of the worker's 5 new metrics-package tests, 2 dashboard tests, or 1 spend-package test
+  exercise a flagged group whose net is opposite-signed to the remainder -- every fixture uses
+  single-direction (spend-only) flagged transactions.
+
+Fix is confined to SY4's own territory (PlanExcludedOutflows/Calculate in metrics.go, and the
+mirrored math in buildBudgetVsActualChartData): subtract the flagged group's SIGNED net from
+the SIGNED remaining total before the final Abs, instead of subtracting two independently-abs'd
+quantities -- e.g. compute the living figure as
+`math.Abs(outflows-minus-HI-minus-flagged, signed sum)` in one pass, mirroring exactly how
+`totalExpenses` itself is computed (one signed sum, one final Abs), rather than
+abs-total-minus-abs-healthcare-minus-abs-flagged.
+
+Build/test re-verification (own runs): `go test ./internal/services/metrics/...
+./internal/handlers/dashboard/... ./internal/services/mcpsvc/spend/... -count=1` all `ok` (the
+shipped suite is internally consistent -- it just never tests the sign-divergent case that
+breaks the implementation).
+
+STRONGEST ATTACK THAT FAILED TO BREAK IT: Attack 2 (HI+flagged overlap precedence) -- the
+"double-subtraction" failure mode this run's rulings have repeatedly caught elsewhere is
+correctly closed here, proven by a fixture with an explicit discriminating comment, not merely
+a well-named test.
+
+VERDICT: FAIL on Attack 6 -- a flagged group with a net refund exceeding its spend in the
+displayed window produces a wrong, undocumented LivingExpensesTotal (and every derived
+figure: ActualMonthly, PerMonthDelta, CumulativeDelta, LivingExpensesTrend, the
+budget-vs-actual chart's Living bars/cumulative walk, and summarize_spending's
+living_monthly_actual), violating AC5(a)'s literal requirement that living actual drop by
+exactly the flagged net.

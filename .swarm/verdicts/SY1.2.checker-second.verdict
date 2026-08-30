@@ -1,0 +1,105 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: SY1
+ATTEMPT: 2
+---
+Scope of attempt 2 per manifest: internal/handlers/whatif/sync.go +
+internal/handlers/whatif/sync_plan_exclusions_test.go only, implementing rulings
+SY-2026-08-30a (net refunds, no math.Abs) and SY-2026-08-30b (Name+ID sort tiebreaker).
+Confirmed via `git diff HEAD -- internal/handlers/whatif/sync.go` hunk headers: only the
+import block, the three ExcludedGroups-related types, and the computeDashboardSync body
+changed — no stray edits outside SY1 territory. HC-territory files untouched (attribute
+only): internal/handlers/dashboard/**, internal/services/metrics/**,
+internal/services/mcpsvc/spend/**, internal/models/dashboard.go, kpis.html,
+dataloader/transfers_test.go.
+
+ATTACK 1 — Sign convention vs what the template actually renders. Read
+web/templates/components/whatif/sync-preview.html (unchanged this attempt, confirmed by the
+2-file diff scope) and internal/templates/render.go:546 `formatNumber`. formatNumber correctly
+prints a leading "-" for negative values with proper thousands-grouping (not clamped, not
+double-signed). A group whose refunds exceed spend would render "$-NNN/mo" — cosmetically odd
+but numerically honest, and the ruling explicitly authorizes exactly this ("renders as-is via
+formatNumber... NEVER math.Abs"). No code path clamps or re-abs's the value between
+computeDashboardSync and the template (confirmed by reading the full accumulation loop: no
+`math.Abs` call touches `agg.Total`/`MonthlyAmount` after the netting line). Not a defect.
+
+ATTACK 2 — Netting vs the totalExpenses/living-expenses exclusion path (double-keep or
+double-drop). Reread the loop: HI-category check first (`continue`), then
+`if def, ok := exclusions[t.Hash]; ok { ...; continue }`, else `totalExpenses += t.Amount`. A
+reversal/refund row that is flag-matched lands in the exclusions map (Match/MatchTransaction
+compares abs(amount), sign-agnostic) and is `continue`d before ever reaching
+`totalExpenses += t.Amount` — excluded exactly once, same as its payment siblings, regardless
+of sign. No double-count, no silent drop. `totalExpenses`'s own signed-sum-then-one-final-Abs
+formula (AC3) is provably untouched — the diff hunk boundary for this change starts after that
+line. Not a defect.
+
+ATTACK 3 — Hash stability across preview→apply when defs are edited between the two calls: is
+that the guard's job or a hole? Read handleWhatIfSync/handleWhatIfSyncApply in full.
+computeDashboardSync loads `loader.LoadMajorExpenses()` fresh on EVERY call (preview AND
+apply); if a def's ExcludeFromPlanSync flag (or any def) changes between preview and apply, the
+apply-time recompute produces a different ExcludedGroups/NewMonthlyExpenses, therefore a
+different syncPlanHash, and the explicit `if hash != expectedHash` check
+(internal/handlers/whatif/sync.go:562) 409s with a "dashboard data changed" message instead of
+silently applying stale figures. This is precisely what the hash guard exists for (doc comment
+at line ~506 confirms the hash's whole job is binding apply to "what the user reviewed being
+still current") — not a hole, working as designed. Not a defect.
+
+ATTACK 4 — Count semantics ("5 transactions" for 4 payments + 1 reversal): is the rendered
+count honest? Per D-SY-e, Count reflects rows "actually skipped" — the reversal row IS actually
+skipped from living expenses (excluded, just netted rather than gross-summed in the dollar
+figure), so counting it among the 5 excluded transactions is accurate: all 5 rows were pulled
+out of MonthlyLivingExpenses. The oracle's own calibration note explicitly acknowledges "the
+count check does not discriminate... the discriminating check is the net monthly" — this was a
+known, accepted non-issue at oracle-authoring time, not a gap introduced this attempt. Not a
+defect.
+
+ATTACK 5 — Independently re-verify the mutation-kill claims (not trusting the manifest's
+self-report or test names). Ran `go test -run ExcludedGroup -v` myself: both
+TestComputeDashboardSync_ExcludedGroupRefundNets and
+TestComputeDashboardSync_ExcludedGroupsOrderSurvivesNameCollision assert on the actual
+`plan.ExcludedGroups[0]` fields (Count==5, Total==1500.00 net, MonthlyAmount==Total/months) and
+on `syncPlanHash` stability across 100 real `computeDashboardSync` calls against a
+Name-colliding two-def fixture (sub-netflix/sub-spotify, both named "Subscription") — both
+PASS. Could not mutate sync.go directly to re-run the worker's own kill-test (checker is
+read-only on sources; the harness's own permission classifier blocked an attempted edit,
+confirming the read-only boundary is enforced, not just self-imposed). Corroborated the
+underlying premise instead with a throwaway probe (added/run/deleted,
+internal/handlers/whatif/zz_probe_sy1check_sort_mutant_test.go, deletion confirmed via
+`git status --porcelain`): reproduced the exact Name-only-sort shape (attempt 1's shape) against
+the same two-ID/one-Name fixture for 200 fresh-map iterations — order flipped in 24/200 runs,
+proving the nondeterminism ruling SY-2026-08-30b describes is real and reproducible at this map
+size, and that a 100-iteration, order-and-hash-asserting test (what attempt 2 shipped) is a
+meaningful, non-tautological guard against it — not just theoretically motivated.
+
+ATTACK 6 (informational, not a FAIL basis) — no test exercises the negative-Total case (refunds
+EXCEEDING spend in a flagged group), only net-positive (1500 from 2000-500). AC5's amendment
+text requires only "a flagged group with payments plus a refund asserts... NET figures," which
+is satisfied. The arithmetic is sign-agnostic by construction (verified by reading: no
+conditional branch, no Abs, no clamp keys off the sign of Total anywhere in the accumulation or
+rendering path) so a negative case follows the identical code path already exercised — a
+coverage gap worth flagging for the backlog, not a functional defect, since I traced the code
+and found no sign-dependent special-casing that a negative-only test could have caught.
+
+Build/test re-verification (own runs, this session):
+  go build ./internal/handlers/whatif/... ./internal/services/majorexpenses/...
+    ./internal/services/dataloader/... ./internal/models/...  -> clean
+  go test ./internal/handlers/whatif/... ./internal/services/majorexpenses/...
+    ./internal/services/dataloader/... -count=1
+    ok  	budget2/internal/handlers/whatif	10.268s
+    ok  	budget2/internal/services/majorexpenses	0.004s
+    ok  	budget2/internal/services/dataloader	1.626s
+  .swarm/tier3/SY1/oracle.2.log tail confirmed: "checks passed: 8, failed: 0" / "ORACLE PASS"
+    (lead's run, not re-executed by me per instructions — read only).
+
+STRONGEST ATTACK THAT FAILED TO BREAK IT: Attack 3 (hash guard vs. defs edited between preview
+and apply) — genuinely looked like it could be a TOCTOU-shaped hole given this codebase's
+documented history with exactly that class of bug (Z7, cited in this same file's doc comments),
+but computeDashboardSync's fresh LoadMajorExpenses() call on every invocation plus the
+unconditional hash comparison closes it by construction; confirmed by reading both handler
+functions end to end, not by name-matching a doc comment.
+
+VERDICT: PASS. Both conceded attempt-1 defects (gross-abs refund inflation,
+Name-only-sort nondeterminism) are fixed, scoped precisely to the rulings, verified against
+real code and real test runs rather than the manifest's claims alone, and no new defect found
+in the amended surface.

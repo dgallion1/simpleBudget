@@ -17,6 +17,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/insights"
+	"budget2/internal/services/majorexpenses"
 	"budget2/internal/services/metrics"
 )
 
@@ -36,6 +37,19 @@ type syncSkippedPattern struct {
 	LastDate time.Time
 }
 
+// syncExcludedGroup is one major-expense definition (ExcludeFromPlanSync)
+// whose matched transactions were left out of NewMonthlyExpenses because the
+// plan already models that spending separately (an ExpenseSource). Total and
+// Count come only from rows actually skipped for this def — a row that is
+// both Health-Insurance-categorized and flag-matched is excluded once, as
+// HI, and never lands in a group's total (D-SY-e).
+type syncExcludedGroup struct {
+	Name          string
+	MonthlyAmount float64
+	Total         float64
+	Count         int
+}
+
 // syncPlan is the full set of changes a dashboard sync proposes. It is
 // computed without touching settings so the user can review it first.
 type syncPlan struct {
@@ -50,6 +64,12 @@ type syncPlan struct {
 	Updated []syncSourceChange
 	Removed []models.IncomeSource
 	Skipped []syncSkippedPattern
+
+	// ExcludedGroups is sorted by Name for determinism — syncPlan stays
+	// map-free so syncPlanHash's canonical JSON encoding (and therefore
+	// preview/apply hash equality) never depends on Go's randomized map
+	// iteration order.
+	ExcludedGroups []syncExcludedGroup
 }
 
 // HasChanges reports whether applying the plan would alter settings.
@@ -137,25 +157,97 @@ func computeDashboardSync(settings *models.WhatIfSettings) (*syncPlan, error) {
 		}
 	}
 
+	// Major expenses the plan models separately (an ExpenseSource, e.g. a
+	// car loan) must not also be folded into the living-expense average, or
+	// the plan double-counts them. The classifier runs one full Match pass
+	// over ALL defs (D-SY-b) so first-def-wins semantics stay correct; the
+	// exclusion map here only records which flagged def, if any, claimed
+	// each transaction.
+	defs, err := loader.LoadMajorExpenses()
+	if err != nil {
+		return nil, err
+	}
+	pins, err := loader.LoadTransactionPins()
+	if err != nil {
+		return nil, err
+	}
+	exclusions := majorexpenses.ComputePlanSyncExclusions(outflows, defs, pins)
+
 	// Average monthly living expenses. Signed sum + math.Abs so refunds
 	// reduce the total instead of inflating it. Health Insurance outflows
 	// are excluded: the plan's healthcare persons model those premiums, so
 	// folding them into living expenses would double-count them (the spend
 	// summary makes the same living/healthcare split). The comparison is
 	// case-insensitive to match TransactionSet.FilterByCategory, which the
-	// dashboard's healthcare split uses.
+	// dashboard's healthcare split uses. Checked BEFORE the plan-sync
+	// exclusion so a row that is both HI-category and flag-matched is
+	// skipped once, as HI, and never inflates a group's displayed total
+	// (D-SY-e).
+	//
+	// Excluded-group Total NETS refunds (ruling SY-2026-08-30a): outflows
+	// are negative in the ledger, so `-t.Amount` makes a normal payment add
+	// a positive amount and a refund subtract -- matching the major-expenses
+	// net-spend convention elsewhere in the codebase. NEVER math.Abs per
+	// row here: a group whose refunds exceed its payments must render a
+	// negative Total/MonthlyAmount as-is, not clamped to zero or flipped
+	// positive.
+	type excludedTotal struct {
+		Name  string
+		Total float64
+		Count int
+	}
+	excludedByID := make(map[string]excludedTotal)
 	var totalExpenses float64
 	for _, t := range outflows.Transactions {
 		if strings.EqualFold(t.Category, metrics.HealthInsuranceCategory) {
+			continue
+		}
+		if def, ok := exclusions[t.Hash]; ok {
+			agg := excludedByID[def.ID]
+			agg.Name = def.Name
+			agg.Total += -t.Amount
+			agg.Count++
+			excludedByID[def.ID] = agg
 			continue
 		}
 		totalExpenses += t.Amount
 	}
 	totalExpenses = math.Abs(totalExpenses)
 
+	// Sort by def ID first (excludedByID's key, not carried on
+	// syncExcludedGroup -- the hash canonicalization must not gain a field),
+	// producing a Name-then-ID order below. Name alone is not unique
+	// (majorexpenses.Validate does not enforce it, and live data has
+	// several defs sharing a Name): two flagged defs with the same Name
+	// would otherwise sort in map-iteration order, randomizing
+	// ExcludedGroups between calls and flipping syncPlanHash between
+	// preview and apply into a spurious 409 (ruling SY-2026-08-30b).
+	ids := make([]string, 0, len(excludedByID))
+	for id := range excludedByID {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		ni, nj := excludedByID[ids[i]].Name, excludedByID[ids[j]].Name
+		if ni != nj {
+			return ni < nj
+		}
+		return ids[i] < ids[j]
+	})
+	var excludedGroups []syncExcludedGroup
+	for _, id := range ids {
+		agg := excludedByID[id]
+		excludedGroups = append(excludedGroups, syncExcludedGroup{
+			Name:          agg.Name,
+			MonthlyAmount: agg.Total / months,
+			Total:         agg.Total,
+			Count:         agg.Count,
+		})
+	}
+
 	plan := &syncPlan{
 		OldMonthlyExpenses: settings.MonthlyLivingExpenses,
 		NewMonthlyExpenses: totalExpenses / months,
+		ExcludedGroups:     excludedGroups,
 	}
 
 	// Use insights income pattern detection for individual income sources.

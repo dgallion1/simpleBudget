@@ -1,0 +1,106 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: SY2
+ATTEMPT: 1
+---
+Scope per manifest: web/templates/pages/major-expenses.html (two new <label> blocks) +
+internal/handlers/majorexpenses/handlers.go (one struct-literal field added to
+parseExpenseForm) + handlers_test.go (5 new tests). Confirmed via
+`git diff HEAD -- <file>` hunk headers on both source files — no stray edits, no touch to
+form-level hx-trigger/hx-target/hx-swap attributes, no touch to HC/SY1/SY3 territory.
+
+ATTACK 1 — Classic checkbox-unset bug on the UPDATE path (unchecking posts nothing; does
+"absent" correctly mean false, or does update silently keep a stale true?). Read
+parseFormBool (handlers.go:540-544): "absent key -> false" by construction, doc-commented.
+Read UpdateMajorExpense (dataloader/major_expenses.go:110-138, SY1-authored): line 126
+unconditionally assigns `list[i].ExcludeFromPlanSync = updates.ExcludeFromPlanSync` on every
+update call — no OR-in, no "only if true" guard, no merge with the prior stored value. Since
+handleUpdate always calls parseExpenseForm fresh from the CURRENT POST body (never merges with
+the existing record field-by-field for this field), an update that omits the checkbox
+computes false and overwrites true with false. Independently verified (not just trusting the
+test name) by reading TestHandleUpdate_ExcludeFromPlanSync_Persists in full: it posts the flag
+on, asserts persisted true, then re-PUTs the SAME id WITHOUT the checkbox and asserts
+persisted false — this is exactly the two-step check-then-uncheck sequence the classic bug
+requires; it is not a single-direction test. Not a defect.
+
+ATTACK 2 — Edit-form checked-state isolation across N expenses (id/name collisions). Read the
+template's row structure: `major-expense-item` is a named template invoked per-`.Summaries`
+row, with `data-expense-id`, `id="major-expense-item-{{.Expense.ID}}"`, and
+`id="major-expense-detail-{{.Expense.ID}}"` all keyed on the per-row Expense.ID — Go template
+range scoping gives each invocation its own `.Expense`, so `{{if .Expense.ExcludeFromPlanSync}}`
+cannot leak a sibling row's state by construction (no shared/global template variable holds
+it). Cross-checked against TestMajorExpenseEditForm_RendersExcludeFromPlanSyncCheckedState,
+which seeds one flagged + one unflagged expense and slices the response body on the two
+distinct `major-expense-detail-<id>` anchors — confirmed the test actually asserts on
+isolated substrings, not the whole body. One test-QUALITY (not product) weakness noted: the
+flagged-side assertion is `strings.Contains(flaggedSection, "checked")` with NO windowing
+around the specific input (unlike the unflagged-side assertion, which correctly windows
+`idx:idx+200`), so it would not, by itself, prove "checked" landed on the correct input if some
+other control in that ~2-3KB fragment also produced the literal substring "checked". This does
+NOT let the fixture pass vacuously here (grepped the full edit-form fragment: no other control
+renders "checked" when IsInternalTransfer is false, which it is in this fixture), and I
+independently confirmed the ACTUAL app markup is correct by direct read
+(major-expenses.html:1120-1123: `{{if .Expense.ExcludeFromPlanSync}}checked{{end}}` sits
+directly inside the `name="exclude_from_plan_sync"` input, immediately after the sibling
+is_internal_transfer block) — so this is a backlog test-hardening observation, not a FAIL
+basis.
+
+ATTACK 3 — Does the create form reset properly after submit (leftover checked state
+persisting into the next "Add")? Read the form's `hx-on::after-request` handler
+(major-expenses.html:1175): on success it calls `this.reset()`, which resets EVERY field
+(including the new checkbox) to the form's markup-declared initial state. The create form's
+exclude_from_plan_sync input has no `checked` attribute in its static markup (line 1232-1233,
+no `{{if}}` — correctly, a brand-new expense has no prior state to reflect), so reset always
+returns it to unchecked. Not a defect.
+
+ATTACK 4 — hx-include name collision. The edit form (and the create form) both carry
+`hx-include="#major-expenses-filter-form"`, which merges an ENTIRELY SEPARATE form's fields
+into the PUT/POST body — if that filter form happened to also have a field literally named
+`exclude_from_plan_sync` or `is_internal_transfer`, Go's `r.FormValue` (first-value-wins)
+could silently ignore the edit form's own checkbox state. Grepped the filter form's fields:
+only `start` and `end` (date range) — no collision. Pre-existing pattern anyway (SY2 didn't
+touch hx-include), so even a genuine collision would be out of SY2's scope. Not a defect.
+
+ATTACK 5 — Cross-check with SY1: does a def flagged via THIS UI actually flow into
+computeDashboardSync's exclusions? Traced statically: handleAdd appends the whole parsed
+struct via AddMajorExpense (dataloader/major_expenses.go:86-104, no field-by-field copy to
+drop it), UpdateMajorExpense explicitly copies it (line 126), and SY1's computeDashboardSync
+loads via the SAME `loader.LoadMajorExpenses()` call. Then PROVED it live: threw a probe test
+(added/run/deleted, internal/handlers/majorexpenses/zz_probe_sy2check_sy1integration_test.go,
+deletion confirmed via `git status --porcelain`) that POSTs through the real `handleAdd`
+handler with `exclude_from_plan_sync=on` and a keyword matching the test fixture's "My
+Landlord LLC" transactions, then calls SY1's real, unmodified
+`majorexpenses.ComputePlanSyncExclusions` against the loader's real on-disk state:
+    exclusions map size=2, matched landlord transactions=2
+Both landlord outflows the UI-created def should exclude were present in SY1's exclusion map —
+the full UI-to-classifier chain is genuinely wired, not merely independently round-tripping on
+each side.
+
+ATTACK 6 — ACCESSIBILITY.md point 10 (focus restoration after an HTMX swap). The edit form's
+swap-on-change wiring (`hx-trigger="change delay:500ms"`, `hx-target="#major-expenses-results"`,
+`hx-swap="innerHTML"`) is PRE-EXISTING and shared verbatim by every other field in that form
+(name, keywords, min/max, notes, is_internal_transfer) — confirmed via the git diff hunk
+headers that SY2 added only the two `<label>` blocks and touched no form-level hx-* attribute.
+Any focus-restoration gap in this pattern is identical for the new checkbox and its siblings,
+predates SY2, and is out of SY2's written scope (observation for the backlog if not already
+tracked, not a FAIL basis here).
+
+Own verification (not just the manifest's self-report): `git diff` hunk-level scope check
+(above), full direct read of both template forms (lines 1095-1244) and both handler functions
+(parseExpenseForm/parseFormBool/UpdateMajorExpense/AddMajorExpense), full read of all 5 new
+tests (not just names), and the live cross-package integration probe. Re-ran the package suite
+clean:
+  go test ./internal/handlers/majorexpenses/... -count=1
+  ok  	budget2/internal/handlers/majorexpenses	0.315s
+
+STRONGEST ATTACK THAT FAILED TO BREAK IT: Attack 1 (checkbox-unset bug on update) — this is
+the single most common real-world defect class for exactly this UI pattern, and this codebase
+has no framework-level guard against it (parseFormBool + a naive "OR the new value in" update
+would have shipped it silently); confirmed clean by reading both the parse and the persist
+layers end to end and by independently reading (not trusting the name of) the two-step
+check-then-uncheck test.
+
+VERDICT: PASS. No product defect found in SY2's own diff; one test-hardening observation
+(Attack 2's asymmetric windowing) and one form-level accessibility question (Attack 6) are
+recorded for the backlog but land outside SY2's written scope.

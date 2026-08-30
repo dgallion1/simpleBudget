@@ -520,12 +520,13 @@ func parseExpenseForm(r *http.Request) (models.MajorExpense, error) {
 	}
 
 	me := models.MajorExpense{
-		Name:               strings.TrimSpace(r.FormValue("name")),
-		Keywords:           splitAndTrim(r.FormValue("keywords"), ","),
-		ExpectedMin:        expectedMin,
-		ExpectedMax:        expectedMax,
-		Notes:              strings.TrimSpace(r.FormValue("notes")),
-		IsInternalTransfer: parseFormBool(r, "is_internal_transfer"),
+		Name:                strings.TrimSpace(r.FormValue("name")),
+		Keywords:            splitAndTrim(r.FormValue("keywords"), ","),
+		ExpectedMin:         expectedMin,
+		ExpectedMax:         expectedMax,
+		Notes:               strings.TrimSpace(r.FormValue("notes")),
+		IsInternalTransfer:  parseFormBool(r, "is_internal_transfer"),
+		ExcludeFromPlanSync: parseFormBool(r, "exclude_from_plan_sync"),
 	}
 	if err := majorexpenseengine.Validate(me); err != nil {
 		return models.MajorExpense{}, err

@@ -92,3 +92,7 @@ Z5	2	tests,second	accepted	2	worker-coder	gate-ok-attempt-2-two-lane-pass
 Z6	1	a11y,tests	accepted	1	worker-coder	gate-ok-attempt-1
 Z7	2	tests,second	accepted	1	worker-coder	gate-ok-attempt-1-two-lane-pass
 HC1	3	tests,second	accepted	3	worker-coder	gate-ok-tier3-attempt-3-dual-lane-pass-10-mutation-matrix
+SY1	3	tests,second	accepted	2	worker-coder	gate-ok-tier3-attempt-2-oracle-pass-dual-lane
+SY2	2	tests,a11y,second	accepted	1	worker-coder	gate-ok-attempt-1-tri-lane-pass
+SY4	2	tests,second	accepted	4	worker-coder	gate-ok-attempt-4-dual-lane-pass-chart-walk-merge-then-abs
+SY3	1	tests	accepted	1	worker-coder	gate-ok-attempt-1-nil-merge-mutation-killed

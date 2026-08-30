@@ -1,0 +1,206 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: SY4
+ATTEMPT: 4
+---
+CONTRACT: ruling SY-2026-08-30e (user-deferred, lead-authorized past the hard
+stop, SCOPED TO THE CHART WALK ONLY). Attempt 3's set exclusion was sound at
+every metrics.go site, but buildBudgetVsActualChartData's cumulative walk was
+left half-rewritten: it summed `livingMonth + hcAmt` where livingMonth had
+become an independent |LivingOutflows bucket|, so master's cancelling
+identity no longer held and |a|+|b| != |a+b| on sign-divergent months — a
+nil-map REGRESSION against master. Remediation asked for: merge the two
+buckets then Abs once (mirroring metrics.go), plus a chart-walk-vs-
+metrics-walk equality test on a sign-divergent fixture with nil AND non-nil
+maps. The Living BAR value stays as-is.
+
+METHOD: all mutations and probes via `go test -overlay` only (spec's Run
+conventions). Nothing written to the shared tree. sha256 brackets below.
+My only write is this verdict file. No port, no server, no write-mode git.
+
+-------------------------------------------------------------------------
+1. FULL BATTERY — PASS
+-------------------------------------------------------------------------
+  $ go build ./...     BUILD=0   (no output)
+  $ go vet ./...       VET=0     (no output)
+  $ gofmt -l $(cat .swarm/manifests/SY4.4.files)
+                       (no output — both files clean)
+  $ go test ./internal/services/metrics/... ./internal/handlers/dashboard/... ./internal/services/mcpsvc/spend/... -count=1
+    ok  	budget2/internal/services/metrics	0.003s
+    ok  	budget2/internal/handlers/dashboard	0.632s
+    ok  	budget2/internal/services/mcpsvc/spend	0.676s
+    EXIT=0
+  $ go test ./... -count=1
+    EXIT=0 ; ok lines: 49 ; non-ok lines: NONE
+
+-------------------------------------------------------------------------
+2. SCOPE — PASS, established against MY OWN recorded attempt-3 hashes
+-------------------------------------------------------------------------
+I did not rely on `git status` (which cannot distinguish attempt-3 changes
+from attempt-4 ones, since the whole run is uncommitted). Instead I diffed
+the CURRENT sha256 of all fifteen SY4.3 files against the baseline I recorded
+during my attempt-3 verification:
+  $ diff <(sha256sum $(cat .swarm/manifests/SY4.3.files)) <my attempt-3 baseline>
+    7c7
+    < eb32af6558da0de06133a3b8a4ee054fc9535304739f4f0334d322899a840370  internal/handlers/dashboard/handlers.go
+    ---
+    > d5a70a235d2b98841aeca1ff8fbf302d40bf3a25c7f58a881d11379cae2babd0  internal/handlers/dashboard/handlers.go
+  EXACTLY ONE file differs. metrics.go, models/dashboard.go, mcpsvc/spend/*,
+  transfers_test.go and every attempt-1/2/3 test file are byte-identical to
+  the state I accepted at attempt 3. Adding the one new test file
+  (plan_exclusions_chart_walk_test.go, untracked), the delta is exactly
+  SY4.4.files. Nothing else moved.
+  This also means my attempt-3 overlays against metrics.go remain valid
+  without rebuilding — used below for the CTRL control.
+
+-------------------------------------------------------------------------
+3. THE REQUIRED MUTATION — PASS, fails on BOTH subtests
+-------------------------------------------------------------------------
+  W_revert — walk accrual back to attempt-3's two-Abs form
+  (`running += monthTarget - (livingMonth + hcAmt)`):
+  $ go test -overlay=<W_revert> -count=1 -v -run TestChartCumulativeWalk_AgreesWithMetricsCombinedCumulativeBalance ./internal/handlers/dashboard/
+    --- FAIL: TestChartCumulativeWalk_AgreesWithMetricsCombinedCumulativeBalance
+        --- FAIL: .../nil_planExclusions
+            point 0: metrics = -2097.963039014374, chart = -2898
+            point 1: metrics = -3996.1232032854214, chart = -4796
+        --- FAIL: .../flagged_def
+            point 0: metrics = -2597.963039014374, chart = -3398
+            point 1: metrics = -4496.123203285421, chart = -5296
+  BOTH subtests fail, as required. The nil_planExclusions subtest shows the
+  ~$800-class divergence ($800.04 and $800.12) with NO flag set — i.e. the
+  test genuinely guards the master-regression half of ruling e, not merely
+  the flagged path. This is the property that made attempt 3 fail, and it is
+  now under test.
+
+-------------------------------------------------------------------------
+4. MERGE COMPOSITION — PASS (no third classifier; overlap counted once)
+-------------------------------------------------------------------------
+Read from source (handlers.go:725-728): the merged set is
+    append(append([]models.Transaction{}, livingOutflows.Transactions...),
+                                          healthcareOutflows.Transactions...)
+where livingOutflows comes from `metrics.LivingOutflows(outflows,
+planExclusions)` (attempt 3's single exclusion implementation) and
+healthcareOutflows from the pre-existing
+`outflows.FilterByCategory(metrics.HealthInsuranceCategory)`. Two
+already-classified sets concatenated — no new predicate, no third
+classifier, satisfying the split-classification rule structurally.
+
+I did not leave that as a reading. My probe counts, per transaction Hash,
+how many times each row lands in the merged bucket, on a fixture containing
+all four row kinds including the HI+flagged OVERLAP row:
+    PROBE-MERGE plain    appears 1 time(s)
+    PROBE-MERGE credit   appears 1 time(s)
+    PROBE-MERGE hi       appears 1 time(s)
+    PROBE-MERGE flag     appears 0 time(s)
+    PROBE-MERGE overlap  appears 1 time(s)
+Exactly right: ordinary living rows once, HI rows once, a non-HI flagged row
+ZERO times (excluded from the walk), and the HI+flagged overlap row EXACTLY
+ONCE — it is dropped from livingOutflows by the HI-first check and picked up
+by healthcareOutflows, so it is neither double-counted nor lost.
+The same probe quantifies why the merge matters:
+    PROBE-MERGE merged signed sum = 1900.00 ; ONE Abs = 1900.00
+    PROBE-MERGE two-Abs (attempt-3 shape) would be |living|+|hc| = 3000.00 + 1100.00 = 4100.00
+A $2,200 divergence on this fixture — the defect class, measured.
+End-to-end on the overlap fixture, chart walk vs metrics walk:
+    PROBE-OVERLAP nil:             metrics=[-1397.9630 -6396.1232] chart=[-1398 -6396]
+    PROBE-OVERLAP flagged+overlap: metrics=[-1897.9630 -6896.1232] chart=[-1898 -6896]
+Agreement in both cases, including with the overlap row present.
+Corroborating mutation MERGE_hi (drop HI rows from the merged bucket):
+    --- FAIL: TestBuildBudgetVsActualChartData_Structure
+    --- FAIL: ..._PlanExclusionRemovesFlaggedSpendFromLivingAndCumulative
+    --- FAIL: ..._NetRefundGroupAddsBackNotSubtracts
+    --- FAIL: TestChartCumulativeWalk_AgreesWithMetricsCombinedCumulativeBalance
+  HI's presence in the merged bucket is load-bearing and guarded.
+
+-------------------------------------------------------------------------
+5. THE WALK REWRITE DID NOT DISCONNECT ANYTHING — PASS
+-------------------------------------------------------------------------
+  CTRL_setexcl (my attempt-3 control, still valid since metrics.go is
+  byte-identical — set exclusion removed from LivingOutflows):
+    9 tests FAIL, including RemainderNetsRefund*, NetRefund*,
+    DropsLivingByExactFlaggedNet*, LivingTrendExcludesFlaggedMonth,
+    and both Comparison_PlanExclusions* tests.
+    (Attempt 3's same control killed 6; attempt 4's added coverage raises it
+    to 9.) The exclusion mechanism remains load-bearing.
+  B_chart, REBUILT against attempt-4 source (handleChartData -> nil):
+    --- FAIL: TestHandleChartData_BudgetVsActual_PlanExclusionWiring
+        plan_exclusions_wiring_test.go:177: Living trace y[0] = 2100, want 1500
+    Wiring still guarded; the walk rewrite did not break the map's path in.
+  BAR_touch (my own addition — revert the Living BAR value to the old
+  `expAmt - hcAmt` shape, to confirm the bar is still independently guarded
+  and was not quietly folded into the walk change):
+    --- FAIL: TestBuildBudgetVsActualChartData_PlanExclusionRemovesFlaggedSpendFromLivingAndCumulative
+    --- FAIL: TestBuildBudgetVsActualChartData_NetRefundGroupAddsBackNotSubtracts
+    --- FAIL: TestBuildBudgetVsActualChartData_RemainderNetsRefundLivingEqualsAbsRemainder
+    --- FAIL: TestHandleChartData_BudgetVsActual_PlanExclusionWiring
+    The bar value is untouched by this attempt AND still under test — the
+    dispatch's "Living BAR value stays as-is" is verified in both directions.
+
+-------------------------------------------------------------------------
+6. ALL PRIOR TESTS STILL PASS — PASS (32 by name, 0 failures)
+-------------------------------------------------------------------------
+  $ go test <3 packages> -count=1 -v -run 'PlanExclusion|Remainder|NetRefund|Wiring|ChartCumulativeWalk|DashboardVerdictBar|BudgetVsActualChartData|SummarizeSpendingBudgetBlock'
+    PASS: 32   FAIL: 0
+  The full name list is in my run log; it covers every
+  TestCalculateMetrics_PlanExclusions_* (10), TestComparison_PlanExclusions*
+  (3), TestBuildBudgetVsActualChartData_* (7, including the three pre-SY4
+  ones: Empty/NoTarget/Structure/RefundReducesMonthLiving),
+  TestDashboardVerdictBar_* (4), TestHandle*_PlanExclusionWiring (3),
+  TestSummarizeSpendingBudgetBlock* (3) and
+  TestSummarizeSpendingByMonthReportsANetRefundMonthAsNegative, plus the new
+  TestChartCumulativeWalk_AgreesWithMetricsCombinedCumulativeBalance.
+  The worker claimed 31 prior + 1 new; I count 32 total under this pattern.
+  The difference is a naming/counting question, not a coverage gap — every
+  test in the three packages passes and the whole-tree suite is green.
+
+-------------------------------------------------------------------------
+RESTORE VERIFICATION
+-------------------------------------------------------------------------
+  $ diff <sy4d.before.sha> <sy4d.after.sha>
+    BOTH SY4.4 FILES BYTE-IDENTICAL
+  $ diff <current 15 SY4.3 hashes> <my attempt-3 baseline> | grep -c '^[<>]'
+    2      (i.e. still exactly ONE file differs — my mutations changed nothing)
+  $ git status --porcelain | grep -iE 'zz_|\.bak|v4bak'
+    (none)  — no stray probe or backup files from either lane
+
+-------------------------------------------------------------------------
+FINDINGS
+-------------------------------------------------------------------------
+F1 (observation, in-scope-adjacent, NOT a defect). The new equality test uses
+   budgetTarget=1, healthcareTarget=1 with tolerance 0.2 so that a
+   pre-existing, deliberately out-of-scope difference between the two walks'
+   TARGET accrual formulas (metrics.go prorates by MonthsBetween's fractional
+   day count; the chart uses a flat monthly rate — master behavior, per
+   buildBudgetVsActualChartData's own comment) shrinks below the threshold
+   while the SPEND-side bug stays at full scale. I verified the separation is
+   real rather than tuned: under W_revert the divergence is $800.04/$800.12,
+   ~4000x the tolerance, and my own independent overlap probe reproduced
+   agreement at the same tolerance on a different fixture. The consequence
+   worth recording is that this test cannot detect a future regression in the
+   TARGET accrual, only in the SPEND accrual. That matches ruling e's scope
+   exactly, but it means "the two walks agree" is guaranteed by this test
+   only for the spend term.
+F2 (backlog, unchanged from my attempt-3 verdict, PRE-EXISTING/master-native).
+   CombinedCumulativeBalance's per-month |sum| partition assumption still
+   breaks on a refund-dominant month; my attempt-3 both-ends probe showed it
+   failing identically with planExclusions=nil. Attempt 4 makes the CHART
+   agree with metrics.go, which is what was asked — it does not fix the
+   shared underlying assumption. Still worth its own task.
+F3 (commit hygiene, unchanged): untracked, non-gitignored 16MB ELF
+   `budget2.old-1345` in the repo root would be swept up by `git add -A`.
+
+-------------------------------------------------------------------------
+SUMMARY
+-------------------------------------------------------------------------
+The scoped remediation does exactly what ruling SY-2026-08-30e asked and
+nothing else. Scope is proven at the byte level against my own attempt-3
+hashes: of the fifteen SY4.3 files, exactly one moved. The walk now merges
+the two already-classified buckets and takes ONE Abs; my Hash-level probe
+shows the HI+flagged overlap row appearing exactly once, a non-HI flagged row
+zero times, and quantifies the old two-Abs shape's error at $2,200 on that
+fixture. The required mutation fails BOTH subtests including the nil-map one
+that represents the master regression. The set-exclusion control, the chart
+wiring mutant and a bar-value mutant of my own all still kill, so the rewrite
+disconnected neither the bar nor the wiring. 32 SY4 tests pass by name, whole
+tree green, both files byte-identical after every mutation.

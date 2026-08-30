@@ -62,6 +62,31 @@ func currentBudgetSettings() *models.WhatIfSettings {
 	return settings
 }
 
+// planSyncExclusions returns the plan-sync exclusion map (transaction Hash
+// -> flagged major-expense def) for ts via
+// majorexpenses.ComputePlanSyncExclusions -- the SAME classifier the what-if
+// dashboard sync already uses to keep plan-modeled spend (e.g. a car loan
+// flagged ExcludeFromPlanSync) out of its living-expense average (SY4;
+// D-SY-b's full-Match-pass discipline lives in ComputePlanSyncExclusions
+// itself, not re-implemented here). Callers must pass the FULL active
+// transaction set, never a range-filtered one -- a transaction's flagged
+// status is a fact about the ledger, independent of the selected window
+// (same discipline as metrics.HealthcareCoverageStart). Best-effort: a
+// missing loader or a major_expenses.json load failure returns nil ("no
+// exclusions") rather than failing the dashboard, matching
+// bucketMajorExpenses' own tolerance for the same file.
+func planSyncExclusions(ts *models.TransactionSet) map[string]models.MajorExpense {
+	if loader == nil {
+		return nil
+	}
+	defs, err := loader.LoadMajorExpenses()
+	if err != nil || len(defs) == 0 {
+		return nil
+	}
+	pins, _ := loader.LoadTransactionPins()
+	return majorexpenses.ComputePlanSyncExclusions(ts, defs, pins)
+}
+
 // RegisterRoutes registers all dashboard routes
 func RegisterRoutes(r chi.Router) {
 	r.Get("/dashboard", handleDashboard)
@@ -98,7 +123,11 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	// lifetime fact about the ledger, independent of the selected window
 	// (single-source rule, ruling 2026-08-29a).
 	coverageStart, hasCoverage := metrics.HealthcareCoverageStart(data.Active())
-	dashMetrics := metrics.Calculate(filtered, startDate, endDate, target, healthTarget, coverageStart, hasCoverage)
+	// SY4: plan-modeled spend (major expenses flagged ExcludeFromPlanSync)
+	// excluded from the living-expense figures below, same discipline as
+	// coverageStart above -- derived from the full active set, not filtered.
+	planExclusions := planSyncExclusions(data.Active())
+	dashMetrics := metrics.Calculate(filtered, startDate, endDate, target, healthTarget, coverageStart, hasCoverage, planExclusions)
 	// Provenance for the Monthly Living Expenses card's "Target $X" text —
 	// base plan value, effective multiplier, and active phase, so the
 	// number is explained rather than appearing out of nowhere next to the
@@ -108,7 +137,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	// Calculate period comparison if requested
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
-		periodComparison = metrics.Comparison(data.Active(), startDate, endDate, comparison, settings)
+		periodComparison = metrics.Comparison(data.Active(), startDate, endDate, comparison, settings, planExclusions)
 	}
 
 	// Accounts card (A8): per-account balance, freshness, low/stale/no-anchor
@@ -185,12 +214,14 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 	// See handleDashboard: coverage start comes from the full active set,
 	// never the range-filtered one.
 	coverageStart, hasCoverage := metrics.HealthcareCoverageStart(data.Active())
-	dashMetrics := metrics.Calculate(filtered, startDate, endDate, target, healthTarget, coverageStart, hasCoverage)
+	// SY4: see handleDashboard.
+	planExclusions := planSyncExclusions(data.Active())
+	dashMetrics := metrics.Calculate(filtered, startDate, endDate, target, healthTarget, coverageStart, hasCoverage, planExclusions)
 	targetProvenance := metrics.TargetProvenance(settings, startDate, endDate)
 
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
-		periodComparison = metrics.Comparison(data.Active(), startDate, endDate, comparison, settings)
+		periodComparison = metrics.Comparison(data.Active(), startDate, endDate, comparison, settings, planExclusions)
 	}
 
 	partialData := map[string]interface{}{
@@ -248,7 +279,9 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 		// See handleDashboard: coverage start comes from the full active
 		// set, never the range-filtered one.
 		coverageStart, hasCoverage := metrics.HealthcareCoverageStart(data.Active())
-		chartData = buildBudgetVsActualChartData(filtered, startDate, endDate, livingTarget, healthTarget, coverageStart, hasCoverage)
+		// SY4: see handleDashboard.
+		planExclusions := planSyncExclusions(data.Active())
+		chartData = buildBudgetVsActualChartData(filtered, startDate, endDate, livingTarget, healthTarget, coverageStart, hasCoverage, planExclusions)
 	default:
 		http.Error(w, "Unknown chart type", http.StatusBadRequest)
 		return
@@ -638,7 +671,15 @@ func resolveDateRange(startStr, endStr string, minDate, maxDate time.Time) (time
 // metrics.ClippedHealthcareMonths, the single clipping helper every
 // healthcare-target accrual site goes through (split-classification rule,
 // ruling 2026-08-29a). Living's contribution is never clipped.
-func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, livingTarget, healthcareTarget float64, coverageStart time.Time, hasCoverage bool) map[string]interface{} {
+//
+// planExclusions (SY4, from planSyncExclusions applied to the full active
+// set) is passed to metrics.LivingOutflows -- the SAME helper
+// metrics.Calculate uses -- so both the Living bar values and the
+// cumulative-balance walk's spend term run the ordinary |sum| arithmetic
+// directly on the ALREADY-excluded transaction set (ruling SY-2026-08-30d:
+// set exclusion, never an arithmetic subtraction of a separately-computed
+// exclusion amount), never re-implementing the HI-first ordering locally.
+func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, livingTarget, healthcareTarget float64, coverageStart time.Time, hasCoverage bool, planExclusions map[string]models.MajorExpense) map[string]interface{} {
 	// rawCombinedTarget gates emptiness the same way metrics.Calculate's
 	// CombinedTarget/HasCombinedTarget do: the raw monthly-rate sum,
 	// unaffected by coverage timing -- it answers "is a target configured
@@ -665,8 +706,26 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 
 	outflows := ts.FilterByType(models.Outflow)
 	healthcareOutflows := outflows.FilterByCategory(metrics.HealthInsuranceCategory)
+	livingOutflows := metrics.LivingOutflows(outflows, planExclusions)
 	monthlyOutflows := outflows.GroupByMonth()
 	monthlyHealthcare := healthcareOutflows.GroupByMonth()
+	monthlyLiving := livingOutflows.GroupByMonth()
+	// nonExcludedOutflows is the cumulative-balance walk's spend basis:
+	// every outflow EXCEPT plan-sync-excluded rows -- HI stays in, since
+	// the walk nets living+healthcare together against combinedTarget.
+	// Ruling SY-2026-08-30e: master's identity livingMonth = expAmt - hcAmt
+	// let the walk sum |living|+|hc| and have it cancel back to the
+	// month's true combined |sum| exactly; once livingMonth became an
+	// INDEPENDENT |LivingOutflows bucket| (ruling SY-2026-08-30d), that
+	// cancellation broke -- |a|+|b| != |a+b| whenever a and b diverge in
+	// sign. The walk must merge the two buckets (living-remainder rows +
+	// HI rows, already classified above -- not a third classifier) and
+	// take ONE Abs of the combined signed sum, mirroring metrics.go's own
+	// combined-walk fix exactly.
+	nonExcludedOutflows := &models.TransactionSet{
+		Transactions: append(append([]models.Transaction{}, livingOutflows.Transactions...), healthcareOutflows.Transactions...),
+	}
+	monthlyNonExcluded := nonExcludedOutflows.GroupByMonth()
 
 	monthSet := make(map[string]bool)
 	for m := range monthlyOutflows {
@@ -684,15 +743,19 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 
 	var running float64
 	for _, m := range months {
-		expAmt := 0.0
-		if exp, ok := monthlyOutflows[m]; ok {
-			expAmt = math.Abs(exp.SumAmount())
-		}
 		hcAmt := 0.0
 		if hc, ok := monthlyHealthcare[m]; ok {
 			hcAmt = math.Abs(hc.SumAmount())
 		}
-		livingMonth := expAmt - hcAmt
+		// Set exclusion (ruling SY-2026-08-30d): math.Abs runs directly on
+		// livingOutflows' month bucket (HI and flagged rows already
+		// removed), never an arithmetic subtraction from the month's raw
+		// outflow total -- that shape breaks whenever the REMAINDER itself
+		// nets a refund, independent of the flagged group's own sign.
+		livingMonth := 0.0
+		if lo, ok := monthlyLiving[m]; ok {
+			livingMonth = math.Abs(lo.SumAmount())
+		}
 
 		livingValues = append(livingValues, livingMonth)
 		healthcareValues = append(healthcareValues, hcAmt)
@@ -715,7 +778,17 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 		}
 		monthTarget := livingTarget + healthcareTarget*healthcareFraction
 
-		running += monthTarget - (livingMonth + hcAmt)
+		// Set exclusion (ruling SY-2026-08-30e): spend is ONE math.Abs of
+		// the merged non-excluded bucket's signed sum for this month --
+		// NEVER livingMonth+hcAmt (two independent Abs values do not
+		// recombine to the month's true combined |sum| once each is its
+		// own bucket; see nonExcludedOutflows' doc above).
+		spend := 0.0
+		if bucket, ok := monthlyNonExcluded[m]; ok {
+			spend = math.Abs(bucket.SumAmount())
+		}
+
+		running += monthTarget - spend
 		cumulativeValues = append(cumulativeValues, running)
 	}
 

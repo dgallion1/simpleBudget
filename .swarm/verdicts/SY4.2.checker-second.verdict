@@ -1,0 +1,127 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: SY4
+ATTEMPT: 2
+---
+Scope per manifest: internal/services/metrics/metrics.go (+2 test files, one kept unmodified
+from attempt 1, one new), internal/handlers/dashboard/handlers.go (+3 test files, 2 kept + 1
+new wiring test), internal/services/mcpsvc/spend/{register,summary}.go (transitively fixed,
++test), plus the sanctioned mechanical edits. Confirmed via `git status --porcelain` and
+`git diff` hunk reads.
+
+FIRST: re-ran attempt 1's winning probe through the real, fixed Calculate(). Confirmed the
+CONCEDED counterexample is now correct: $2,000 payment + $2,500 refund flagged group beside
+$3,000 rent now produces LivingExpensesTotal=3000, PlanExcludedTotal=-500 (signed, negative =
+net refund) — exactly per ruling SY-2026-08-30c. Attempt 1's specific defect is genuinely
+fixed.
+
+ATTACK 1 — Sign consistency between the four fixed sites. Read all four diff hunks
+(metrics.go range total, per-month trend, combined walk; handlers.go per-month Living bar):
+all four use the identical `-pe.SumAmount()`/`-planExcludedSet.SumAmount()` convention, no
+site left on math.Abs (confirmed via the manifest's own `grep -rn "math.Abs"` output, which I
+independently re-ran: math.Abs remains only on totalExpenses/healthcareTotal/expAmt/hcAmt, none
+on any planExcluded* value). No inter-site sign inconsistency found for the combination the
+new tests exercise.
+
+ATTACK 2 — Combined cumulative walk reconciliation with a sign-flipping flagged group mid-range.
+Read TestCalculateMetrics_PlanExclusions_NetRefundCombinedCumulativeBalanceInvariantHolds: it
+re-verifies `last == -CombinedCumulativeDelta` with a Jan net-refund flagged group beside a
+flat Feb, and PASSES for real (re-ran it). The walk's independent signed-net subtraction stays
+internally consistent with the range total in this combination.
+
+ATTACK 3 — Chart Living bars going negative in a net-refund month. Read
+buildBudgetVsActualChartData in full: `livingValues = append(livingValues, livingMonth)` has no
+clamp; a negative value flows straight into the Plotly bar trace's `y` array with no NaN/Inf
+risk (finite arithmetic, no division in this path). Plotly bar charts render negative values as
+downward bars natively — a legitimate visual, not a broken contract. Not a defect.
+
+ATTACK 4 — summarize_spending's documented non-negative conventions vs a signed
+PlanExcludedTotal. The MCP tool's own doc string (read directly, not paraphrased) says
+"living_monthly_actual EXCLUDES the Health Insurance category" without claiming
+non-negativity, and the budget2 MCP server's own top-level instructions document that
+summarize_spending's by_category/by_merchant/by_month rows "can go NEGATIVE when refunds
+outweigh spending in that row" — so a signed, occasionally-negative intermediate is already
+within this tool's established conventions. PlanExcludedTotal itself is not yet surfaced in
+any MCP output (grepped summaryOutput's fields — not present), so no direct sign-contract
+violation at the API surface today. Superseded by Attack 6 below regardless (living_monthly_actual
+itself is wrong in the new counterexample, independent of sign-documentation).
+
+ATTACK 5 — Re-checked attempt-1's clean angles against the new code paths: HI-overlap
+precedence (PlanExcludedOutflows' HI-continue-before-map-lookup ordering is untouched by this
+attempt's diff — confirmed via hunk boundaries), twin-Hash leak (deduplicateTransactions
+unchanged, re-confirmed at loader.go:717-732), Comparison() map reuse (still threaded
+unmodified to both Calculate calls, now with a sign-divergent fixture proving both windows
+apply it identically). All still clean.
+
+ATTACK 6 — THE SIGNED-NET FIX IS ALGEBRAICALLY INCOMPLETE (CONFIRMED DEFECT, NEW
+COUNTEREXAMPLE). Every fixed site computes `livingTotal`/`livingMonth`/`spend` as
+`(componentAbsTotal) - healthcareTotal - planExcludedTotal` where `planExcludedTotal` is now
+correctly SIGNED but is still subtracted from an INDEPENDENTLY-Abs'd combined total
+(`totalExpenses = math.Abs(outflows.SumAmount())`, taken over ALL outflows including the
+flagged and HI rows). Let S = the signed net of the "living remainder" (non-HI, non-flagged
+outflows) and F = the flagged group's signed net. Algebraically,
+`livingTotal = |S+F| - H + F` (H=healthcareTotal, 0 here). This equals the CORRECT answer
+`|S|` if and only if S<0 AND S+F<0 -- i.e., only when the living remainder ITSELF nets to real
+spend (negative), which is the ONLY sign combination the ruling's original counterexample and
+all four of this attempt's new sign-divergent tests exercise (S always negative/net-spend, only
+F's sign varies). When the LIVING REMAINDER itself nets to a refund across the window (S>=0) --
+independent of the flagged group's own sign -- the formula is wrong.
+
+PROOF (throwaway probe, added/run/deleted inside internal/services/metrics/, deletion confirmed
+via `git status --porcelain` before writing this verdict; ran the real, fixed Calculate()):
+  Fixture: $8000 income; living-remainder (non-flagged, non-HI) bucket = one -$1000 grocery
+  spend plus one +$4000 Outflow-typed credit/adjustment (positive amount, description with no
+  income-keyword match -- classifyTransaction's own documented default keeps such a row typed
+  Outflow and positive; this construction technique -- hand-typing TransactionType/Amount
+  directly -- is the SAME one every test in this run, including the worker's own, already
+  uses). Net for this bucket = +3000 (a REFUND overall for the living remainder). Alongside a
+  completely ORDINARY flagged group: a single -$500 car payment (net spend, NOT a refund --
+  the case attempt 1's original, uncontested test already covered in isolation).
+  Expected LivingExpensesTotal (the flagged $500 payment excluded entirely, whatever the
+  remainder's own sign): |(-1000)+4000| = 3000.
+  Actual result from the real, attempt-2-fixed Calculate():
+    LivingExpensesTotal = 2000.00 (want 3000.00); PlanExcludedTotal = 500.00 (correct sign,
+    +500, an ordinary net-spend flagged group)
+    DEFECT: LivingExpensesTotal = 2000.00, want 3000.00
+  PlanExcludedTotal's OWN sign is correct (+500, confirmed) -- this is not attempt 1's bug
+  recurring. The defect is a different, more general one: the subtraction-from-an-already-abs'd
+  total architecture only cancels correctly when the "other" component's sign matches the
+  combined total's sign, and attempt 2 patched the specific case where the FLAGGED group's sign
+  diverges, not the general case where the LIVING REMAINDER's sign diverges. None of the
+  attempt-2 sign-divergent tests (grepped and read all four in
+  plan_exclusions_signed_net_test.go, plus the chart/render/spend-package equivalents) vary the
+  living remainder's own sign -- every fixture keeps it negative (real spend) and only varies
+  the flagged group's sign, so this gap was never exercised.
+  This is not a contrived/unreachable input: a large store credit, price adjustment, or
+  reimbursement-shaped row (typed Outflow, positive amount, no income-keyword hit) landing in a
+  slow-spending month is at least as plausible as ruling SY-2026-08-30c's own accepted
+  counterexample (a flagged loan group's net refund) -- if anything more so, since the living
+  bucket spans far more transaction variety than one flagged def's matches.
+
+Fix, still confined to SY4's own touched code: replace the "compute totalExpenses via one Abs
+over everything, then subtract independently-Abs'd/signed component totals" pattern with
+"filter outflows down to the correctly-scoped subset FIRST (excluding HI rows and flagged-map
+rows), sum that subset's signed amounts, take ONE final Abs" -- exactly mirroring how
+totalExpenses itself and healthcareTotal are each already computed over their own scoped
+subsets. This removes the sign-interaction entirely rather than patching one manifestation of
+it, and the same restructuring applies uniformly to the four fixed sites (metrics.go's range
+total/trend/walk, handlers.go's chart per-month value).
+
+Own build/test re-verification: `go test ./internal/services/metrics/...
+./internal/handlers/dashboard/... ./internal/services/mcpsvc/spend/... -count=1` all `ok` (the
+shipped suite is internally consistent for the sign combination it tests; it does not exercise
+the combination that breaks).
+
+STRONGEST ATTACK THAT FAILED TO BREAK IT: Attack 2 (combined cumulative walk reconciliation)
+-- the walk recomputes its own signed-net subtraction independently from LivingExpensesTotal,
+which is exactly the kind of place a second, drifted implementation could disagree; it stays
+internally consistent (invariant holds) for every sign combination this attempt actually
+tests, including the ruling's own net-refund fixture.
+
+VERDICT: FAIL on Attack 6 -- the signed-net fix genuinely repairs ruling SY-2026-08-30c's exact
+counterexample but is algebraically incomplete: it still produces a wrong LivingExpensesTotal
+(and every figure derived the same way: per-month trend, chart Living bars, cumulative walk,
+summarize_spending's living_monthly_actual) whenever the LIVING REMAINDER itself nets to a
+refund across the window, independent of the flagged group's own sign -- a materially different
+and independently plausible scenario the new sign-divergent test suite does not cover.

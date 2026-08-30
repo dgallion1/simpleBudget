@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"budget2/internal/models"
+	"budget2/internal/services/majorexpenses"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
 
@@ -59,6 +60,26 @@ func (d Deps) load() (*models.TransactionSet, error) {
 			"cannot load transaction history: storage is encrypted and locked; unlock it via the budget2 web UI (/unlock) first")
 	}
 	return d.Transactions.LoadData()
+}
+
+// planSyncExclusions returns the plan-sync exclusion map (transaction Hash
+// -> flagged def) for ts via majorexpenses.ComputePlanSyncExclusions (SY4),
+// when d.MajorExpenses is wired and its definitions load succeeds. Mirrors
+// annotateMajorExpenses' tolerance: a missing dependency, a definitions-load
+// failure, or no flagged defs at all returns nil ("no exclusions") rather
+// than failing the call -- the exclusion is a refinement of the budget
+// comparison, not the answer itself. A pins-load failure alone is
+// tolerated, same as annotateMajorExpenses.
+func (d Deps) planSyncExclusions(ts *models.TransactionSet) map[string]models.MajorExpense {
+	if d.MajorExpenses == nil {
+		return nil
+	}
+	defs, err := d.MajorExpenses.LoadMajorExpenses()
+	if err != nil || len(defs) == 0 {
+		return nil
+	}
+	pins, _ := d.MajorExpenses.LoadTransactionPins()
+	return majorexpenses.ComputePlanSyncExclusions(ts, defs, pins)
 }
 
 // Register adds the spending tools to s.

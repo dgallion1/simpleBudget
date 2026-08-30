@@ -1,0 +1,11 @@
+internal/models/major_expense.go
+internal/services/dataloader/major_expenses.go
+internal/services/dataloader/plan_sync_exclusion_test.go
+internal/services/majorexpenses/engine.go
+internal/services/majorexpenses/plan_sync_test.go
+internal/handlers/whatif/sync.go
+internal/handlers/whatif/sync_plan_exclusions_test.go
+web/templates/components/whatif/sync-preview.html
+.swarm/manifests/SY1.1.files
+.swarm/manifests/SY1.1.manifest.md
+.swarm/tier3/SY1/oracle.1.log

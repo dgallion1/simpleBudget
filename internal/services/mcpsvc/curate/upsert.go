@@ -16,14 +16,15 @@ import (
 )
 
 type upsertInput struct {
-	ID                 string   `json:"id,omitempty" jsonschema:"id of an existing expense to edit, from list_major_expenses; omit to create a new one"`
-	Name               *string  `json:"name,omitempty" jsonschema:"display name, required when creating; max 200 characters"`
-	Keywords           []string `json:"keywords,omitempty" jsonschema:"case-insensitive substrings matched against a transaction's description; omit to leave unchanged, pass an empty list to clear"`
-	ExpectedMin        *float64 `json:"expected_min,omitempty" jsonschema:"low end of the expected amount, as a positive dollar figure; with expected_max equal it matches that exact amount, and a wider range flags anything outside it as anomalous"`
-	ExpectedMax        *float64 `json:"expected_max,omitempty" jsonschema:"high end of the expected amount, as a positive dollar figure"`
-	Notes              *string  `json:"notes,omitempty" jsonschema:"free-text note shown with the expense"`
-	IsInternalTransfer *bool    `json:"is_internal_transfer,omitempty" jsonschema:"treat matches as money moving between the user's own accounts, dropping them from spending totals instead of counting them as spending"`
-	PinHash            string   `json:"pin_hash,omitempty" jsonschema:"a transaction hash to pin to this expense in the same call, so the transaction that prompted the expense is matched even if the keywords would not have caught it"`
+	ID                  string   `json:"id,omitempty" jsonschema:"id of an existing expense to edit, from list_major_expenses; omit to create a new one"`
+	Name                *string  `json:"name,omitempty" jsonschema:"display name, required when creating; max 200 characters"`
+	Keywords            []string `json:"keywords,omitempty" jsonschema:"case-insensitive substrings matched against a transaction's description; omit to leave unchanged, pass an empty list to clear"`
+	ExpectedMin         *float64 `json:"expected_min,omitempty" jsonschema:"low end of the expected amount, as a positive dollar figure; with expected_max equal it matches that exact amount, and a wider range flags anything outside it as anomalous"`
+	ExpectedMax         *float64 `json:"expected_max,omitempty" jsonschema:"high end of the expected amount, as a positive dollar figure"`
+	Notes               *string  `json:"notes,omitempty" jsonschema:"free-text note shown with the expense"`
+	IsInternalTransfer  *bool    `json:"is_internal_transfer,omitempty" jsonschema:"treat matches as money moving between the user's own accounts, dropping them from spending totals instead of counting them as spending"`
+	ExcludeFromPlanSync *bool    `json:"exclude_from_plan_sync,omitempty" jsonschema:"leave unchanged if omitted; when true, the what-if dashboard sync excludes this expense's matched transactions from the synced living-expense figure because it is already modeled separately in the plan (e.g. a car loan as its own ExpenseSource)"`
+	PinHash             string   `json:"pin_hash,omitempty" jsonschema:"a transaction hash to pin to this expense in the same call, so the transaction that prompted the expense is matched even if the keywords would not have caught it"`
 }
 
 type upsertOutput struct {
@@ -63,7 +64,10 @@ func registerUpsert(s *mcp.Server, deps Deps) {
 			"even though the transactions they match are negative. is_internal_transfer marks the entry as " +
 			"money moving between the user's own accounts: its matches are dropped from spending totals " +
 			"instead of counted as spending, which changes what every other tool reports, so do not set it " +
-			"unless the user says the money did not leave their household. pin_hash pins one transaction to " +
+			"unless the user says the money did not leave their household. exclude_from_plan_sync marks the " +
+			"entry as already modeled separately in the what-if plan (e.g. a car loan as its own " +
+			"ExpenseSource): the dashboard sync then excludes its matched transactions from the synced " +
+			"living-expense figure instead of double-counting them. pin_hash pins one transaction to " +
 			"the expense in the same call, which is how you make sure the charge that prompted the expense is " +
 			"matched even when the keywords would have missed it -- but pin_hash has its own backup step, " +
 			"separate from the definition write, and if THAT backup fails the definition is still saved while " +
@@ -119,6 +123,9 @@ func registerUpsert(s *mcp.Server, deps Deps) {
 		if in.IsInternalTransfer != nil {
 			target.IsInternalTransfer = *in.IsInternalTransfer
 		}
+		if in.ExcludeFromPlanSync != nil {
+			target.ExcludeFromPlanSync = *in.ExcludeFromPlanSync
+		}
 
 		// The page's own rules, shared rather than restated, so a definition
 		// the Major Expenses form would refuse is refused here identically.
@@ -156,6 +163,7 @@ func registerUpsert(s *mcp.Server, deps Deps) {
 				ID: target.ID, Name: target.Name, Keywords: trimKeywords(target.Keywords),
 				ExpectedMin: target.ExpectedMin, ExpectedMax: target.ExpectedMax,
 				Notes: target.Notes, IsInternalTransfer: target.IsInternalTransfer,
+				ExcludeFromPlanSync: target.ExcludeFromPlanSync,
 			},
 			SnapshotPath: snapPath,
 		}

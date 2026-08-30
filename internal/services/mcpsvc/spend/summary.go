@@ -246,6 +246,13 @@ func registerSummary(s *mcp.Server, deps Deps) {
 		// doc).
 		coverageStart, hasCoverage := metrics.HealthcareCoverageStart(ts)
 
+		// Plan-sync exclusions (SY4): major expenses the plan already models
+		// separately (ExcludeFromPlanSync) must not double-count in the
+		// living-budget block below, same discipline and same basis
+		// (full active set, before the window filter) as coverageStart
+		// above.
+		planExclusions := deps.planSyncExclusions(ts)
+
 		from, to := start, end
 		if from == nil || to == nil {
 			// ts.MinDate()/MaxDate() are the zero time on an empty (post-
@@ -288,7 +295,7 @@ func registerSummary(s *mcp.Server, deps Deps) {
 			}
 		}
 
-		m := metrics.Calculate(filtered, *from, *to, livingTarget, healthTarget, coverageStart, hasCoverage)
+		m := metrics.Calculate(filtered, *from, *to, livingTarget, healthTarget, coverageStart, hasCoverage, planExclusions)
 
 		out = summaryOutput{
 			Start:         from.Format("2006-01-02"),

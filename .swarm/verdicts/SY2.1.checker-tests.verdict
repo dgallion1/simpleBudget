@@ -1,0 +1,308 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: SY2
+ATTEMPT: 1
+---
+CONTRACT (.swarm/SY-RUN-SPEC.md, "SY2 — acceptance criteria (Tier 2)")
+- Checkbox "Modeled in retirement plan — excluded from the plan's
+  living-expense sync" in BOTH editor forms of major-expenses.html, posting
+  `exclude_from_plan_sync`; handler parses via `parseFormBool` into the model
+  on BOTH create and update paths.
+- Round-trip tests: form post with the flag on persists true; absent persists
+  false; edit form renders the stored state checked.
+- ACCESSIBILITY.md applies (label association, keyboard, focus, dark mode) —
+  that bullet belongs to checker-a11y's lane; I report observations only and
+  do not adjudicate it.
+
+METHOD NOTE — mutation without writing the shared tree
+All mutations used Go's build overlay (`go test -overlay=<json>`): file
+contents are substituted in the BUILD only, never on disk. Notably this
+WORKS FOR go:embed too, which I did not assume — I proved it with a control
+mutation before trusting any template result (see criterion 2/4). sha256sum
+brackets every run:
+  BASELINE and FINAL, identical:
+    c4d7c13c655e48e49231d4c775a1abfb31d30c6b68a6d79996a2a1a9d1a9dbb8  internal/handlers/majorexpenses/handlers.go
+    c806132e1b7ff479594d10dc75e6d122ecbbe07c3c5332ad4d2ec8e1d0221c77  internal/handlers/majorexpenses/handlers_test.go
+    3c42afba1ad8e9040f1fd7a322875452c8ac8584a07b36a0e55f1fa51d458f87  web/templates/pages/major-expenses.html
+My only write to the tree is this verdict file. No port used, no server
+started, no write-mode git, no repo-root binary executed.
+
+-------------------------------------------------------------------------
+1. BUILD / TESTS / GOFMT — PASS
+-------------------------------------------------------------------------
+  $ go build ./...
+    BUILD_EXIT=0   (no output)
+  $ go test ./internal/handlers/majorexpenses/... -count=1
+    ok  	budget2/internal/handlers/majorexpenses	0.288s   (re-run at end: 0.291s)
+  -count=1 defeats the cache; both runs are real executions.
+  $ gofmt -l internal/handlers/majorexpenses/handlers.go internal/handlers/majorexpenses/handlers_test.go
+    (no output — clean)
+  Named tests, verbose:
+    --- PASS: TestParseExpenseForm_ExcludeFromPlanSync (+2 subtests)
+    --- PASS: TestHandleAdd_ExcludeFromPlanSync_Persists (+2 subtests)
+    --- PASS: TestHandleUpdate_ExcludeFromPlanSync_Persists
+    --- PASS: TestMajorExpenseEditForm_RendersExcludeFromPlanSyncCheckedState
+
+  CORRECTION TO THE MANIFEST (attribution, not a defect): the worker's
+  "NOTE for the lead: pre-existing whole-repo build break" is STALE. It
+  reported `go build ./...` failing at curate/upsert.go:166 with "unknown
+  field ExcludeFromPlanSync in struct literal of type majorExpenseRow". That
+  was SY3 caught mid-landing: SY3 adds `ExcludeFromPlanSync` to
+  majorExpenseRow in curate/expenses.go, and the worker observed the tree
+  between the two edits. SY3 has since landed and I verified it myself
+  (SY2.1... see SY3.1.checker-tests.verdict). `go build ./...` is green now.
+  The worker's diagnosis was correct and its conclusion — not SY2's fault —
+  stands; the condition is simply gone.
+
+-------------------------------------------------------------------------
+2. BOTH FORMS CARRY THE CHECKBOX, CORRECT name ATTR, TEMPLATE PARSES — PASS
+-------------------------------------------------------------------------
+Structural check over the template, counting inputs and attributing each to
+its enclosing <form> block:
+  $ python3 <parse major-expenses.html, enumerate <form>..</form> blocks>
+    total exclude_from_plan_sync inputs: 2
+    total is_internal_transfer inputs (sibling pattern): 2
+    form#3 line1077: exclude=1 transfer=1
+        <form id="major-expense-edit-{{.Expense.ID}}" hx-put="/major-expenses/{{.Expense.ID}}" ...
+    form#4 line1174: exclude=1 transfer=1
+    edit-form checked conditionals: 1
+    value=on on both: 2
+Exactly TWO instances, ONE per form, and the count matches the
+is_internal_transfer sibling exactly (2 and 2) — so no form was missed and
+none got two. form#3 is the per-expense EDIT form (hx-put, id keyed on
+.Expense.ID); form#4 at line 1174 is the CREATE form, confirmed by reading
+its opening tag:
+    <form id="major-expenses-add-form" hx-post="/major-expenses" ...>
+Both inputs are `name="exclude_from_plan_sync" value="on"`, and "on" is
+inside parseFormBool's accepted set. Only the EDIT form carries the
+`{{if .Expense.ExcludeFromPlanSync}}checked{{end}}` conditional (count 1),
+which is correct — a create form has no stored state to reflect.
+
+TEMPLATE PARSES: proven by execution, not by inspection. The renderer-backed
+test loads the whole template set off the embedded FS and renders the page:
+  --- PASS: TestMajorExpenseEditForm_RendersExcludeFromPlanSyncCheckedState
+A malformed action or unknown field would fail at parse/execute time. My
+own probes rendered the page three more times (criteria 4 and 5) without
+template error.
+
+-------------------------------------------------------------------------
+3. UPDATE PATH: ABSENT FIELD PERSISTS FALSE — PASS
+-------------------------------------------------------------------------
+This is the sharp one (an unchecked checkbox posts NOTHING, so a handler that
+only ever ORs a true in would strand the flag on forever). A test does prove
+the full true -> uncheck -> false round trip on the UPDATE path:
+TestHandleUpdate_ExcludeFromPlanSync_Persists (handlers_test.go) seeds an
+expense, PUTs with `exclude_from_plan_sync=on`, asserts the PERSISTED record
+(dl.LoadMajorExpenses(), not the response) is true, then PUTs a second form
+that omits the key entirely and asserts the persisted record is false:
+    if len(out2) != 1 || out2[0].ExcludeFromPlanSync {
+        t.Errorf("expected persisted ExcludeFromPlanSync=false after re-edit without checkbox, got: %+v", out2)
+    }
+The create path has the same pair as subtests of
+TestHandleAdd_ExcludeFromPlanSync_Persists ("flag on persists true" /
+"flag absent persists false"), and parseExpenseForm has the unit-level pair.
+I additionally confirmed the clear-on-disk behaviour myself, on raw bytes —
+see criterion 5's PROBE-E2E, where the second (unchecked) PUT rewrites
+major_expenses.json with the key gone and LoadMajorExpenses reads back false.
+No gap. This criterion is met.
+
+-------------------------------------------------------------------------
+4. RENDERED CHECKED-STATE IS PER-EXPENSE — PASS
+-------------------------------------------------------------------------
+The test seeds TWO expenses (one flagged, one not), GETs /major-expenses, and
+isolates each edit-form fragment by its unique `id="major-expense-detail-<id>"`
+anchor before asserting — so a sibling's checkbox cannot satisfy the
+assertion by accident.
+
+I did not take the isolation on trust; I mutated the template three ways.
+FIRST, A CONTROL, because overlay-over-go:embed is not something to assume:
+  T2 (control) — delete the entire edit-form checkbox <label>:
+    --- FAIL: TestMajorExpenseEditForm_RendersExcludeFromPlanSyncCheckedState
+        handlers_test.go:715: expected exclude_from_plan_sync checkbox in flagged expense's section
+  The control fires, so the overlay genuinely reaches the embedded template
+  and the following two results are meaningful.
+
+  T1 — remove ONLY `{{if .Expense.ExcludeFromPlanSync}}checked{{end}}`,
+  leaving the input in place:
+    --- FAIL: TestMajorExpenseEditForm_RendersExcludeFromPlanSyncCheckedState
+        handlers_test.go:718: expected exclude_from_plan_sync checkbox checked for flagged expense
+  The "renders the stored state CHECKED" half is load-bearing.
+
+  T3 — make the checkbox UNCONDITIONALLY checked (i.e. per-expense state
+  shared/ignored):
+    --- FAIL: TestMajorExpenseEditForm_RendersExcludeFromPlanSyncCheckedState
+        handlers_test.go:734: expected exclude_from_plan_sync checkbox unchecked for unflagged expense
+  The "not shared between expenses" half is load-bearing too. Both directions
+  of the conditional are guarded, by separate assertions, each proven by the
+  mutation that breaks exactly it.
+
+See FINDINGS F1 for a fragility in HOW the flagged half asserts (it currently
+discriminates, as T1 proves, but is not anchored to the input element).
+
+-------------------------------------------------------------------------
+5. END-TO-END INTO SY1'S CONSUMER — PASS
+-------------------------------------------------------------------------
+The criterion is that a form-posted flag reaches the stored JSON via
+UpdateMajorExpense's explicit field copy and would be picked up by
+computeDashboardSync's LoadMajorExpenses. I verified every link.
+
+(a) The handler wiring is shared by construction, read from source:
+    handlers.go:78   me, err := parseExpenseForm(r)     <- handleAdd
+    handlers.go:84   loader.AddMajorExpense(me)
+    handlers.go:112  me, err := parseExpenseForm(r)     <- handleUpdate
+    handlers.go:117  loader.UpdateMajorExpense(id, me)
+  ONE parseExpenseForm (defined once at :512), called from both paths, and the
+  field is set inside its single struct literal:
+    ExcludeFromPlanSync: parseFormBool(r, "exclude_from_plan_sync"),
+  So "parses on both create and update" is a structural property, not a
+  coincidence of two edits that could drift.
+
+(b) The explicit field copy exists on the path handleUpdate calls:
+    internal/services/dataloader/major_expenses.go:110 UpdateMajorExpense
+    :126    list[i].ExcludeFromPlanSync = updates.ExcludeFromPlanSync
+  (SY1's work; re-read here because SY2 depends on it.) Without this line the
+  handler's parse would be silently discarded on edit.
+
+(c) There is exactly ONE production LoadMajorExpenses:
+    $ grep -rn "func .*LoadMajorExpenses" --include=*.go .
+      ./internal/services/dataloader/major_expenses.go:39   <- the only impl
+      (all other hits are tests / one test stub)
+  computeDashboardSync calls that same method (verified in SY1), so there is
+  no second reader that could disagree.
+
+(d) PROBE-E2E — I closed the seam on RAW STORED BYTES rather than stopping at
+the Go value. POST the create form through the real router, then read
+major_expenses.json off disk:
+    PROBE-E2E add status=200
+    PROBE-E2E raw bytes: { "expenses": [ { "id": "0c987553-...", "name": "Car Loan",
+      "keywords": [ "auto loan" ], "expected_min": 0, "expected_max": 0,
+      "exclude_from_plan_sync": true, "created_at": ..., "updated_at": ... } ] }
+    PROBE-E2E contains "exclude_from_plan_sync":true = true
+    PROBE-E2E LoadMajorExpenses -> len=1 ExcludeFromPlanSync=true
+  The key written to disk is `exclude_from_plan_sync` — byte-identical to the
+  key SY1's oracle fixture feeds computeDashboardSync — with value true.
+  Then the UPDATE path with the checkbox omitted:
+    PROBE-E2E after uncheck-PUT status=200 raw: { ... "expected_max": 0,
+      "created_at": ..., "updated_at": ... }        <- key gone
+    PROBE-E2E after uncheck: key absent (omitempty) = true
+    PROBE-E2E after uncheck LoadMajorExpenses -> ExcludeFromPlanSync=false
+  The omitempty tag means a cleared flag is written as an ABSENT key, which
+  decodes to false — correct, and consistent with SY1's model-level probe.
+
+-------------------------------------------------------------------------
+6. MUTATION: DROP THE PARSE, BOTH PATHS FAIL — PASS
+-------------------------------------------------------------------------
+  H1 — delete `ExcludeFromPlanSync: parseFormBool(r, "exclude_from_plan_sync"),`
+  from parseExpenseForm:
+  $ go test -overlay=<H1> -count=1 ./internal/handlers/majorexpenses/
+    --- FAIL: TestParseExpenseForm_ExcludeFromPlanSync (0.00s)
+        --- FAIL: TestParseExpenseForm_ExcludeFromPlanSync/checkbox_on_yields_true (0.00s)
+    --- FAIL: TestHandleAdd_ExcludeFromPlanSync_Persists (0.01s)
+        --- FAIL: TestHandleAdd_ExcludeFromPlanSync_Persists/flag_on_persists_true (0.00s)
+    --- FAIL: TestHandleUpdate_ExcludeFromPlanSync_Persists (0.01s)
+    FAIL	budget2/internal/handlers/majorexpenses
+Three tests fail, covering the unit level AND the ADD path AND the UPDATE
+path — the criterion's "at least one new test fails on each affected path" is
+met with room to spare. Restore is vacuous (nothing was on disk); sha256sum
+confirms all three files byte-identical afterwards.
+
+-------------------------------------------------------------------------
+7. SCOPE — PASS
+-------------------------------------------------------------------------
+Work is UNCOMMITTED; I diffed the working tree, not master...HEAD.
+  $ git status --porcelain -- web/templates/pages/major-expenses.html internal/handlers/majorexpenses/
+     M internal/handlers/majorexpenses/handlers.go
+     M internal/handlers/majorexpenses/handlers_test.go
+     M web/templates/pages/major-expenses.html
+Exactly the three paths in .swarm/manifests/SY2.1.files — nothing more,
+nothing less, and no untracked SY2 artifact (handlers_test.go was extended,
+not added).
+  $ git diff --stat master -- <those three>
+    internal/handlers/majorexpenses/handlers.go      |  13 +-
+    internal/handlers/majorexpenses/handlers_test.go | 234 +++++++++++++++++-
+    web/templates/pages/major-expenses.html          |  19 ++
+    3 files changed, 258 insertions(+), 8 deletions(-)
+The handlers.go delta is 13 lines of which 12 are gofmt re-alignment of the
+existing struct literal (longer field name) plus 1 real line — consistent
+with the claimed minimal change.
+
+CONCURRENT-RUN ATTRIBUTION. Mid-verification the coordinator warned that the
+HC lead was committing. I observed HC's files STAGED in the index (status
+column 1 = `A`/`M`) while HEAD was still f9c569e:
+    A  .swarm/HC-RUN-SPEC.md, .swarm/manifests/HC1.*, .swarm/tier3/HC1/**,
+       .swarm/verdicts/HC1.*
+    M  internal/handlers/dashboard/{handlers.go,handlers_test.go,verdict.go},
+       internal/models/dashboard.go
+    A  internal/handlers/dashboard/{coverage_start_mutation_test.go,
+       verdict_fractional_cent_test.go}
+    M  .swarm/NEXT.md ;  MM .swarm/ledger.tsv
+CRITICALLY: all three SY2 files show status ` M` — column 1 BLANK, i.e.
+worktree-modified and NOT staged. HC's commit does not carry any SY2 file.
+My SY2 evidence is therefore unaffected by the ref move, and the earlier
+`git diff master -- <SY2 files>` remains valid because SY2 paths are not in
+HC's tree object.
+OTHER FOREIGN dirt, attributed, never counted against SY2:
+  SY1 (accepted): internal/handlers/whatif/sync.go (+ test),
+    internal/models/major_expense.go, internal/services/dataloader/
+    major_expenses.go (+ test), internal/services/majorexpenses/engine.go
+    (+ test), web/templates/components/whatif/sync-preview.html
+  SY3 (accepted): .claude/skills/budget2-mcp/references/major-expenses.md,
+    internal/services/mcpsvc/curate/{upsert.go,expenses.go,upsert_test.go}
+  HC: as listed above, plus internal/services/metrics/**,
+    internal/services/mcpsvc/spend/**,
+    internal/services/dataloader/transfers_test.go,
+    web/templates/components/kpis.html
+  LEAD: .swarm/ledger.tsv, .swarm/NEXT.md
+CRITICAL GLOBS: .swarm/critical.globs lists storage/**, dataloader/**,
+retirement/engine/**, transfers/**, accounts.go, mcpsvc/confirm/**. SY2
+touched NONE of them — its three paths are handlers/majorexpenses and a web
+template. No critical path touched.
+
+-------------------------------------------------------------------------
+FINDINGS (backlog — none block acceptance)
+-------------------------------------------------------------------------
+F1 (test fragility, criterion "edit form renders the stored state checked"):
+   the flagged-side assertion is `strings.Contains(flaggedSection, "checked")`
+   over the WHOLE fragment, unanchored to the exclude_from_plan_sync input —
+   unlike the unflagged-side assertion, which is correctly windowed to 200
+   chars after the input's name/value match. Today it still discriminates
+   (mutation T1 proves it), because the flagged fixture sets ONLY
+   ExcludeFromPlanSync. But I characterised the fragility concretely rather
+   than speculating: rendering an expense with IsInternalTransfer=true and
+   ExcludeFromPlanSync=FALSE gives
+     PROBE-SPEC section contains bare "checked" = true   (flag is FALSE)
+     PROBE-SPEC windowed on the exclude input contains "checked" = false
+   So the sibling transfer checkbox alone satisfies the unanchored form. The
+   day someone adds IsInternalTransfer to that fixture, the assertion goes
+   vacuous silently. One-line fix: window the flagged assertion the same way
+   the unflagged one already is. Recording per the standing "a guard one
+   element away is vacuous" rule; NOT a FAIL because the guard currently
+   holds under mutation.
+F2 (lane note, not mine to rule on): ACCESSIBILITY.md conformance — label
+   association, keyboard reachability, visible focus, dark-mode class parity
+   — is checker-a11y's bullet. Observation only: both new inputs are native
+   `<input type="checkbox">` wrapped in a `<label>` (implicit association,
+   matching the is_internal_transfer sibling, which uses no for/id either),
+   and both carry the sibling's `focus:ring-indigo-500` and
+   `dark:border-gray-600` classes verbatim. The edit-form instance uses
+   `flex items-center gap-2 mt-1` and the create-form instance
+   `flex items-start gap-2 text-xs`, each matching its own sibling's layout
+   classes. I make no a11y ruling.
+F3 (manifest hygiene): the manifest's "pre-existing whole-repo build break"
+   note is stale (SY3 has landed; `go build ./...` is green). Worth a line in
+   the run notes so a future reader does not chase a phantom break.
+
+-------------------------------------------------------------------------
+SUMMARY
+-------------------------------------------------------------------------
+All SY2 acceptance criteria in my lane are met, each on a quoted command's
+output. Both forms carry exactly one correctly-named checkbox (counted
+structurally against the sibling pattern, 2 and 2); the parse is shared by
+construction through a single parseExpenseForm reached from both call sites;
+the uncheck-clears-to-false round trip is proven on the update path and again
+on raw stored JSON bytes; the rendered checked-state is proven per-expense in
+BOTH directions by template mutations T1 and T3, validated by control
+mutation T2 which first established that the overlay reaches go:embed; and
+dropping the parse line fails tests on the unit, add and update paths. The
+tree is byte-identical after every mutation.

@@ -25,9 +25,20 @@
             ${{formatNumber .Plan.OldMonthlyExpenses}}
             <span class="text-gray-400 dark:text-gray-500">&rarr;</span>
             ${{formatNumber .Plan.NewMonthlyExpenses}}
-            <span class="text-xs text-gray-400 dark:text-gray-500">(12-month average, excluding Health Insurance — premiums are modeled under Healthcare)</span>
+            <span class="text-xs text-gray-400 dark:text-gray-500">(12-month average, excluding Health Insurance — premiums are modeled under Healthcare — and expenses modeled separately in the plan)</span>
         </p>
     </div>
+
+    {{if .Plan.ExcludedGroups}}
+    <div class="space-y-1">
+        <h4 class="text-sm font-medium text-gray-700 dark:text-gray-200">Excluded from living expenses — modeled separately in the plan</h4>
+        <ul class="text-sm text-gray-600 dark:text-gray-300 list-disc list-inside">
+            {{range .Plan.ExcludedGroups}}
+            <li>{{.Name}} — ${{formatNumber .MonthlyAmount}}/mo ({{.Count}} transactions)</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
 
     {{if .Plan.Added}}
     <div class="space-y-1">

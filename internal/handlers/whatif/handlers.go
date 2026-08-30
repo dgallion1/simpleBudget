@@ -217,13 +217,16 @@ func saveAndRecalc(w http.ResponseWriter, r *http.Request, settings *models.What
 }
 
 // saveAndRecalcIfScenario is saveAndRecalc for handlers that must not let a
-// scenario switch land their write on a different scenario's file. It saves
-// through SettingsManager.SaveWithRevisionIfScenario, which performs the
-// expectedScenario == active-scenario comparison and the write inside ONE
-// held lock (see that method and ApplyOverrides' doc comment) -- unlike a
-// caller-side check-then-save, no scenario switch can land between the check
-// and the write. A mismatch surfaces as *retirement.ScenarioConflictError,
-// which statusForMutationError already maps to 409.
+// scenario switch, OR a same-scenario concurrent edit, land their write on
+// top of state the caller never saw. It saves through
+// SettingsManager.SaveWithRevisionIfScenario, which performs the
+// expectedScenario == active-scenario comparison AND the expectedRevision ==
+// current-revision comparison, and the write, inside ONE held lock (see that
+// method and ApplyOverrides' doc comment) -- unlike a caller-side
+// check-then-save, no scenario switch NOR concurrent same-scenario save can
+// land between the checks and the write. Either mismatch surfaces as
+// *retirement.ScenarioConflictError, which statusForMutationError already
+// maps to 409.
 //
 // This function has exactly one caller (handleWhatIfSyncApply), so unlike
 // recalcAndRender/saveAndRecalc -- shared by every other mutating whatif
@@ -237,8 +240,8 @@ func saveAndRecalc(w http.ResponseWriter, r *http.Request, settings *models.What
 // default responseHandling, web/templates/layouts/base.html). Every other
 // error still falls through to the same shared renderError(..., 500) path
 // every other whatif handler uses.
-func saveAndRecalcIfScenario(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings, expectedScenario string) {
-	revision, err := retirementMgr.SaveWithRevisionIfScenario(settings, expectedScenario)
+func saveAndRecalcIfScenario(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings, expectedScenario string, expectedRevision int) {
+	revision, err := retirementMgr.SaveWithRevisionIfScenario(settings, expectedScenario, expectedRevision)
 	if err != nil {
 		var conflictErr *retirement.ScenarioConflictError
 		if errors.As(err, &conflictErr) {

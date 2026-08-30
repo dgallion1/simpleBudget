@@ -5964,11 +5964,11 @@ func TestHandleWhatIfSyncApply_SaveError(t *testing.T) {
 	if previewW.Code != http.StatusOK {
 		t.Fatalf("preview status = %d, want 200. body: %s", previewW.Code, previewW.Body.String())
 	}
-	scenario, hash := extractSyncGuardFields(t, previewW.Body.String())
+	scenario, hash, revision := extractSyncGuardFields(t, previewW.Body.String())
 
 	makeSaveFail(t, dir)
 
-	form := url.Values{"expected_scenario": {scenario}, "plan_hash": {hash}}
+	form := url.Values{"expected_scenario": {scenario}, "plan_hash": {hash}, "expected_revision": {revision}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/sync/apply", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -7614,9 +7614,9 @@ func TestHandleWhatIfSyncApply_AnalysisError(t *testing.T) {
 	if previewW.Code != http.StatusOK {
 		t.Fatalf("preview status = %d, want 200. body: %s", previewW.Code, previewW.Body.String())
 	}
-	scenario, hash := extractSyncGuardFields(t, previewW.Body.String())
+	scenario, hash, revision := extractSyncGuardFields(t, previewW.Body.String())
 
-	form := url.Values{"expected_scenario": {scenario}, "plan_hash": {hash}}
+	form := url.Values{"expected_scenario": {scenario}, "plan_hash": {hash}, "expected_revision": {revision}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/sync/apply", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

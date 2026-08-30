@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,15 +19,18 @@ import (
 	"budget2/internal/models"
 )
 
-// syncGuardFieldsRE extracts the expected_scenario/plan_hash hidden inputs
-// from a rendered (renderer != nil) whatif-sync-preview partial.
-var syncGuardFieldsRE = regexp.MustCompile(`name="(expected_scenario|plan_hash)" value="([^"]*)"`)
+// syncGuardFieldsRE extracts the expected_scenario/plan_hash/expected_revision
+// hidden inputs from a rendered (renderer != nil) whatif-sync-preview partial.
+var syncGuardFieldsRE = regexp.MustCompile(`name="(expected_scenario|plan_hash|expected_revision)" value="([^"]*)"`)
 
-// extractSyncGuardFields pulls expected_scenario and plan_hash out of a real
-// preview response body — HTML hidden fields (renderer != nil) or the JSON
-// fallback (renderer == nil) — so a test can apply with exactly what the
-// preview reported, not a value reconstructed independently of the handler.
-func extractSyncGuardFields(t *testing.T, body string) (expectedScenario, planHash string) {
+// extractSyncGuardFields pulls expected_scenario, plan_hash, and
+// expected_revision out of a real preview response body — HTML hidden fields
+// (renderer != nil) or the JSON fallback (renderer == nil) — so a test can
+// apply with exactly what the preview reported, not a value reconstructed
+// independently of the handler. expectedRevision is returned as the literal
+// string the preview emitted (a decimal integer, but callers only ever
+// round-trip it through a form field, never arithmetic on it).
+func extractSyncGuardFields(t *testing.T, body string) (expectedScenario, planHash, expectedRevision string) {
 	t.Helper()
 
 	for _, m := range syncGuardFieldsRE.FindAllStringSubmatch(body, -1) {
@@ -35,23 +39,26 @@ func extractSyncGuardFields(t *testing.T, body string) (expectedScenario, planHa
 			expectedScenario = m[2]
 		case "plan_hash":
 			planHash = m[2]
+		case "expected_revision":
+			expectedRevision = m[2]
 		}
 	}
-	if expectedScenario != "" && planHash != "" {
-		return expectedScenario, planHash
+	if expectedScenario != "" && planHash != "" && expectedRevision != "" {
+		return expectedScenario, planHash, expectedRevision
 	}
 
 	var parsed struct {
 		ExpectedScenario string `json:"expected_scenario"`
 		PlanHash         string `json:"plan_hash"`
+		ExpectedRevision *int   `json:"expected_revision"`
 	}
 	if err := json.Unmarshal([]byte(body), &parsed); err == nil &&
-		parsed.ExpectedScenario != "" && parsed.PlanHash != "" {
-		return parsed.ExpectedScenario, parsed.PlanHash
+		parsed.ExpectedScenario != "" && parsed.PlanHash != "" && parsed.ExpectedRevision != nil {
+		return parsed.ExpectedScenario, parsed.PlanHash, strconv.Itoa(*parsed.ExpectedRevision)
 	}
 
-	t.Fatalf("could not find expected_scenario/plan_hash in preview body: %s", truncate(body, 800))
-	return "", ""
+	t.Fatalf("could not find expected_scenario/plan_hash/expected_revision in preview body: %s", truncate(body, 800))
+	return "", "", ""
 }
 
 // findIncomeSource returns the income source with the given ID, or nil.
@@ -304,9 +311,9 @@ func TestHandleWhatIfSync_PreviewsWithoutSaving(t *testing.T) {
 }
 
 // syncApplyRequest builds a POST /whatif/sync/apply request carrying the
-// given expected_scenario/plan_hash form values.
-func syncApplyRequest(scenario, hash string) *http.Request {
-	form := url.Values{"expected_scenario": {scenario}, "plan_hash": {hash}}
+// given expected_scenario/plan_hash/expected_revision form values.
+func syncApplyRequest(scenario, hash, revision string) *http.Request {
+	form := url.Values{"expected_scenario": {scenario}, "plan_hash": {hash}, "expected_revision": {revision}}
 	req := httptest.NewRequest("POST", "/whatif/sync/apply", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	return req
@@ -326,10 +333,10 @@ func TestHandleWhatIfSyncApply_SavesSyncedSettings(t *testing.T) {
 	if previewW.Code != http.StatusOK {
 		t.Fatalf("preview status = %d, want 200. body: %s", previewW.Code, truncate(previewW.Body.String(), 300))
 	}
-	scenario, hash := extractSyncGuardFields(t, previewW.Body.String())
+	scenario, hash, revision := extractSyncGuardFields(t, previewW.Body.String())
 
 	w := httptest.NewRecorder()
-	handleWhatIfSyncApply(w, syncApplyRequest(scenario, hash))
+	handleWhatIfSyncApply(w, syncApplyRequest(scenario, hash, revision))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200. body: %s", w.Code, truncate(w.Body.String(), 300))
@@ -345,9 +352,9 @@ func TestHandleWhatIfSyncApply_SavesSyncedSettings(t *testing.T) {
 	}
 }
 
-// A missing or blank expected_scenario / plan_hash must be rejected with 400
-// before any load or write — a client that skipped preview (or sent garbage)
-// gets a clear error, not an unreviewed write.
+// A missing or blank expected_scenario / plan_hash / expected_revision must
+// be rejected with 400 before any load or write — a client that skipped
+// preview (or sent garbage) gets a clear error, not an unreviewed write.
 func TestHandleWhatIfSyncApply_MissingGuardFieldsRejected(t *testing.T) {
 	rm, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
@@ -361,15 +368,19 @@ func TestHandleWhatIfSyncApply_MissingGuardFieldsRejected(t *testing.T) {
 		name     string
 		scenario string
 		hash     string
+		revision string
 	}{
-		{"both missing", "", ""},
-		{"blank expected_scenario", "   ", "deadbeef"},
-		{"blank plan_hash", "whatif.json", "   "},
+		{"all missing", "", "", ""},
+		{"blank expected_scenario", "   ", "deadbeef", "0"},
+		{"blank plan_hash", "whatif.json", "   ", "0"},
+		{"blank expected_revision", "whatif.json", "deadbeef", "   "},
+		{"missing expected_revision", "whatif.json", "deadbeef", ""},
+		{"non-numeric expected_revision", "whatif.json", "deadbeef", "not-a-number"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			handleWhatIfSyncApply(w, syncApplyRequest(tc.scenario, tc.hash))
+			handleWhatIfSyncApply(w, syncApplyRequest(tc.scenario, tc.hash, tc.revision))
 
 			if w.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400. body: %s", w.Code, truncate(w.Body.String(), 300))
@@ -409,10 +420,10 @@ func TestHandleWhatIfSyncApply_WrongExpectedScenarioRejected(t *testing.T) {
 	if previewW.Code != http.StatusOK {
 		t.Fatalf("preview status = %d, want 200", previewW.Code)
 	}
-	_, hash := extractSyncGuardFields(t, previewW.Body.String())
+	_, hash, revision := extractSyncGuardFields(t, previewW.Body.String())
 
 	w := httptest.NewRecorder()
-	handleWhatIfSyncApply(w, syncApplyRequest("some-other-scenario.json", hash))
+	handleWhatIfSyncApply(w, syncApplyRequest("some-other-scenario.json", hash, revision))
 
 	if w.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409. body: %s", w.Code, truncate(w.Body.String(), 300))
@@ -463,7 +474,7 @@ func TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected(t *testin
 	if previewW.Code != http.StatusOK {
 		t.Fatalf("preview status = %d, want 200. body: %s", previewW.Code, truncate(previewW.Body.String(), 300))
 	}
-	scenario, hash := extractSyncGuardFields(t, previewW.Body.String())
+	scenario, hash, revision := extractSyncGuardFields(t, previewW.Body.String())
 	if scenario != "whatif.json" {
 		t.Fatalf("expected the preview's scenario to be whatif.json, got %q", scenario)
 	}
@@ -499,7 +510,7 @@ func TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected(t *testin
 	}
 
 	w := httptest.NewRecorder()
-	handleWhatIfSyncApply(w, syncApplyRequest(scenario, hash))
+	handleWhatIfSyncApply(w, syncApplyRequest(scenario, hash, revision))
 
 	if w.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409. body: %s", w.Code, truncate(w.Body.String(), 300))
@@ -563,7 +574,7 @@ func TestHandleWhatIfSyncApply_StalePlanHashRejected(t *testing.T) {
 	if previewW.Code != http.StatusOK {
 		t.Fatalf("preview status = %d, want 200", previewW.Code)
 	}
-	scenario, hash := extractSyncGuardFields(t, previewW.Body.String())
+	scenario, hash, revision := extractSyncGuardFields(t, previewW.Body.String())
 
 	// Mutate the transaction data the plan was computed from — same
 	// scenario, but the recomputed plan (and its hash) now differs. An
@@ -576,7 +587,7 @@ func TestHandleWhatIfSyncApply_StalePlanHashRejected(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	handleWhatIfSyncApply(w, syncApplyRequest(scenario, hash))
+	handleWhatIfSyncApply(w, syncApplyRequest(scenario, hash, revision))
 
 	if w.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409. body: %s", w.Code, truncate(w.Body.String(), 300))
@@ -593,6 +604,86 @@ func TestHandleWhatIfSyncApply_StalePlanHashRejected(t *testing.T) {
 	for _, src := range after.IncomeSources {
 		if strings.HasPrefix(src.ID, "insights-") {
 			t.Errorf("409 must not write income source %q, got %+v", src.ID, after.IncomeSources)
+		}
+	}
+}
+
+// TestHandleWhatIfSyncApply_ConcurrentSameScenarioEditNotLost is the user
+// reviewer's proven exploit, committed as a regression test (Z7): a
+// SAME-SCENARIO settings edit (DiscountRate=9.99) landing between apply's
+// LoadContext snapshot and the guarded save must not be silently reverted.
+// Before this fix, SaveWithRevisionIfScenario compared only the active
+// scenario's FILENAME inside its lock -- the same scenario, so that check
+// passed -- and the whole-object save clobbered the concurrent edit. The
+// scenario-switch race test above cannot catch this: it only proves a
+// DIFFERENT scenario is protected. This test proves the SAME scenario is
+// too, via expected_revision.
+//
+// syncApplyRaceTestHook lands the concurrent edit deterministically in the
+// exact window between handleWhatIfSyncApply's own (necessarily unlocked)
+// checks and saveAndRecalcIfScenario's locked save -- reproducing the
+// interleaving a second tab/MCP call performs concurrently, the same
+// mechanism TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected
+// uses for the scenario-identity case.
+func TestHandleWhatIfSyncApply_ConcurrentSameScenarioEditNotLost(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	// whatif.json must exist on disk before the race hook's own Load/Save
+	// round-trip below.
+	seed, err := rm.LoadContext(context.Background())
+	if err != nil {
+		t.Fatalf("Load before: %v", err)
+	}
+	if err := rm.Save(seed); err != nil {
+		t.Fatalf("Save whatif.json: %v", err)
+	}
+
+	previewW := httptest.NewRecorder()
+	handleWhatIfSync(previewW, httptest.NewRequest("POST", "/whatif/sync", nil))
+	if previewW.Code != http.StatusOK {
+		t.Fatalf("preview status = %d, want 200. body: %s", previewW.Code, truncate(previewW.Body.String(), 300))
+	}
+	scenario2, hash2, revision2 := extractSyncGuardFields(t, previewW.Body.String())
+	if scenario2 != "whatif.json" {
+		t.Fatalf("expected the preview's scenario to be whatif.json, got %q", scenario2)
+	}
+
+	defer func() { syncApplyRaceTestHook = nil }()
+	syncApplyRaceTestHook = func() {
+		concurrent, err := rm.LoadContext(context.Background())
+		if err != nil {
+			t.Fatalf("Load (race hook, concurrent editor): %v", err)
+		}
+		concurrent.DiscountRate = 9.99
+		if err := rm.Save(concurrent); err != nil {
+			t.Fatalf("Save (race hook, concurrent editor): %v", err)
+		}
+	}
+
+	w2 := httptest.NewRecorder()
+	handleWhatIfSyncApply(w2, syncApplyRequest(scenario2, hash2, revision2))
+
+	if w2.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409. body: %s", w2.Code, truncate(w2.Body.String(), 300))
+	}
+	assertRetargetHeader(t, w2, "#whatif-sync-preview")
+
+	// THE LOST-UPDATE SIGNATURE: the concurrent editor's DiscountRate=9.99
+	// must survive. Before this fix, the guarded save's whole-object write
+	// reverted it back to the sync-preview snapshot's original value.
+	after2, err := rm.LoadContext(context.Background())
+	if err != nil {
+		t.Fatalf("Load after: %v", err)
+	}
+	if after2.DiscountRate != 9.99 {
+		t.Fatalf("concurrent edit was lost: DiscountRate = %v, want 9.99 (the rejected apply must not have written)", after2.DiscountRate)
+	}
+	// The rejected apply must also not have saved its own (unrelated) synced
+	// income sources on top of the concurrent editor's write.
+	for _, src := range after2.IncomeSources {
+		if strings.HasPrefix(src.ID, "insights-") {
+			t.Errorf("409 must not write income source %q, got %+v", src.ID, after2.IncomeSources)
 		}
 	}
 }

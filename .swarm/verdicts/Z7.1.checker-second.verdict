@@ -1,0 +1,100 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: Z7
+ATTEMPT: 1
+---
+Probed in a cp -a copy at /tmp/claude-1000/.../scratchpad/z7check/budget2. Real
+tree untouched.
+
+1. Non-bumping writers (grep for every saveInternal/bumpLocked call site in
+   settings.go): the ONLY save that skips bumpLocked is loadInternalContext's
+   migration-normalize path (settings.go:674-683, sm.saveInternal without
+   bump, doc'd at 866-869). Traced every path that can leave sm.cache nil
+   (InvalidateCache:543, reconcileActiveScenarioLocked:590,
+   BeginExternalRewrite end:619, SwitchScenario:1971, CreateScenario:2015,
+   DeleteScenario:2089, RenameScenario:2142, save-error paths:789/843) —
+   every one of them either bumps in the SAME locked critical section before
+   the migration-write can run, or (save-error paths) leaves disk unchanged,
+   so no external reader can ever observe a stale revision number paired
+   with post-migration content. RenameScenario/DeleteScenario write directly
+   via sm.store.WriteFile bypassing saveInternal but still bump
+   unconditionally in the same lock — no gap. Checked restore.go (only other
+   direct-rewrite site): correctly gated behind BeginExternalRewrite. Found
+   a genuinely un-guarded sibling — ApplyOverrides (settings.go:1270, used
+   by handlers_live.go and mcpsvc/plan/register.go) has a scenario-only
+   guard with NO expectedRevision param, so a same-scenario concurrent edit
+   could still race THAT write path — but this is a different feature
+   (live-apply/MCP), never touched by Z7's file list, and Z7's task scope is
+   explicitly the sync.go handleWhatIfSync/handleWhatIfSyncApply path.
+   Reporting as a backlog finding, not a Z7 FAIL (scope rule, CLAUDE.md
+   "recurring defect classes" / rule 5).
+
+2. Revision reset / false-PASS on restart: sm.revision is only ever
+   incremented (grep "\.revision\b" — single "sm.revision++" at
+   bumpLocked, no reset/reassignment anywhere). The task's suggested
+   cross-instance false-PASS (two SettingsManager instances racing) requires
+   two live instances pointed at the same directory; grepped every
+   NewSettingsManager call site in production code — exactly one
+   (cmd/server/main.go:86), and the MCP tools are mounted in the same
+   binary/process sharing that same retirementMgr (cmd/server/mcp_mount_test.go
+   present, only one construction site). So the false-PASS scenario the
+   attack angle describes cross-instance is not reachable in this codebase's
+   actual topology; within one process the counter is provably monotonic.
+   Documented and accepted as a known limitation at the revision field's doc
+   comment ("monotonic within one process").
+
+3. Apply-side load / ABA: handleWhatIfSyncApply loads `settings` via a
+   plain, unlocked LoadContext (sync.go:442) after the guard-field parsing,
+   then applySyncPlan mutates it, then saveAndRecalcIfScenario performs the
+   locked compare-and-write. Verified the guard's correctness does NOT
+   depend on what `settings` content was loaded — SaveWithRevisionIfScenario
+   (settings.go:823-847) re-checks expectedRevision against sm.revision
+   INSIDE the write lock immediately before the write, so any concurrent
+   same-scenario save that bumps sm.revision between preview and this save
+   is caught regardless of load timing. Proved the exploit is closed AND
+   proved the test proves it: patched the revision check to `if false && ...`
+   (simulating pre-fix behavior) — TestHandleWhatIfSyncApply_
+   ConcurrentSameScenarioEditNotLost failed (200, wanted 409) as expected;
+   reverted, it passes. Fail-end and pass-end both validated directly,
+   not by trusting the test's name.
+
+4. Parse edge cases: expected_revision via strconv.Atoi — negative values
+   parse cleanly (no panic) and correctly mismatch sm.revision (>=0) →
+   409, not a crash; out-of-int64-range values return ErrRange → 400;
+   leading zeros parse fine as decimal. blank/missing/non-numeric all
+   produce 400 with the retarget header — confirmed via
+   TestHandleWhatIfSyncApply_MissingGuardFieldsRejected's three added
+   sub-cases (blank/missing/non-numeric), all passing.
+
+5. errors.As / message content: grepped every &ScenarioConflictError{...}
+   construction site — all pointer literals, consistent with
+   `errors.As(err, &conflictErr)` where conflictErr is *ScenarioConflictError
+   in handlers.go:246/269. The two distinct guard failures produce distinct,
+   accurate messages: scenario mismatch says "the active scenario is X...
+   (the active scenario changed since the check)"; revision mismatch says
+   "the plan changed since it was loaded (it is now at revision %d...)" —
+   no cross-contamination/misleading text between the two failure modes.
+
+6. Template/JSON parity: sync-preview.html has all three hidden fields
+   (expected_scenario, plan_hash, expected_revision) sourced from the same
+   map passed to RenderPartial; syncPreviewResponse struct has matching
+   json:"expected_revision" tag; both branches in handleWhatIfSync
+   (sync.go:352-367) read from the SAME `expectedRevision` local returned
+   by LoadContextWithRevision — single source of truth, no divergent
+   computation.
+
+7. Commands run: `go build ./...` clean; `go vet
+   ./internal/handlers/whatif/... ./internal/services/retirement/...` clean;
+   `go test ./internal/handlers/whatif/... ./internal/services/retirement/...
+   -count=1` all ok; `go test ./internal/handlers/whatif/...
+   ./internal/services/retirement/ -race -count=1` all ok (38.9s / 69.2s, no
+   data races flagged despite the fix touching shared sm.revision/sm.cache
+   under RWMutex); targeted -race -count=3/-count=5 on the new/changed tests
+   also clean. gofmt -l flags only handlers.go, confirmed via byte-identical
+   tail comparison against master (git show master:...handlers.go) that the
+   trailing-blank-line nit predates this change — not introduced by Z7.
+
+No defect found inside Z7's declared scope. One out-of-scope sibling gap
+(ApplyOverrides has no revision guard) reported as a backlog finding per
+CLAUDE.md's scope rule, not grounds for FAIL.

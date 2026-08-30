@@ -183,3 +183,22 @@ Acceptance:
   (pre-existing narrowness); sort.Slice on IncomePatterns is load-bearing
   but no committed test kills its removal (V3 candidate); preview list
   order changed from largest-total-first to alphabetical.
+
+## Z7 — same-scenario revision race in sync apply (user review, post-PR-#71)
+User's reviewer proved (overlay probe): a concurrent same-scenario edit
+(DiscountRate=9.99) landed between apply's private LoadContext snapshot
+(sync.go:411) and the guarded save (sync.go:448) is silently reverted —
+SaveWithRevisionIfScenario checks filename only. This is the lost-update
+window Z2.2's adversarial lane logged as a backlog finding; now in-scope.
+- **D-Z-h (contract):** the preview round-trips the revision of the loaded
+  snapshot (obtained under the same lock as the load — a load-then-read
+  race would recreate the bug at the other end); apply passes it down;
+  SaveWithRevisionIfScenario compares expected scenario AND expected
+  revision inside the ONE held lock; either mismatch → typed conflict
+  error → retargeted 409, nothing written. Missing/blank expected_revision
+  → 400 like the other two params. SCOPE: sync path only (user decision
+  2026-08-30) — the ~7 other saveAndRecalc callers keep the pre-existing
+  contract; sweep parked in NEXT.md.
+- If the revision counter is global rather than per-scenario, a save to a
+  DIFFERENT scenario between preview and apply may false-positive 409 —
+  conservative and acceptable; worker reports the actual semantics.

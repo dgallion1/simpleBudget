@@ -1,0 +1,208 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: Z7
+ATTEMPT: 1
+---
+Verified in a `cp -a` scratch copy for mutation work; all read/test commands
+run against /home/darrell/bin/ai/budget2 (branch fix/z-run-review-findings,
+HEAD 86f98c4 + uncommitted Z7 work). No file in the real tree written except
+this verdict.
+
+C1 — ONE-LOCK scenario+revision+write; LoadContextWithRevision atomic. MET.
+  Read internal/services/retirement/settings.go:823-847:
+    823 func (sm *SettingsManager) SaveWithRevisionIfScenario(settings, expectedScenario string, expectedRevision int) (int, error) {
+    824   sm.mu.Lock()
+    825   defer sm.mu.Unlock()
+    827   if expectedScenario != "" {
+    828     if expectedScenario != sm.filename { ... &ScenarioConflictError ... }
+    834     if expectedRevision != sm.revision { ... &ScenarioConflictError ... }
+    840   }
+    842   if err := sm.saveInternalAndBump(settings); err != nil { ... }
+    846   return sm.revision, nil
+  Single Lock at 824 with a deferred Unlock; both comparisons (828, 834) and
+  the write (842) are inside it. No unlock/relock between check and write.
+  Both mismatch branches return before saveInternalAndBump -> nothing written.
+  LoadContextWithRevision (settings.go:500-535) reads settings AND revision
+  under the same acquisition on every path:
+    cache hit  505 RLock / 507 rev := sm.revision / 508 Clone / 509 RUnlock
+    cache miss 514 Lock (defer Unlock) / 519-521 double-check returns
+               sm.revision under the same lock / 524 loadInternalContext /
+               529 sm.cache = settings / 534 return cloned, sm.revision
+  There is no `LoadContext()` followed by a separate `Revision()` anywhere in
+  the preview path: `grep -n "Revision()" internal/handlers/whatif/sync.go`
+  returns no hits; sync.go:334 is
+  `settings, expectedRevision, err := retirementMgr.LoadContextWithRevision(r.Context())`.
+
+C2 — revision-bump completeness across ALL settings writers. MET (with one
+  documented, harmless non-bumping write; see below).
+  `grep -rn "saveInternal(" --include=*.go .` -> only 3 production hits:
+    settings.go:879 (the definition), settings.go:871 (inside
+    saveInternalAndBump, which bumps at 874), settings.go:679.
+  `grep -rn "saveInternalAndBump(" --include=*.go .` -> 27 hits, all in
+  settings.go: 788 (SaveWithRevision), 842 (SaveWithRevisionIfScenario), 932,
+  960, 1001, 1034, 1065, 1084, 1115, 1143, 1183, 1216 (income/expense CRUD),
+  1238 (UpdateSettings), 1304 (ApplyOverrides), 1330
+  (UpdateSettingsWithPersons), 1547, 1566, 1590, 1648, 1667, 1695, 1735, 1768,
+  1787, 1812 (spending phases / healthcare / big-ticket / one-time),
+  2016 (CreateScenario). saveInternalAndBump ALWAYS calls bumpLocked on success
+  (settings.go:870-876).
+  Non-saveInternal disk writes: `grep -rn "store.WriteFile" internal/services/
+  retirement/*.go` (non-test) -> exactly 2: settings.go:911 (inside
+  saveInternal) and settings.go:2136 (RenameScenario), and RenameScenario
+  bumps at 2144.
+  Non-save mutations of manager state also bump: InvalidateCache 544,
+  reconcileActiveScenarioLocked 597, BeginExternalRewrite's end() 620 (the
+  restore path's gate — internal/services/restore/restore.go:217 is its only
+  caller), SwitchScenario 1972, DeleteScenario 2091, RenameScenario 2144.
+  There is no way to write settings from outside the package except through
+  these methods: `store` is an unexported field, and
+  `grep -rn 'whatif.json"' --include=*.go internal/ cmd/ | grep -v retirement/`
+  yields only handlers.go:407 (a string comparison, not a write).
+  OBSERVATION (not a defect, pre-existing on master, unchanged by Z7): the ONE
+  non-bumping disk write is settings.go:679 — loadInternalContext's
+  migration-on-decode rewrite, deliberately un-bumping per the comment at
+  866-869. It cannot defeat the guard: it runs inside LoadContext /
+  LoadContextWithRevision's own held write lock (461/514), and the bytes it
+  writes are derived from the bytes it just read under that same lock, so it
+  can never revert a concurrent editor's value.
+
+C3 — regression test + mutation proof. MET.
+  `go test ./internal/handlers/whatif/ -run
+   'TestHandleWhatIfSyncApply_ConcurrentSameScenarioEditNotLost' -v -count=1`
+   -> `--- PASS: TestHandleWhatIfSyncApply_ConcurrentSameScenarioEditNotLost (0.03s)`
+  Read the test (sync_test.go:628-689): real preview via handleWhatIfSync ->
+  extractSyncGuardFields (regex over the RENDERED hidden inputs, t.Fatalf if
+  expected_revision is absent) -> syncApplyRaceTestHook does
+  LoadContext/DiscountRate=9.99/rm.Save on the SAME scenario -> apply ->
+  asserts w2.Code == 409 (667), assertRetargetHeader(..., "#whatif-sync-preview")
+  (670), reloads and asserts after2.DiscountRate == 9.99 (679), and that no
+  "insights-" income source was written (684-687). The hook fires at
+  sync.go:476-478, i.e. after the handler's unlocked checks and immediately
+  before saveAndRecalcIfScenario (481) — the real lost-update window.
+  MUTATION (scratch copy, settings.go:834-839 revision comparison replaced by
+  `_ = expectedRevision`, scenario check left intact):
+    --- PASS: TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected (0.02s)
+    sync_test.go:668: status = 200, want 409
+    --- FAIL: TestHandleWhatIfSyncApply_ConcurrentSameScenarioEditNotLost (0.03s)
+  Second mutant run (status assert downgraded to t.Logf so the disk assertion
+  executes) reproduced the full lost-update signature:
+    sync_test.go:668: MUTANT: status = 200 (not 409); continuing to disk assertion
+    sync_test.go:679: concurrent edit was lost: DiscountRate = 5, want 9.99
+  So the new test is load-bearing on the revision comparison, and the Z2
+  scenario-switch test still passes with the scenario check intact.
+  Manager-layer mutant, same copy:
+    --- FAIL: TestSaveWithRevisionIfScenario_RefusesWhenRevisionIsStale
+        (settings_test.go:851: expected a refusal when expectedRevision is stale)
+    --- PASS: TestSaveWithRevisionIfScenario_RefusesWhenExpectedScenarioIsNotActive
+    --- PASS: TestSaveWithRevisionIfScenario_SavesWhenScenarioMatches
+    --- PASS: TestSaveWithRevisionIfScenario_SavesWhenRevisionMatches
+  Scratch copy deleted after use.
+
+C4 — 400 on missing/blank/non-numeric expected_revision, before any write. MET.
+  Code (sync.go:433-442): blank -> 400 retargeted "#whatif-sync-preview";
+  strconv.Atoi error -> 400 same target. Both returns precede the first
+  `retirementMgr.LoadContext` at sync.go:444, so no load and no write occurs.
+  `go test ./internal/handlers/whatif/ -run
+   'TestHandleWhatIfSyncApply_MissingGuardFieldsRejected' -v -count=1`:
+    --- PASS: .../all_missing
+    --- PASS: .../blank_expected_scenario
+    --- PASS: .../blank_plan_hash
+    --- PASS: .../blank_expected_revision
+    --- PASS: .../missing_expected_revision
+    --- PASS: .../non-numeric_expected_revision
+  The test asserts 400 + retarget header per case (sync_test.go:385-388) and,
+  after all cases, that MonthlyLivingExpenses is unchanged and no "insights-"
+  income source landed (396-403) — i.e. nothing written.
+
+C5 — manager unit tests. MET.
+  `go test ./internal/services/retirement/ -run 'TestSaveWithRevisionIfScenario|
+   TestLoadContextWithRevision' -v -count=1`:
+    --- PASS: TestSaveWithRevisionIfScenario_RefusesWhenExpectedScenarioIsNotActive
+    --- PASS: TestSaveWithRevisionIfScenario_SavesWhenScenarioMatches
+    --- PASS: TestSaveWithRevisionIfScenario_RefusesWhenRevisionIsStale
+    --- PASS: TestSaveWithRevisionIfScenario_SavesWhenRevisionMatches
+  Read settings_test.go:819-870: stale case asserts err != nil, errors.As
+  *ScenarioConflictError (typed), returned revision == 0, and — after
+  InvalidateCache + reload from disk — DiscountRate == 9.99 (file unchanged by
+  the refused save). settings_test.go:876+ asserts the current-revision case
+  saves and returns a non-zero revision.
+
+C6 — Z2/Z6 guard tests unweakened. MET.
+  `git diff HEAD -- .../sync_test.go .../handlers_test.go .../settings_test.go
+   | grep "^-" | grep -v "^---"` -> 33 removed lines, and NONE is an assertion:
+  every one is a call-site/signature/comment/table-literal line (e.g.
+  `scenario, hash := extractSyncGuardFields(...)`, `func syncApplyRequest(
+  scenario, hash string)`, `{"both missing", "", ""}`, the two 2-arg
+  SaveWithRevisionIfScenario calls). No `t.Fatalf`/`t.Errorf`/`if w.Code !=`
+  line was deleted or relaxed; the one removed t.Fatalf (extractSyncGuardFields'
+  "could not find" message) reappears at sync_test.go:60 covering all three
+  fields. The old table case {"both missing"} became {"all missing"} plus five
+  siblings — coverage strictly grew.
+  `go test ./internal/handlers/whatif/ -run
+   'TestHandleWhatIfSyncApply|TestHandleWhatIfSync$' -v -count=1`:
+    --- PASS: TestHandleWhatIfSync
+    --- PASS: TestHandleWhatIfSyncApply_SaveError
+    --- PASS: TestHandleWhatIfSyncApply_AnalysisError
+    --- PASS: TestHandleWhatIfSyncApply_SavesSyncedSettings
+    --- PASS: TestHandleWhatIfSyncApply_MissingGuardFieldsRejected (+6 subtests)
+    --- PASS: TestHandleWhatIfSyncApply_WrongExpectedScenarioRejected
+    --- PASS: TestHandleWhatIfSyncApply_ScenarioSwitchDuringApplyWindowRejected
+    --- PASS: TestHandleWhatIfSyncApply_StalePlanHashRejected
+    --- PASS: TestHandleWhatIfSyncApply_ConcurrentSameScenarioEditNotLost
+  Their original contracts (409 + retarget + nothing written for wrong
+  scenario / switch-during-window / stale hash; 500 for SaveError and
+  AnalysisError) are still asserted verbatim in the post-change source.
+
+C7 — build / vet / tests / race / flake / gofmt. MET.
+  `go build ./...` -> Success. `go vet ./internal/handlers/whatif/...
+   ./internal/services/retirement/...` -> no issues.
+  `go test ./internal/handlers/whatif/... ./internal/services/retirement/...
+   -count=1`:
+    ok budget2/internal/handlers/whatif 12.980s
+    ok budget2/internal/services/retirement 30.647s
+    ok .../retirement/analysis 21.796s, completeness, engine, history,
+       overrides, prepare — all ok
+  `go test ./internal/handlers/whatif/ -run 'TestHandleWhatIfSyncApply' -race
+   -count=1` -> ok 1.730s (no data race reported).
+  `... -count=3` -> ok 0.268s (no flake).
+  `gofmt -l` over the six touched Go files -> only
+  internal/handlers/whatif/handlers.go. `gofmt -d` on it shows a single hunk:
+  removal of one trailing blank line at EOF (line 1204), untouched by this
+  change. Confirmed PRE-EXISTING: `git show HEAD:.../handlers.go > tmp.go &&
+  gofmt -l tmp.go` also flags the HEAD version.
+
+C8 — scope. MET.
+  `git diff HEAD --stat` (working tree, uncommitted work included) lists
+  exactly 10 paths: the 7 manifest files (.swarm/manifests/Z7.1.files) plus
+  .swarm/NEXT.md, .swarm/Z-RUN-SPEC.md, .swarm/ledger.tsv — the three
+  lead-owned .swarm files the brief authorizes. Untracked: only
+  .swarm/manifests/Z7.1.files and .swarm/manifests/Z7.1.manifest.md.
+  Nothing outside the manifest + lead .swarm files.
+  critical.globs (storage/**, dataloader/**, retirement/engine/**,
+  transfers/**, accounts/accounts.go, mcpsvc/confirm/**): none appears in the
+  diff stat — untouched.
+  saveAndRecalc byte-unchanged: extracted the function text from
+  `git show HEAD:internal/handlers/whatif/handlers.go` and from the working
+  tree and compared -> `saveAndRecalc IDENTICAL len 334 334`; likewise
+  `recalcAndRender IDENTICAL len 312 312`. The only handlers.go change is
+  saveAndRecalcIfScenario's signature/doc (git diff, +12/-9), whose sole
+  caller is handleWhatIfSyncApply. The 8 non-test saveAndRecalc call sites are
+  unmodified.
+  Template: sync-preview.html adds exactly one hidden input
+  `name="expected_revision" value="{{.ExpectedRevision}}"` plus a doc-comment
+  update; nothing else changed.
+
+FINDINGS / OBSERVATIONS (no criterion failed):
+  - Global-per-manager revision means a save to a DIFFERENT scenario between
+    preview and apply produces a false-positive 409. This is the accepted
+    D-Z-h tradeoff and is documented at settings.go:125-132 (the field),
+    494-499 (LoadContextWithRevision) and 816-822 (SaveWithRevisionIfScenario).
+    No test pins this behavior; not required by the task.
+  - settings.go:679 migration-on-load write does not bump (see C2). Documented
+    at 866-869, pre-existing on master, and provably harmless because it runs
+    under the load's own held lock. Backlog note only.
+  - `expectedScenario == ""` still skips BOTH guards (settings.go:827). No
+    production caller uses that path (`grep -rn SaveWithRevisionIfScenario`
+    shows handlers.go:244 as the only non-test caller), so it cannot be reached
+    with an empty expectation today.

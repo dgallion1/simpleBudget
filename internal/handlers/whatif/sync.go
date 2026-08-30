@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -303,12 +304,13 @@ func syncSettingsFromDashboard(settings *models.WhatIfSettings) error {
 
 // syncPreviewResponse is the JSON fallback shape for handleWhatIfSync
 // (used when no renderer is wired). It embeds the plan fields at the top
-// level for backward compatibility and adds the two guard values a caller
+// level for backward compatibility and adds the three guard values a caller
 // must echo back to /whatif/sync/apply.
 type syncPreviewResponse struct {
 	*syncPlan
 	ExpectedScenario string `json:"expected_scenario"`
 	PlanHash         string `json:"plan_hash"`
+	ExpectedRevision int    `json:"expected_revision"`
 }
 
 // handleWhatIfSync previews the changes a dashboard sync would make —
@@ -316,11 +318,20 @@ type syncPreviewResponse struct {
 // sync overwrites MonthlyLivingExpenses and rebuilds auto-detected income
 // sources, so a silent save would clobber deliberately set values.
 //
-// ExpectedScenario and PlanHash bind the confirmation to what was actually
-// previewed. handleWhatIfSyncApply rejects a mismatch instead of writing:
-// see its doc comment for why.
+// ExpectedScenario, PlanHash, and ExpectedRevision bind the confirmation to
+// what was actually previewed. handleWhatIfSyncApply rejects a mismatch
+// instead of writing: see its doc comment for why.
+//
+// ExpectedRevision is obtained from LoadContextWithRevision, under the SAME
+// lock as the settings load below -- not by calling LoadContext and then
+// retirementMgr's revision separately. A load-then-read-revision sequence
+// would leave a window between the two calls for a concurrent save to bump
+// the counter, and this handler would then echo back a revision that
+// describes a LATER snapshot than the one it actually computed the plan
+// from -- recreating, at the read end, exactly the TOCTOU this whole guard
+// exists to close at the write end (Z7).
 func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.LoadContext(r.Context())
+	settings, expectedRevision, err := retirementMgr.LoadContextWithRevision(r.Context())
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -344,6 +355,7 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 			"Plan":             plan,
 			"ExpectedScenario": expectedScenario,
 			"PlanHash":         hash,
+			"ExpectedRevision": expectedRevision,
 		})
 		return
 	}
@@ -352,6 +364,7 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 		syncPlan:         plan,
 		ExpectedScenario: expectedScenario,
 		PlanHash:         hash,
+		ExpectedRevision: expectedRevision,
 	})
 }
 
@@ -369,33 +382,43 @@ var syncApplyRaceTestHook func()
 // handleWhatIfSyncApply performs the confirmed sync: recompute from the
 // dashboard, save, and render the standard results partial.
 //
-// expected_scenario and plan_hash are required (mirrors handleWhatIfApply's
-// expected_scenario guard, internal/handlers/whatif/handlers_live.go): a
-// client that skipped preview, or whose preview is stale, gets 400/409
-// instead of an unreviewed write. Between preview and apply, another
-// tab/MCP call can switch the active scenario or change the transactions
-// the plan was computed from — without this guard the confirmed values
-// could land on a plan the user never looked at.
+// expected_scenario, plan_hash, AND expected_revision are all required
+// (mirrors handleWhatIfApply's expected_scenario guard,
+// internal/handlers/whatif/handlers_live.go): a client that skipped preview,
+// or whose preview is stale, gets 400/409 instead of an unreviewed write.
+// Between preview and apply, another tab/MCP call can switch the active
+// scenario, change the transactions the plan was computed from, OR save a
+// same-scenario edit directly to settings (e.g. a rate change on the
+// Settings page) — without these guards the confirmed values could land on
+// top of a plan, or a setting, the user never looked at.
 //
 // The check below (against retirementMgr.ActiveFilename()) is a fast-fail
 // for UX only — it is NOT what makes this safe, because it releases the lock
 // before computeDashboardSync/applySyncPlan run, leaving a window where a
-// scenario switch lands between the check and the write. The AUTHORITATIVE
-// check is inside saveAndRecalcIfScenario, which re-compares expectedScenario
-// against the active scenario and performs the write in the SAME held lock
-// (SettingsManager.SaveWithRevisionIfScenario) — see that method and
-// ApplyOverrides' doc comment. A mismatch there surfaces as
-// *retirement.ScenarioConflictError, which saveAndRecalcIfScenario itself
-// intercepts and renders as a retargeted 409 into #whatif-sync-preview, and
-// nothing is written.
+// scenario switch OR a same-scenario concurrent save lands between the check
+// and the write. The AUTHORITATIVE check is inside saveAndRecalcIfScenario,
+// which re-compares BOTH expectedScenario against the active scenario AND
+// expectedRevision against the manager's current revision, and performs the
+// write, all in the SAME held lock (SettingsManager.SaveWithRevisionIfScenario)
+// — see that method and ApplyOverrides' doc comment. A mismatch on EITHER
+// check there surfaces as *retirement.ScenarioConflictError, which
+// saveAndRecalcIfScenario itself intercepts and renders as a retargeted 409
+// into #whatif-sync-preview, and nothing is written. This closes the
+// lost-update window a scenario-only guard leaves open: a same-scenario
+// concurrent edit (e.g. DiscountRate changed via the Settings page) landing
+// between this handler's LoadContext above and the guarded save used to be
+// silently reverted by the whole-object save below, because the earlier
+// guard compared only the filename — never whether the loaded snapshot was
+// still current (Z7).
 //
 // The plan_hash comparison, by contrast, does NOT need to be inside that
 // lock: the plan actually saved is the one recomputed by computeDashboardSync
 // just above (freshly, at apply time, from current settings/transactions),
 // not the one hashed at preview time. The hash only binds this apply to what
 // the user reviewed being still current; it names no mutable manager state
-// that could rot between an unlocked check and the locked write. Only the
-// scenario identity does that, which is exactly what the locked check guards.
+// that could rot between an unlocked check and the locked write. The
+// scenario identity and the settings revision both do that, which is exactly
+// what the locked checks inside SaveWithRevisionIfScenario guard.
 func handleWhatIfSyncApply(w http.ResponseWriter, r *http.Request) {
 	expectedScenario := strings.TrimSpace(r.FormValue("expected_scenario"))
 	if expectedScenario == "" {
@@ -405,6 +428,16 @@ func handleWhatIfSyncApply(w http.ResponseWriter, r *http.Request) {
 	expectedHash := strings.TrimSpace(r.FormValue("plan_hash"))
 	if expectedHash == "" {
 		renderRetargetedError(w, "plan_hash is required: re-open the sync preview and apply from there", http.StatusBadRequest, "#whatif-sync-preview")
+		return
+	}
+	expectedRevisionRaw := strings.TrimSpace(r.FormValue("expected_revision"))
+	if expectedRevisionRaw == "" {
+		renderRetargetedError(w, "expected_revision is required: re-open the sync preview and apply from there", http.StatusBadRequest, "#whatif-sync-preview")
+		return
+	}
+	expectedRevision, err := strconv.Atoi(expectedRevisionRaw)
+	if err != nil {
+		renderRetargetedError(w, "expected_revision is invalid: re-open the sync preview and apply from there", http.StatusBadRequest, "#whatif-sync-preview")
 		return
 	}
 
@@ -445,5 +478,5 @@ func handleWhatIfSyncApply(w http.ResponseWriter, r *http.Request) {
 	}
 
 	applySyncPlan(settings, plan)
-	saveAndRecalcIfScenario(w, r, settings, expectedScenario)
+	saveAndRecalcIfScenario(w, r, settings, expectedScenario, expectedRevision)
 }

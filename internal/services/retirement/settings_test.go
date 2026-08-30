@@ -749,7 +749,8 @@ func TestSaveWithRevisionIfScenario_RefusesWhenExpectedScenarioIsNotActive(t *te
 	mutated.MonthlyLivingExpenses = 9999.0
 
 	// Active scenario is "whatif.json" (A); call with expectedScenario "B".
-	rev, err := sm.SaveWithRevisionIfScenario(mutated, "whatif_not-the-active-one.json")
+	// expectedRevision is irrelevant here -- the scenario check fails first.
+	rev, err := sm.SaveWithRevisionIfScenario(mutated, "whatif_not-the-active-one.json", 0)
 	if err == nil {
 		t.Fatal("expected a refusal when the expected scenario is not the active one")
 	}
@@ -789,7 +790,9 @@ func TestSaveWithRevisionIfScenario_SavesWhenScenarioMatches(t *testing.T) {
 	want := 4321.0
 	settings.MonthlyLivingExpenses = want
 
-	rev, err := sm.SaveWithRevisionIfScenario(settings, "whatif.json")
+	// A fresh manager's revision is 0 until the first bump; matching it is
+	// the "loaded, nothing else has written since" case.
+	rev, err := sm.SaveWithRevisionIfScenario(settings, "whatif.json", 0)
 	if err != nil {
 		t.Fatalf("SaveWithRevisionIfScenario: %v", err)
 	}
@@ -804,6 +807,101 @@ func TestSaveWithRevisionIfScenario_SavesWhenScenarioMatches(t *testing.T) {
 	}
 	if reloaded.MonthlyLivingExpenses != want {
 		t.Fatalf("value did not persist: got %v, want %v", reloaded.MonthlyLivingExpenses, want)
+	}
+}
+
+// TestSaveWithRevisionIfScenario_RefusesWhenRevisionIsStale is the Z7
+// regression at the manager layer: even with a MATCHING scenario, a stale
+// expectedRevision (a concurrent save landed after the snapshot was loaded)
+// must refuse the write instead of silently reverting that concurrent
+// change -- the lost-update bug SaveWithRevisionIfScenario's expectedScenario
+// guard alone did not close, because it never compared revision.
+func TestSaveWithRevisionIfScenario_RefusesWhenRevisionIsStale(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := NewSettingsManager(tmpDir, store)
+
+	// Snapshot at revision 0.
+	snapshot, rev, err := sm.LoadContextWithRevision(context.Background())
+	if err != nil {
+		t.Fatalf("LoadContextWithRevision: %v", err)
+	}
+	if rev != 0 {
+		t.Fatalf("revision of a fresh manager's first load = %d, want 0", rev)
+	}
+	snapshot.DiscountRate = 3.5 // the change this (losing) caller intends to make
+
+	// A concurrent SAME-SCENARIO edit lands, bumping the revision.
+	concurrent, err := sm.Load()
+	if err != nil {
+		t.Fatalf("Load (concurrent editor): %v", err)
+	}
+	concurrent.DiscountRate = 9.99
+	if err := sm.Save(concurrent); err != nil {
+		t.Fatalf("Save (concurrent editor): %v", err)
+	}
+
+	// The stale-snapshot caller now tries to save against the revision it
+	// loaded (0), which is no longer current.
+	got, err := sm.SaveWithRevisionIfScenario(snapshot, "whatif.json", rev)
+	if err == nil {
+		t.Fatal("expected a refusal when expectedRevision is stale")
+	}
+	var conflict *ScenarioConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("error type = %T, want *ScenarioConflictError so the handler answers 409: %v", err, err)
+	}
+	if got != 0 {
+		t.Fatalf("a refused save must report no revision, got %d", got)
+	}
+
+	sm.InvalidateCache()
+	after, err := sm.Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	// The lost-update signature: the concurrent editor's value must survive.
+	if after.DiscountRate != 9.99 {
+		t.Fatalf("concurrent edit was lost: DiscountRate = %v, want 9.99 (the stale save must not have written)", after.DiscountRate)
+	}
+}
+
+// TestSaveWithRevisionIfScenario_SavesWhenRevisionMatches pairs with the
+// stale-revision test above: a snapshot saved against the revision it was
+// actually loaded at (obtained via LoadContextWithRevision, no intervening
+// write) succeeds.
+func TestSaveWithRevisionIfScenario_SavesWhenRevisionMatches(t *testing.T) {
+	tmpDir := t.TempDir()
+	store, err := storage.New(tmpDir)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	sm := NewSettingsManager(tmpDir, store)
+
+	settings, rev, err := sm.LoadContextWithRevision(context.Background())
+	if err != nil {
+		t.Fatalf("LoadContextWithRevision: %v", err)
+	}
+	settings.DiscountRate = 4.25
+
+	got, err := sm.SaveWithRevisionIfScenario(settings, "whatif.json", rev)
+	if err != nil {
+		t.Fatalf("SaveWithRevisionIfScenario: %v", err)
+	}
+	if got == 0 {
+		t.Fatal("SaveWithRevisionIfScenario returned revision 0")
+	}
+
+	sm.InvalidateCache()
+	reloaded, err := sm.Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if reloaded.DiscountRate != 4.25 {
+		t.Fatalf("value did not persist: got %v, want 4.25", reloaded.DiscountRate)
 	}
 }
 

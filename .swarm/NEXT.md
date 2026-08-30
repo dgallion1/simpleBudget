@@ -447,3 +447,33 @@ Spec `.swarm/Z-RUN-SPEC.md`; all five tasks accepted, gate exit 0 each.
   Z6 follow-up observations: the whatif renderError partial has no
   role="alert"/aria-live package-wide (accounts/filemanager do it right);
   handlers.go pre-existing trailing-blank-line gofmt nit (line ~1199).
+
+## DB trigger conditions (decision note, 2026-08-30 — no action planned)
+Stay on JSON/CSV files + SaveWithRevision optimistic locking. Revisit
+(SQLite, single file, WAL — never a server DB) only if one of these fires:
+1. A second WRITER PROCESS appears (MCP moved back out-of-process, cron,
+   any automation writing data) — the in-process mutex stops covering.
+2. Multi-object atomicity pain recurs (settings + aliases + decisions
+   cannot commit as one unit; the StableID/orphaned-decisions drift class).
+3. A corruption or partial-write incident (WAL makes crash-mid-write a
+   non-event instead of a restore).
+Rationale: the 2026-08-30 lost-update bug (Z7) was a contract gap, not a
+storage failure — `UPDATE ... WHERE revision=?` requires the same
+discipline; migration would ripple through backup/restore, MCP snapshots,
+aliases, dataloader (storage/** and dataloader/** are critical.globs).
+Swap seam if it ever happens: internal/services/storage.
+Related parked item: revision-guard sweep across the ~7 other
+saveAndRecalc callers (same lost-update window as Z7, sync-only fixed
+per user decision 2026-08-30).
+- **Z7** (t2, att1, user-review P1 on PR #71) — same-scenario lost update
+  closed: LoadContextWithRevision (atomic settings+revision under one
+  lock), expected_revision round-trip, SaveWithRevisionIfScenario compares
+  scenario AND revision inside the held write lock. Revision is
+  GLOBAL-per-manager (different-scenario save → conservative 409,
+  documented). Z7 checker findings for the backlog: ApplyOverrides has a
+  scenario guard but NO revision guard (handlers_live.go + mcpsvc/plan
+  callers — same lost-update class, part of the parked saveAndRecalc
+  sweep); loadInternalContext's migration-on-decode rewrite doesn't bump
+  (pre-existing, harmless under its held lock); no test pins the
+  global-revision false-positive 409; expectedScenario=="" skips both
+  guards (unreachable today).

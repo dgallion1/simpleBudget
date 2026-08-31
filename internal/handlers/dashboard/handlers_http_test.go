@@ -2020,3 +2020,60 @@ func TestHandleKPIMonthDetail_SavingsTilesMatchKPIRow(t *testing.T) {
 		t.Errorf("Total = %v, want 3400", total)
 	}
 }
+
+// ---------- verdict bar Net Savings drill-down ----------
+
+// extractAfterLabel pulls the value rendered in the element immediately
+// following the one holding label.
+func extractAfterLabel(t *testing.T, body, label string) string {
+	t.Helper()
+	re := regexp.MustCompile(regexp.QuoteMeta(label) + `</(?:div|p|span)>\s*<(?:div|p|span)[^>]*>([^<]+)<`)
+	m := re.FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("no value rendered after label %q", label)
+	}
+	return strings.TrimSpace(m[1])
+}
+
+// Clicking a figure must show that figure: the verdict bar's Net Savings and
+// the savings modal's Total are two renderings of one number, so they are
+// compared as the strings a user actually reads.
+func TestVerdictBarNetSavings_MatchesSavingsModalTotal(t *testing.T) {
+	router, cleanup := setupTestEnvWithRenderer(t, refundRows())
+	defer cleanup()
+
+	const window = "start=2025-01-01&end=2025-03-31"
+
+	page := doGet(t, router, "/dashboard?"+window)
+	if page.Code != http.StatusOK {
+		t.Fatalf("dashboard status = %d, want 200", page.Code)
+	}
+	barValue := extractAfterLabel(t, page.Body.String(), "Net Savings")
+
+	modal := doGet(t, router, "/dashboard/kpi/savings?"+window)
+	if modal.Code != http.StatusOK {
+		t.Fatalf("modal status = %d, want 200", modal.Code)
+	}
+	modalValue := extractAfterLabel(t, modal.Body.String(), "Total")
+
+	if barValue == "$0.00" {
+		t.Fatalf("fixture nets to zero; the comparison would pass vacuously")
+	}
+	if barValue != modalValue {
+		t.Errorf("verdict bar Net Savings = %s, savings modal Total = %s; the two must agree", barValue, modalValue)
+	}
+}
+
+// The Net Savings figure is a real, keyboard-reachable control.
+func TestVerdictBarNetSavings_IsDrillable(t *testing.T) {
+	router, cleanup := setupTestEnvWithRenderer(t, defaultRows())
+	defer cleanup()
+
+	body := doGet(t, router, "/dashboard?start=2025-01-01&end=2025-03-31").Body.String()
+	if !strings.Contains(body, "openKPIDetail('savings')") {
+		t.Error("Net Savings is not wired to the savings KPI modal")
+	}
+	if want := `aria-label="Show monthly net savings detail"`; !strings.Contains(body, want) {
+		t.Errorf("body missing %s", want)
+	}
+}

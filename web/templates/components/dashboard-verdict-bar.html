@@ -53,10 +53,12 @@
             <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{formatMoney $v.TargetTotal}}</div>
         </div>
         {{end}}
-        <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Net Savings</div>
-            <div class="num text-base font-bold {{if ge $v.NetSavings 0.0}}text-emerald-700 dark:text-emerald-400{{else}}text-rose-700 dark:text-rose-400{{end}}">{{formatMoney $v.NetSavings}}</div>
-        </div>
+        <button type="button" onclick="openKPIDetail('savings')"
+            class="text-center rounded px-2 py-1 -my-1 hover:bg-black/5 dark:hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            aria-label="Show monthly net savings detail">
+            <span class="block text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Net Savings</span>
+            <span class="num block text-base font-bold {{if ge $v.NetSavings 0.0}}text-emerald-700 dark:text-emerald-400{{else}}text-rose-700 dark:text-rose-400{{end}}">{{formatMoney $v.NetSavings}}</span>
+        </button>
     </div>
 </div>
 {{end}}

@@ -395,7 +395,8 @@ func ApplyTaxStateMonth(taxState *ProjectionTaxAccumulator, incomeBreakdown Mont
 	taxState.ApplyMonth(RealizedMonthIncome{
 		OrdinaryIncome:        incomeBreakdown.OrdinaryIncome + monthResult.TaxableNonQualifiedDividends + monthResult.TaxableRothEarnings,
 		SocialSecurityIncome:  incomeBreakdown.SocialSecurityIncome,
-		TaxableWithdrawals:    monthResult.CashFlow.WithdrawalFromTaxDeferred,
+		TaxableWithdrawals:    monthResult.CashFlow.WithdrawalFromTaxDeferred - monthResult.CashFlow.RMDWithdrawal,
+		RMDWithdrawals:        monthResult.CashFlow.RMDWithdrawal,
 		QualifiedDividends:    monthResult.TaxableQualifiedDividends,
 		LongTermCapitalGains:  monthResult.TaxableCapitalGains,
 		NonQualifiedDividends: monthResult.TaxableNonQualifiedDividends,

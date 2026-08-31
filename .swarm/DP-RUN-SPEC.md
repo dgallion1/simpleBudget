@@ -124,6 +124,53 @@ Verification is package-scoped (`./internal/services/dataloader/`,
 `./internal/services/mcpsvc/...`) — no full-suite demands while the tree is
 shared. No git-state changes (checkout/stash/branch/HEAD) by any DP agent.
 
+## Task DP3 — widen isPendingPostedPair (follow-on to checker-second backlog)
+
+Date: 2026-08-30. Motivated by `.swarm/verdicts/DP1.1.checker-second.verdict`
+Attack 1: six GENUINE pending→posted duplicates on live data escaped the DP1
+constants (Grammarly -144.00, BJ's Wholesale -634.40, BJ's Membership -64.50,
+Grubhub*FiveGuys -59.00/-58.00, Amazon Mktplace -30.81 at a 4-day gap).
+
+### Design (calibrated 2026-08-30 against live data, probe-first)
+
+Description affinity moves from whitespace-normalized strings to
+`squashAlphanumeric` output (lowercase, letters+digits only). Match iff any:
+
+1. one squashed Description is a prefix of the other;
+2. squashed common prefix >= `pendingPostedPrefixMinLen = 10` (was 12 raw;
+   live floor for a true pair is 11 squashed bytes, ceiling for a false
+   candidate is 4);
+3. a shared alphanumeric token >= `pendingPostedTokenMinLen = 6` bytes
+   (aggregator-vs-merchant and dropped-brand rewrites; 6 keeps filler
+   words like "the"/"via"/"pmts" from pairing unrelated merchants).
+
+`pendingPostedWindowDays` 3 → 5 (live settlement lag reaches 4 days).
+
+Calibration probe result: live data has exactly 18 same-account/same-cents
+pending↔posted status-split candidates within 7 days; the rules above match
+17 (all genuine settlements) and exclude the single junk candidate
+(Cybernet vs "Adjustment to Account", dd=7, no affinity). Pairs 17 → 23
+with zero re-pairing of decided pairs (16 resolved + 1 kept_both bind).
+
+### Acceptance criteria
+
+B1. Real-data regression: exactly 6 unresolved pairs (the six above), each
+    with one Pending and one Posted side; 16 resolved + 1 kept_both bind.
+B2. `go test ./internal/services/dataloader/ ./internal/services/mcpsvc/...`
+    green; unit tests cover each new rule discriminatingly (verified by
+    constant mutation: window 5→3, prefix 10→99, token 6→3, token rule
+    removed — each kills at least one test).
+B3. `list_duplicates` tool description says "within 5 days".
+
+Oracle: `.swarm/tier3/DP3/accept.sh` (stages `zz_oracle_dp3_test.go`;
+resolves live data via `$BUDGET2_DATA_DIR` when the checkout has no
+`data/`). Files touched: `near_duplicates.go`, `near_duplicates_test.go`,
+`internal/services/mcpsvc/admin/duplicates.go`, this spec, `.swarm/tier3/DP3/**`.
+
+Note: the frozen DP1 oracle (`.swarm/tier3/DP1/`) asserts the pre-widening
+constants (11 unresolved, 4-day gap excluded) and now fails by design; it is
+a historical record of the DP1 acceptance, superseded by DP3's oracle.
+
 ## Rulings
 
 - 2026-08-30 (lead note, no dispute): worker's flagged deviation accepted —

@@ -20,18 +20,32 @@ const (
 	// pendingPostedWindowDays bounds the third candidate shape (see
 	// isPendingPostedPair): the pending side and the posted side of the
 	// same settlement are usually captured on the same day or the next,
-	// but bank settlement lag occasionally pushes it out a couple more
-	// days, so 3 days balances catching real settlements against pairing
-	// unrelated same-amount charges.
-	pendingPostedWindowDays = 3
+	// but bank settlement lag over a weekend or holiday stretches to 4
+	// days on live data (Amazon Mktplace, Nov 2025), so 5 days catches
+	// real settlements with a day of margin while the status-split,
+	// same-account, and description-affinity guards keep unrelated
+	// same-amount charges out.
+	pendingPostedWindowDays = 5
 
 	// pendingPostedPrefixMinLen is the minimum shared byte-wise prefix
-	// length (after normalization) required for the pending→posted
-	// shape's description-affinity check when neither normalized string
-	// is a prefix of the other. 12 bytes is enough to require matching
-	// on a real merchant-name fragment (not just a shared first word)
-	// while tolerating a rewritten tail.
-	pendingPostedPrefixMinLen = 12
+	// length required for the pending→posted shape's description-affinity
+	// check when neither squashed string is a prefix of the other,
+	// measured on squashAlphanumeric output (letters and digits only, so
+	// spaces and punctuation no longer count toward it). 10 bytes is
+	// enough to require a real merchant-name fragment (not just a shared
+	// first word) while tolerating a rewritten tail; live calibration
+	// (2026-08-30): the shortest genuine settlement prefix is 11 bytes
+	// ("grammarlyco"), the longest coincidental one 4.
+	pendingPostedPrefixMinLen = 10
+
+	// pendingPostedTokenMinLen is the minimum length of a single shared
+	// alphanumeric token that establishes description affinity on its own,
+	// for rewrites where no usable prefix survives — an aggregator name
+	// moved mid-string ("GRUBHUB*FIVEGUYS" vs "Five Guys via Grubhub") or
+	// a dropped brand ("BJS MEMBERSHIP" vs "Membership"). 6 bytes keeps
+	// filler words (the, via, pmts) and short brand fragments from pairing
+	// unrelated merchants on their own.
+	pendingPostedTokenMinLen = 6
 )
 
 // checkPrefixRE matches descriptions that look like a posted check
@@ -197,7 +211,7 @@ func isSameDayReimportPair(a, b models.Transaction) bool {
 // fire). The only remaining signals are the status transition itself, the
 // account, and whatever fragment of the merchant name survives the
 // rewrite -- so this shape is deliberately narrower than the other two: the
-// window is 3 days (pendingPostedWindowDays, wider than the 1-day reimport
+// window is 5 days (pendingPostedWindowDays, wider than the 1-day reimport
 // window because bank settlement lag varies more than a same-day
 // re-export), the status split must be exact (one side "pending", the
 // other a postedStatusKeywords match, neither side's Status empty -- an
@@ -205,6 +219,15 @@ func isSameDayReimportPair(a, b models.Transaction) bool {
 // there is no description-shape signal like "Check #NNN" to fall back on),
 // and the same account is required to avoid pairing coincidental same-
 // amount charges on different cards.
+//
+// Description affinity is judged on squashAlphanumeric output, because the
+// bank's rewrite freely reshuffles punctuation, apostrophes, and spacing
+// ("BJS WHOLESALE #0075" settles as "BJ's Wholesale"). Two descriptions
+// match iff one squashed form is a prefix of the other, their squashed
+// common prefix reaches pendingPostedPrefixMinLen, or they share a single
+// alphanumeric token of at least pendingPostedTokenMinLen bytes (the
+// aggregator-vs-merchant-name and dropped-brand rewrites, where nothing
+// survives at the front of the string).
 func isPendingPostedPair(a, b models.Transaction) bool {
 	if dayDiff(a.Date, b.Date) > pendingPostedWindowDays {
 		return false
@@ -217,15 +240,62 @@ func isPendingPostedPair(a, b models.Transaction) bool {
 	if !((aPending && bPosted) || (bPending && aPosted)) {
 		return false
 	}
-	na := normalizeOriginalDescription(a.Description)
-	nb := normalizeOriginalDescription(b.Description)
-	if na == "" || nb == "" {
+	sa := squashAlphanumeric(a.Description)
+	sb := squashAlphanumeric(b.Description)
+	if sa == "" || sb == "" {
 		return false
 	}
-	if strings.HasPrefix(na, nb) || strings.HasPrefix(nb, na) {
+	if strings.HasPrefix(sa, sb) || strings.HasPrefix(sb, sa) {
 		return true
 	}
-	return commonPrefixLen(na, nb) >= pendingPostedPrefixMinLen
+	if commonPrefixLen(sa, sb) >= pendingPostedPrefixMinLen {
+		return true
+	}
+	return hasSharedToken(a.Description, b.Description, pendingPostedTokenMinLen)
+}
+
+// squashAlphanumeric lowercases s and strips every non-alphanumeric rune,
+// so that punctuation, apostrophes, and spacing differences between a
+// pending capture and its posted settlement don't defeat the comparison.
+func squashAlphanumeric(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range strings.ToLower(s) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// hasSharedToken reports whether the two descriptions share an alphanumeric
+// token (maximal run of letters/digits, lowercased) of at least minLen
+// bytes. Tokens shorter than minLen are ignored entirely so filler words
+// can't establish affinity.
+func hasSharedToken(a, b string, minLen int) bool {
+	tokens := make(map[string]bool)
+	for _, tok := range splitAlphanumericTokens(a) {
+		if len(tok) >= minLen {
+			tokens[tok] = true
+		}
+	}
+	if len(tokens) == 0 {
+		return false
+	}
+	for _, tok := range splitAlphanumericTokens(b) {
+		if len(tok) >= minLen && tokens[tok] {
+			return true
+		}
+	}
+	return false
+}
+
+// splitAlphanumericTokens lowercases s and splits it on every
+// non-alphanumeric rune, returning the maximal alphanumeric runs.
+func splitAlphanumericTokens(s string) []string {
+	return strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+	})
 }
 
 // isPendingStatus reports whether a Status value marks the pending side of

@@ -1,0 +1,15 @@
+== B1: real-data regression (six new pairs, decisions bind) ==
+ok  	budget2/internal/services/dataloader	0.020s
+== B2: package suites ==
+ok  	budget2/internal/services/dataloader	1.473s
+ok  	budget2/internal/services/mcpsvc	0.035s
+ok  	budget2/internal/services/mcpsvc/admin	4.025s
+ok  	budget2/internal/services/mcpsvc/confirm	0.044s
+ok  	budget2/internal/services/mcpsvc/curate	0.432s
+ok  	budget2/internal/services/mcpsvc/ledger	0.350s
+ok  	budget2/internal/services/mcpsvc/plan	5.173s
+ok  	budget2/internal/services/mcpsvc/snapshot	0.003s
+ok  	budget2/internal/services/mcpsvc/spend	0.733s
+== B3: list_duplicates description window matches the code ==
+B3 ok
+ORACLE PASS

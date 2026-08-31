@@ -269,10 +269,22 @@ func TestDetect_PendingPosted_CrossAccountNoMatch(t *testing.T) {
 
 func TestDetect_PendingPosted_WindowExceeded(t *testing.T) {
 	pending := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools USA", "Pending", "usaa-credit")
-	posted := makeTxAccount("2026-05-05", -188.98, "Harbor Freight Tools", "Posted", "usaa-credit") // 4 days
+	posted := makeTxAccount("2026-05-07", -188.98, "Harbor Freight Tools", "Posted", "usaa-credit") // 6 days
 	txns := []models.Transaction{pending, posted}
 	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
 		t.Errorf("expected 0 pairs (window exceeded), got %d", len(got))
+	}
+}
+
+// Verbatim live example (usaa-credit-card, Nov 2025): a pending charge that
+// settled 4 days later -- bank settlement lag over a weekend routinely
+// exceeds the original 3-day window.
+func TestDetect_PendingPosted_FourDaySettlementLag(t *testing.T) {
+	pending := makeTxAccount("2025-11-16", -30.81, "AMAZON MKTPLACE PMTS", "Pending", "usaa-credit-card")
+	posted := makeTxAccount("2025-11-20", -30.81, "Amazon", "Posted", "usaa-credit-card")
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 1 {
+		t.Errorf("expected 1 pair (4-day settlement lag), got %d", len(got))
 	}
 }
 
@@ -310,11 +322,87 @@ func TestDetect_PendingPosted_PostedEmptyStatusNoMatch(t *testing.T) {
 func TestDetect_PendingPosted_ShortPrefixNoMatch(t *testing.T) {
 	pending := makeTxAccount("2026-05-01", -188.98, "Ab Cdefghij", "Pending", "usaa-credit")
 	posted := makeTxAccount("2026-05-01", -188.98, "Ab Cdxyzabc", "Posted", "usaa-credit")
-	// Neither is a prefix of the other, and the shared prefix ("ab cd" ==
-	// 5 bytes) is below pendingPostedPrefixMinLen (12).
+	// Neither squashed form is a prefix of the other, the squashed shared
+	// prefix ("abcd" == 4 bytes) is below pendingPostedPrefixMinLen, and the
+	// only shared token ("ab") is below pendingPostedTokenMinLen.
 	txns := []models.Transaction{pending, posted}
 	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
 		t.Errorf("expected 0 pairs (prefix too short), got %d", len(got))
+	}
+}
+
+// Verbatim live example (usaa-credit-card, 2026-04-29): the posted side
+// rewrites the tail ("GRAMMARLY CO*UK0GWQL" vs "Grammarly.com"), leaving a
+// shared merchant fragment shorter than the original 12-byte minimum but
+// well past coincidence once punctuation is stripped.
+func TestDetect_PendingPosted_SharedPrefixAfterSquash(t *testing.T) {
+	pending := makeTxAccount("2026-04-29", -144.00, "GRAMMARLY CO*UK0GWQL", "Pending", "usaa-credit-card")
+	posted := makeTxAccount("2026-04-29", -144.00, "Grammarly.com", "Posted", "usaa-credit-card")
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 1 {
+		t.Errorf("expected 1 pair (shared squashed prefix), got %d", len(got))
+	}
+}
+
+// Verbatim live example (usaa-credit-card, 2026-05-02): an apostrophe plus a
+// store-number suffix defeat a raw byte prefix ("BJS WHOLESALE #0075" vs
+// "BJ's Wholesale") but align exactly once non-alphanumerics are stripped.
+func TestDetect_PendingPosted_ApostropheRewording(t *testing.T) {
+	pending := makeTxAccount("2026-05-02", -634.40, "BJS WHOLESALE #0075", "Pending", "usaa-credit-card")
+	posted := makeTxAccount("2026-05-02", -634.40, "BJ's Wholesale", "Posted", "usaa-credit-card")
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 1 {
+		t.Errorf("expected 1 pair (apostrophe rewording), got %d", len(got))
+	}
+}
+
+// Verbatim live example (usaa-credit-card, 2026-05-01): the posted side
+// drops the leading brand entirely ("BJS MEMBERSHIP" vs "Membership"), so
+// no prefix rule can fire -- only the shared "membership" token survives.
+func TestDetect_PendingPosted_SharedTokenNotPrefix(t *testing.T) {
+	pending := makeTxAccount("2026-05-01", -64.50, "BJS MEMBERSHIP", "Pending", "usaa-credit-card")
+	posted := makeTxAccount("2026-05-01", -64.50, "Membership", "Posted", "usaa-credit-card")
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 1 {
+		t.Errorf("expected 1 pair (shared token), got %d", len(got))
+	}
+}
+
+// Verbatim live example (usaa-credit-card, 2026-05-01/02): aggregator name
+// vs merchant name ("GRUBHUB*FIVEGUYS" vs "Five Guys via Grubhub") share
+// zero prefix in either raw or squashed form; the shared "grubhub" token is
+// the only description signal.
+func TestDetect_PendingPosted_AggregatorTokenMatch(t *testing.T) {
+	pending := makeTxAccount("2026-05-01", -59.00, "GRUBHUB*FIVEGUYS", "Pending", "usaa-credit-card")
+	posted := makeTxAccount("2026-05-02", -59.00, "Five Guys via Grubhub", "Posted", "usaa-credit-card")
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 1 {
+		t.Errorf("expected 1 pair (aggregator token), got %d", len(got))
+	}
+}
+
+// Modeled on the live Harbor Freight settlement's Original Description
+// ("HARBOR FREIGHT TOOLS3185 PENFIELD NY"): the bank glues a store number
+// straight onto the merchant name, so the two sides share no whole token
+// and neither squashed form is a prefix of the other -- only the squashed
+// common prefix (18 bytes here) identifies the merchant.
+func TestDetect_PendingPosted_GluedSuffixSharedPrefix(t *testing.T) {
+	pending := makeTxAccount("2026-05-01", -188.98, "HARBORFREIGHTTOOLS USA", "Pending", "usaa-credit")
+	posted := makeTxAccount("2026-05-01", -188.98, "HARBORFREIGHTTOOLS3185NY", "Posted", "usaa-credit")
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 1 {
+		t.Errorf("expected 1 pair (glued-suffix shared prefix), got %d", len(got))
+	}
+}
+
+func TestDetect_PendingPosted_ShortSharedTokenNoMatch(t *testing.T) {
+	// Sharing only a short common word ("the": 3 bytes, below
+	// pendingPostedTokenMinLen) must not pair two unrelated merchants.
+	pending := makeTxAccount("2026-05-01", -42.00, "The Corner Cafe", "Pending", "usaa-credit-card")
+	posted := makeTxAccount("2026-05-01", -42.00, "The Garden Shop", "Posted", "usaa-credit-card")
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (only short token shared), got %d", len(got))
 	}
 }
 

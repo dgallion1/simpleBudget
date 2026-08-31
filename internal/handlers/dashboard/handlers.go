@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"regexp"
 	"sort"
 	"time"
 
@@ -94,6 +95,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Get("/dashboard/charts/data/{chartType}", handleChartData)
 	r.Get("/dashboard/major-expense", handleMajorExpenseDrilldown)
 	r.Get("/dashboard/kpi/{kpiType}", handleKPIDetail)
+	r.Get("/dashboard/kpi/{kpiType}/month/{month}", handleKPIMonthDetail)
 	r.Get("/dashboard/kpi/{kpiType}/export", handleKPIExport)
 }
 
@@ -371,6 +373,19 @@ func handleMajorExpenseDrilldown(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// kpiTitles maps a KPI tile's type to the heading its detail modal shows.
+// Membership doubles as the set of valid kpiType path params for the month
+// drill-down.
+var kpiTitles = map[string]string{
+	"income":       "Total Income",
+	"expenses":     "Total Expenses",
+	"savings":      "Net Savings",
+	"savings-rate": "Savings Rate",
+}
+
+// monthKeyPattern matches a YYYY-MM month key of the form GroupByMonth emits.
+var monthKeyPattern = regexp.MustCompile(`^\d{4}-(0[1-9]|1[0-2])$`)
+
 func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 	kpiType := chi.URLParam(r, "kpiType")
 
@@ -498,17 +513,9 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 		numMonths = 1
 	}
 
-	// Title based on type
-	titles := map[string]string{
-		"income":       "Total Income",
-		"expenses":     "Total Expenses",
-		"savings":      "Net Savings",
-		"savings-rate": "Savings Rate",
-	}
-
 	partialData := map[string]interface{}{
 		"Type":      kpiType,
-		"Title":     titles[kpiType],
+		"Title":     kpiTitles[kpiType],
 		"Monthly":   monthlySummaries,
 		"Total":     sum,
 		"Average":   avg,
@@ -523,6 +530,134 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 
 	if renderer != nil {
 		_ = renderer.RenderPartial(w, "kpi-detail", partialData)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(partialData)
+	}
+}
+
+// transactionsInMonth returns the set's transactions falling in the given
+// YYYY-MM month key, in load order.
+func transactionsInMonth(ts *models.TransactionSet, month string) []models.Transaction {
+	if set, ok := ts.GroupByMonth()[month]; ok {
+		return set.Transactions
+	}
+	return []models.Transaction{}
+}
+
+// sumSigned adds amounts as stored, so a positive-amount outflow (a refund)
+// reduces the total rather than inflating it.
+func sumSigned(txns []models.Transaction) float64 {
+	var sum float64
+	for _, t := range txns {
+		sum += t.Amount
+	}
+	return sum
+}
+
+// handleKPIMonthDetail lists the transactions behind one row of the KPI
+// detail modal's month table. The KPI's own date range is applied before the
+// month is picked out, so a partially covered month (the first or last in the
+// range) drills down to exactly the figure its row displays.
+func handleKPIMonthDetail(w http.ResponseWriter, r *http.Request) {
+	kpiType := chi.URLParam(r, "kpiType")
+	month := chi.URLParam(r, "month")
+
+	title, ok := kpiTitles[kpiType]
+	if !ok {
+		http.Error(w, "unknown KPI type", http.StatusBadRequest)
+		return
+	}
+	if !monthKeyPattern.MatchString(month) {
+		http.Error(w, "invalid month", http.StatusBadRequest)
+		return
+	}
+	monthStart, err := time.Parse("2006-01", month)
+	if err != nil {
+		http.Error(w, "invalid month", http.StatusBadRequest)
+		return
+	}
+
+	data, err := loader.LoadDataContext(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+
+	startDate, _ := time.Parse("2006-01-02", startStr)
+	endDate, _ := time.Parse("2006-01-02", endStr)
+
+	if startDate.IsZero() {
+		startDate = data.MinDate()
+	}
+	if endDate.IsZero() {
+		endDate = data.MaxDate()
+	}
+
+	filtered := data.Active().FilterByDateRange(startDate, endDate)
+
+	isSavings := kpiType == "savings" || kpiType == "savings-rate"
+
+	monthIncome := transactionsInMonth(filtered.FilterByType(models.Income), month)
+	monthOutflow := transactionsInMonth(filtered.FilterByType(models.Outflow), month)
+
+	// The tiles must reproduce the month row's figure exactly, so they are
+	// summed the way handleKPIDetail sums them: signed, then made absolute.
+	// A refund rides in the ledger as a positive-amount outflow, and netting
+	// it out here is what keeps the two screens agreeing.
+	incomeTotal := sumSigned(monthIncome)
+	expenseTotal := math.Abs(sumSigned(monthOutflow))
+
+	var txns []models.Transaction
+	var total float64
+	var totalLabel string
+	switch kpiType {
+	case "income":
+		txns = monthIncome
+		expenseTotal = 0
+		total, totalLabel = incomeTotal, "Total Income"
+	case "expenses":
+		txns = monthOutflow
+		incomeTotal = 0
+		total, totalLabel = expenseTotal, "Total Spent"
+	default:
+		// Both savings KPIs are income minus expenses, so the drill-down
+		// shows both sides -- and leaves transfers out, exactly as the
+		// figure itself does.
+		txns = append(append([]models.Transaction{}, monthIncome...), monthOutflow...)
+		total, totalLabel = incomeTotal-expenseTotal, "Net"
+	}
+
+	sort.SliceStable(txns, func(i, j int) bool {
+		return math.Abs(txns[i].Amount) > math.Abs(txns[j].Amount)
+	})
+
+	count := len(txns)
+	var avgAmount float64
+	if count > 0 {
+		avgAmount = total / float64(count)
+	}
+
+	partialData := map[string]interface{}{
+		"Type":         kpiType,
+		"Title":        title,
+		"Month":        month,
+		"MonthLabel":   monthStart.Format("January 2006"),
+		"Transactions": txns,
+		"Count":        count,
+		"Total":        total,
+		"TotalLabel":   totalLabel,
+		"AvgAmount":    avgAmount,
+		"IncomeTotal":  incomeTotal,
+		"ExpenseTotal": expenseTotal,
+		"IsSavings":    isSavings,
+	}
+
+	if renderer != nil {
+		_ = renderer.RenderPartial(w, "kpi-month-detail", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)

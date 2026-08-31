@@ -86,8 +86,12 @@
                     {{$type := .Type}}
                     {{$isRate := .IsRate}}
                     {{range .Monthly}}
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                        <td class="p-3 text-sm text-gray-800 dark:text-gray-200">{{.Month}}</td>
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer" onclick="openKPIMonthDetail('{{$type}}', '{{.Month}}')">
+                        <td class="p-3 text-sm text-gray-800 dark:text-gray-200">
+                            <button type="button" onclick="event.stopPropagation(); openKPIMonthDetail('{{$type}}', '{{.Month}}')"
+                                class="underline decoration-dotted underline-offset-2 hover:text-indigo-600 dark:hover:text-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
+                                aria-label="Show {{.Month}} transactions">{{.Month}}</button>
+                        </td>
                         {{if $isRate}}
                         <td class="p-3 text-sm text-right {{if ge .Rate 20.0}}text-green-700 dark:text-green-400{{else if ge .Rate 10.0}}text-yellow-600 dark:text-yellow-400{{else}}text-red-600 dark:text-red-400{{end}}">{{printf "%.1f" .Rate}}%</td>
                         <td class="p-3 text-sm text-right text-green-700 dark:text-green-400">{{formatMoney .Income}}</td>

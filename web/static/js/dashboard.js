@@ -30,6 +30,19 @@ function openKPIDetail(kpiType) {
     });
 }
 
+// Drill down from one month row of the KPI detail modal into that month's
+// transactions. Renders into the same container, so Back/Escape still work.
+function openKPIMonthDetail(kpiType, month) {
+    const form = document.getElementById('date-filter-form');
+    const start = form.querySelector('input[name="start"]').value;
+    const end = form.querySelector('input[name="end"]').value;
+
+    htmx.ajax('GET', `/dashboard/kpi/${encodeURIComponent(kpiType)}/month/${encodeURIComponent(month)}?start=${start}&end=${end}`, {
+        target: '#kpi-detail-container',
+        swap: 'innerHTML'
+    });
+}
+
 function closeKPIModal(event) {
     if (event && event.target !== event.currentTarget) return;
     document.getElementById('kpi-detail-container').innerHTML = '';

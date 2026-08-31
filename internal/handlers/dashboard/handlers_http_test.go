@@ -1737,3 +1737,286 @@ func TestBuildMerchantsChartData_AggregatesByLabel(t *testing.T) {
 		}
 	}
 }
+
+// ---------- handleKPIMonthDetail ----------
+
+// decodeMonthDetail runs a month drill-down request and decodes the JSON
+// fallback payload.
+func decodeMonthDetail(t *testing.T, router chi.Router, path string) map[string]interface{} {
+	t.Helper()
+	rec := doGet(t, router, path)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET %s: status = %d, want 200", path, rec.Code)
+	}
+	var result map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return result
+}
+
+// monthDetailDescriptions pulls the transaction descriptions out of a decoded
+// payload, in payload order.
+func monthDetailDescriptions(t *testing.T, result map[string]interface{}) []string {
+	t.Helper()
+	raw, _ := result["Transactions"].([]interface{})
+	var out []string
+	for _, item := range raw {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			t.Fatalf("transaction entry is %T, want object", item)
+		}
+		desc, _ := m["description"].(string)
+		out = append(out, desc)
+	}
+	return out
+}
+
+func TestHandleKPIMonthDetail_Expenses(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	result := decodeMonthDetail(t, router, "/dashboard/kpi/expenses/month/2025-01?start=2025-01-01&end=2025-03-31")
+
+	if result["Type"] != "expenses" {
+		t.Errorf("Type = %v, want expenses", result["Type"])
+	}
+	if result["Month"] != "2025-01" {
+		t.Errorf("Month = %v, want 2025-01", result["Month"])
+	}
+	if result["MonthLabel"] != "January 2025" {
+		t.Errorf("MonthLabel = %v, want January 2025", result["MonthLabel"])
+	}
+	if count, _ := result["Count"].(float64); count != 2 {
+		t.Errorf("Count = %v, want 2", result["Count"])
+	}
+	if total, _ := result["Total"].(float64); total != 1800 {
+		t.Errorf("Total = %v, want 1800", result["Total"])
+	}
+	if avg, _ := result["AvgAmount"].(float64); avg != 900 {
+		t.Errorf("AvgAmount = %v, want 900", result["AvgAmount"])
+	}
+	// Largest first.
+	if got := monthDetailDescriptions(t, result); len(got) != 2 || got[0] != "Rent" || got[1] != "Groceries" {
+		t.Errorf("descriptions = %v, want [Rent Groceries]", got)
+	}
+}
+
+func TestHandleKPIMonthDetail_Income(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	result := decodeMonthDetail(t, router, "/dashboard/kpi/income/month/2025-02?start=2025-01-01&end=2025-03-31")
+
+	if result["Title"] != "Total Income" {
+		t.Errorf("Title = %v, want Total Income", result["Title"])
+	}
+	if count, _ := result["Count"].(float64); count != 1 {
+		t.Errorf("Count = %v, want 1", result["Count"])
+	}
+	if total, _ := result["Total"].(float64); total != 5000 {
+		t.Errorf("Total = %v, want 5000", result["Total"])
+	}
+}
+
+func TestHandleKPIMonthDetail_SavingsShowsBothSides(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	result := decodeMonthDetail(t, router, "/dashboard/kpi/savings/month/2025-03?start=2025-01-01&end=2025-03-31")
+
+	if count, _ := result["Count"].(float64); count != 3 {
+		t.Errorf("Count = %v, want 3", result["Count"])
+	}
+	// 5500 income - 1850 expenses.
+	if total, _ := result["Total"].(float64); total != 3650 {
+		t.Errorf("Total = %v, want 3650", result["Total"])
+	}
+	if inc, _ := result["IncomeTotal"].(float64); inc != 5500 {
+		t.Errorf("IncomeTotal = %v, want 5500", result["IncomeTotal"])
+	}
+	if exp, _ := result["ExpenseTotal"].(float64); exp != 1850 {
+		t.Errorf("ExpenseTotal = %v, want 1850", result["ExpenseTotal"])
+	}
+	if result["IsSavings"] != true {
+		t.Errorf("IsSavings = %v, want true", result["IsSavings"])
+	}
+}
+
+func TestHandleKPIMonthDetail_SavingsRate(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	result := decodeMonthDetail(t, router, "/dashboard/kpi/savings-rate/month/2025-03?start=2025-01-01&end=2025-03-31")
+
+	if result["Title"] != "Savings Rate" {
+		t.Errorf("Title = %v, want Savings Rate", result["Title"])
+	}
+	if count, _ := result["Count"].(float64); count != 3 {
+		t.Errorf("Count = %v, want 3", result["Count"])
+	}
+}
+
+// A month that the KPI table only partially covers must drill down to the same
+// figure the table row shows: the range clips the month, not just the table.
+func TestHandleKPIMonthDetail_ClipsToDateRange(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	result := decodeMonthDetail(t, router, "/dashboard/kpi/expenses/month/2025-01?start=2025-01-01&end=2025-01-09")
+
+	if count, _ := result["Count"].(float64); count != 1 {
+		t.Errorf("Count = %v, want 1", result["Count"])
+	}
+	if total, _ := result["Total"].(float64); total != 1500 {
+		t.Errorf("Total = %v, want 1500", result["Total"])
+	}
+}
+
+func TestHandleKPIMonthDetail_DefaultDates(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	result := decodeMonthDetail(t, router, "/dashboard/kpi/expenses/month/2025-01")
+
+	if count, _ := result["Count"].(float64); count != 2 {
+		t.Errorf("Count = %v, want 2", result["Count"])
+	}
+}
+
+func TestHandleKPIMonthDetail_EmptyMonth(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	result := decodeMonthDetail(t, router, "/dashboard/kpi/expenses/month/2025-05?start=2025-01-01&end=2025-12-31")
+
+	if count, _ := result["Count"].(float64); count != 0 {
+		t.Errorf("Count = %v, want 0", result["Count"])
+	}
+	if total, _ := result["Total"].(float64); total != 0 {
+		t.Errorf("Total = %v, want 0", result["Total"])
+	}
+	if avg, _ := result["AvgAmount"].(float64); avg != 0 {
+		t.Errorf("AvgAmount = %v, want 0", result["AvgAmount"])
+	}
+}
+
+func TestHandleKPIMonthDetail_InvalidMonth(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	for _, month := range []string{"2025-13", "2025-00", "2025-1", "bogus", "2025-01-05"} {
+		rec := doGet(t, router, "/dashboard/kpi/expenses/month/"+month)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("month %q: status = %d, want 400", month, rec.Code)
+		}
+	}
+}
+
+func TestHandleKPIMonthDetail_UnknownType(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpi/bogus/month/2025-01")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleKPIMonthDetail_LoadErrorReturns500(t *testing.T) {
+	router, cleanup := setupBrokenLoader(t)
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpi/expenses/month/2025-01")
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", rec.Code)
+	}
+}
+
+func TestHandleKPIMonthDetail_WithRenderer(t *testing.T) {
+	router, cleanup := setupTestEnvWithRenderer(t, defaultRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpi/expenses/month/2025-01?start=2025-01-01&end=2025-03-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"Rent", "Groceries", "January 2025", "openKPIDetail('expenses')"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body missing %q", want)
+		}
+	}
+}
+
+// The month table's rows must be reachable: each one carries a keyboard-
+// operable control that opens its drill-down.
+func TestHandleKPIDetail_MonthRowsAreDrillable(t *testing.T) {
+	router, cleanup := setupTestEnvWithRenderer(t, defaultRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpi/expenses?start=2025-01-01&end=2025-03-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "openKPIMonthDetail('expenses', '2025-01')") {
+		t.Error("month row is not wired to openKPIMonthDetail")
+	}
+	if want := `aria-label="Show 2025-01 transactions"`; !strings.Contains(body, want) {
+		t.Errorf("body missing %s", want)
+	}
+}
+
+// refundRows adds a refund to January: a positive-amount outflow, which is how
+// the classifier stores a credit that carries a "never income" phrase.
+func refundRows() [][]string {
+	return append(defaultRows(), []string{"2025-01-20", "Autopay Reversal", "200", "Bills"})
+}
+
+// The drill-down's Total Spent must be the very figure its month row shows.
+// Summing each transaction's absolute amount instead would double-count the
+// refund and inflate the total by 2x its value.
+func TestHandleKPIMonthDetail_TotalMatchesKPIRow(t *testing.T) {
+	router, cleanup := setupTestEnv(t, refundRows())
+	defer cleanup()
+
+	table := decodeMonthDetail(t, router, "/dashboard/kpi/expenses?start=2025-01-01&end=2025-03-31")
+	var rowExpenses float64
+	for _, m := range table["Monthly"].([]interface{}) {
+		row := m.(map[string]interface{})
+		if row["Month"] == "2025-01" {
+			rowExpenses, _ = row["Expenses"].(float64)
+		}
+	}
+	if rowExpenses != 1600 {
+		t.Fatalf("month row Expenses = %v, want 1600 (1500 + 300 - 200 refund)", rowExpenses)
+	}
+
+	detail := decodeMonthDetail(t, router, "/dashboard/kpi/expenses/month/2025-01?start=2025-01-01&end=2025-03-31")
+	total, _ := detail["Total"].(float64)
+	if total != rowExpenses {
+		t.Errorf("drill-down Total = %v, month row = %v; the two must agree", total, rowExpenses)
+	}
+	if count, _ := detail["Count"].(float64); count != 3 {
+		t.Errorf("Count = %v, want 3 (the refund is still listed)", count)
+	}
+}
+
+// Savings nets the same way, and its Income/Expenses tiles must match the
+// month row's own two columns.
+func TestHandleKPIMonthDetail_SavingsTilesMatchKPIRow(t *testing.T) {
+	router, cleanup := setupTestEnv(t, refundRows())
+	defer cleanup()
+
+	detail := decodeMonthDetail(t, router, "/dashboard/kpi/savings/month/2025-01?start=2025-01-01&end=2025-03-31")
+	if exp, _ := detail["ExpenseTotal"].(float64); exp != 1600 {
+		t.Errorf("ExpenseTotal = %v, want 1600", exp)
+	}
+	if inc, _ := detail["IncomeTotal"].(float64); inc != 5000 {
+		t.Errorf("IncomeTotal = %v, want 5000", inc)
+	}
+	if total, _ := detail["Total"].(float64); total != 3400 {
+		t.Errorf("Total = %v, want 3400", total)
+	}
+}

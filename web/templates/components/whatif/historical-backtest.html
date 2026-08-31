@@ -17,8 +17,8 @@
             <div class="text-2xl font-bold {{successRateTextClass .Analysis.HistoricalBacktest.SuccessRate}}">
                 {{printf "%.1f" .Analysis.HistoricalBacktest.SuccessRate}}%
             </div>
-            <div class="text-xs text-gray-600 dark:text-gray-400">Historical Success</div>
-            <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+            <div class="text-xs text-gray-600 dark:text-gray-300">Historical Success</div>
+            <div class="text-xs text-gray-600 dark:text-gray-300 mt-1">
                 {{.Analysis.HistoricalBacktest.SurvivedCount}} of {{.Analysis.HistoricalBacktest.TotalSequences}} survived
             </div>
         </div>
@@ -26,7 +26,7 @@
             <div class="text-2xl font-bold {{successRateTextClass .Analysis.HistoricalBacktest.MonteCarloSuccessRate}}">
                 {{printf "%.1f" .Analysis.HistoricalBacktest.MonteCarloSuccessRate}}%
             </div>
-            <div class="text-xs text-gray-600 dark:text-gray-400">Monte Carlo Success</div>
+            <div class="text-xs text-gray-600 dark:text-gray-300">Monte Carlo Success</div>
         </div>
     </div>
 

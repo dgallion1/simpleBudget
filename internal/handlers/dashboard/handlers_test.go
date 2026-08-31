@@ -48,12 +48,35 @@ func TestResolveDateRange_DefaultsToYTD(t *testing.T) {
 
 	start, end := resolveDateRange("", "", minDate, maxDate)
 
-	expectedStart := time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.Local)
+	expectedStart := time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.UTC)
 	if start != expectedStart {
 		t.Errorf("start = %v, want %v (Jan 1 of current year)", start, expectedStart)
 	}
 	if end != maxDate {
 		t.Errorf("end = %v, want %v (maxDate)", end, maxDate)
+	}
+}
+
+// Regression: the YTD default window must be built on the same UTC calendar
+// the ledger's dates are parsed in. Built in time.Local, a negative-offset
+// zone pushed the window's start past midnight UTC and silently dropped
+// January 1 rows from the dashboard's first render -- while the date filter
+// beside them still read 01/01, and every drill-down (which posts explicit
+// dates) counted them. Found as a $4.99 Jan 1 row, 2026-08-30.
+func TestResolveDateRange_YTDDefaultIncludesJanuaryFirst(t *testing.T) {
+	saved := time.Local
+	time.Local = time.FixedZone("UTC-6", -6*60*60)
+	defer func() { time.Local = saved }()
+
+	year := time.Now().Year()
+	janFirst := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
+	maxDate := time.Date(year, 12, 31, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(makeTransaction("New Year purchase", -4.99, janFirst, models.Outflow, "Shopping"))
+
+	start, end := resolveDateRange("", "", janFirst, maxDate)
+
+	if got := ts.FilterByDateRange(start, end).Len(); got != 1 {
+		t.Errorf("January 1 transactions inside the default window = %d, want 1 (start = %v)", got, start)
 	}
 }
 

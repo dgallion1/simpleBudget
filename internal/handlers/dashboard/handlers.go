@@ -774,8 +774,13 @@ func resolveDateRange(startStr, endStr string, minDate, maxDate time.Time) (time
 	if startStr != "" {
 		startDate, _ = time.Parse("2006-01-02", startStr)
 	} else {
-		// Default to YTD
-		startDate = time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.Local)
+		// Default to YTD. Built in UTC because that is the calendar the
+		// loader parses transaction dates on: a local midnight in a
+		// negative-offset zone starts the window AFTER midnight UTC and
+		// drops January 1 rows, while the filter beside it still reads
+		// 01/01 and every drill-down (which posts explicit dates) counts
+		// them.
+		startDate = time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.UTC)
 		// If YTD range starts after our data ends, default to all-time
 		if !maxDate.IsZero() && startDate.After(maxDate) {
 			startDate = minDate

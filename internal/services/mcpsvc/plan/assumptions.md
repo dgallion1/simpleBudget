@@ -37,3 +37,17 @@ model and should say so.
 - **Monte Carlo is stochastic and auto-seeded**, so success rates differ
   slightly between two runs of the same scenario. `run_scenario` therefore omits
   Monte Carlo entirely; only `get_analysis` reports it.
+- **Late-life care (assisted living / home care) is modeled only when
+  configured**, per person, via a care start age and a today's-dollars
+  monthly cost. With neither set, projections include no late-life care-cost
+  jump and likely understate late-life spending. When configured, care
+  starts the month that person reaches the care start age, inflates at
+  their own post-Medicare healthcare inflation rate, and — deliberately —
+  runs unchanged to the end of the projection: the engine still does not
+  model mortality or a bounded care duration, so a configured care cost
+  overstates total spending for a person who dies or whose care need ends
+  before the projection horizon does. The present-value (Total Needs)
+  figure locates a person's care start using year-precision only; the
+  month-by-month projection applies the same start using month precision
+  (birth month), so the two can disagree on the exact start month by up to
+  11 months. Treat the month-by-month figures as the precise surface.

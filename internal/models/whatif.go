@@ -517,6 +517,9 @@ func (s *WhatIfSettings) GetTotalHealthcareCost(month int) float64 {
 			// F-067: pass StartDate for month-precise ACA→Medicare transition when
 			// BirthMonth is set on the HealthcarePerson.
 			total += person.GetMonthlyCostAt(month, s.StartDate)
+			// CC1: late-life care cost, same startDate for month-precise
+			// CareStartAge transitions. 0 when care is not configured.
+			total += person.CareCostAt(month, s.StartDate)
 		}
 		return total
 	}

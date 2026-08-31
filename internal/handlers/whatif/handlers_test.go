@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"testing"
@@ -1707,6 +1708,135 @@ func TestHandleWhatIfUpdateHealthcare(t *testing.T) {
 	handleWhatIfUpdateHealthcare(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleWhatIfUpdateHealthcare_CarePersists(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	person := models.HealthcarePerson{
+		ID:                  "hc-care",
+		Name:                "Bob",
+		CurrentAge:          60,
+		CurrentCoverage:     models.CoverageACA,
+		CurrentMonthlyCost:  1000,
+		MedicareMonthlyCost: 500,
+		MedicareEligibleAge: 65,
+	}
+	rm.AddHealthcarePerson(person)
+
+	form := url.Values{
+		"care_start_age":    {"80"},
+		"care_monthly_cost": {"6000"},
+	}
+	w := httptest.NewRecorder()
+	req := chiRequest("PUT", "/whatif/healthcare/hc-care", formBody(form), map[string]string{"id": "hc-care"})
+	handleWhatIfUpdateHealthcare(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w.Code, w.Body.String())
+	}
+
+	loaded, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	saved := loaded.HealthcarePersons[0]
+	if saved.CareStartAge != 80 || saved.CareMonthlyCost != 6000 {
+		t.Fatalf("care fields = (%d, %v), want (80, 6000)", saved.CareStartAge, saved.CareMonthlyCost)
+	}
+	body := w.Body.String()
+	startAgeSet := regexp.MustCompile(`(?s)id="care-start-age-hc-care".*?value="([^"]*)"`).FindStringSubmatch(body)
+	if startAgeSet == nil || startAgeSet[1] != "80" {
+		t.Errorf("rendered body missing care-start-age input/value 80, got %v: %s", startAgeSet, body)
+	}
+	careCostSet := regexp.MustCompile(`(?s)id="care-monthly-cost-hc-care".*?value="([^"]*)"`).FindStringSubmatch(body)
+	if careCostSet == nil || careCostSet[1] != "6000" {
+		t.Errorf("rendered body missing care-monthly-cost input/value 6000, got %v: %s", careCostSet, body)
+	}
+
+	// Blank/0 clears both fields (care turned off).
+	clearForm := url.Values{
+		"care_start_age":    {""},
+		"care_monthly_cost": {"0"},
+	}
+	w2 := httptest.NewRecorder()
+	req2 := chiRequest("PUT", "/whatif/healthcare/hc-care", formBody(clearForm), map[string]string{"id": "hc-care"})
+	handleWhatIfUpdateHealthcare(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200. body: %s", w2.Code, w2.Body.String())
+	}
+
+	loaded2, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	cleared := loaded2.HealthcarePersons[0]
+	if cleared.CareStartAge != 0 || cleared.CareMonthlyCost != 0 {
+		t.Fatalf("care fields after clear = (%d, %v), want (0, 0)", cleared.CareStartAge, cleared.CareMonthlyCost)
+	}
+	body2 := w2.Body.String()
+	startAgeVal := regexp.MustCompile(`(?s)id="care-start-age-hc-care".*?value="([^"]*)"`).FindStringSubmatch(body2)
+	if startAgeVal == nil || startAgeVal[1] != "" {
+		t.Errorf("rendered body does not show cleared (blank) care-start-age value, got %v: %s", startAgeVal, body2)
+	}
+	careCostVal := regexp.MustCompile(`(?s)id="care-monthly-cost-hc-care".*?value="([^"]*)"`).FindStringSubmatch(body2)
+	if careCostVal == nil || careCostVal[1] != "" {
+		t.Errorf("rendered body does not show cleared (blank) care-monthly-cost value, got %v: %s", careCostVal, body2)
+	}
+}
+
+func TestHandleWhatIfUpdateHealthcare_BadCareStartAge(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{"care_start_age": {"abc"}}
+	w := httptest.NewRecorder()
+	req := chiRequest("PUT", "/whatif/healthcare/x", formBody(form), map[string]string{"id": "x"})
+	handleWhatIfUpdateHealthcare(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestHandleWhatIfUpdateHealthcare_CareStartAgeOutOfRange(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	for _, v := range []string{"59", "101"} {
+		form := url.Values{"care_start_age": {v}}
+		w := httptest.NewRecorder()
+		req := chiRequest("PUT", "/whatif/healthcare/x", formBody(form), map[string]string{"id": "x"})
+		handleWhatIfUpdateHealthcare(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("care_start_age=%s: expected 400, got %d", v, w.Code)
+		}
+	}
+}
+
+func TestHandleWhatIfUpdateHealthcare_BadCareMonthlyCost(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{"care_monthly_cost": {"abc"}}
+	w := httptest.NewRecorder()
+	req := chiRequest("PUT", "/whatif/healthcare/x", formBody(form), map[string]string{"id": "x"})
+	handleWhatIfUpdateHealthcare(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestHandleWhatIfUpdateHealthcare_NegativeCareMonthlyCost(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{"care_monthly_cost": {"-100"}}
+	w := httptest.NewRecorder()
+	req := chiRequest("PUT", "/whatif/healthcare/x", formBody(form), map[string]string{"id": "x"})
+	handleWhatIfUpdateHealthcare(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }
 

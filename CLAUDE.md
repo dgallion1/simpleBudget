@@ -8,6 +8,16 @@ built-in `LSP` tool (backed by `gopls`). No external index to keep fresh.
 > are installed and on `PATH`. If the `LSP` tool reports no server, run
 > `go install golang.org/x/tools/gopls@latest`.
 
+## Planning log — read first for any planning question
+
+`PLANNING_LOG.md` at the repo root is the append-only record of the user's
+household facts, corrections, and planning decisions across sessions. Before
+answering ANY retirement/tax/conversion planning question, read it — its
+facts override test fixtures (`testdata/`) and stale docs. When the user
+states a personal fact, corrects one, or makes a decision in conversation,
+append a dated `## YYYY-MM-DD — <topic>` entry (never rewrite history; add a
+correction entry instead) and commit it.
+
 ## Always Do
 
 - **Assess impact before editing a symbol.** Before modifying a function,

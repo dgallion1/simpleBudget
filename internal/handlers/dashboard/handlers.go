@@ -88,6 +88,42 @@ func planSyncExclusions(ts *models.TransactionSet) map[string]models.MajorExpens
 	return majorexpenses.ComputePlanSyncExclusions(ts, defs, pins)
 }
 
+// dashboardCalcInputs bundles the plan-derived inputs metrics.Calculate
+// needs beyond the transaction set itself: the living/healthcare budget
+// targets, the healthcare coverage-start fact, and the plan-sync exclusion
+// map. Assembled by gatherDashboardCalcInputs so handleDashboard and
+// handleKPIDetail feed metrics.Calculate the IDENTICAL inputs for a given
+// date range -- the card and the modal cannot drift apart, because there is
+// only one place these five values are derived (KD1 design point 4).
+type dashboardCalcInputs struct {
+	target         float64
+	healthTarget   float64
+	coverageStart  time.Time
+	hasCoverage    bool
+	planExclusions map[string]models.MajorExpense
+}
+
+// gatherDashboardCalcInputs assembles dashboardCalcInputs for [startDate,
+// endDate]. active must be the FULL active (post duplicate-resolution)
+// transaction set, never a range-filtered one -- coverage start and
+// plan-sync exclusions are lifetime facts about the ledger, independent of
+// the selected window (same discipline metrics.HealthcareCoverageStart and
+// planSyncExclusions themselves document). settings is passed in rather
+// than reloaded here so a caller that also needs it for
+// metrics.TargetProvenance/metrics.Comparison loads it exactly once.
+func gatherDashboardCalcInputs(settings *models.WhatIfSettings, active *models.TransactionSet, startDate, endDate time.Time) dashboardCalcInputs {
+	target, healthTarget := metrics.BudgetTargets(settings, startDate, endDate)
+	coverageStart, hasCoverage := metrics.HealthcareCoverageStart(active)
+	planExclusions := planSyncExclusions(active)
+	return dashboardCalcInputs{
+		target:         target,
+		healthTarget:   healthTarget,
+		coverageStart:  coverageStart,
+		hasCoverage:    hasCoverage,
+		planExclusions: planExclusions,
+	}
+}
+
 // RegisterRoutes registers all dashboard routes
 func RegisterRoutes(r chi.Router) {
 	r.Get("/dashboard", handleDashboard)
@@ -119,17 +155,12 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	filtered := data.Active().FilterByDateRange(startDate, endDate)
 	settings := currentBudgetSettings()
-	target, healthTarget := metrics.BudgetTargets(settings, startDate, endDate)
-	// Coverage start is derived from the FULL active (post duplicate-
-	// resolution) set, never the range-filtered one — coverage start is a
-	// lifetime fact about the ledger, independent of the selected window
-	// (single-source rule, ruling 2026-08-29a).
-	coverageStart, hasCoverage := metrics.HealthcareCoverageStart(data.Active())
-	// SY4: plan-modeled spend (major expenses flagged ExcludeFromPlanSync)
-	// excluded from the living-expense figures below, same discipline as
-	// coverageStart above -- derived from the full active set, not filtered.
-	planExclusions := planSyncExclusions(data.Active())
-	dashMetrics := metrics.Calculate(filtered, startDate, endDate, target, healthTarget, coverageStart, hasCoverage, planExclusions)
+	// See gatherDashboardCalcInputs: coverage start and plan-sync exclusions
+	// are derived from the FULL active (post duplicate-resolution) set, never
+	// the range-filtered one -- lifetime facts about the ledger, independent
+	// of the selected window (single-source rule, ruling 2026-08-29a).
+	calcInputs := gatherDashboardCalcInputs(settings, data.Active(), startDate, endDate)
+	dashMetrics := metrics.Calculate(filtered, startDate, endDate, calcInputs.target, calcInputs.healthTarget, calcInputs.coverageStart, calcInputs.hasCoverage, calcInputs.planExclusions)
 	// Provenance for the Monthly Living Expenses card's "Target $X" text —
 	// base plan value, effective multiplier, and active phase, so the
 	// number is explained rather than appearing out of nowhere next to the
@@ -139,7 +170,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	// Calculate period comparison if requested
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
-		periodComparison = metrics.Comparison(data.Active(), startDate, endDate, comparison, settings, planExclusions)
+		periodComparison = metrics.Comparison(data.Active(), startDate, endDate, comparison, settings, calcInputs.planExclusions)
 	}
 
 	// Accounts card (A8): per-account balance, freshness, low/stale/no-anchor
@@ -381,6 +412,8 @@ var kpiTitles = map[string]string{
 	"expenses":     "Total Expenses",
 	"savings":      "Net Savings",
 	"savings-rate": "Savings Rate",
+	"living":       "Monthly Living Expenses",
+	"healthcare":   "Monthly Healthcare",
 }
 
 // monthKeyPattern matches a YYYY-MM month key of the form GroupByMonth emits.
@@ -411,6 +444,43 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 	filtered := data.Active().FilterByDateRange(startDate, endDate)
 	income := filtered.FilterByType(models.Income)
 	outflows := filtered.FilterByType(models.Outflow)
+
+	// living/healthcare classify outflows through the SAME helpers the
+	// dashboard card uses (single-source rule, ruling 2026-08-29a) and read
+	// their "Per Month" figure from metrics.Calculate -- the fractional
+	// MonthsBetween/ClippedHealthcareMonths divisor, never rows/len(months)
+	// -- via gatherDashboardCalcInputs, the SAME helper handleDashboard
+	// calls, so the card and this modal cannot drift apart (KD1 design
+	// point 4). Gated to the two kinds that need it so the other four kinds'
+	// request shape (and any loader I/O it implies) is unchanged.
+	var monthlyLivingTotals, monthlyHealthcareTotals map[string]float64
+	var classifiedCardPerMonth float64
+	// healthcareNoCoverageInRange is ruling KD-2026-08-30c's zero-divisor
+	// guard: when the coverage-clipped month count for [startDate, endDate]
+	// is zero (no coverage, or coverage starts after the range ends),
+	// HealthcareActual is 0 not because spend is zero but because the
+	// divisor is -- so the modal must not render "$0.00" beside non-zero
+	// classified rows. Computed via metrics.ClippedHealthcareMonths, the
+	// SAME single-source helper metrics.Calculate itself calls internally
+	// (see its coverageMonths line) -- not a re-derivation of coverage
+	// logic, just reading the same fact metrics.Calculate already used to
+	// produce classifiedCardPerMonth==0 in this state.
+	var healthcareNoCoverageInRange bool
+	if kpiType == "living" || kpiType == "healthcare" {
+		settings := currentBudgetSettings()
+		calcInputs := gatherDashboardCalcInputs(settings, data.Active(), startDate, endDate)
+		cardMetrics := metrics.Calculate(filtered, startDate, endDate, calcInputs.target, calcInputs.healthTarget, calcInputs.coverageStart, calcInputs.hasCoverage, calcInputs.planExclusions)
+		livingOutflows := metrics.LivingOutflows(outflows, calcInputs.planExclusions)
+		healthcareOutflows := outflows.FilterByCategory(metrics.HealthInsuranceCategory)
+		monthlyLivingTotals = classifiedMonthlyTotals(livingOutflows)
+		monthlyHealthcareTotals = classifiedMonthlyTotals(healthcareOutflows)
+		if kpiType == "living" {
+			classifiedCardPerMonth = cardMetrics.ActualMonthly
+		} else {
+			classifiedCardPerMonth = cardMetrics.HealthcareActual
+			healthcareNoCoverageInRange = metrics.ClippedHealthcareMonths(startDate, endDate, calcInputs.coverageStart, calcInputs.hasCoverage) <= 0
+		}
+	}
 
 	// Group by month
 	monthlyIncome := income.GroupByMonth()
@@ -460,6 +530,15 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 			rate = (savings / incAmt) * 100
 		}
 
+		// Set exclusion (ruling SY-2026-08-30d) + signed rows, no per-month
+		// Abs (ruling KD-2026-08-30d): classifiedMonthlyTotals negates the
+		// classified month bucket's signed sum directly -- positive = net
+		// spend, negative = net refund. A missing month key reads as 0
+		// (Go's zero-value map lookup), matching the ok-checked pattern the
+		// other kinds use.
+		livingAmt := monthlyLivingTotals[m]
+		healthcareAmt := monthlyHealthcareTotals[m]
+
 		var value float64
 		switch kpiType {
 		case "income":
@@ -470,6 +549,10 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 			value = savings
 		case "savings-rate":
 			value = rate
+		case "living":
+			value = livingAmt
+		case "healthcare":
+			value = healthcareAmt
 		}
 
 		monthlySummaries = append(monthlySummaries, MonthlyStat{
@@ -507,6 +590,17 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 		avg = sum / float64(len(values))
 	}
 
+	// Amendment KD-2026-08-30a: living/healthcare show exactly ONE per-month
+	// figure -- the card's own rate (classifiedCardPerMonth, computed above
+	// via metrics.Calculate's fractional divisor), never the Total÷months
+	// average the other four kinds use. This also becomes the "vs Avg"
+	// column's comparison basis (the template's existing mechanism, just fed
+	// the card figure instead of the arithmetic mean) rather than a second,
+	// separately-rendered average stat.
+	if kpiType == "living" || kpiType == "healthcare" {
+		avg = classifiedCardPerMonth
+	}
+
 	// Calculate number of months for period breakdown
 	numMonths := len(months)
 	if numMonths == 0 {
@@ -514,18 +608,19 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	partialData := map[string]interface{}{
-		"Type":      kpiType,
-		"Title":     kpiTitles[kpiType],
-		"Monthly":   monthlySummaries,
-		"Total":     sum,
-		"Average":   avg,
-		"Min":       min,
-		"Max":       max,
-		"MinMonth":  minMonth,
-		"MaxMonth":  maxMonth,
-		"NumMonths": numMonths,
-		"IsRate":    kpiType == "savings-rate",
-		"IsSavings": kpiType == "savings",
+		"Type":                        kpiType,
+		"Title":                       kpiTitles[kpiType],
+		"Monthly":                     monthlySummaries,
+		"Total":                       sum,
+		"Average":                     avg,
+		"Min":                         min,
+		"Max":                         max,
+		"MinMonth":                    minMonth,
+		"MaxMonth":                    maxMonth,
+		"NumMonths":                   numMonths,
+		"IsRate":                      kpiType == "savings-rate",
+		"IsSavings":                   kpiType == "savings",
+		"HealthcareNoCoverageInRange": healthcareNoCoverageInRange,
 	}
 
 	if renderer != nil {
@@ -553,6 +648,29 @@ func sumSigned(txns []models.Transaction) float64 {
 		sum += t.Amount
 	}
 	return sum
+}
+
+// classifiedMonthlyTotals groups a classified set (living or healthcare
+// outflows, already filtered via metrics.LivingOutflows / FilterByCategory)
+// by month and returns each month's NEGATED signed sum -- positive means
+// net spend, negative means net refund, and there is NO per-month Abs
+// (ruling KD-2026-08-30d, matching the MCP by_month convention). Because
+// the modal's Total tile is the sum of these same displayed values (one
+// rounding path), a row's displayed figure and the Total it feeds always
+// reconcile exactly; Total also equals Metrics.LivingExpensesTotal /
+// HealthcareTotal whenever the range nets spend (the only divergence is a
+// whole-range net refund, where Total honestly renders negative while the
+// card figure is an Abs -- documented, accepted). A month absent from the
+// classified set is simply absent from the returned map; callers read it
+// with a plain map lookup, which yields 0 for those months. Shared by
+// handleKPIDetail and handleKPIExport (K8) so the modal and its CSV export
+// can never disagree about a month's total.
+func classifiedMonthlyTotals(classified *models.TransactionSet) map[string]float64 {
+	totals := make(map[string]float64)
+	for m, set := range classified.GroupByMonth() {
+		totals[m] = -set.SumAmount()
+	}
+	return totals
 }
 
 // handleKPIMonthDetail lists the transactions behind one row of the KPI
@@ -623,6 +741,26 @@ func handleKPIMonthDetail(w http.ResponseWriter, r *http.Request) {
 		txns = monthOutflow
 		incomeTotal = 0
 		total, totalLabel = expenseTotal, "Total Spent"
+	case "living":
+		// Classified set restricted to the month (single-source rule,
+		// ruling 2026-08-29a) -- the SAME LivingOutflows helper the parent
+		// modal and the dashboard card use, so this total equals the
+		// parent row's figure exactly. Negated signed sum, NO per-month Abs
+		// (ruling KD-2026-08-30d): a refund-dominant month renders negative,
+		// matching the parent modal row (classifiedMonthlyTotals) exactly.
+		monthLiving := transactionsInMonth(metrics.LivingOutflows(filtered.FilterByType(models.Outflow), planSyncExclusions(data.Active())), month)
+		txns = monthLiving
+		incomeTotal = 0
+		expenseTotal = 0
+		total, totalLabel = -sumSigned(monthLiving), "Living Spent"
+	case "healthcare":
+		// Negated signed sum, NO per-month Abs (ruling KD-2026-08-30d) --
+		// see the "living" case above.
+		monthHealthcare := transactionsInMonth(filtered.FilterByType(models.Outflow).FilterByCategory(metrics.HealthInsuranceCategory), month)
+		txns = monthHealthcare
+		incomeTotal = 0
+		expenseTotal = 0
+		total, totalLabel = -sumSigned(monthHealthcare), "Healthcare Spent"
 	default:
 		// Both savings KPIs are income minus expenses, so the drill-down
 		// shows both sides -- and leaves transfers out, exactly as the
@@ -690,6 +828,22 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 	income := filtered.FilterByType(models.Income)
 	outflows := filtered.FilterByType(models.Outflow)
 
+	// living/healthcare (K8): classify through the SAME helpers the modal
+	// uses (single-source rule, ruling 2026-08-29a), then reduce to
+	// per-month totals through classifiedMonthlyTotals -- the SAME shared
+	// helper handleKPIDetail's month rows use -- so the CSV export and the
+	// modal table can never disagree about a month's figure. planExclusions
+	// comes from planSyncExclusions, the SAME helper handleKPIMonthDetail's
+	// living case already calls for the same purpose; only the exclusion
+	// map is needed here, not the full budget-target/coverage bundle
+	// gatherDashboardCalcInputs assembles for the modal's "Per Month" tile.
+	var monthlyLivingTotals, monthlyHealthcareTotals map[string]float64
+	if kpiType == "living" || kpiType == "healthcare" {
+		planExclusions := planSyncExclusions(data.Active())
+		monthlyLivingTotals = classifiedMonthlyTotals(metrics.LivingOutflows(outflows, planExclusions))
+		monthlyHealthcareTotals = classifiedMonthlyTotals(outflows.FilterByCategory(metrics.HealthInsuranceCategory))
+	}
+
 	monthlyIncome := income.GroupByMonth()
 	monthlyOutflows := outflows.GroupByMonth()
 
@@ -711,7 +865,8 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 
-	// Write header based on type
+	// Write header based on type. Living/healthcare column labels match the
+	// modal table's own column header (kpi-detail.html).
 	switch kpiType {
 	case "income":
 		_ = writer.Write([]string{"Month", "Income"})
@@ -721,6 +876,10 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 		_ = writer.Write([]string{"Month", "Income", "Expenses", "Savings"})
 	case "savings-rate":
 		_ = writer.Write([]string{"Month", "Income", "Expenses", "Savings", "Savings Rate %"})
+	case "living":
+		_ = writer.Write([]string{"Month", "Living Expenses"})
+	case "healthcare":
+		_ = writer.Write([]string{"Month", "Healthcare"})
 	}
 
 	for _, m := range months {
@@ -749,6 +908,10 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", incAmt), fmt.Sprintf("%.2f", expAmt), fmt.Sprintf("%.2f", savings)})
 		case "savings-rate":
 			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", incAmt), fmt.Sprintf("%.2f", expAmt), fmt.Sprintf("%.2f", savings), fmt.Sprintf("%.1f", rate)})
+		case "living":
+			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", monthlyLivingTotals[m])})
+		case "healthcare":
+			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", monthlyHealthcareTotals[m])})
 		}
 	}
 

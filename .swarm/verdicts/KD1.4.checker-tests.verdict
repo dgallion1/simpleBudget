@@ -1,0 +1,250 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: KD1
+ATTEMPT: 4
+---
+Lane: anthropic (primary verifier). Scoped attempt per ruling KD-2026-08-31a.
+All build/test/mutation/render work done in `cp -a` scratch copies under
+/tmp/.../scratchpad/{kd4work,kd4master,mut4,mut4b,dumps}. The ONLY write to the
+shared tree is this verdict file; no git-state change (HEAD == master ==
+5f39601e6c1c8de26e169eb96869a55cabfd4c1b before and after); the budget2 binary
+was never run and no `go run` against it. The oracle was run in the scratch
+copy (accept.sh cds to its own repo root, so it operated on kd4work) to avoid
+staging its zz_oracle_kd1_test.go in the shared tree; the real tree's
+`ls internal/handlers/dashboard | grep zz` returns nothing.
+
+Summary: all five verification items PASS. The +21-byte whitespace defect I
+recorded at attempt 3 is gone: my own twin dump now shows cmp exit 0 on all
+four pre-existing kinds. The attempt-4 delta is exactly the one right-trim and
+one appended test (0 deletion lines anywhere), and the new tripwire is
+load-bearing in BOTH directions.
+
+=====================================================================
+1. K5 — my own twin dump, four pre-existing kinds byte-identical   PASS
+=====================================================================
+Probe (mine, not the worker's): zz_twindump_probe_test.go dropped into BOTH
+scratch trees, rendering through the real chi router and the real
+templates.New renderer over defaultRows() + start=2025-01-01&end=2025-03-31 —
+the same fixture/range my KD1.3 twin dump used. kd4master was made
+byte-clean to master by `git checkout master -- .` inside the scratch copy;
+`git status --porcelain | grep -v '^??'` there printed nothing, and the
+template-provenance sanity check confirms the master arm is really pre-KD1:
+CMD: grep -c HealthcareNoCoverageInRange <arm>/web/templates/components/kpi-detail.html
+OUT: kd4master 0    kd4work 2
+
+CMD: for k in income expenses savings savings-rate; do
+       cmp $DUMPS/master/html_$k.out $DUMPS/work/html_$k.out; echo "$k cmp_exit=$?"; done
+OUT: income       cmp_exit=0  size 6608/6608
+     expenses     cmp_exit=0  size 6612/6612
+     savings      cmp_exit=0  size 7065/7065
+     savings-rate cmp_exit=0  size 7065/7065
+cmp exits 0 with no output ONLY on a byte-for-byte match. The attempt-3
+defect (a 21-byte whitespace-only line, "the branch emits FIVE" vs master's
+four, KD1.3 verdict lines 63-75) is eliminated — sizes are now equal, not
+merely close.
+
+CMD: diff -rq $DUMPS/master $DUMPS/work
+OUT: html_* : NOT LISTED (identical, all four)
+     month_* and csv_* for all four kinds: NOT LISTED (confirmed identical by
+       explicit `cmp -s` per kind — 8/8 identical)
+     json_* (renderer=nil fallback): differ — key-level compare shows
+       added {'HealthcareNoCoverageInRange': False} removed [] changed {}
+       for each of the four kinds. One additive always-false key, unchanged
+       from attempt 3, accepted then on the same basis.
+     page_dashboard, page_kpis: differ by exactly 2 changed lines each;
+       `diff | grep -E '^[<>]' | grep -vc openKPIDetail` = 0 for both, i.e.
+       the ONLY delta is the two intended card rewires
+       openKPIDetail('expenses') -> ('living') / ('healthcare'), which K1 and
+       Design 6 REQUIRE. See correction C1 below.
+CAUSE VERIFIED FIXED at the source: web/templates/components/kpi-detail.html:93
+now reads `{{$noCoverage := ... .HealthcareNoCoverageInRange -}}` (right-trim
+only). Mutation evidence in item 3 proves that marker, and only that marker,
+is what closes the gap.
+
+=====================================================================
+2. Attempt-4 delta is exactly the two authorized changes            PASS
+=====================================================================
+A byte-exact attempt-3 snapshot survives in the scratchpad
+(.../scratchpad/b2copy3): its kpi-detail.html:93 is the UNTRIMMED line my
+KD1.3 verdict quoted, and its four KD1 files carry mtimes 2026-08-30
+21:23-22:09 (attempt 3), before the attempt-4 edit at 2026-08-31 06:56. I used
+it as the attempt-3 baseline; corroborated independently by numstat below.
+
+CMD: cmp b2copy3/<file> <tree>/<file>, per file
+OUT: SAME  internal/handlers/dashboard/handlers.go        <- untouched this attempt
+     SAME  web/templates/components/kpis.html             <- untouched this attempt
+     DIFF  web/templates/components/kpi-detail.html
+     DIFF  internal/handlers/dashboard/handlers_http_test.go
+CMD: diff -u b2copy3/.../kpi-detail.html <tree>/.../kpi-detail.html
+OUT: ONE hunk, ONE line:
+     -   {{$noCoverage := and (eq .Type "healthcare") .HealthcareNoCoverageInRange}}
+     +   {{$noCoverage := and (eq .Type "healthcare") .HealthcareNoCoverageInRange -}}
+     Right-trim only; no `{{-` added (which mutation B below shows would have
+     under-shot master's baseline by one line).
+CMD: git diff --no-index --numstat b2copy3/.../handlers_http_test.go <tree>/...
+OUT: 53  0   -> 53 added, ZERO deleted
+CMD: git diff --no-index -U0 ... | grep '^@@'
+OUT: @@ -2695,0 +2696,53 @@   <- a single append at end of file; no line at or
+     before 2695 is touched, so every attempt-3 test body is byte-identical.
+CMD: git diff --no-index -U0 ... | grep '^+func'
+OUT: +func TestHandleKPIDetail_Expenses_WhitespaceOnlyLineCountMatchesMasterBaseline
+     exactly one new test function.
+INDEPENDENT CORROBORATION vs my KD1.3 recorded numbers:
+CMD: git diff --numstat master --
+OUT: 188/25  handlers.go        (KD1.3 recorded 188/25 — unchanged)
+     669/0   handlers_http_test.go (KD1.3 recorded 616/0 — +53/-0)
+     13/3    kpi-detail.html    (KD1.3 recorded 13/3 — same counts, one added
+                                 line's content edited in place)
+     2/2     kpis.html          (KD1.3 recorded 2/2 — unchanged)
+     1/0     .swarm/ledger.tsv
+Matches .swarm/manifests/KD1.4.files exactly (kpi-detail.html,
+handlers_http_test.go). gofmt -l on the test file: no output.
+
+=====================================================================
+3. The tripwire test is real, passes, and is LOAD-BEARING           PASS
+=====================================================================
+I READ THE TEST (handlers_http_test.go:2670-2691 in the current file): it
+renders /dashboard/kpi/expenses?start=2025-01-01&end=2025-03-31 through
+setupTestEnvWithRenderer(defaultRows()), fatals on non-200, counts lines where
+strings.TrimSpace(line)=="" over strings.Split(body,"\n"), and asserts the
+count == const masterBaseline = 19. It asserts what its name claims.
+THE PIN IS MASTER'S OWN NUMBER, verified against MY master dump (not the
+worker's, not the manifest's):
+CMD: python3 count of `l.strip()==""` over split("\n") on $DUMPS/{master,work}/html_expenses.out
+OUT: master 19, work 19 (both 6612 bytes)
+CMD: grep -cE '^[[:space:]]*$' on the same two files
+OUT: 18, 18  (the alternate convention; agrees master-vs-branch, and explains
+     why 19 — not 18 — is right for the Go split method the test uses)
+MUTATION A (the exact class-guard the coordinator asked me to prove) — scratch
+copy mut4, the new `-}}` removed from kpi-detail.html:93, nothing else:
+  CMD: go test -count=1 -run TestHandleKPIDetail_Expenses_WhitespaceOnlyLineCountMatchesMasterBaseline -v ./internal/handlers/dashboard/
+  OUT: handlers_http_test.go:2745: whitespace-only line count = 20, want 19
+       --- FAIL: TestHandleKPIDetail_Expenses_WhitespaceOnlyLineCountMatchesMasterBaseline
+  CMD: go test -count=1 ./internal/handlers/dashboard/   (whole package, mutated)
+  OUT: --- FAIL: TestHandleKPIDetail_Expenses_WhitespaceOnlyLineCountMatchesMasterBaseline
+       FAIL budget2/internal/handlers/dashboard
+       It is the ONLY test in the package that dies — precisely the gap that let
+       attempt 3 ship green with the defect.
+MUTATION B (two-sided sensitivity) — mut4b, left-trim ALSO added
+(`{{- $noCoverage ... -}}`):
+  OUT: whitespace-only line count = 18, want 19 --- FAIL
+  So the pin catches both a leaked blank line (20) and a suppressed one (18);
+  it is not a one-directional threshold, and it independently confirms the
+  worker's claim that left-trimming would have been the wrong fix.
+
+=====================================================================
+4. Tier-3 oracle                                                    PASS
+=====================================================================
+CMD: bash .swarm/tier3/KD1/accept.sh   (run by me, in the kd4work scratch copy)
+OUT: --- PASS: TestOracleKD1_LivingSignedRowsReconcile
+     --- PASS: TestOracleKD1_HealthcareSignedRowsReconcile
+     --- PASS: TestOracleKD1_ExportMatchesSignedRows
+     --- PASS: TestOracleKD1_MonthDrillMatchesSignedRow
+     --- PASS: TestOracleKD1_NoCoverageDashRegression
+     ok budget2/internal/handlers/dashboard 0.034s
+     == package suites == ok dashboard 0.721s ; ok metrics 0.003s
+     ORACLE PASS          <- final line, ORACLE_EXIT=0
+Gate prerequisites I checked directly: accept.sh exists and is executable
+(-rwxrwxr-x), .swarm/tier3/KD1/oracle.4.log exists at THIS attempt number and
+its final line is exactly `ORACLE PASS`, and there is no report.md in
+.swarm/tier3/KD1/ (which would flip the gate to the legacy blind-arm
+contract). Note as at attempt 3: the oracle does not assert K5 byte-identity —
+item 1 above is the evidence for that criterion, not this.
+
+=====================================================================
+5. Suites green; attempt-3 PASSes undisturbed                       PASS
+=====================================================================
+COMPOSITE CHECK (the repo's own target, cache defeated):
+CMD: cd <scratch>/kd4work && GOFLAGS=-count=1 make check
+OUT: "✓ all checks passed"   MAKE_CHECK_EXIT=0
+     (vet, static, vuln, css-verify, test; every package ok, including
+     budget2/internal/handlers/dashboard 1.435s, budget2/internal/templates
+     0.804s, budget2/web 0.016s)
+CMD: go test -count=1 ./internal/handlers/dashboard/ ./internal/services/metrics/
+OUT: ok dashboard ; ok metrics    (also run inside accept.sh, same result)
+WHY A RE-RUN PLUS SPOT-CHECK IS SUFFICIENT, stated explicitly as instructed:
+item 2 proves the attempt-4 delta is (a) one template whitespace-trim marker
+and (b) 53 appended test lines with zero deletions — handlers.go and kpis.html
+are byte-identical to the attempt-3 tree, and no attempt-3 test body changed
+(single append hunk at EOF). No production logic changed this attempt, so the
+attempt-3 mutation matrix (mutations A-D in KD1.3.checker-tests) still
+attaches to the same bytes it was run against; re-running the suites plus the
+named tests re-establishes the observable results without re-deriving them.
+CMD: go test -count=1 -v -run '<all 16 KD1 tests>' ./internal/handlers/dashboard/
+OUT: --- PASS: TestHandleKPIDetail_Living_Title                       [K1]
+     --- PASS: TestHandleKPIDetail_Healthcare_Title                   [K1]
+     --- PASS: TestHandleKPIDetail_LivingHealthcare_RenderedTitles    [K1]
+     --- PASS: TestDashboardKPIs_LivingHealthcareCardsWiredToOwnKinds [K1]
+     --- PASS: TestHandleKPIDetail_LivingClassification               [K2]
+     --- PASS: TestHandleKPIDetail_LivingPerMonthMatchesCardFigure     [K2/K9]
+     --- PASS: TestHandleKPIDetail_HealthcareClassificationExcludesLiving [K3]
+     --- PASS: TestHandleKPIDetail_HealthcarePerMonthMatchesCoverageClippedCard [K3/K9]
+     --- PASS: TestHandleKPIDetail_Healthcare_NoCoverageInRange_ShowsDashNotZero [K3b]
+     --- PASS: TestHandleKPIMonthDetail_LivingExcludesHealthAndPlanExcluded [K4]
+     --- PASS: TestHandleKPIDetail_ExpensesResponseByteIdentical       [K5]
+     --- PASS: TestHandleKPIExport_Living                              [K8]
+     --- PASS: TestHandleKPIExport_Healthcare                          [K8]
+     --- PASS: TestHandleKPIDetail_LivingSignedRowsReconcileWithRenderedTotal [KD-2026-08-30d]
+     --- PASS: TestHandleKPIMonthDetail_HealthcareSignedNotAbs         [KD-2026-08-30d]
+     --- PASS: TestHandleKPIDetail_Expenses_WhitespaceOnlyLineCountMatchesMasterBaseline [attempt 4]
+     ok budget2/internal/handlers/dashboard 0.139s
+KD-2026-08-30d reconciliation specifically re-verified: the reconcile test
+passes here AND inside the oracle (TestOracleKD1_LivingSignedRowsReconcile,
+TestOracleKD1_ExportMatchesSignedRows), over handlers.go bytes proven
+unchanged since attempt 3.
+CMD: grep -c "Health Insurance" internal/handlers/dashboard/handlers.go   [K6]
+OUT: 0 (exit 1) — unchanged, handlers.go not touched this attempt.
+
+=====================================================================
+SCOPE                                                                OK
+=====================================================================
+CMD: git status --porcelain | grep -v '^??'  (worker output is UNCOMMITTED;
+     master...HEAD is empty and proves nothing)
+OUT: exactly .swarm/ledger.tsv, handlers.go, handlers_http_test.go,
+     kpi-detail.html, kpis.html — all within KD-RUN-SPEC.md's permitted list
+     (lines 20-26). Files CHANGED THIS ATTEMPT: only kpi-detail.html and
+     handlers_http_test.go, matching KD1.4.files and ruling KD-2026-08-31a's
+     "exactly two changes, nothing else".
+CRITICAL GLOBS (.swarm/critical.globs: internal/services/{storage,dataloader,
+retirement/engine,transfers}/**, internal/services/accounts/accounts.go,
+internal/services/mcpsvc/confirm/**): none appears in the diff.
+LEFTOVERS: no untracked .go under internal/handlers/dashboard/; the worker's
+temporary zz_verify_byteidentical_test.go is absent as claimed. Untracked
+files are .swarm run artifacts plus budget2.old-1345, which the spec's
+Territories section declares pre-existing.
+
+=====================================================================
+CORRECTION TO MY OWN ATTEMPT-3 VERDICT (C1)
+=====================================================================
+C1. KD1.3.checker-tests line 61 asserted "page_dashboard, page_kpis:
+    byte-identical by cmp". Today's twin dump shows both DIFFER from master —
+    by exactly the two card-rewire onclick attributes and nothing else
+    (`grep -vc openKPIDetail` over the changed lines = 0). kpis.html is
+    byte-identical between the attempt-3 snapshot and today's tree and its
+    numstat is 2/2 in both, so this is not an attempt-4 change: my attempt-3
+    statement about those two page dumps was wrong. It is immaterial to any
+    criterion — K1/Design 6 REQUIRE that rewire, and K5 scopes byte-identity
+    to the four KPI-detail responses, which are identical.
+
+=====================================================================
+OBSERVATIONS (backlog, NOT failures — carried forward)
+=====================================================================
+O1. The LIVING month-drill negation (handlers.go:755) remains guarded only by
+    the tier-3 oracle, which is not committed into the package (KD1.3 mutation
+    C: reverting that one line to Abs leaves the whole repo suite green).
+    V3-pattern promotion would close it.
+O2. handlers_http_test.go:2508 still uses `math.Abs(got-150) > 0.01` for the
+    K3b Total tile — outside K9's wording, same defect class.
+O3. verdictDollarRe does not capture a leading "-", so
+    extractDollarStringAfter is sign-blind.
+O4. formatMoneyExpected is still a hand-maintained mirror of the unexported
+    templates.formatMoney (dual-formatters class).
+O5. handleKPIExport still has no `default` arm (pre-existing on master).
+O6. kpis.html:141 (Budget card) still opens the generic expenses modal — the
+    spec's own declared backlog item, correctly untouched.
+O7. NEW: the tripwire pins whitespace for the EXPENSES kind only. The other
+    three pre-existing kinds are covered by my twin dump today but by no
+    committed test; a future untrimmed action on an income/savings-only
+    branch would not trip it. Cheap to extend (loop the four kinds), but out
+    of attempt-4's authorized scope.

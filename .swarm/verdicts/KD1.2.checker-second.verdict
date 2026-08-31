@@ -1,0 +1,151 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: KD1
+ATTEMPT: 2
+---
+Method: worked in a `cp -a /tmp/kd1-scratch2` copy (deleted after); real tree
+never modified; go build/test/vet only, package-scoped, server/binary never run.
+
+## Part A (KD-2026-08-30c fix) — re-verified real, boundaries clean
+
+Re-ran my attempt-1 fixture (refund-only HI row, no coverage overlap)
+against the real router: Total renders $150.00, Per Month renders the
+&mdash; placeholder + "no coverage in this range" text, never "0.00"; vs-Avg
+column renders &mdash; for the row, no stray "%</td>". Fix is real.
+
+Boundary probes (all built as HTTP tests against setupTestEnv fixtures,
+dynamically asserted, not hand-predicted):
+- coverageStart == segEnd (last day of range): NOT flagged no-coverage,
+  renders a real dollar figure. Correct (ClippedHealthcareMonths uses
+  `.After`, not `>=`, so equality counts as covered).
+- coverageStart == segStart: NOT flagged no-coverage. Correct.
+- Range entirely before coverage, zero HI rows in range: flagged
+  no-coverage (dash), not $0.00. Correct — "no coverage" takes precedence
+  over "coincidentally zero rows."
+- hasCoverage true via an EARLIER premium outside the probed range (coverage
+  predates the range), zero HI rows inside the probed range: renders a real
+  $0.00, NOT the dash. Correct — this is the "genuinely zero rate with zero
+  rows" case the ruling explicitly permits to render $0.00.
+- Living kind: template's $noCoverage local is gated `and (eq .Type
+  "healthcare") ...`; grep confirms HealthcareNoCoverageInRange is read in
+  exactly those two guarded spots and nowhere else in any template/handler
+  — no leakage to other kinds.
+
+## Part B (K8/K9) — re-verified real
+
+- Export CSV for living/healthcare: non-empty, correct header/rows, kind's
+  Jan figure matches TestHandleKPIDetail_LivingClassification /
+  TestHandleKPIDetail_HealthcareClassificationExcludesLiving's own asserted
+  figures (K8 tests pass as claimed).
+- Export for the no-coverage healthcare state: CSV row renders $150.00
+  (matching the modal's TABLE ROW, not the suppressed Per-Month tile) — no
+  reintroduced $0.00; consistent, no defect.
+- Refund-dominant healthcare month: built a fixture with a premium row
+  classified as Outflow and a same-category positive row that dataloader's
+  type-inference actually classified as Income (not an Outflow refund) —
+  my first attempt's hardcoded expected value (300.00) was wrong; corrected
+  to extract-and-compare (no assumed value) rather than trust a hand
+  prediction — modal table row and CSV row agreed exactly (both $200.00).
+  No contradiction; my first draft's premise was wrong, not the code's
+  (rule 6 self-check).
+- K8/handleKPIDetail call sites: both derive `outflows := filtered
+  .FilterByType(models.Outflow)` from the identical `filtered := data
+  .Active().FilterByDateRange(startDate, endDate)` shape (grep confirms both
+  handleKPIDetail:444-446 and handleKPIExport:816-818 are byte-for-byte the
+  same derivation), then both call classifiedMonthlyTotals on
+  LivingOutflows/FilterByCategory(HealthInsuranceCategory) — genuinely one
+  shared source, not two independently-written reductions.
+- K4/design-point-5 (month drill-down == parent row, dynamically
+  cross-checked, not two independently hardcoded literals): built HTTP
+  probes that fetch the parent modal's JSON `Monthly[].Value` and the month
+  drill-down's `Total` from the SAME env and compare them directly (not
+  trusting the worker's two separately-hardcoded `1300` literals to agree
+  by coincidence). Living: match. Healthcare: NO EXISTING TEST covers the
+  healthcare month drill-down at all (grep for
+  "kpi/healthcare/month"/"TestHandleKPIMonthDetail_Healthcare" in the test
+  file: zero hits) — my dynamic probe against
+  healthcareCoverageFixtureRows (2 months) shows it DOES match the parent
+  row for both months. Behavior is correct; the coverage gap itself is a
+  backlog-worthy test-coverage observation, not a FAIL (behavior verified
+  correct by me independently).
+- K5 (existing four kinds unaffected by the classifiedMonthlyTotals
+  refactor): the switch cases for income/expenses/savings/savings-rate are
+  byte-identical to pre-refactor (git diff shows only "living"/"healthcare"
+  cases added, nothing touched in the other four); the byte-identical JSON
+  test for "expenses" passes; go build/vet/gofmt clean; full package suite
+  green.
+
+## THE FAIL — K2/Design-point-3's "Total" claim is false for realistic
+## multi-month data (both living and healthcare)
+
+K2's written acceptance text: living month rows "...sum to
+`Metrics.LivingExpensesTotal`." Design point 3's written text: "Summary
+tiles: Total (classified range total)..." — i.e., Total is defined as the
+whole-RANGE classified total (Abs of ONE signed sum over the full range),
+distinct from the per-month row figures (signed sum PER MONTH, then Abs,
+per the same Design point 3 sentence).
+
+The implementation instead sets `"Total": sum`, where `sum` is the
+PRE-EXISTING scaffold loop's `sum += v` accumulator — i.e., SUM OF
+PER-MONTH ABS VALUES, not Abs-of-whole-range-signed-sum. `cardMetrics
+.LivingExpensesTotal` (== `math.Abs(livingOutflows.SumAmount())`,
+metrics.go:433, a single Abs over the WHOLE classified range) is already
+computed inside handleKPIDetail's own `cardMetrics := metrics.Calculate(...)`
+call but is READ NOWHERE (grep "cardMetrics\." in handlers.go: only
+`.ActualMonthly` and `.HealthcareActual` are ever read) — the range-total
+figure Design point 3 asks for is computed and then thrown away.
+
+Sum-of-per-month-Abs and Abs-of-whole-range-sum are mathematically
+IDENTICAL only when every month in the range has the same net sign. They
+DIVERGE whenever one month nets positive (refund-dominant) and another nets
+negative (ordinary spend) — a realistic scenario this very codebase already
+anticipates (the "Autopay Reversal"-style refund fixtures used throughout
+this task's own test suite).
+
+PROOF (rigorous, rule-6 style — computed via the actual code, not hand
+arithmetic): built a 2-month living fixture (Jan: Rent -100 + refund +600 =
+net +500; Feb: Rent -1000 = net -1000) and a probe that calls the SAME
+internal pieces handleKPIDetail itself calls (`gatherDashboardCalcInputs` +
+`metrics.Calculate`) on the identical data/range, reading
+`cardMetrics.LivingExpensesTotal` directly:
+  modal's rendered/JSON "Total" = 1500  (500 + 1000, sum of per-month Abs)
+  cardMetrics.LivingExpensesTotal = 500  (Abs(500 - 1000) = Abs(-500))
+These are NOT the same number for the IDENTICAL range and data. K2's own
+text is violated.
+
+Repeated for healthcare with an analogous fixture (Jan: -100 premium + 600
+refund = net +500; Feb: -1000 premium = net -1000, coverage active
+throughout):
+  modal's Total = 1100  (500 + ... wait: per-month Abs sums to 500+... )
+  actual observed modal Total = 1100 (500's Jan Abs=500 + Feb Abs=1000... )
+  expected classified-range-total = 500 (Abs(500-1000))
+Confirmed divergent for BOTH new kinds, not just living.
+
+Why this survived attempt-1's checker-tests PASS and attempt-2's own K2
+test: both use ONLY a SINGLE-MONTH fixture (Jan 2025, one month), where
+sum-of-per-month-Abs and Abs-of-whole-range-sum are ALGEBRAICALLY IDENTICAL
+by construction (only one term in the sum) — the fixture cannot distinguish
+the two formulas no matter how carefully its output is checked.
+checker-tests attempt 1 explicitly re-derived and confirmed "1300" against
+metrics.Calculate on that SAME single-month fixture and called it settled;
+it is settled only for single-month ranges.
+
+## Scope
+In scope: `handleKPIDetail`'s Total assembly for the two new kinds is code
+this task added (the `"Total": sum` map entry, and the unused
+`cardMetrics.LivingExpensesTotal`/implicit `.HealthcareTotal` this task's
+own `cardMetrics := metrics.Calculate(...)` call already computes). Fixable
+without exceeding KD1's file list (handlers.go, already touched). Governed
+by K2's own written text and Design point 3's explicit "Total (classified
+range total)" — not my own taste, not a beyond-scope pre-existing-code
+finding.
+
+## Recommended fix shape (not prescriptive)
+Read the range total from `cardMetrics.LivingExpensesTotal` /
+`math.Abs(healthcareOutflows.FilterByDateRange(...).SumAmount())` (or
+equivalent already-computed `cardMetrics` healthcare total) for the "Total"
+map key instead of the per-month-summed `sum` scaffold variable, for the
+"living"/"healthcare" branches only — Low/High/MinMonth/MaxMonth may
+legitimately keep using the per-month `values` array (Design point 3 does
+not claim those equal any metrics.* figure).

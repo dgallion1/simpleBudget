@@ -1,0 +1,119 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: KD1
+ATTEMPT: 4
+---
+Method: all rendering probes done in `cp -a` scratch copies under
+/tmp/claude-1000/.../scratchpad/kd1check/{branch,master} (master content
+obtained via read-only `git show master:<path>`, spliced into an
+otherwise-identical scratch copy of this tree). No git stash/checkout/reset
+touched the real tree at any point this run; `git status` on the real repo
+before and after this session shows the same untracked/modified set, plus
+this verdict file only. Scratch dirs deleted after use.
+
+## Attack 1 — re-run the decisive attempt-3 probe (101 vs 102 lines)
+
+Rendered `/dashboard/kpi/{income,expenses,savings,savings-rate}` via the
+real chi router + real renderer, `defaultRows()` fixture,
+start=2025-01-01&end=2025-03-31 — identical technique/fixture to attempt-3's
+decisive probe — once against branch (this attempt's fix) and once against
+a verified pre-KD1 master scratch copy (sanity-checked:
+`grep -c "healthcare\|HealthcareNoCoverageInRange"` on the master splice →
+0).
+
+Byte counts: income 6608/6608, expenses 6612/6612, savings 7065/7065,
+savings-rate 7065/7065 (branch/master) — all equal.
+`cmp` on all four pairs: exit 0, no output (byte-identical).
+`wc -l`: expenses branch=101, master=101 (attempt-3's finding was branch=102
+vs master=101 — now resolved). Same equality for the other three kinds
+(101/101, 105/105, 105/105).
+
+The attempt-3 defect is fixed. REFUTED (my own attempt-3 premise no longer
+holds against this attempt).
+
+## Attack 2 — scope discipline
+
+`git diff --numstat` (real tree, vs HEAD/master) for the four KD1 files:
+- handlers.go: 188/25 = 213 total — identical to KD1.3 verdict's recorded
+  "213".
+- kpis.html: 2/2 = 4 total — identical to KD1.3's recorded "4".
+- handlers_http_test.go: 669/0 = 669 total, UP from KD1.3's recorded 616
+  (delta +53, matching the ~50-line new tripwire test function,
+  lines 2699-2748, doc comment included — addition-only, 0 deletions,
+  consistent with "no existing test edited").
+- kpi-detail.html: 13/3 = 16 total, UNCHANGED from KD1.3's recorded "16".
+  This is NOT evidence of no edit: the changed line
+  (`{{$noCoverage := ...}}`) was itself a net-new line relative to master
+  added in an earlier attempt, so editing its trailing whitespace (adding
+  `-}}`) doesn't change the insertion/deletion COUNT vs master, only the
+  content of an already-counted insertion. Confirmed the actual edit is
+  present by reading the file directly: line 93 ends
+  `.HealthcareNoCoverageInRange -}}` (right-trim only, no `{{-` on the
+  left) — exactly as the manifest claims.
+- gofmt -l on both changed non-template files: clean.
+- No stray zz_*.go files left in the real tree.
+
+Scope confirmed: exactly the two claimed changes, nothing else smuggled in.
+
+## Attack 3 — right-trim direction, including the healthcare kind where
+## $noCoverage is actually USED
+
+Rendered three additional fixtures through the branch scratch copy:
+- healthcareNoCoverageFixtureRows() → `/dashboard/kpi/healthcare` (dash-tile
+  branch, $noCoverage=true)
+- setupLivingHealthcareEnv fixture → `/dashboard/kpi/healthcare` and
+  `/dashboard/kpi/living` (happy path, $noCoverage=false for living;
+  $noCoverage evaluated for healthcare too)
+
+Inspected the tbody→first-<tr> whitespace region (the exact region the
+`-}}` trim affects) in all three renders and compared to the four
+pre-existing kinds' identical region: all six renders show the SAME four
+whitespace-only indentation lines between `<tbody ...>` and the first
+`<tr ...>` — byte-identical pattern across income/expenses/savings/
+savings-rate/healthcare_happy/healthcare_nocoverage/living_happy. No new
+whitespace anomaly in either the true or false branch of $noCoverage's
+actual consumer. (Whitespace-only-line TOTALS differ between the four-kind
+family (18) and the living/healthcare family (12) — expected, since those
+kinds render a materially different table structure with a
+different/shorter column set, not a regression.)
+
+## Attack 4 — the tripwire test
+
+- `masterBaseline=19` independently re-derived: ran a throwaway Go snippet
+  using the exact counting method the test uses
+  (`strings.Split(body, "\n")` + `strings.TrimSpace`) against the master
+  scratch's own `/dashboard/kpi/expenses` render → 19. Matches the branch's
+  render → 19. Confirmed master's own figure, not an assumed constant.
+- Reverted the trim in a scratch copy only (`sed` on the scratch file,
+  never the real tree) and re-ran the test: it FAILS (`got=24`,
+  `want=19` — the same defect class attempt-3 caught reappears and is
+  caught). Not vacuous.
+- Limitation (observation, not FAIL, per the calibration rule): this is a
+  COUNT-based tripwire, not a content/structural one — a hypothetical
+  template edit that removes one whitespace-only line while adding a
+  visible-content anomaly elsewhere, netting back to 19, would not be
+  caught by this test alone. The count is honestly derived and does catch
+  the actual defect class (untrimmed action produces/removes a text node),
+  which is what it was built for.
+
+## Attack 5 — regression sweep (real tree)
+
+- `bash .swarm/tier3/KD1/accept.sh` → all 5 oracle sub-tests PASS, ends
+  `ORACLE PASS`.
+- `go build ./...` → success.
+- `go vet ./...` → clean.
+- `go test -count=1 ./internal/handlers/dashboard/ ./internal/services/metrics/`
+  → both packages PASS.
+- Refund-month reconcile: covered by
+  `TestOracleKD1_LivingSignedRowsReconcile` /
+  `HealthcareSignedRowsReconcile`, both of which include a positive
+  (refund) HI row and PASS.
+
+## Verdict
+
+All four of the manifest's specific claims verified independently (not by
+eye): the byte-identity fix, the scope confinement, the right-trim
+correctness (extended to the actual $noCoverage consumer, which attempt-3's
+own probe never rendered), and the tripwire's calibration and
+discriminating power. No new defect found. PASS.

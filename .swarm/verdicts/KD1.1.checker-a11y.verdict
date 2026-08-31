@@ -1,0 +1,121 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: KD1
+ATTEMPT: 1
+---
+SCOPE: git diff master -- web/templates/components/kpi-detail.html web/templates/components/kpis.html
+(5 hunks total: kpi-detail.html +3/-3, kpis.html +2/-2 — confirmed via `git diff master`.)
+
+METHOD: Rendered REAL bytes (not hand-built HTML) via a throwaway dump
+harness (`internal/handlers/dashboard/zzz_a11y_dump_test.go`, discarded,
+never committed) added to a `cp -a` copy of the repo
+(/tmp/.../scratchpad/b2copy), using the project's real router
+(setupTestEnvWithRenderer -> templates.New over web/templates) and a CSV
+fixture with Jan/Feb/Mar 2025 rows including a "Health Insurance" category
+so both new kinds render non-empty. Dumped:
+  - GET /dashboard (cards)
+  - GET /dashboard/kpi/living (modal)
+  - GET /dashboard/kpi/healthcare (modal)
+`go test ./internal/handlers/dashboard/...` also run (in-process httptest,
+never the live :8080 binary) — all KD1 tests + full package suite PASS.
+Wrapped both modal dumps in light and `class="dark"` page shells loading
+the project's actual built web/static/css/tailwind.css, ran
+`npx @axe-core/cli` (wcag2a/2aa/21aa/22aa) on all 4 files (living × 2
+themes, healthcare × 2 themes). No changes made to the real repo tree
+(`git status` before/after identical).
+
+--- CHECK 1: heading structure, th text semantics ---
+Modal heading unchanged: <h3>{{.Title}} Details</h3> at kpi-detail.html:7
+(byte-identical to master). Rendered: "Monthly Living Expenses Details" /
+"Monthly Healthcare Details" — confirmed present in rendered HTML and in
+TestHandleKPIDetail_LivingHealthcare_RenderedTitles (PASS).
+The diff's only <th> change is kpi-detail.html:79 — the Expenses/vs-Avg
+column header text became conditional:
+  {{if eq .Type "living"}}Living Expenses{{else if eq .Type "healthcare"}}Healthcare{{else}}Expenses{{end}}
+Rendered output for the living modal: <th ...>Living Expenses</th> — real
+text node, not color/attribute-only signaling. `<th>` elements carry no
+`scope` attribute in EITHER master or this diff (checked via `git show
+master:...kpi-detail.html`) — pre-existing, unchanged by KD1, OBSERVATION
+not a FAIL (single-row-header table, scope's absence doesn't orphan any
+data cell from its header via table semantics that changed here).
+
+--- CHECK 2: new kinds' value cells — text, not color alone ---
+kpi-detail.html:107-108 (the diff's second hunk): value cell always shows
+formatMoney text alongside the (unconditional) red class; vs-Avg cell
+always shows formatPercent text alongside its green/red class. Rendered
+proof (living modal, Jan row): `<td class="... text-red-600
+dark:text-red-400">$1,800.00</td>` and `<td class="... text-green-700
+dark:text-green-400">-4.1%</td>`; Feb row: `<td ...>$1,900.00</td>` /
+`<td class="... text-red-600 dark:text-red-400">&#43;1.2%</td>` (html/
+template-escaped "+"). formatPercent (internal/templates/render.go:568)
+emits an explicit "+" for v>0 and Go's %.1f supplies "-" for negatives —
+sign is textual, never color-only, for both new kinds' vs-Avg columns and
+for money cells (always signed-free, always literal digits via
+formatMoney). Confirms "vs-Avg percent cells: sign conveyed by +/- text"
+check.
+
+--- CHECK 3: KPI card click-affordance semantics ---
+`git diff master` on kpis.html: only the openKPIDetail() argument string
+changed (line 57: 'expenses'->'living'; line 101: 'expenses'->'healthcare').
+No `role`, `tabindex`, or keyboard handler existed on ANY of the 5
+onclick-bearing card <div>s on master (`git show master:...kpis.html | grep
+role=|tabindex|onclick=` — zero role/tabindex hits across all 5 cards) and
+none exist now — pre-existing on all 5 cards, not introduced or worsened by
+KD1's two-card argument swap. OBSERVATION, not a KD1 FAIL per task
+instructions.
+
+--- CHECK 4: new color classes — both themes, contrast ---
+Diff introduces ZERO new Tailwind color classes: kpi-detail.html:79 reuses
+the existing `text-gray-600 dark:text-gray-300` <th> classes already on
+every other header in the same table; kpi-detail.html:107-108 reuses the
+existing `text-red-600 dark:text-red-400` / `text-green-700
+dark:text-green-400` pair already used verbatim two branches above
+(income/savings columns, lines 97-98, 100-102, 104-105). Computed contrast
+(WCAG relative-luminance formula) against web/static/css/tailwind.css's
+actual resolved rgb() tokens:
+  text-red-600   (220,38,38)  on white         -> 4.83:1  PASS (>=4.5)
+  dark:text-red-400 (248,113,113) on gray-800 (31,41,55) -> 5.31:1  PASS
+  text-green-700 (21,128,61)  on white         -> 5.02:1  PASS
+  dark:text-green-400 (74,222,128) on gray-800 -> 8.42:1  PASS
+  text-gray-600  (75,85,99)   on white / gray-50 -> 7.56 / 7.23:1 PASS
+  dark:text-gray-300 (209,213,219) on gray-800/gray-900 -> 9.96 / 12.04:1 PASS
+All exceed 4.5:1 (normal text, 14px/text-sm) in BOTH themes. Every class
+in the diff has both a light and a dark: variant (grep-confirmed on the
+two changed lines).
+
+--- CHECK 5: axe-core automated pass, both themes, both new modals ---
+living-light.html:    1 issue — button-name (close-button icon, no name)
+living-dark.html:     1 issue — button-name (same element)
+healthcare-light.html:1 issue — button-name (same element)
+healthcare-dark.html: 1 issue — button-name (same element)
+All four runs flag the SAME single violation, on `.hover\:text-gray-700`
+== the modal's close <button onclick="closeKPIModal()"> at
+kpi-detail.html:15-20 (icon-only SVG, no aria-label/visible text/sr-only
+span). Confirmed via `git show master:web/templates/components/
+kpi-detail.html` lines 1-22 byte-identical to the current file — this
+button predates KD1 entirely and sits OUTSIDE the diff's two hunks.
+PROVENANCE: PRE-EXISTING (master). OBSERVATION, not a KD1 FAIL (scope
+rule, task instructions + CLAUDE.md attribution rule). No other axe
+violations (color-contrast, aria-*, landmark, etc.) in any of the 4 runs.
+
+--- CHECK 6: dashboard card wiring correctness (rendered) ---
+Rendered /dashboard confirms: Total Expenses card -> openKPIDetail('expenses')
+(unchanged), Monthly Living Expenses card -> openKPIDetail('living') (new,
+correct), Monthly Healthcare card -> openKPIDetail('healthcare') (new,
+correct), Budget card -> openKPIDetail('expenses') (unchanged, correct —
+out of this diff's two touched cards). No card lost its click affordance or
+changed markup shape.
+
+FINDINGS SUMMARY
+- KD1 FAILures: none.
+- OBSERVATIONS (pre-existing, unchanged by this diff, not blocking):
+  1. kpi-detail.html:15-20 — modal close button has no accessible name
+     (WCAG 4.1.2 Name/Role/Value; axe button-name). Byte-identical to
+     master.
+  2. web/templates/components/kpis.html — all 5 KPI cards use onclick on a
+     bare <div> with no role="button"/tabindex/keydown handler (WCAG 2.1.1
+     Keyboard, 4.1.2 Name/Role/Value). Identical shape on master for all 5
+     cards; KD1 only swapped two cards' argument strings.
+  3. kpi-detail.html table <th> elements carry no `scope` attribute in
+     either master or this diff.

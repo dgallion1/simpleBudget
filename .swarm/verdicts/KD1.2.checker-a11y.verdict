@@ -1,0 +1,176 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: KD1
+ATTEMPT: 2
+---
+SCOPE: git diff master -- web/templates/components/kpi-detail.html
+(4 hunks, +13/-3 vs attempt 1's 3 hunks +3/-3 — the K3b addition on top of
+attempt 1's already-PASSed changes. kpis.html unchanged since attempt 1,
+confirmed via `git diff master -- web/templates/components/kpis.html`,
+byte-identical to attempt 1's reviewed diff.)
+
+METHOD: Rendered REAL bytes via a throwaway dump test
+(internal/handlers/dashboard/zzz_a11y_dump2_test.go, discarded, never
+committed) added to a fresh `cp -a` copy of the repo
+(scratchpad/b2copy2), using the real router/templates and
+healthcareNoCoverageFixtureRows()/healthcareCoverageFixtureRows()/
+defaultRows() fixtures already in handlers_http_test.go. Dumped:
+  - GET /dashboard/kpi/healthcare (no-coverage state, K3b's target)
+  - GET /dashboard/kpi/healthcare (with-coverage state, control)
+  - GET /dashboard/kpi/{income,expenses,savings,savings-rate,living}
+`go test ./internal/handlers/dashboard/... -run TestZZZDumpKD1Attempt2|
+TestHandleKPIDetail_Healthcare_NoCoverageInRange_ShowsDashNotZero` — both
+PASS. Wrapped all 7 dumps in light and `class="dark"` shells loading the
+real built web/static/css/tailwind.css via relative path, ran
+`npx @axe-core/cli` (wcag2a/2aa/21aa/22aa) on all 14 files. No changes to
+the real repo tree (`git status` before/after identical, confirmed).
+
+--- CHECK 1: "no coverage" message — real text, both themes, contrast ---
+Rendered healthcare-nocoverage.html:31-33:
+  <p class="text-sm text-gray-600 dark:text-gray-400">Per Month</p>
+  <p class="text-xl font-bold text-gray-800 dark:text-gray-100">&mdash;</p>
+  <p class="text-xs text-gray-500 dark:text-gray-400">no coverage in this range</p>
+Real text nodes (not aria-hidden, not sr-only-only, not an image). Sits in
+the static summary-tile div (bg-gray-50 light / bg-gray-900 dark, no hover
+state on this div). Computed WCAG contrast (relative-luminance formula)
+against tailwind.css's resolved rgb() tokens:
+  text-gray-800  (31,41,55)   on bg-gray-50  (249,250,251) -> 14.05:1 PASS
+  dark:text-gray-100 (243,244,246) on bg-gray-900 (17,24,39) -> 16.12:1 PASS
+  text-gray-500  (107,114,128) on bg-gray-50  (249,250,251) -> 4.63:1 PASS (text-xs, needs >=4.5)
+  dark:text-gray-400 (156,163,175) on bg-gray-900 (17,24,39) -> 6.99:1 PASS
+Both light and dark variants defined on every changed class (grep-confirmed
+on kpi-detail.html:49-54). Per point 7 (>=4.5:1) and point 12 (dark-mode
+parity) — PASS in this static tile. Confirmed with-coverage control
+(healthcare-coverage.html:31-33) still renders a real dollar figure
+($240.30), no dash — the conditional does not leak into the normal case.
+Confirmed the other 5 kinds (income/expenses/savings/savings-rate/living)
+render with no "&mdash;"/"no coverage" text at all (`grep mdash` empty) —
+the two new Type/HealthcareNoCoverageInRange-gated branches do not affect
+them, and the shared field `HealthcareNoCoverageInRange` is set
+unconditionally (false) on the template data map for every kind
+(handlers.go:622), so no template-panic risk on the other kinds either.
+
+--- CHECK 2: "—" placeholders are text content; SR-elaboration judgment ---
+Both dashes (kpi-detail.html:50 Per-Month tile, :115 vs-Avg cell) are
+literal `&mdash;` text nodes inside `<p>`/`<td>`, not empty elements
+styled with a pseudo-element dash or CSS content — confirmed via source
+and rendered bytes (`&mdash;` present in the HTML text, not in a `content:`
+CSS rule search of tailwind.css). WCAG judgment: the vs-Avg "—" cells carry
+no aria-label/sr-only elaboration, but (a) the table's own column header
+("vs Avg") identifies what's absent, and (b) the "no coverage in this
+range" caption sits in DOM order BEFORE the table, so a linear/virtual-
+cursor screen-reader pass encounters the explanation before reaching the
+dashed cells. WCAG 2.2 AA has no SC requiring per-cell elaboration of an
+already-labeled absent value (1.3.1 Info/Relationships is satisfied by the
+column header + preceding explanatory text; 4.1.2 is satisfied because the
+cell has real text content, not an empty/unnamed control). Judgment: PASS,
+not a FAIL — this is not hidden-text abuse (no content is suppressed from
+or injected only for AT) and not color-only signaling (see Check 3).
+OBSERVATION (non-blocking): an `aria-label="no comparison, no coverage
+this month"` on each dashed `<td>` would be friendlier for a screen-reader
+user tabbing cell-by-cell without replaying the whole row, but the
+constitution and WCAG are both silent on requiring it — not a FAIL per the
+"silent = not your call" instruction.
+
+--- CHECK 3: color-only signaling — none introduced ---
+Value cell (kpi-detail.html:113, `.Value`) keeps the same unconditional
+text-red-600/dark:text-red-400 class used for every kind's dollar figure —
+not conditioned on sign, so color is decorative alongside the always-
+present digits. The new dash cells (:50, :115) use a single unconditional
+gray class with the "—" glyph as the sole content — no colored/uncolored
+branching conveys meaning by color alone. Point 8: PASS.
+
+--- CHECK 4: heading/table structure — unchanged ---
+`<h3>` unchanged (byte-identical, kpi-detail.html:7). The `<th>` text
+conditional (line 84, from attempt 1) is untouched by attempt 2. Row shape
+stays rectangular in every branch: the new `{{if $noCoverage}}...{{else}}
+...{{end}}` at lines 114-118 emits exactly one `<td>` either way, so column
+count never varies by kind or by coverage state. `<th scope>` remains
+absent in both master and this diff (pre-existing gap, attempt-1 OBSERVATION
+carries forward unchanged — not re-triggered by attempt 2's hunks, which
+touch no `<th>`).
+
+--- CHECK 5: axe-core automated pass, both themes, all 7 renders ---
+All 14 runs (7 renders x 2 themes) report the SAME 3 issues, none new:
+  - button-name: the modal's icon-only close button (kpi-detail.html:15-20,
+    byte-identical to master) — PRE-EXISTING, attempt-1 OBSERVATION,
+    carries forward.
+  - document-title / html-has-lang: harness artifacts of MY wrapper shell
+    (I did not add <title>/lang= since the fragment is normally hosted
+    inside the app's own page shell, which has both) — not a defect of the
+    project.
+No color-contrast, aria-*, or landmark violations flagged by axe in any of
+the 14 files — consistent with Check 1's default-state contrast math. Axe
+does not simulate :hover, so it could not (and did not) surface Check 6's
+finding below; that finding required manual computation per the "manual
+checks the tools miss" instruction.
+
+--- CHECK 6: hover-state contrast — FAIL, new content, dark theme only ---
+The new vs-Avg dash cell (kpi-detail.html:115) is
+`<td class="p-3 text-sm text-right text-gray-500 dark:text-gray-400">&mdash;</td>`
+inside a `<tr class="hover:bg-gray-50 dark:hover:bg-gray-700 ...">` (the
+row-hover classes are pre-existing/unchanged on master). This exact color
+pairing (text-gray-500 / dark:text-gray-400) does NOT appear anywhere in
+master's kpi-detail.html (master's muted-gray pairing is text-gray-600/
+dark:text-gray-400, and only ever on label `<p>`s outside any hoverable
+row) — it is new content introduced by attempt 2. Computed WCAG contrast
+against tailwind.css's resolved tokens, DEFAULT vs HOVER row state:
+  light default (white/bg-gray-800 modal bg)      : text-gray-500  -> 4.83:1 PASS
+  dark default   (bg-gray-800 modal bg)            : dark:text-gray-400 -> 5.78:1 PASS
+  light hover     (hover:bg-gray-50  249,250,251)  : text-gray-500  -> 4.63:1 PASS
+  dark hover      (dark:hover:bg-gray-700 55,65,81): dark:text-gray-400 -> 4.06:1 FAIL (<4.5)
+On mouse-hover of a no-coverage healthcare month row in dark mode, the "—"
+vs-Avg cell's text drops to 4.06:1, below the point-7 (>=4.5:1 normal text)
+and point-12 (dark-mode parity — light-hover 4.63 PASSES while dark-hover
+4.06 FAILS, an explicit light/dark asymmetry point 12 names as the thing
+to catch) thresholds. WCAG SC 1.4.3 does not exempt interactive/hover
+presentation states — the text must meet 4.5:1 as rendered in every state
+a sighted user encounters it in, and row-hover is reachable by any mouse
+user (including low-vision users relying on this exact contrast).
+PROVENANCE: attributable to attempt 2. This specific `<td>` and its class
+list do not exist in master or in attempt 1's diff (attempt 1 only touched
+the .Expenses->.Value rename and the `<th>` label, both already reviewed
+and PASSed); the gray-500/gray-400 dash-cell markup is wholly new. Per the
+attribution rule ("FAIL only what this task's change introduced or
+replicated into new content"), this counts as introduced, not merely
+inherited.
+OBSERVATION for context, not exculpatory: the immediately adjacent Value
+cell in the SAME row (text-red-600/dark:text-red-400, kpi-detail.html:113)
+computes even worse on the identical dark-hover background — 3.73:1 — but
+that class pairing and the row's hover mechanics are BOTH byte-identical
+to master (this exact `<tr hover:bg-gray-50 dark:hover:bg-gray-700>` shape
+already wraps the income/expenses/savings/rate kinds' colored value cells
+today), so that instance is PRE-EXISTING and out of scope for KD1 — it is
+not a KD1 FAIL, only a sitewide backlog item the lead may want to fold in.
+A one-line fix for the new cell (swap dark:text-gray-400 -> dark:text-gray-300,
+computed 7.00:1 on the same hover background) would resolve K7 for this
+specific new cell without touching the pre-existing sibling defect.
+
+FINDINGS SUMMARY
+- KD1 attempt-2 FAILURES:
+  1. Constitution point 7 (text contrast >=4.5:1) and point 12 (dark-mode
+     parity) / WCAG 2.2 AA SC 1.4.3 Contrast (Minimum) — the new vs-Avg
+     "—" cell (kpi-detail.html:115, `text-gray-500 dark:text-gray-400`)
+     renders at 4.06:1 in dark mode when its row is hovered
+     (`dark:hover:bg-gray-700`), below the 4.5:1 minimum for normal-size
+     text. Light-mode hover (4.63:1) passes, so this is also a light/dark
+     parity break under point 12. New content, not present in master or
+     attempt 1.
+- OBSERVATIONS (non-blocking):
+  1. Pre-existing worse-magnitude analog of the same defect class: the
+     adjacent Value `<td>` (text-red-600/dark:text-red-400) in the same
+     row computes 3.73:1 on the identical dark-hover background — but its
+     classes and the row's hover mechanics are byte-identical to master,
+     so out of KD1's scope. Backlog candidate: audit all colored table-row
+     cells sitewide for hover-state contrast, not just this diff's cell.
+  2. vs-Avg dash cells carry no per-cell aria-label/sr-only elaboration;
+     judged acceptable against WCAG (column header + preceding "no
+     coverage" text supply context) — a friendliness nice-to-have, not a
+     violation.
+  3. Carried forward from attempt 1, unchanged by attempt 2's hunks:
+     modal close button has no accessible name (kpi-detail.html:15-20,
+     byte-identical to master); all 5 KPI cards use onclick on a bare
+     `<div>` with no role/tabindex (kpis.html, byte-identical shape to
+     master for all 5 cards); `<th>` elements carry no `scope` attribute
+     (byte-identical to master).

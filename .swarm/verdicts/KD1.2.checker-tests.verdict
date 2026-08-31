@@ -1,0 +1,341 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: KD1
+ATTEMPT: 2
+---
+Lane: anthropic (primary verifier). All work done in `cp -a` scratch copies under
+/tmp/.../scratchpad/{kd1work,kd1master,mut}; the ONLY write to the shared tree is
+this verdict file. No git-state change to /home/darrell/bin/ai/budget2. The
+budget2 binary was never run; no `go run`.
+
+Summary: K1,K2,K3,K3b,K4,K6,K8,K9 PASS with command evidence and mutation proof.
+K5 FAILS on its literal wording: the RENDERED HTML of all four pre-existing kinds
+is NOT byte-identical to master. The delta is provably whitespace-only and
+DOM-inert, and it is a regression introduced by attempt 2's template edit (attempt
+1's twin dump was byte-identical, 47185 bytes, per KD1.1.checker-tests lines
+162-179). Details and materiality assessment under K5 below.
+
+=====================================================================
+COMPOSITE CHECK (repo's own target, cache defeated)
+=====================================================================
+CMD: cd <scratch>/kd1work && GOFLAGS=-count=1 make check
+     (Makefile:77 -> vet static vuln css-verify test)
+OUT: /home/darrell/go-sdk/go/bin/go vet ./...     (clean)
+     staticcheck ./...                            (clean)
+     govulncheck ./...  -> "Your code is affected by 0 vulnerabilities."
+     ./tmp/tailwindcss-3.4.17 ... (css-verify)    (clean)
+     ok  budget2/internal/handlers/dashboard  1.462s   [+ every other package ok]
+     MAKE_CHECK_EXIT=0
+CMD: go build ./...            -> exit 0
+CMD: go vet ./internal/handlers/dashboard/  -> exit 0, no output
+CMD: gofmt -l internal/handlers/dashboard/ web/  -> no output
+(Tier 2: no .swarm/tier3/KD1 oracle exists or is required.)
+
+=====================================================================
+K1 — titles + card wiring                                        PASS
+=====================================================================
+CMD: go test -count=1 -v -run '...' ./internal/handlers/dashboard/
+OUT: --- PASS: TestHandleKPIDetail_Living_Title
+     --- PASS: TestHandleKPIDetail_Healthcare_Title
+     --- PASS: TestHandleKPIDetail_LivingHealthcare_RenderedTitles
+     --- PASS: TestDashboardKPIs_LivingHealthcareCardsWiredToOwnKinds
+INDEPENDENT RENDER (my own probe, real router + real templates.New renderer,
+dumped to <scratch>/kdprobe/):
+  k2_living.html:7  <h3 ...>Monthly Living Expenses Details</h3>
+  k3_healthcare.html:7 <h3 ...>Monthly Healthcare Details</h3>
+CMD: grep -rn "openKPIDetail(" web/templates/ web/static/js/
+OUT: kpis.html:57  onclick="openKPIDetail('living')"
+     kpis.html:101 onclick="openKPIDetail('healthcare')"
+     kpis.html:7 'income', :32 'expenses', :141 'expenses' (Budget card — the
+     spec's own declared backlog item, unchanged), verdict-bar 'savings'.
+
+=====================================================================
+K2 — living classification, refund netting, Per Month == ActualMonthly  PASS
+=====================================================================
+OUT: --- PASS: TestHandleKPIDetail_LivingClassification
+     --- PASS: TestHandleKPIDetail_LivingPerMonthMatchesCardFigure
+INDEPENDENT DERIVATION + RENDER (my probe logged the metrics figures and dumped
+the real modal):
+  MonthsBetween(2025-01-01,2025-01-31)=1.018480493 ; 1300/mb=1276.411290323
+  k2_living.html:28 Total     ->  $1,300.00
+  k2_living.html:33 Per Month ->  $1,276.41   == formatMoney(1276.411290)
+  k2_living.html:53 <th ...>Living Expenses</th>
+  k2_living.html:71 row cell  ->  $1,300.00
+  k2_living.html:73 vs-Avg    ->  &#43;1.8%   == (1300-1276.41)/1276.41, i.e. the
+                                  vs-Avg basis IS the displayed Per Month figure
+                                  (KD-2026-08-30b), not a hidden rows' average.
+There are exactly four tiles (Total / Per Month / Low / High) — no second average.
+
+=====================================================================
+K3 — healthcare, coverage-clipped divisor, rendered string        PASS
+=====================================================================
+OUT: --- PASS: TestHandleKPIDetail_HealthcareClassificationExcludesLiving
+     --- PASS: TestHandleKPIDetail_HealthcarePerMonthMatchesCoverageClippedCard
+INDEPENDENT DERIVATION + RENDER:
+  ClippedHealthcareMonths(2025-01-01,2025-02-28,cov=2025-01-15,true)=1.478439425
+  600/1.478439425 = 405.833333333
+  k3_healthcare.html:28 Total     -> $600.00
+  k3_healthcare.html:33 Per Month -> $405.83   (NOT 600/MonthsBetween≈$305 — the
+                                     divisor really is coverage-clipped)
+  k3_healthcare.html:71,85 rows   -> $300.00, $300.00  (Rent never appears)
+  k3_healthcare.html:53 <th ...>Healthcare</th>
+CONFIRMED THE HAPPY PATH STILL PASSES AFTER THE ATTEMPT-2 GUARD LANDED: both K3
+tests are green in the run above and stayed green under mutation M3 below.
+
+=====================================================================
+K3b (ruling KD-2026-08-30c) — zero coverage divisor renders "—"   PASS
+=====================================================================
+OUT: --- PASS: TestHandleKPIDetail_Healthcare_NoCoverageInRange_ShowsDashNotZero
+
+I RE-RENDERED THE CHECKER'S FIXTURE MYSELF (probe: setupTestEnvWithRenderer with
+healthcareNoCoverageFixtureRows = one Health Insurance row, +150 on 2025-01-15;
+GET /dashboard/kpi/healthcare?start=2025-01-01&end=2025-01-31). Dump
+<scratch>/kdprobe/k3b_healthcare_nocov.html:
+  :28 <p class="text-xl font-bold text-indigo-600 ...">$150.00</p>   (Total intact)
+  :31 <p ...>Per Month</p>
+  :33 <p class="text-xl font-bold text-gray-800 dark:text-gray-100">&mdash;</p>
+  :34 <p class="text-xs text-gray-500 dark:text-gray-400">no coverage in this range</p>
+  :74 <td class="p-3 text-sm text-right text-gray-500 dark:text-gray-400">&mdash;</td>
+  grep '%</td>' over the whole body -> NO match (no percentage cell anywhere).
+  grep '0.00' inside the Per Month tile -> NO match.
+So: Per Month renders the em dash, the reason is REAL TEXT (not colour-only, and
+the class pair carries both themes), the single row's vs-Avg cell renders the em
+dash in a neutral gray with no green/red signal, and the range Total is untouched.
+
+STATE FLAG PROVENANCE (read the diff, handlers.go:481):
+  healthcareNoCoverageInRange = metrics.ClippedHealthcareMonths(startDate, endDate,
+        calcInputs.coverageStart, calcInputs.hasCoverage) <= 0
+It calls the EXPORTED metrics helper — metrics.go:247, the same one
+metrics.Calculate itself calls at metrics.go:399 to build coverageMonths and
+therefore HealthcareActual — over coverageStart/hasCoverage taken from
+calcInputs, i.e. gatherDashboardCalcInputs (handlers.go:114-123), the SAME shared
+input-assembly helper handleDashboard uses (handlers.go:158). There is no
+re-derived coverage logic in the handler: `grep -n "HealthcareCoverageStart"` in
+handlers.go shows it only inside gatherDashboardCalcInputs. The assignment sits
+inside the `else` (healthcare-only) arm of the `if kpiType == "living"` branch, so
+living can never trip it.
+
+MUTATION M3 — `<= 0` changed to `< 0` (guard can never fire):
+  OUT: --- FAIL: TestHandleKPIDetail_Healthcare_NoCoverageInRange_ShowsDashNotZero
+       (and ONLY that test: the two K3 happy-path healthcare tests and
+       TestHandleKPIDetail_ExpensesResponseByteIdentical stayed green)
+MUTATION M4 — deleted the template's vs-Avg `{{if $noCoverage}}` dash branch:
+  OUT: --- FAIL: TestHandleKPIDetail_Healthcare_NoCoverageInRange_ShowsDashNotZero
+MUTATION M4b — additionally deleted the Per Month dash branch:
+  OUT: --- FAIL: TestHandleKPIDetail_Healthcare_NoCoverageInRange_ShowsDashNotZero
+The K3b test dies on each of the three things it claims to guard.
+
+=====================================================================
+K4 — living month drill-down                                     PASS
+=====================================================================
+OUT: --- PASS: TestHandleKPIMonthDetail_LivingExcludesHealthAndPlanExcluded
+It asserts Type=living, TotalLabel="Living Spent", Count==2 (Rent + refund only),
+no "Health Insurance Premium"/"Lucid Loan Payment" description, and Total==1300 —
+the same 1300 the parent modal row renders as $1,300.00 (K2 dump above).
+Code path unchanged since attempt 1 (handlers.go:737-745); attempt-1 mutation
+already proved it load-bearing (KD1.1.checker-tests lines 145-147).
+
+=====================================================================
+K5 — existing kinds byte-identical                               FAIL
+=====================================================================
+(a) "no test edits except additions" — SATISFIED, literally.
+CMD: git diff -U0 HEAD -- internal/handlers/dashboard/handlers_http_test.go
+     | grep -E '^(@@|-[^-])'
+OUT: @@ -7,0 +8 @@ import (
+     @@ -18,0 +20 @@ import (
+     @@ -2079,0 +2082,535 @@ func TestVerdictBarNetSavings_IsDrillable(t *...
+ZERO deletion lines. The `want`-map edit the manifest describes is inside
+TestHandleKPIDetail_ExpensesResponseByteIdentical, which is itself a KD1-added
+test (appended at attempt 1), not a pre-existing one.
+
+(b) JSON responses — ACCEPTABLE per the coordinator's stated allowance.
+CMD: probe dumping /dashboard/kpi/{income,expenses,savings,savings-rate}
+     (renderer=nil, JSON path) in kd1work vs a kd1master copy
+     (`git checkout HEAD -- .`), then key-sorted diff.
+OUT (identical for all four kinds):
+     2a3
+     >  "HealthcareNoCoverageInRange": false,
+Exactly one additive, always-false key; no other field, value or ordering changed.
+Stating it explicitly as asked: a JSON-debug-path key addition ALONE would be
+acceptable and I would have passed K5 on that basis.
+
+(c) RENDERED HTML — NOT byte-identical. This is what fails the criterion.
+CMD: probe rendering all four existing kinds through the real router + real
+     templates.New renderer in kd1work and kd1master, then
+     `diff -rq dump_master dump_branch`
+OUT: expenses.html, income.html, savings.html, savings-rate.html ALL differ.
+     byte sizes master->branch:
+       expenses     6612 -> 6825   (+213)
+       income       6608 -> 6671   (+63)
+       savings      7065 -> 7128   (+63)
+       savings-rate 7065 -> 7086   (+21)
+     added/removed lines, and how many of them contain non-whitespace:
+       expenses:     +9 / -0 lines, non-whitespace changed lines = 0
+       income:       +3 / -0 lines, non-whitespace changed lines = 0
+       savings:      +3 / -0 lines, non-whitespace changed lines = 0
+       savings-rate: +1 / -0 lines, non-whitespace changed lines = 0
+CAUSE (kpi-detail.html, attempt 2 only): the `{{if and (eq .Type "healthcare")
+.HealthcareNoCoverageInRange}} / {{else}} / {{end}}` wrapper on the Per Month
+tile, the `{{$noCoverage := ...}}` local, and the `{{if $noCoverage}}` wrapper on
+the vs-Avg <td> are written on their own lines WITHOUT `{{-`/`-}}` trim markers,
+so their surrounding newline+indent text nodes are emitted for EVERY kind.
+Sample (expenses, `diff -u | cat -A`):
+                     <p class="text-sm ...">Per Month</p>$
+   +                    $
+                     <p class="text-xl font-bold ...">$1,850.00</p>$
+   +                    $
+   ...
+                     <td class="... text-red-600 ...">$1,800.00</td>$
+   +                        $
+                     <td class="... text-green-700 ...">-2.7%</td>$
+   +                        $
+
+MATERIALITY (facts, for the lead's adjudication — I am not ruling on it):
+  CMD: tr -d ' \t\n\r' < X | md5sum, master vs branch
+  OUT: expenses 1cea4dfc...==1cea4dfc... ; income 005b6da8...==005b6da8... ;
+       savings 8ebf07be...==8ebf07be... ; savings-rate d154e018...==d154e018...
+  CMD: python3 html.parser token-stream compare, whitespace-only text nodes
+       dropped, tags+attrs+entities+data compared in order
+  OUT: expenses DOM-token-equal ntok=121/121 ; income 121/121 ;
+       savings 132/132 ; savings-rate 132/132
+  CMD: cmp on the CSV exports for the four existing kinds
+  OUT: all four byte-identical.
+So every non-whitespace byte and the whole DOM are unchanged, and the added
+whitespace lands only between block <p> siblings and between <td>/<tr>
+siblings, where HTML parsing discards it. The defect is real against the written
+words ("byte-identical" / Design 7 "Existing kinds' markup byte-identical") and is
+a regression from attempt 1, which met it exactly (KD1.1.checker-tests: "cmp
+branch.dump master.dump -> TWIN-DUMP IDENTICAL, both files 47185 bytes"). It is
+also cheap to fix (trim markers, or put each `{{if}}/{{else}}/{{end}}` inline).
+No command I can run shows the criterion met, so I report it as not met.
+
+(d) The K5 test itself remains load-bearing for what it does assert:
+OUT: --- PASS: TestHandleKPIDetail_ExpensesResponseByteIdentical
+Attempt-1 mutation m6 (extra `"Zzz": 1` key in partialData) already made it FAIL.
+
+=====================================================================
+K6 — no duplicated classification / no category literal          PASS
+=====================================================================
+CMD: grep -c "Health Insurance" internal/handlers/dashboard/handlers.go
+OUT: 0        (exit status 1 — zero matches, comments included)
+SURFACE ENUMERATION (not the diff): every living/healthcare classification in
+handlers.go goes through the shared helpers —
+  :473  metrics.LivingOutflows(outflows, calcInputs.planExclusions)   [modal]
+  :474  outflows.FilterByCategory(metrics.HealthInsuranceCategory)    [modal]
+  :742  metrics.LivingOutflows(..., planSyncExclusions(data.Active()))[month]
+  :748  .FilterByCategory(metrics.HealthInsuranceCategory)            [month]
+  :832  metrics.LivingOutflows(outflows, planExclusions)              [export]
+  :833  .FilterByCategory(metrics.HealthInsuranceCategory)            [export]
+  :1000 .FilterByCategory(metrics.HealthInsuranceCategory)            [chart]
+Exclusion logic exists in exactly one place, planSyncExclusions (handlers.go:79),
+called at :117 (inside gatherDashboardCalcInputs), :251, :316, :742, :831.
+CMD: grep -rn --include=*.go '"Health Insurance"' internal/ cmd/ | grep -v _test
+OUT: the const definition metrics.go:21 plus doc comments only.
+
+=====================================================================
+K8 — Export CSV works for the new kinds, single source            PASS
+=====================================================================
+OUT: --- PASS: TestHandleKPIExport_Living
+     --- PASS: TestHandleKPIExport_Healthcare
+SINGLE-SOURCE GUARANTEE, by call-site grep (not by reading the diff):
+CMD: grep -rn "classifiedMonthlyTotals" --include=*.go .
+OUT: handlers.go:661  func classifiedMonthlyTotals(...)   [the one definition]
+     handlers.go:475  monthlyLivingTotals     = classifiedMonthlyTotals(...)  <- handleKPIDetail
+     handlers.go:476  monthlyHealthcareTotals = classifiedMonthlyTotals(...)  <- handleKPIDetail
+     handlers.go:832  monthlyLivingTotals     = classifiedMonthlyTotals(...)  <- handleKPIExport
+     handlers.go:833  monthlyHealthcareTotals = classifiedMonthlyTotals(...)  <- handleKPIExport
+Both handlers reduce months through the same function; no second month-reduction
+loop for these kinds exists.
+EXPORT ROWS vs MODAL FIGURES — proved on rendered output, three fixtures, my own
+probe (<scratch>/kdprobe/):
+  living   modal row cell  $1,300.00   | CSV: "Month,Living Expenses" / 2025-01,1300.00
+  healthcare modal rows    $300.00 x2  | CSV: "Month,Healthcare" / 2025-01,300.00 ; 2025-02,300.00
+  no-coverage modal row    $150.00     | CSV: "Month,Healthcare" / 2025-01,150.00
+CSV column labels match the modal <th> labels ("Living Expenses" / "Healthcare").
+REAL USER PATH CONFIRMED: kpi-detail.html:9 renders
+  <button onclick="exportKPIToCSV('{{.Type}}')"> and dashboard.js:51-56 sends
+  GET /dashboard/kpi/${kpiType}/export — the exact route
+  handlers.go:135 registers and my tests exercise.
+MUTATION M1 — export switched to RAW outflows
+  (`classifiedMonthlyTotals(outflows)` for both, dropping LivingOutflows and
+   FilterByCategory):
+  OUT: --- FAIL: TestHandleKPIExport_Living
+       --- FAIL: TestHandleKPIExport_Healthcare
+       (TestHandleKPIDetail_LivingClassification stayed GREEN — so the export
+        tests, not the modal tests, are what bind the export path.)
+MUTATION M2 — deleted the `case "living"`/`case "healthcare"` row-write arms
+  (reproducing the attempt-1 zero-byte defect):
+  OUT: --- FAIL: TestHandleKPIExport_Living
+       --- FAIL: TestHandleKPIExport_Healthcare
+
+=====================================================================
+K9 — strict rendered-string equality, no ±0.01 slack             PASS
+=====================================================================
+I READ BOTH TESTS. handlers_http_test.go:2307-2312 and :2374-2379 each read
+  want := formatMoneyExpected(<derived figure>)
+  got  := extractDollarStringAfter(t, body, "Per Month")
+  if got != want { t.Errorf(...) }
+No math.Abs, no tolerance constant anywhere in either test.
+extractDollarStringAfter (:2093) returns the RAW matched "$X,XXX.XX" string via
+the pre-existing verdictDollarRe (`\$([\d,]+\.\d{2})`, verdict_fractional_cent_test.go:49).
+formatMoneyExpected (:2112-2135) is line-for-line the same algorithm as the real
+templates.formatMoney (internal/templates/render.go:425-453): same
+fmt.Sprintf("%.2f"), same `(len(intPart)-i)%3 == 0` grouping loop, same "-$"
+negative form. I diffed the two bodies by eye statement-by-statement; they agree.
+MUTATION M5 — added +0.006 to classifiedCardPerMonth for both kinds. This is a
+sub-cent perturbation the OLD `math.Abs(got-want) > 0.01` form would have
+ACCEPTED, but it moves the rendered string from $1,276.41 to $1,276.42:
+  OUT: --- FAIL: TestHandleKPIDetail_LivingPerMonthMatchesCardFigure
+       --- FAIL: TestHandleKPIDetail_HealthcarePerMonthMatchesCoverageClippedCard
+That is direct proof the tightening is real and load-bearing.
+(Control M6: *1.0000001, below rendering resolution -> still passes. Expected:
+the criterion is about the rendered string, not the float.)
+
+=====================================================================
+K7 — a11y                                        NOT MY LANE
+=====================================================================
+checker-a11y's criterion. Two facts my renders establish that bear on it: the
+no-coverage state is conveyed by REAL TEXT ("no coverage in this range"), not by
+colour alone; and the dash cells use neutral `text-gray-500 dark:text-gray-400`
+with both light and dark variants, so no new colour-only signal is introduced.
+
+=====================================================================
+SCOPE
+=====================================================================
+CMD: git diff --name-status HEAD --   (working tree; worker output is UNCOMMITTED,
+     so `git diff master...HEAD` would be empty and prove nothing)
+OUT: M .swarm/ledger.tsv
+     M internal/handlers/dashboard/handlers.go
+     M internal/handlers/dashboard/handlers_http_test.go
+     M web/templates/components/kpi-detail.html
+     M web/templates/components/kpis.html
+     (+177/-25, +535/-0, +12/-4, +2/-2 respectively)
+CMD: git status --porcelain -uall | grep -v '^?? .swarm/'
+OUT: only the five modified files above plus `?? budget2.old-1345`, which the
+     spec's Territories section declares pre-existing and to be left alone.
+All five are inside the spec's permitted file list (KD-RUN-SPEC.md lines 20-26).
+kpi-month-detail.html was NOT touched, as the spec's conditional allowed.
+CRITICAL GLOBS: none of storage/**, dataloader/**, retirement/engine/**,
+transfers/**, accounts/accounts.go, mcpsvc/confirm/** appears in the diff.
+CAVEAT I CANNOT CLOSE BY COMMAND: attempt-1 output was never committed or
+snapshotted, so I cannot mechanically isolate the attempt-2-only diff from the
+cumulative one. Corroboration instead: KD1.2.files lists exactly handlers.go,
+handlers_http_test.go, kpi-detail.html; kpis.html's entire diff is the two
+onclick substitutions described verbatim in KD1.1.checker-tests, and KD1.1.files
+listed it. That is consistent with the manifest's claim that attempt 2 touched
+only the three named files, but it is corroboration, not proof.
+
+=====================================================================
+OBSERVATIONS (backlog, NOT failures)
+=====================================================================
+O1. formatMoneyExpected is a hand-maintained MIRROR of the unexported
+    templates.formatMoney — the "dual formatters" class. They agree today (I
+    compared them statement by statement); nothing mechanically couples them, so
+    a future change to formatMoney would silently desynchronise the expectation
+    rather than fail. A `templates.FormatMoney` export, or an
+    internal/templates-side test, would close it.
+O2. handleKPIExport still has no `default` arm: an unknown kpiType writes a
+    header-less, row-less CSV. Pre-existing on master, outside K8's wording.
+O3. kpis.html:141 (Budget card) still opens the generic expenses modal — the
+    spec's own declared backlog item, correctly not touched.

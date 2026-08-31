@@ -98,3 +98,4 @@ SY4	2	tests,second	accepted	4	worker-coder	gate-ok-attempt-4-dual-lane-pass-char
 SY3	1	tests	accepted	1	worker-coder	gate-ok-attempt-1-nil-merge-mutation-killed
 DP1	3	tests,second	accepted	1	worker-coder	gate-ok-tier3-attempt-1-oracle-pass-dual-lane
 DP2	1	tests	accepted	1	worker-local	gate-ok-attempt-1-mutation-verified
+KD1	3	tests,a11y,second	accepted	4	worker-coder	gate-ok-tier3-attempt-4-oracle-pass-dual-lane-user-ruling-KD-2026-08-31a

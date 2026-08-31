@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
+	"budget2/internal/services/metrics"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
@@ -2075,5 +2077,672 @@ func TestVerdictBarNetSavings_IsDrillable(t *testing.T) {
 	}
 	if want := `aria-label="Show monthly net savings detail"`; !strings.Contains(body, want) {
 		t.Errorf("body missing %s", want)
+	}
+}
+
+// ---------- KD1: living/healthcare KPI detail kinds ----------
+//
+// The Monthly Living Expenses and Monthly Healthcare cards used to open the
+// generic Total Expenses modal (both wired onclick="openKPIDetail('expenses')").
+// These tests cover the acceptance criteria in .swarm/KD-RUN-SPEC.md (K1-K9)
+// for the new "living"/"healthcare" kinds this task adds.
+
+// extractDollarStringAfter finds label in html, then returns the raw
+// "$X,XXX.XX" dollar STRING (not a parsed float, unlike extractDollarAfter)
+// that follows it -- for K9's strict rendered-string equality assertions.
+func extractDollarStringAfter(t *testing.T, html, label string) string {
+	t.Helper()
+	idx := strings.Index(html, label)
+	if idx < 0 {
+		t.Fatalf("label %q not found in rendered html: %s", label, html)
+	}
+	match := verdictDollarRe.FindStringSubmatch(html[idx:])
+	if match == nil {
+		t.Fatalf("no dollar figure found after label %q in: %s", label, html[idx:idx+200])
+	}
+	return match[0]
+}
+
+// formatMoneyExpected mirrors templates.formatMoney's algorithm bit for bit
+// (that function is unexported, so it can't be called directly from this
+// package) purely so K9's Per-Month assertions can build the exact expected
+// rendered string -- same fmt.Sprintf("%.2f", ...) rounding, same
+// comma-grouping loop -- rather than comparing a parsed float within a
+// tolerance.
+func formatMoneyExpected(v float64) string {
+	negative := v < 0
+	if negative {
+		v = -v
+	}
+	formatted := fmt.Sprintf("%.2f", v)
+	parts := strings.Split(formatted, ".")
+	intPart := parts[0]
+	var result strings.Builder
+	for i, c := range intPart {
+		if i > 0 && (len(intPart)-i)%3 == 0 {
+			result.WriteRune(',')
+		}
+		result.WriteRune(c)
+	}
+	if len(parts) > 1 {
+		result.WriteRune('.')
+		result.WriteString(parts[1])
+	}
+	if negative {
+		return "-$" + result.String()
+	}
+	return "$" + result.String()
+}
+
+// K1: kpiTitles gains the two new entries, and both cards open their own
+// kind's modal instead of sharing 'expenses'.
+func TestHandleKPIDetail_Living_Title(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpi/living?start=2025-01-01&end=2025-03-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&result)
+	if result["Type"] != "living" {
+		t.Errorf("Type = %v, want living", result["Type"])
+	}
+	if result["Title"] != "Monthly Living Expenses" {
+		t.Errorf("Title = %v, want Monthly Living Expenses", result["Title"])
+	}
+}
+
+func TestHandleKPIDetail_Healthcare_Title(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpi/healthcare?start=2025-01-01&end=2025-03-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var result map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&result)
+	if result["Type"] != "healthcare" {
+		t.Errorf("Type = %v, want healthcare", result["Type"])
+	}
+	if result["Title"] != "Monthly Healthcare" {
+		t.Errorf("Title = %v, want Monthly Healthcare", result["Title"])
+	}
+}
+
+// K1: the rendered modal heading is "<Title> Details".
+func TestHandleKPIDetail_LivingHealthcare_RenderedTitles(t *testing.T) {
+	router, cleanup := setupTestEnvWithRenderer(t, defaultRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpi/living?start=2025-01-01&end=2025-03-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "Monthly Living Expenses Details") {
+		t.Errorf("body missing 'Monthly Living Expenses Details': %s", trunc(body, 500))
+	}
+
+	rec2 := doGet(t, router, "/dashboard/kpi/healthcare?start=2025-01-01&end=2025-03-31")
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec2.Code)
+	}
+	if body := rec2.Body.String(); !strings.Contains(body, "Monthly Healthcare Details") {
+		t.Errorf("body missing 'Monthly Healthcare Details': %s", trunc(body, 500))
+	}
+}
+
+// K1: both dashboard cards open their OWN kind's modal, not 'expenses'.
+func TestDashboardKPIs_LivingHealthcareCardsWiredToOwnKinds(t *testing.T) {
+	router, cleanup := setupTestEnvWithRenderer(t, defaultRows())
+	defer cleanup()
+
+	body := doGet(t, router, "/dashboard?start=2025-01-01&end=2025-03-31").Body.String()
+	if !strings.Contains(body, "openKPIDetail('living')") {
+		t.Error("Monthly Living Expenses card is not wired to the living KPI modal")
+	}
+	if !strings.Contains(body, "openKPIDetail('healthcare')") {
+		t.Error("Monthly Healthcare card is not wired to the healthcare KPI modal")
+	}
+}
+
+// livingHealthcareFixtureRows is a one-month (Jan 2025) fixture exercising
+// every exclusion K2 requires: a Health Insurance premium (tracked by the
+// healthcare kind, never living), a flagged plan-sync exclusion (SY4; a
+// "Lucid Loan" major expense modeled separately by the plan), an ordinary
+// living expense (Rent), and a refund -- a positive-amount outflow, per the
+// "never income" phrase convention refundRows (above) already uses via
+// "autopay" -- that must net against Rent rather than inflate the total.
+func livingHealthcareFixtureRows() [][]string {
+	return [][]string{
+		{"2025-01-15", "Salary", "5000", "Payroll"},
+		{"2025-01-10", "Health Insurance Premium", "-300", "Health Insurance"},
+		{"2025-01-20", "Lucid Loan Payment", "-600", "Loan"},
+		{"2025-01-05", "Rent", "-1500", "Housing"},
+		{"2025-01-25", "Autopay Reversal", "200", "Bills"},
+	}
+}
+
+// setupLivingHealthcareEnv writes livingHealthcareFixtureRows() plus a
+// flagged "Lucid Loan" major expense (keyword-matched, mirrors
+// setupPlanExclusionEnv in plan_exclusions_wiring_test.go) to a temp data
+// directory and initializes the dashboard package against it.
+func setupLivingHealthcareEnv(t *testing.T, withRenderer bool) chi.Router {
+	t.Helper()
+
+	_, dl, store, cleanup := writeTempCSV(t, livingHealthcareFixtureRows())
+	t.Cleanup(cleanup)
+	if err := dl.SaveMajorExpenses([]models.MajorExpense{
+		{ID: "lucid", Name: "Lucid Loan", Keywords: []string{"Lucid"}, ExcludeFromPlanSync: true},
+	}); err != nil {
+		t.Fatalf("SaveMajorExpenses: %v", err)
+	}
+
+	var rend *templates.Renderer
+	if withRenderer {
+		templateDir := filepath.Join(testutil.ProjectRoot(), "web", "templates")
+		var err error
+		rend, err = templates.New(templateDir, false)
+		if err != nil {
+			t.Fatalf("templates.New: %v", err)
+		}
+	}
+	Initialize(dl, rend, nil, store)
+
+	r := chi.NewRouter()
+	RegisterRoutes(r)
+	return r
+}
+
+// K2: living month rows exclude Health Insurance and the flagged Lucid
+// payment, and net the refund against Rent -- Rent(1500) - refund(200) =
+// 1300 -- summing (over this single-month range) to Metrics.LivingExpensesTotal.
+func TestHandleKPIDetail_LivingClassification(t *testing.T) {
+	router := setupLivingHealthcareEnv(t, false)
+
+	result := decodeMonthDetail(t, router, "/dashboard/kpi/living?start=2025-01-01&end=2025-01-31")
+
+	monthly, _ := result["Monthly"].([]interface{})
+	if len(monthly) != 1 {
+		t.Fatalf("Monthly = %v, want 1 month", monthly)
+	}
+	row, ok := monthly[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Monthly[0] is %T, want object", monthly[0])
+	}
+	if row["Month"] != "2025-01" {
+		t.Errorf("Month = %v, want 2025-01", row["Month"])
+	}
+	value, _ := row["Value"].(float64)
+	if value != 1300 {
+		t.Errorf("living row Value = %v, want 1300 (Rent 1500 net refund 200; Health Insurance and Lucid excluded)", value)
+	}
+
+	total, _ := result["Total"].(float64)
+	if total != 1300 {
+		t.Errorf("Total = %v, want 1300 (must equal Metrics.LivingExpensesTotal for this single-month range)", total)
+	}
+}
+
+// K2: the modal's "Per Month" figure equals Metrics.ActualMonthly -- the
+// SAME fractional-divisor rate the Monthly Living Expenses card itself
+// shows -- asserted on the rendered string, not the underlying float.
+func TestHandleKPIDetail_LivingPerMonthMatchesCardFigure(t *testing.T) {
+	router := setupLivingHealthcareEnv(t, true)
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+	wantActualMonthly := 1300.0 / metrics.MonthsBetween(start, end)
+
+	rec := doGet(t, router, "/dashboard/kpi/living?start=2025-01-01&end=2025-01-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	// K9: strict formatMoney rendered-string equality, not a ±0.01-tolerant
+	// float comparison.
+	want := formatMoneyExpected(wantActualMonthly)
+	got := extractDollarStringAfter(t, body, "Per Month")
+	if got != want {
+		t.Errorf("rendered Per Month = %s, want %s (Metrics.ActualMonthly, the same fractional-divisor figure the card shows): %s",
+			got, want, trunc(body, 2000))
+	}
+}
+
+// healthcareCoverageFixtureRows spans two months with coverage starting
+// mid-range (Jan 15): one non-HI outflow (Rent) that must never appear in
+// the healthcare kind's classified figures, and two Health Insurance
+// premiums.
+func healthcareCoverageFixtureRows() [][]string {
+	return [][]string{
+		{"2025-01-05", "Rent", "-1500", "Housing"},
+		{"2025-01-15", "Health Insurance Premium", "-300", "Health Insurance"},
+		{"2025-02-15", "Health Insurance Premium", "-300", "Health Insurance"},
+	}
+}
+
+// K3: healthcare month rows are Health-Insurance-only (Rent never appears).
+func TestHandleKPIDetail_HealthcareClassificationExcludesLiving(t *testing.T) {
+	router, cleanup := setupTestEnv(t, healthcareCoverageFixtureRows())
+	defer cleanup()
+
+	result := decodeMonthDetail(t, router, "/dashboard/kpi/healthcare?start=2025-01-01&end=2025-02-28")
+
+	monthly, _ := result["Monthly"].([]interface{})
+	values := map[string]float64{}
+	for _, m := range monthly {
+		row, ok := m.(map[string]interface{})
+		if !ok {
+			t.Fatalf("Monthly entry is %T, want object", m)
+		}
+		month, _ := row["Month"].(string)
+		v, _ := row["Value"].(float64)
+		values[month] = v
+	}
+	if values["2025-01"] != 300 {
+		t.Errorf("Jan healthcare Value = %v, want 300 (Health Insurance only, Rent excluded)", values["2025-01"])
+	}
+	if values["2025-02"] != 300 {
+		t.Errorf("Feb healthcare Value = %v, want 300", values["2025-02"])
+	}
+}
+
+// K3: with coverageStart inside the range, the "Per Month" figure equals
+// Metrics.HealthcareActual -- the coverage-clipped divisor, not raw
+// MonthsBetween(rangeStart, rangeEnd) -- asserted on the rendered string.
+func TestHandleKPIDetail_HealthcarePerMonthMatchesCoverageClippedCard(t *testing.T) {
+	router, cleanup := setupTestEnvWithRenderer(t, healthcareCoverageFixtureRows())
+	defer cleanup()
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+	coverageStart := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	coverageMonths := metrics.ClippedHealthcareMonths(start, end, coverageStart, true)
+	wantHealthcareActual := 600.0 / coverageMonths
+
+	rec := doGet(t, router, "/dashboard/kpi/healthcare?start=2025-01-01&end=2025-02-28")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	// K9: strict formatMoney rendered-string equality, not a ±0.01-tolerant
+	// float comparison.
+	want := formatMoneyExpected(wantHealthcareActual)
+	got := extractDollarStringAfter(t, body, "Per Month")
+	if got != want {
+		t.Errorf("rendered Per Month = %s, want %s (Metrics.HealthcareActual, coverage-clipped divisor): %s",
+			got, want, trunc(body, 2000))
+	}
+}
+
+// K4: the living month drill-down lists ONLY living-classified transactions
+// (no Health Insurance row, no flagged Lucid row) and its total equals the
+// parent row's figure exactly (1300, per TestHandleKPIDetail_LivingClassification).
+func TestHandleKPIMonthDetail_LivingExcludesHealthAndPlanExcluded(t *testing.T) {
+	router := setupLivingHealthcareEnv(t, false)
+
+	result := decodeMonthDetail(t, router, "/dashboard/kpi/living/month/2025-01?start=2025-01-01&end=2025-01-31")
+
+	if result["Type"] != "living" {
+		t.Errorf("Type = %v, want living", result["Type"])
+	}
+	if result["TotalLabel"] != "Living Spent" {
+		t.Errorf("TotalLabel = %v, want 'Living Spent'", result["TotalLabel"])
+	}
+	descs := monthDetailDescriptions(t, result)
+	for _, d := range descs {
+		if d == "Health Insurance Premium" || d == "Lucid Loan Payment" {
+			t.Errorf("living month drill-down must not include %q; got %v", d, descs)
+		}
+	}
+	if count, _ := result["Count"].(float64); count != 2 {
+		t.Errorf("Count = %v, want 2 (Rent + refund only); got descriptions %v", count, descs)
+	}
+	total, _ := result["Total"].(float64)
+	if total != 1300 {
+		t.Errorf("Total = %v, want 1300 (must equal the parent living row's figure exactly)", total)
+	}
+}
+
+// K5: the four pre-existing kinds must render byte-identical JSON on a
+// fixed fixture -- the living/healthcare additions must not perturb any
+// field a pre-existing kind produces. The expected payload is built with
+// the SAME arithmetic handleKPIDetail performs (not hardcoded float
+// literals), so a float64 bit-pattern mismatch can't produce a false
+// pass/fail here; it only guards the JSON SHAPE and the values actually
+// wired through.
+func TestHandleKPIDetail_ExpensesResponseByteIdentical(t *testing.T) {
+	router, cleanup := setupTestEnv(t, defaultRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpi/expenses?start=2025-01-01&end=2025-03-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	type monthlyStat struct {
+		Month    string
+		Value    float64
+		Income   float64
+		Expenses float64
+		Savings  float64
+		Rate     float64
+	}
+	makeRow := func(month string, inc, exp float64) monthlyStat {
+		savings := inc - exp
+		rate := 0.0
+		if inc > 0 {
+			rate = (savings / inc) * 100
+		}
+		return monthlyStat{Month: month, Value: exp, Income: inc, Expenses: exp, Savings: savings, Rate: rate}
+	}
+	monthly := []monthlyStat{
+		makeRow("2025-01", 5000, 1800),
+		makeRow("2025-02", 5000, 1900),
+		makeRow("2025-03", 5500, 1850),
+	}
+	total := 1800.0 + 1900.0 + 1850.0
+	avg := total / 3
+	want := map[string]interface{}{
+		"Type":                        "expenses",
+		"Title":                       "Total Expenses",
+		"Monthly":                     monthly,
+		"Total":                       total,
+		"Average":                     avg,
+		"Min":                         1800.0,
+		"Max":                         1900.0,
+		"MinMonth":                    "2025-01",
+		"MaxMonth":                    "2025-02",
+		"NumMonths":                   3,
+		"IsRate":                      false,
+		"IsSavings":                   false,
+		"HealthcareNoCoverageInRange": false,
+	}
+	wantBytes, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("marshal want: %v", err)
+	}
+
+	if got, want := rec.Body.String(), string(wantBytes)+"\n"; got != want {
+		t.Errorf("expenses response changed for an existing kind (K5):\ngot:  %s\nwant: %s", got, want)
+	}
+}
+
+// ---------- KD1 attempt 2: K3b (ruling KD-2026-08-30c) ----------
+
+// healthcareNoCoverageFixtureRows reproduces the checker's exact fixture: a
+// single Health Insurance category row that is a POSITIVE-amount refund, on
+// a range with no coverage overlap at all. metrics.HealthcareCoverageStart
+// only counts NEGATIVE-amount HI rows (a refund/credit never starts
+// coverage), so hasCoverage stays false and the coverage-clipped divisor
+// (metrics.ClippedHealthcareMonths) is zero for every range -- while the
+// row itself is still a real, non-zero classified $150 healthcare charge.
+func healthcareNoCoverageFixtureRows() [][]string {
+	return [][]string{
+		{"2025-01-15", "Health Insurance Overpayment Return", "150", "Health Insurance"},
+	}
+}
+
+// K3b: when the healthcare coverage-clipped divisor is zero for the
+// selected range, the modal must NOT render "Per Month: $0.00" beside a
+// non-zero classified row (Total $150.00) -- that's the "two kinds of
+// totals" confusion ruling KD-2026-08-30a forbids. Instead the Per Month
+// tile shows the "&mdash;" placeholder plus "no coverage in this range"
+// text, and the vs-Avg column shows "&mdash;" for every row (no comparison
+// basis exists). The range Total itself is unaffected -- only the
+// undefined per-month RATE is suppressed.
+func TestHandleKPIDetail_Healthcare_NoCoverageInRange_ShowsDashNotZero(t *testing.T) {
+	router, cleanup := setupTestEnvWithRenderer(t, healthcareNoCoverageFixtureRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpi/healthcare?start=2025-01-01&end=2025-01-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	if got := extractDollarAfter(t, body, "Total"); math.Abs(got-150) > 0.01 {
+		t.Errorf("Total = %.2f, want 150.00 (the classified row total, unaffected by the zero divisor): %s", got, trunc(body, 1500))
+	}
+
+	if !strings.Contains(body, "no coverage in this range") {
+		t.Errorf("body missing 'no coverage in this range' text: %s", trunc(body, 1500))
+	}
+
+	perMonth := extractAfterLabel(t, body, "Per Month")
+	if !strings.Contains(perMonth, "mdash") {
+		t.Errorf("Per Month tile = %q, want the em-dash placeholder (not a dollar figure) when the coverage divisor is zero: %s", perMonth, trunc(body, 1500))
+	}
+	if strings.Contains(perMonth, "0.00") {
+		t.Errorf("Per Month tile renders %q; must never show $0.00 beside a non-zero classified row (ruling KD-2026-08-30c)", perMonth)
+	}
+
+	// Only one classified month (Jan) in this fixture, so its vs-Avg cell
+	// must be the dash, and no percentage cell should appear anywhere in
+	// the table (there is no comparison basis to compute one from).
+	if !strings.Contains(body, `text-gray-500 dark:text-gray-300">&mdash;</td>`) {
+		t.Errorf("vs-Avg column missing the dash placeholder for the no-coverage row: %s", trunc(body, 1500))
+	}
+	if strings.Contains(body, "%</td>") {
+		t.Errorf("vs-Avg column rendered a percentage; must render &mdash; when there's no comparison basis: %s", trunc(body, 1500))
+	}
+}
+
+// K8 (checker-tests F2): the modal's Export CSV button must produce a
+// non-empty CSV for the new kinds, with month rows matching the SAME
+// classified figures the modal table renders -- both come from
+// classifiedMonthlyTotals, the shared helper handleKPIDetail and
+// handleKPIExport now both call. Attempt 1 shipped a zero-byte download
+// (handleKPIExport's switch had no living/healthcare case).
+func TestHandleKPIExport_Living(t *testing.T) {
+	router := setupLivingHealthcareEnv(t, false)
+
+	rec := doGet(t, router, "/dashboard/kpi/living/export?start=2025-01-01&end=2025-01-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.Bytes()
+	if len(body) == 0 {
+		t.Fatal("living export body is empty (K8 regression)")
+	}
+
+	reader := csv.NewReader(strings.NewReader(string(body)))
+	records, err := reader.ReadAll()
+	if err != nil {
+		t.Fatalf("failed to parse CSV: %v", err)
+	}
+	if len(records) < 2 {
+		t.Fatalf("expected header + at least 1 data row, got %d rows: %v", len(records), records)
+	}
+	if records[0][0] != "Month" || records[0][1] != "Living Expenses" {
+		t.Errorf("header = %v, want [Month Living Expenses]", records[0])
+	}
+
+	var janValue string
+	for _, row := range records[1:] {
+		if row[0] == "2025-01" {
+			janValue = row[1]
+		}
+	}
+	// Matches the modal's Jan row (see TestHandleKPIDetail_LivingClassification):
+	// Rent 1500 net the 200 refund, Health Insurance and Lucid excluded.
+	if janValue != "1300.00" {
+		t.Errorf("Jan living export row = %q, want 1300.00 (must match the modal's classified month figure)", janValue)
+	}
+}
+
+func TestHandleKPIExport_Healthcare(t *testing.T) {
+	router, cleanup := setupTestEnv(t, healthcareCoverageFixtureRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpi/healthcare/export?start=2025-01-01&end=2025-02-28")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.Bytes()
+	if len(body) == 0 {
+		t.Fatal("healthcare export body is empty (K8 regression)")
+	}
+
+	reader := csv.NewReader(strings.NewReader(string(body)))
+	records, err := reader.ReadAll()
+	if err != nil {
+		t.Fatalf("failed to parse CSV: %v", err)
+	}
+	if len(records) < 3 {
+		t.Fatalf("expected header + 2 data rows, got %d rows: %v", len(records), records)
+	}
+	if records[0][0] != "Month" || records[0][1] != "Healthcare" {
+		t.Errorf("header = %v, want [Month Healthcare]", records[0])
+	}
+
+	values := map[string]string{}
+	for _, row := range records[1:] {
+		values[row[0]] = row[1]
+	}
+	// Matches the modal's rows (see
+	// TestHandleKPIDetail_HealthcareClassificationExcludesLiving): $300 HI
+	// premium in each of Jan and Feb, Rent excluded entirely.
+	if values["2025-01"] != "300.00" {
+		t.Errorf("Jan healthcare export row = %q, want 300.00", values["2025-01"])
+	}
+	if values["2025-02"] != "300.00" {
+		t.Errorf("Feb healthcare export row = %q, want 300.00", values["2025-02"])
+	}
+}
+
+// ---------- KD1 attempt 3: ruling KD-2026-08-30d (signed rows, no per-month Abs) ----------
+
+// KD-2026-08-30d: a month row's value is the NEGATED SIGNED sum of the
+// classified rows in that month (positive = net spend, negative = net
+// refund), NOT Abs -- and the Total tile is the SUM OF THE DISPLAYED month
+// values, so rows always reconcile with the tile exactly (one rounding
+// path). Jan nets a refund ($500 in, nothing else) and Feb nets spend
+// (Rent $1,000), so the two rows discriminate signed arithmetic from the
+// old per-month-Abs shape (which would have rendered both positive).
+// Assertions are on the RENDERED STRINGS (ruling 2026-08-29b: "the
+// displayed figures must sum" is a claim about what's on screen, not the
+// underlying floats), and this range nets spend overall ($500), so Total
+// also equals formatMoney(Metrics.LivingExpensesTotal) exactly (ruling
+// KD-2026-08-30d: the only documented divergence is a whole-range net
+// refund, not the case here).
+func TestHandleKPIDetail_LivingSignedRowsReconcileWithRenderedTotal(t *testing.T) {
+	rows := [][]string{
+		{"2025-01-25", "Autopay Reversal", "500", "Shopping"},
+		{"2025-02-05", "Rent", "-1000", "Housing"},
+	}
+	router, cleanup := setupTestEnvWithRenderer(t, rows)
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpi/living?start=2025-01-01&end=2025-02-28")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	wantJan := formatMoneyExpected(-500) // net refund: negated signed sum of +500
+	wantFeb := formatMoneyExpected(1000) // net spend: negated signed sum of -1000
+	if !strings.Contains(body, wantJan) {
+		t.Errorf("body missing Jan row %s (negated signed sum, no per-month Abs): %s", wantJan, trunc(body, 3000))
+	}
+	if !strings.Contains(body, wantFeb) {
+		t.Errorf("body missing Feb row %s: %s", wantFeb, trunc(body, 3000))
+	}
+
+	// Rendered rows must sum to the rendered Total (rendered-string
+	// arithmetic, ruling 2026-08-29b) -- not a claim about the floats.
+	wantTotal := formatMoneyExpected(500) // -500 + 1000
+	gotTotal := extractDollarStringAfter(t, body, "Total")
+	if gotTotal != wantTotal {
+		t.Errorf("rendered Total = %s, want %s (must equal the sum of the rendered rows %s + %s)", gotTotal, wantTotal, wantJan, wantFeb)
+	}
+
+	// Net-spend-overall range: Total also equals
+	// formatMoney(Metrics.LivingExpensesTotal) = formatMoney(Abs(500-1000)).
+	if wantLivingExpensesTotal := formatMoneyExpected(500); gotTotal != wantLivingExpensesTotal {
+		t.Errorf("rendered Total = %s, want %s (Metrics.LivingExpensesTotal for a net-spend range)", gotTotal, wantLivingExpensesTotal)
+	}
+}
+
+// KD-2026-08-30d + checker-second's coverage-gap observation: the
+// healthcare month drill-down must also use the negated signed sum (no
+// per-month Abs) -- a refund-dominant healthcare month must drill down to
+// a NEGATIVE total, matching what the parent modal row would show for the
+// same month (K4's discipline, extended to the sign contract).
+func TestHandleKPIMonthDetail_HealthcareSignedNotAbs(t *testing.T) {
+	rows := [][]string{
+		{"2025-01-10", "Health Insurance Premium", "-300", "Health Insurance"},
+		{"2025-02-05", "Health Insurance Autopay Reversal", "100", "Health Insurance"},
+	}
+	router, cleanup := setupTestEnv(t, rows)
+	defer cleanup()
+
+	result := decodeMonthDetail(t, router, "/dashboard/kpi/healthcare/month/2025-02?start=2025-01-01&end=2025-02-28")
+	if result["Type"] != "healthcare" {
+		t.Errorf("Type = %v, want healthcare", result["Type"])
+	}
+	if result["TotalLabel"] != "Healthcare Spent" {
+		t.Errorf("TotalLabel = %v, want 'Healthcare Spent'", result["TotalLabel"])
+	}
+	total, _ := result["Total"].(float64)
+	if total != -100 {
+		t.Errorf("Feb healthcare month drill Total = %v, want -100 (net refund: negated signed sum, no per-month Abs)", total)
+	}
+}
+
+// ---------- KD1 attempt 4: whitespace tripwire (ruling KD-2026-08-31a) ----------
+
+// TestHandleKPIDetail_Expenses_WhitespaceOnlyLineCountMatchesMasterBaseline
+// is a tripwire, not a behavior test: it pins the count of whitespace-only
+// lines in the rendered expenses modal to MASTER'S OWN baseline for this
+// exact fixture/range, per the oracle-calibration rule (pin relative to
+// master's native rendering, not an assumed "should be zero" -- master's
+// own template already has blank indentation-only lines from its
+// {{$avg:=...}}-style var-decl actions, and that is fine).
+//
+// masterBaseline=19 was calibrated by rendering master's OWN
+// kpi-detail.html (git show master:web/templates/components/kpi-detail.html,
+// spliced into an otherwise-identical scratch copy of web/templates) through
+// this same router and fixture, counting with the EXACT counting method
+// this test uses (strings.Split(body, "\n"), including the trailing empty
+// element split produces after the response's final "\n" -- that trailing
+// element is why this number is one more than a shell `grep -c
+// '^[[:space:]]*$'` count of the same file, which does not count a phantom
+// line after a trailing newline; grep's number for the same render is 18).
+// Both counting conventions were confirmed to agree between master and this
+// tree's current template (19==19 via this method, 18==18 via grep) before
+// this constant was pinned -- see .swarm/manifests/KD1.4.manifest.md for
+// every command run.
+//
+// This guards exactly the defect class that survived attempt 3: a template
+// action left untrimmed adds or removes a whitespace-only text node that no
+// other test in this file would ever notice (the delta is DOM-inert --
+// discarded by any HTML parser, and every field-value assertion in every
+// other test is unaffected), yet is a real, checker-provable mismatch
+// against master's own rendering.
+func TestHandleKPIDetail_Expenses_WhitespaceOnlyLineCountMatchesMasterBaseline(t *testing.T) {
+	router, cleanup := setupTestEnvWithRenderer(t, defaultRows())
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/kpi/expenses?start=2025-01-01&end=2025-03-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+
+	const masterBaseline = 19
+	got := 0
+	for _, line := range strings.Split(body, "\n") {
+		if strings.TrimSpace(line) == "" {
+			got++
+		}
+	}
+	if got != masterBaseline {
+		t.Errorf("whitespace-only line count = %d, want %d (master's own baseline for this fixture/range) -- a template action is leaking or suppressing a blank text node: %s",
+			got, masterBaseline, trunc(body, 4000))
 	}
 }

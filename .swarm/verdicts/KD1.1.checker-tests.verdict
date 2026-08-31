@@ -1,0 +1,313 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: KD1
+ATTEMPT: 1
+---
+METHOD: All work in `cp -a` copies under
+/tmp/claude-1000/.../scratchpad/{kd1,master,m1..m6}; the real tree was only
+read (git diff / grep) and written once, for this verdict file. No server or
+binary was ever run — go build/test/vet only. Scratch copies deleted after.
+NOTE ON ATTEMPT NUMBER: .swarm/ledger.tsv row KD1 already reads
+`2 tests,a11y,second dispatched 2 worker-coder
+attempt1-second-FAIL-conceded-KD-2026-08-30c`, and
+.swarm/verdicts/KD1.1.checker-second.verdict is a FAIL the lead conceded.
+The working tree still matches .swarm/manifests/KD1.1.manifest.md (no KD1.2
+manifest exists), so this verdict covers the attempt-1 artifact as it stands.
+
+=====================================================================
+K1 — /dashboard/kpi/living and /healthcare render the new titles; both
+     cards' onclick updated in kpis.html.                        PASS
+=====================================================================
+CMD: (kd1) go test -count=1 -v -run
+  'TestHandleKPIDetail_Living_Title|TestHandleKPIDetail_Healthcare_Title|TestHandleKPIDetail_LivingHealthcare_RenderedTitles|TestDashboardKPIs_LivingHealthcareCardsWiredToOwnKinds'
+  ./internal/handlers/dashboard/
+OUT: --- PASS: TestHandleKPIDetail_Living_Title (0.00s)
+     --- PASS: TestHandleKPIDetail_Healthcare_Title (0.00s)
+     --- PASS: TestHandleKPIDetail_LivingHealthcare_RenderedTitles (0.01s)
+     --- PASS: TestDashboardKPIs_LivingHealthcareCardsWiredToOwnKinds (0.02s)
+The rendered-title test asserts on the RENDERED body, not the JSON field:
+strings.Contains(body, "Monthly Living Expenses Details") /
+"Monthly Healthcare Details" (kpi-detail.html:7 is `<h3>{{.Title}} Details</h3>`).
+
+INDEPENDENT RENDER PROBE (throwaway zz_probe_test.go in the scratch copy,
+deleted): GET /dashboard/kpi/{living,healthcare} through the real router with
+the real templates.New renderer emitted `>Living Expenses</th>` and
+`>Healthcare</th>` — Design point 7's column-header labels, which no numbered
+criterion asserts but which are correct.
+
+CMD: grep -n "openKPIDetail(" web/templates/components/kpis.html
+OUT: 7:...('income')  32:...('expenses')  57:...('living')  101:...('healthcare')
+     141:...('expenses')   [line 141 = the pre-existing "Budget" card, see SCOPE]
+Lines 57 and 101 are the Monthly Living Expenses and Monthly Healthcare cards.
+
+MUTATION (m5): reverted both onclicks in kpis.html to 'expenses'.
+  go test -count=1 ./internal/handlers/dashboard/ ->
+  --- FAIL: TestDashboardKPIs_LivingHealthcareCardsWiredToOwnKinds
+The K1 card-wiring test is load-bearing.
+
+=====================================================================
+K2 — living classification fixture + rendered Per Month == ActualMonthly
+                                                                  PASS
+=====================================================================
+FIXTURE (handlers_http_test.go, livingHealthcareFixtureRows) — read and
+confirmed to contain all four required rows:
+  Salary +5000 (income) | "Health Insurance Premium" -300 cat "Health Insurance"
+  | "Lucid Loan Payment" -600 (flagged ExcludeFromPlanSync via SaveMajorExpenses
+  {ID lucid, Keywords ["Lucid"], ExcludeFromPlanSync:true}) | "Rent" -1500
+  | "Autopay Reversal" +200 (positive-amount OUTFLOW = the refund).
+
+CMD: go test -count=1 -v -run
+  'TestHandleKPIDetail_LivingClassification|TestHandleKPIDetail_LivingPerMonthMatchesCardFigure'
+  ./internal/handlers/dashboard/
+OUT: --- PASS: TestHandleKPIDetail_LivingClassification (0.01s)
+     --- PASS: TestHandleKPIDetail_LivingPerMonthMatchesCardFigure (0.01s)
+The classification test asserts Monthly[0].Value == 1300 AND Total == 1300
+(Rent 1500 net refund 200; HI and Lucid excluded).
+
+INDEPENDENT CONFIRMATION that 1300 really is Metrics.LivingExpensesTotal (the
+test hardcodes 1300, so I re-derived it from metrics itself). Throwaway
+zz_metrics_probe_test.go called gatherDashboardCalcInputs + metrics.Calculate
+on the SAME fixture:
+  LivingExpensesTotal=1300.000000  ActualMonthly=1276.411290
+  MonthsBetween(2025-01-01,2025-01-31)=1.018480  coverageStart=2025-01-10
+So the modal's Total tile == Metrics.LivingExpensesTotal exactly, and the
+row values sum to it.
+
+RENDERED-STRING PROOF (zz_probe_test.go dump of the real rendered modal):
+  >Total</p> ... >$1,300.00</p>
+  >Per Month</p> ... >$1,276.41</p>     <= formatMoney(ActualMonthly=1276.411290)
+  >Low (2025-01)</p> ... >$1,300.00</p> ; >High (2025-01)</p> ... >$1,300.00</p>
+  row cell: text-red-600 dark:text-red-400">$1,300.00</td>
+"$1,276.41" is the rendered string, and formatMoney (internal/templates/
+render.go:425, "%.2f" + thousands separators + "$") of 1276.411290 is exactly
+"$1,276.41". The four tiles are Total / Per Month / Low / High — there is NO
+second, separately-labelled "Average" figure anywhere in the modal for these
+kinds (KD-2026-08-30a satisfied).
+
+MUTATION 1 (m1) — the classification call, as instructed: swapped
+  `livingOutflows := metrics.LivingOutflows(outflows, calcInputs.planExclusions)`
+  for `livingOutflows := outflows`.
+  OUT: --- FAIL: TestHandleKPIDetail_LivingClassification
+MUTATION 3 (m3) — deleted the `if kpiType == "living" || "healthcare" { avg =
+  classifiedCardPerMonth }` override (falling back to Total/len(months)):
+  OUT: --- FAIL: TestHandleKPIDetail_LivingPerMonthMatchesCardFigure
+       --- FAIL: TestHandleKPIDetail_HealthcarePerMonthMatchesCoverageClippedCard
+Both K2 tests survive nothing: each dies on the exact thing it guards.
+
+=====================================================================
+K3 — healthcare Per Month == HealthcareActual, coverage-clipped divisor,
+     rendered-string asserted                                     PASS
+=====================================================================
+CMD: go test -count=1 -v -run
+  'TestHandleKPIDetail_HealthcareClassificationExcludesLiving|TestHandleKPIDetail_HealthcarePerMonthMatchesCoverageClippedCard'
+  ./internal/handlers/dashboard/
+OUT: --- PASS (both).
+Rows-are-HI-only is asserted as values["2025-01"]==300 && values["2025-02"]==300
+on healthcareCoverageFixtureRows (Rent -1500 in Jan is present in the fixture
+and absent from the figures).
+
+STRICT RENDERED-STRING PROOF (my own throwaway zz_strict_test.go; the worker's
+test uses extractDollarAfter with a +/-0.01 tolerance, so I re-asserted exact
+string equality against a local reimplementation of formatMoney):
+  coverageStart=2025-01-15 hasCoverage=true
+  clippedDivisor=1.478439   rawMonthsBetween=1.938398
+  HealthcareActual=405.833333 -> formatMoney "$405.83" ; rendered "$405.83"
+  UNclipped (600/rawMonthsBetween) would render "$309.53"
+Rendered string == formatMoney(HealthcareActual) byte-for-byte, and it is the
+CLIPPED figure — the unclipped value renders as a visibly different string.
+
+MUTATION 2 (m2): `classifiedCardPerMonth = cardMetrics.HealthcareActual` ->
+  `cardMetrics.ActualMonthly`.
+  OUT: --- FAIL: TestHandleKPIDetail_HealthcarePerMonthMatchesCoverageClippedCard
+(and no other test), so the coverage-clipped divisor is exactly what that test
+guards.
+
+=====================================================================
+K4 — living month drill-down excludes HI + plan-excluded; total == parent
+     row figure                                                   PASS
+=====================================================================
+CMD: go test -count=1 -v -run
+  TestHandleKPIMonthDetail_LivingExcludesHealthAndPlanExcluded
+  ./internal/handlers/dashboard/
+OUT: --- PASS (0.00s)
+Read the assertions: it rejects descriptions "Health Insurance Premium" and
+"Lucid Loan Payment", requires Count == 2 (Rent + refund ONLY — a positive
+count assertion, so silently dropping rows cannot pass), TotalLabel ==
+"Living Spent", and Total == 1300 — the identical figure
+TestHandleKPIDetail_LivingClassification asserts for the parent row, so
+"equals the parent row figure exactly" is a real cross-surface tie, both
+independently confirmed == metrics LivingExpensesTotal 1300.000000 above.
+
+MUTATION 4 (m4): dropped the classifier from the drill-down —
+  `transactionsInMonth(metrics.LivingOutflows(filtered.FilterByType(models.Outflow),
+   planSyncExclusions(data.Active())), month)` -> `transactionsInMonth(
+   filtered.FilterByType(models.Outflow), month)`.
+  OUT: --- FAIL: TestHandleKPIMonthDetail_LivingExcludesHealthAndPlanExcluded
+  (and nothing else). Load-bearing.
+
+=====================================================================
+K5 — existing four kinds byte-identical; package suites green      PASS
+=====================================================================
+(a) THE WORKER'S TEST IS LOAD-BEARING.
+CMD: go test -count=1 -run TestHandleKPIDetail_ExpensesResponseByteIdentical
+  ./internal/handlers/dashboard/  -> ok
+It compares rec.Body.String() to json.Marshal of an expected map + "\n".
+(handleKPIDetail encodes a map[string]interface{}, so Go's alphabetical map-key
+ordering makes this a genuine byte comparison, not a field-order accident.)
+MUTATION 6 (m6): added one extra key `"Zzz": 1` to partialData.
+  OUT: --- FAIL: TestHandleKPIDetail_ExpensesResponseByteIdentical
+So it guards the exact JSON bytes, not merely field presence.
+
+(b) STRONGER: TWIN DUMP OF THE RENDERED HTML, BRANCH vs MASTER.
+The worker's test only covers the JSON path, while the only template edit
+(.Expenses -> .Value, and the <th> label) lives in the HTML path. I therefore
+built a second scratch copy with `git checkout --` of the four changed files
+(= master state) and rendered, through the real router + real renderer, all
+eight existing-kind endpoints:
+  /dashboard/kpi/{income,expenses,savings,savings-rate}            status=200
+  /dashboard/kpi/{income,expenses,savings,savings-rate}/month/2025-01 status=200
+CMD: cmp branch.dump master.dump
+OUT: TWIN-DUMP IDENTICAL   (both files 47185 bytes)
+The guard is anchored at the bytes that actually moved: the dump contains
+`>Expenses</th>` (the edited header line) and
+`text-red-600 dark:text-red-400">$1,800.00</td>` (the edited row-cell line),
+so the comparison is over the changed markup, not adjacent to it. Reason the
+identity holds: for kpiType=="expenses" the switch sets `value = expAmt` and
+MonthlyStat{Value: value, Expenses: expAmt}, so .Value == .Expenses; and the
+`{{else}}` branch is unreachable for savings-rate/savings/income (their own
+branches precede it).
+
+(c) NO EXISTING TEST WAS EDITED.
+CMD: git diff -- internal/handlers/dashboard/handlers_http_test.go
+OUT: a single hunk `@@ -2077,3 +2079,341 @@` (pure append) plus two import
+additions ("math", metrics). Zero deletions of existing assertions.
+
+(d) SUITES GREEN, CACHE DEFEATED.
+CMD: go test -count=1 ./internal/handlers/dashboard/ ./internal/services/metrics/
+OUT: ok  budget2/internal/handlers/dashboard  0.786s
+     ok  budget2/internal/services/metrics    0.003s
+Also green (blast radius of the template + metrics consumers):
+     ok  budget2/internal/templates            0.476s
+     ok  budget2/internal/handlers/whatif     10.264s
+CMD: go build ./...            -> exit 0
+CMD: go vet ./internal/handlers/... ./internal/services/metrics/ ./internal/templates/
+                                -> no output
+CMD: gofmt -l internal/handlers/dashboard/  -> no output
+CMD: go test -count=1 ./...    -> completed with zero non-ok lines.
+
+=====================================================================
+K6 — grep gate; ONE classifier source across every surface; single
+     pre-Calculate input assembly in handleDashboard              PASS
+=====================================================================
+CMD: grep -n "Health Insurance" internal/handlers/dashboard/handlers.go
+OUT: (no matches, exit 1). No category literal in the handler.
+
+SURFACE ENUMERATION — every non-test site in the repo that classifies
+living or healthcare spend:
+CMD: grep -rn "HealthInsuranceCategory" --include=*.go . | grep -v _test.go
+CMD: grep -rn "LivingOutflows(" --include=*.go . | grep -v _test.go
+  handlers.go:462  metrics.LivingOutflows(outflows, calcInputs.planExclusions)
+                                                  <- KPI DETAIL MODAL rows
+  handlers.go:463  outflows.FilterByCategory(metrics.HealthInsuranceCategory)
+                                                  <- KPI DETAIL MODAL rows
+  handlers.go:716  metrics.LivingOutflows(..., planSyncExclusions(data.Active()))
+                                                  <- MONTH DRILL-DOWN
+  handlers.go:722  ...FilterByCategory(metrics.HealthInsuranceCategory)
+                                                  <- MONTH DRILL-DOWN
+  handlers.go:949/950  (pre-existing)             <- BUDGET-vs-ACTUAL CHART
+  metrics.go:402/432   inside metrics.Calculate   <- DASHBOARD CARD + kpis partial
+  whatif/sync.go:202   strings.EqualFold(t.Category, metrics.HealthInsuranceCategory)
+  metrics.go:21        const HealthInsuranceCategory = "Health Insurance"  <- THE source
+  metrics.go:319       func LivingOutflows(...)                            <- THE source
+Every surface routes through metrics.LivingOutflows or the
+metrics.HealthInsuranceCategory constant. No re-implemented exclusion logic
+anywhere in the dashboard handler.
+
+SINGLE PRE-CALCULATE INPUT ASSEMBLY IN handleDashboard:
+CMD: awk '/^func handleDashboard\(/,/^}/' internal/handlers/dashboard/handlers.go
+     | grep -n "BudgetTargets|HealthcareCoverageStart|planSyncExclusions|calcInputs|metrics.Calculate"
+OUT: 25: calcInputs := gatherDashboardCalcInputs(settings, data.Active(), startDate, endDate)
+     26: dashMetrics := metrics.Calculate(filtered, ..., calcInputs.target, ...)
+     36: periodComparison = metrics.Comparison(..., calcInputs.planExclusions)
+Zero leftover BudgetTargets / HealthcareCoverageStart / planSyncExclusions
+calls inside handleDashboard, and the later Comparison call reads the bundle
+too. handleKPIDetail:460 is the only other gatherDashboardCalcInputs caller.
+
+=====================================================================
+SCOPE                                                              CLEAN
+=====================================================================
+CMD: git diff HEAD --name-status   (worker output is UNCOMMITTED; master...HEAD
+                                    would be empty and prove nothing)
+OUT: M .swarm/ledger.tsv
+     M internal/handlers/dashboard/handlers.go
+     M internal/handlers/dashboard/handlers_http_test.go
+     M web/templates/components/kpi-detail.html
+     M web/templates/components/kpis.html
+Exactly four of the spec's five permitted files (kpi-month-detail.html
+correctly untouched — the spec permits it "only if" a type-aware label is
+needed, and it already renders .TotalLabel generically) plus the ledger row.
+Untracked: .swarm/KD-RUN-SPEC.md, .swarm/manifests/KD1.1.{files,manifest.md},
+the two sibling verdicts, and the pre-existing budget2.old-1345.
+CMD: git diff HEAD --name-only | grep dataloader -> NONE. Foreign territory
+(internal/services/dataloader/**, near_duplicates) untouched.
+CMD: cat .swarm/critical.globs -> none of the six patterns
+(storage, dataloader, retirement/engine, transfers, accounts.go, mcpsvc/confirm)
+intersects the diff. Tier 2 with no critical glob, as the spec states.
+Diffstat: 459 insertions, 17 deletions across 5 files.
+
+=====================================================================
+FINDINGS (facts for the lead; none of these is a K1-K6 failure)
+=====================================================================
+F1 (CONFIRMS checker-second's FAIL; already conceded as KD-2026-08-30c).
+I reproduced their decisive probe independently in my own scratch copy.
+Fixture: [{"2025-01-15","Health Insurance Autopay Reversal","150","Health
+Insurance"}, {"2025-01-05","Rent","-500","Housing"}] — i.e. an HI history
+with no NEGATIVE premium, so metrics.HealthcareCoverageStart returns
+hasCoverage=false and ClippedHealthcareMonths==0.
+GET /dashboard/kpi/healthcare?start=2025-01-01&end=2025-01-31 rendered:
+  TILE Total         = $150.00
+  TILE Per Month     = $0.00
+  TILE Low (2025-01) = $150.00
+  TILE High (2025-01)= $150.00
+  ROW cell = $150.00        ROW vs-Avg = 0.0%
+The row/Low/High figures are category-gated while Per Month is
+coverage-gated, so they diverge inside one modal. Their factual premise is
+correct. NOTE for adjudication: this does NOT violate K3 as written — K3
+specifies "a fixture with coverageStart INSIDE the range", and on the
+no-coverage path Per Month still equals Metrics.HealthcareActual (which is
+0.0). It is a Design-point-4 coherence defect, not a K1-K6 miss.
+
+F2 (NEW — not raised by either sibling checker; a regression this attempt
+introduces on a surface it creates). kpi-detail.html:9 renders
+`<button onclick="exportKPIToCSV('{{.Type}}')">Export CSV</button>` for
+EVERY kind, so the two new modals ship a working-looking export button.
+handleKPIExport (handlers.go) switches on kpiType with cases for only
+income/expenses/savings/savings-rate and no default, so for the new kinds it
+writes neither header nor rows. Proven by throwaway probe through the real
+router:
+  kind=expenses   status=200 bodyLen=31 body="Month,Expenses\n2025-01,2200.00\n"
+  kind=living     status=200 bodyLen=0  body=""
+  kind=healthcare status=200 bodyLen=0  body=""
+A user clicking Export CSV in either new modal downloads a zero-byte file.
+This is NOT pre-existing on master (the kinds do not exist there; both cards
+opened the expenses modal, whose export works). No numbered criterion covers
+export — K6's text is satisfied (no duplicated exclusion logic, no literal) —
+so I record it as a finding, not a K6 failure. Recommend folding it into the
+attempt-2 brief.
+
+F3 (pre-existing, out of scope, for the backlog). A THIRD card is wired to
+the wrong kind: web/templates/components/kpis.html:141, the "Budget" card
+(combined Living + Healthcare cumulative variance), still carries
+onclick="openKPIDetail('expenses')". Identical on master (git diff shows only
+two onclick changes), and the spec's K1 names only the Living and Healthcare
+cards. Same defect class the task fixes, one card further on.
+
+F4 (test-quality observation, non-blocking). The two Per-Month tests use
+extractDollarAfter(...) with `math.Abs(got-want) > 0.01`, i.e. they parse the
+rendered dollar string and then allow one cent of slack, rather than asserting
+strict equality against formatMoney(...). I closed that gap myself for K3
+(strict string equality, "$405.83" == formatMoney(405.833333), see K3 above)
+and for K2 via the render dump ("$1,276.41" vs ActualMonthly=1276.411290).
+Both hold strictly today; a strict assertion would be a stronger guard.
+Per the V3 "promote the probe" pattern this is worth a test-only follow-up.

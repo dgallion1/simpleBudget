@@ -1,0 +1,106 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: KD1
+ATTEMPT: 1
+---
+Method: worked in a `cp -a /tmp/kd1-scratch` copy for probe tests (deleted
+afterward); real tree never modified; final commands re-run against the real
+tree read-only (go build/test only, package-scoped, no server run).
+
+## Attacks that did NOT refute the claim
+
+1. Divisor drift via JS query params: handleKPIDetail's default (no
+   start/end) falls back to data.MinDate()/MaxDate() (all-time) while
+   handleDashboard's resolveDateRange defaults to YTD-clipped. These ARE
+   different defaults, but web/templates/pages/dashboard.html:48-49 always
+   pre-populates the #date-filter-form inputs with the server-resolved
+   {{.StartDate}}/{{.EndDate}}, and dashboard.js's openKPIDetail() reads
+   those form values (not blank) before firing the request — so in the
+   reachable flow the modal always receives the SAME concrete dates the
+   card used. This is pre-existing plumbing shared by all six kinds, not
+   KD1-introduced, and not defeated by any reachable state I found.
+
+2. Extraction correctness: `git diff` on handleDashboard's body shows a pure
+   read of gatherDashboardCalcInputs replacing the inline
+   BudgetTargets/HealthcareCoverageStart/planSyncExclusions sequence with
+   identical field-for-field values; go test ./internal/handlers/dashboard/
+   ./internal/services/metrics/ green (ok, 1.285s / 0.006s) on the real
+   tree.
+
+3. Refund-heavy-month Abs shape / rows summing to more than Total: built a
+   2-month living fixture (Jan +2000 forced-outflow refund via "Autopay
+   Reversal" keyword, Feb Rent -500) in the scratch copy.
+   TestKD1Probe_RefundDominantMonthRowsVsTotal showed sumRows=2500,
+   total=2500 — they match, because the modal's "Total" field (handlers.go
+   line ~605, `"Total": sum`) is DEFINED as the sum of the already-Abs'd
+   per-month row values, not metrics.LivingExpensesTotal(range) — so
+   "rows sum to Total" is tautological, not a live contradiction. This sum/
+   min/max/avg-scaffold loop (lines ~559-611) is 100% pre-existing code,
+   untouched by the KD1 diff (only the `case "living"/"healthcare": value =
+   ...` lines feed it new inputs) — reused shape on new data, not new
+   arithmetic; explicitly directed by spec §Design point 3 ("same
+   refund-netting shape the existing code uses") and identical to the
+   pre-existing "expenses"/"income" cases immediately above in the same
+   switch. Per the calibration rule, not FAIL grounds. Backlog-worthy
+   observation only (a refund-dominant month renders as a large positive
+   figure with no refund indicator — true today for "expenses" too).
+
+4. vs-Avg divide-by-zero: templates/render.go:822 percentDiff() guards
+   reference==0 -> returns 0 (pre-existing, unmodified). No NaN/Inf
+   possible from the new kinds' zero-avg case.
+
+5. K6 grep gate: `grep -n "Health Insurance" internal/handlers/dashboard/handlers.go`
+   -> 0 matches, confirmed independently.
+
+6. kpis.html / kpi-detail.html diffs: `git diff` shows exactly the claimed
+   two-line onclick swaps and the two claimed template edits (header label
+   + `.Value` instead of `.Expenses`); for kpiType=="expenses", Value==
+   Expenses by construction (case "expenses": value = expAmt, same var the
+   old template printed), so existing-kind rendering is unaffected.
+
+## Attack that DID refute the claim
+
+7. Healthcare hasCoverage=false / coverageStart-after-range-end producing a
+   real UI contradiction ("two kinds of totals" — the exact thing user
+   ruling KD-2026-08-30a vetoed). Built in the scratch copy:
+   fixture = [{"2025-01-15","Health Insurance Autopay Reversal","150",
+   "Health Insurance"}, {"2025-01-05","Rent","-500","Housing"}]
+   ("Autopay" is a documented never-income keyword, forcing Outflow type
+   despite the positive amount — verified via the worker's own K2 fixture
+   using the identical "Autopay Reversal" pattern for a living refund).
+   GET /dashboard/kpi/healthcare?start=2025-01-01&end=2025-01-31 rendered:
+     Total: $150.00, Low: $150.00, High: $150.00, Per Month: $0.00
+     row 2025-01: Healthcare $150.00, vs Avg 0.0% (styled red/"over")
+   Root cause: `monthlyHealthcareOutflows` (row values) is built from
+   `outflows.FilterByCategory(HealthInsuranceCategory)` — category-only,
+   sign-agnostic. `classifiedCardPerMonth` for healthcare is
+   `cardMetrics.HealthcareActual`, which is 0 whenever
+   ClippedHealthcareMonths()==0 — which happens whenever hasCoverage is
+   false (metrics.HealthcareCoverageStart requires a NEGATIVE-amount HI
+   row somewhere in the FULL active set; an all-positive/refund-only HI
+   history, or a range that starts before the first real premium, both
+   hit this) or coverageStart is after the segment end. These two
+   quantities are gated by DIFFERENT signals (category membership vs.
+   real-premium coverage), and KD1 is what puts them side by side in one
+   modal for the first time — before this task, HealthcareActual only
+   ever appeared alone on the dashboard card, so this divergence was never
+   visible. This is NEW arithmetic coupling (the avg-override added at
+   handlers.go's `if kpiType == "living" || kpiType == "healthcare" { avg
+   = classifiedCardPerMonth }`), not a rendering of pre-existing shape, and
+   it reproduces exactly the "zero Per Month next to non-zero rows"
+   scenario the task brief itself flagged as the two-kinds-of-totals
+   confusion the user vetoed. K3's own test only exercises the
+   "coverageStart inside the range" happy path, so this gap is untested by
+   the manifest's own suite. Confined to "healthcare"; "living"'s divisor
+   (MonthsBetween, never zero per TestMonthsBetween_ClampsNegativeRangeTo
+   OneDay) cannot reproduce this — living's Per Month can only be zero
+   when livingTotal is also zero, which keeps rows and Per Month
+   consistent.
+
+## Scope note
+This is inside KD1's written scope: the avg-override and the row/Per-Month
+juxtaposition are both new code added by this task in
+internal/handlers/dashboard/handlers.go (handleKPIDetail), and the
+contradiction is only observable through the new "healthcare" kind KD1
+introduces.

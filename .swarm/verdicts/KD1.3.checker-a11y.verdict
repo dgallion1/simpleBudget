@@ -1,0 +1,161 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: KD1
+ATTEMPT: 3
+---
+SCOPE: git diff master -- web/templates/components/kpi-detail.html (attempt 3
+diff, 4 hunks +13/-3 — same shape as attempt 2's diff, plus the two
+dark:text-gray-400 -> dark:text-gray-300 substitutions and {{- -}} trim
+markers). kpis.html diff vs master unchanged since attempt 1 (2-line
+onclick-target diff only, already reviewed/PASSed) — confirmed via
+`git diff master -- web/templates/components/kpis.html`. handlers.go/
+handlers_http_test.go changes are Go-side only, no markup, out of a11y
+scope except where they change RENDERED bytes (checked via render below).
+
+METHOD: Rendered REAL bytes via a throwaway dump harness
+(internal/handlers/dashboard/zzz_a11y_dump3_test.go, discarded, never
+committed) in a fresh `cp -a` copy of the repo (scratchpad/b2copy3), using
+the real router/renderer (setupTestEnvWithRenderer, real templateDir) and
+real fixtures: a refund-dominant living fixture (KD-2026-08-30d's target —
+Jan nets +500 refund, Feb nets -1000 spend) and the existing
+healthcareNoCoverageFixtureRows(). Dumped 7 renders (living-refund,
+healthcare-nocoverage, plus income/expenses/savings/savings-rate/living on
+defaultRows() as controls), wrapped all 14 (7x2 themes) in light and
+`class="dark"` shells loading the real built web/static/css/tailwind.css,
+ran `npx @axe-core/cli` (wcag2a/2aa/21aa/22aa) on all 14. Also rendered the
+four pre-existing kinds a SECOND time with master's kpi-detail.html
+(`git show master:...` swapped into the scratch copy's template dir, same
+Go binary) to get a byte-exact K5 baseline, then diffed. No changes to the
+real repo tree (`git status` before/after identical). Never ran the
+budget2 binary.
+
+--- CHECK 1: hover-state contrast fix — recomputed against tailwind.css tokens ---
+Extracted the actual resolved rules from the real built CSS (not assumed):
+  .text-gray-300            -> rgb(209,213,219)
+  .text-gray-400            -> rgb(156,163,175)
+  .text-gray-500            -> rgb(107,114,128)
+  .dark\:hover\:bg-gray-700:hover:is(.dark *) -> rgb(55,65,81)
+  .dark\:bg-gray-800:is(.dark *)              -> rgb(31,41,55)
+  .hover\:bg-gray-50:hover  -> rgb(249,250,251)
+  .bg-white                 -> rgb(255,255,255)
+Computed WCAG relative-luminance contrast (own implementation, not a
+library) for the fixed vs-Avg dash cell
+(kpi-detail.html:115, now `text-gray-500 dark:text-gray-300`):
+  DARK hover  (dark:hover:bg-gray-700, 55/65/81) : text-gray-300 -> 7.00:1  PASS (>=4.5)
+  DARK default (dark:bg-gray-800, 31/41/55)      : text-gray-300 -> 9.96:1  PASS
+  LIGHT hover (hover:bg-gray-50)                 : text-gray-500 -> 4.63:1  PASS (unchanged, light class not touched)
+  LIGHT default (bg-white)                       : text-gray-500 -> 4.83:1  PASS (unchanged)
+7.00:1 matches the manifest's predicted figure exactly and clears the
+attempt-2 FAIL's 4.06:1 (recomputed the OLD pairing for reference:
+text-gray-400 on the same dark-hover background = 4.06:1, confirming my
+attempt-2 finding was correctly diagnosed and is now fixed). Point 7
+(>=4.5:1) and point 12 (dark-mode parity — dark-hover 7.00 vs light-hover
+4.63, both comfortably over threshold, no asymmetry) — PASS.
+Also re-verified the OTHER "no coverage" caption (:33, static summary
+tile, no hover state, same gray-400->gray-300 substitution): light
+text-gray-500 on bg-gray-50 = 4.63:1, dark text-gray-300 on bg-gray-900 =
+12.04:1 — both PASS, no regression (this element was never the FAIL
+target but the fix touched it too; unaffected).
+
+--- CHECK 2: trim markers changed only whitespace — CONFIRMED, with one caveat ---
+Diffed the four pre-existing kinds' rendered bytes (income/expenses/
+savings/savings-rate) between master's template and attempt 3's template
+(same Go binary/fixture, template swapped): the ONLY diff on all four is a
+single new whitespace-only line before the first `<tr>`
+(`60a61 >                     ` / `61a62 >                     `),
+introduced by the new `{{$noCoverage := and (eq .Type "healthcare")
+.HealthcareNoCoverageInRange}}` assignment line, which has no `{{- -}}`
+trim markers and so leaves its own newline+indentation in the output —
+unconditionally, for every kind, not just healthcare. This is a text node
+containing only whitespace: no new element, no attribute change, no
+content change, and browsers/AT collapse/ignore whitespace-only text
+nodes, so it is INERT to accessibility (no a11y-tree node, no visual
+change — confirmed the `<tr>` immediately follows in all rendered
+screenshots-equivalent structure). Per this task's specific ask ("confirm
+the trim markers changed only whitespace, no content/structure change") —
+CONFIRMED, this is whitespace-only. OBSERVATION (not an a11y FAIL, flagged
+for checker-tests): the KD1.3 manifest's claim that the false-path output
+is now "byte-identical to what a single unconditional line would have
+produced — matching the pre-KD1 baseline exactly" is factually incorrect
+by one blank line; K5 (byte-identical pre-existing-kind responses) is a
+checker-tests criterion, not mine, but the provenance is worth recording
+since the manifest asserts a stronger claim than the bytes support.
+The two `{{if}}/{{else}}/{{end}}` wrapper blocks themselves (Per-Month
+tile, vs-Avg cell) DO trim correctly: false-branch output for all four
+kinds is otherwise byte-identical to master (confirmed above), matching
+attempt 2's already-PASSed structure/heading findings.
+
+--- CHECK 3: refund-dominant month — sign conveyed by text, not color alone ---
+Rendered living-refund.html (Jan nets +500 refund -> Value = -500; Feb
+nets -1000 spend -> Value = +1000, per ruling KD-2026-08-30d's negated-
+signed-sum contract):
+  Jan: <td class="p-3 text-sm text-right text-red-600 dark:text-red-400">-$500.00</td>
+  Feb: <td class="p-3 text-sm text-right text-red-600 dark:text-red-400">$1,000.00</td>
+Both cells use the IDENTICAL unconditional class string
+(text-red-600 dark:text-red-400) regardless of sign — formatMoney (Go,
+internal/templates/render.go:425-453, confirmed by reading the source)
+prefixes negatives with a literal "-$" (not a suppressed/CSS-only minus),
+so the negative/positive distinction is carried by the RENDERED TEXT
+("-$500.00" vs "$1,000.00"), satisfying point 8 (no color-only signaling)
+and point 13 (sign semantics in accessible text — the minus sign IS the
+accessible text here, read aloud by any screen reader as "hyphen 500
+dollars" or similar, not hidden). Since both signs render under the same
+class, "the negative value's contrast in both themes is unchanged from
+the positive case" per the check requirement — CONFIRMED, same classes,
+same computed contrast (light text-red-600 on bg-white / dark
+text-red-400 on bg-gray-800, and on hover — this exact pairing is
+pre-existing/byte-identical to master's Value-cell class shape, already
+logged as an OBSERVATION in the attempt-2 verdict at 3.73:1 dark-hover;
+unchanged by attempt 3, out of KD1's scope, not re-triggered here since no
+new class was introduced for this cell).
+The vs-Avg cell for the refund row also renders as text, not color alone:
+Jan -293.8% (text-green-700/dark:text-green-400, since -500 <= avg),
+Feb +287.7% (text-red-600/dark:text-red-400, literal "+" via &#43;) — the
+sign is always in the glyph, color is decorative. This is pre-existing
+percentDiff/formatPercent behavior (same class pattern already used by
+the income kind), not new to attempt 3.
+
+--- CHECK 4: no other markup changed ---
+Confirmed via the master-template-swap diff (Check 2) that
+income/expenses/savings/savings-rate branches are otherwise untouched
+(one inert whitespace line only). `<h3>` byte-identical to master. `<th>`
+conditional (from attempt 1, unchanged by attempt 3) still emits exactly
+one `<th>` per column in every branch — no column-count variance.
+kpis.html diff vs master is the same 2-line onclick-target substitution
+reviewed and PASSed at attempt 1/2, untouched by attempt 3 (confirmed
+`git diff master -- kpis.html` output identical in shape to the
+attempt-2 verdict's description).
+
+--- CHECK 5: axe-core automated pass, both themes, all 7 renders (14 files) ---
+All 14 report the SAME 2 pre-existing/harness issues, no new violations:
+  - button-name: modal's icon-only close button (kpi-detail.html:15-20,
+    byte-identical to master) — PRE-EXISTING, attempt-1 OBSERVATION,
+    carries forward unchanged.
+  - html-has-lang / document-title: harness artifact of my wrapper shell
+    (fragment normally hosted inside the app's own <html lang> page shell)
+    — not a project defect.
+No color-contrast, aria-*, or landmark violations in any of the 14 files
+(consistent with axe not simulating :hover — Check 1's hover-state finding
+required the manual computation above, as it did at attempt 2).
+
+FINDINGS SUMMARY
+- KD1 attempt-3 FAILURES: none. The attempt-2 FAIL (vs-Avg dash cell
+  dark-hover contrast, 4.06:1) is fixed and reverified independently at
+  7.00:1 against the real built CSS tokens.
+- OBSERVATIONS (non-blocking):
+  1. NEW this attempt: the unconditional `{{$noCoverage := ...}}` template
+     assignment (kpi-detail.html, tbody) lacks a trim marker and adds one
+     whitespace-only text line to ALL FOUR pre-existing kinds' rendered
+     output (not just healthcare) — inert to accessibility (no a11y-tree
+     node, no visual change), but the KD1.3 manifest's "byte-identical to
+     the pre-KD1 baseline" claim is one line off; flagged for
+     checker-tests/K5, not an a11y FAIL.
+  2. Carried forward unchanged from attempts 1-2: modal close button has
+     no accessible name (kpi-detail.html:15-20, byte-identical to master);
+     all 5 KPI cards use onclick on a bare `<div>` with no role/tabindex
+     (kpis.html, byte-identical shape to master); `<th>` elements carry no
+     `scope` attribute (byte-identical to master); the Value `<td>`
+     (text-red-600/dark:text-red-400) computes 3.73:1 on dark-hover
+     background — same pre-existing class pairing/row-hover mechanics as
+     master, out of KD1's scope.

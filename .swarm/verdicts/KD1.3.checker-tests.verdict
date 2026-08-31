@@ -1,0 +1,312 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: KD1
+ATTEMPT: 3
+---
+Lane: anthropic (primary verifier). All build/test/mutation work done in `cp -a`
+scratch copies under /tmp/.../scratchpad/{kd1work,kd1master,mut,mut2,mut3,mut4}.
+The ONLY write to the shared tree is this verdict file; no git-state change; the
+budget2 binary was never run and no `go run`. (`bash .swarm/tier3/KD1/accept.sh`
+was run once in the real tree as instructed — it stages and `trap`-removes its own
+zz_oracle_kd1_test.go; `git status --porcelain` after the run shows no such file.)
+
+Summary: 8 of 9 criteria PASS with command evidence and mutation proof.
+K5 FAILS AGAIN. Attempt 3 reduced the attempt-2 whitespace regression from
++213/+63/+63/+21 bytes to +21 bytes but did NOT eliminate it: the rendered HTML of
+all four pre-existing kinds is still not byte-identical to master. Exact cause and
+one-line location under K5 below.
+
+=====================================================================
+0. ORACLE (Tier 3)                                               PASS
+=====================================================================
+CMD: bash .swarm/tier3/KD1/accept.sh          (run by me, in the real tree)
+OUT: --- PASS: TestOracleKD1_LivingSignedRowsReconcile
+     --- PASS: TestOracleKD1_HealthcareSignedRowsReconcile
+     --- PASS: TestOracleKD1_ExportMatchesSignedRows
+     --- PASS: TestOracleKD1_MonthDrillMatchesSignedRow
+     --- PASS: TestOracleKD1_NoCoverageDashRegression
+     ok  budget2/internal/handlers/dashboard 0.803s
+     ok  budget2/internal/services/metrics   0.003s
+     ORACLE PASS                                    <- final line, exit 0
+Note for the lead: the oracle does NOT assert K5 byte-identity, so ORACLE PASS and
+the K5 FAIL below are not in conflict — the oracle simply does not cover it.
+
+=====================================================================
+COMPOSITE CHECK (repo's own target, cache defeated)
+=====================================================================
+CMD: cd <scratch>/kd1work && GOFLAGS=-count=1 make check   (Makefile:75 ->
+     vet static vuln css-verify test)
+OUT: "✓ all checks passed"   MAKE_CHECK_EXIT=0
+     every package ok, including budget2/internal/handlers/dashboard,
+     budget2/internal/services/metrics, budget2/internal/templates, budget2/web.
+CMD: go test -count=1 ./internal/handlers/dashboard/ ./internal/services/metrics/
+OUT: ok budget2/internal/handlers/dashboard 0.754s
+     ok budget2/internal/services/metrics   0.004s      PKG_EXIT=0
+
+=====================================================================
+K5 — existing kinds byte-identical                               FAIL
+=====================================================================
+TWIN DUMP (my own probe, not the worker's tests): a probe test dropped into BOTH
+<scratch>/kd1work (branch) and <scratch>/kd1master (`git checkout master -- .`,
+verified `git status --porcelain` clean of tracked mods) renders, through the real
+chi router and the real templates.New renderer on defaultRows():
+  /dashboard/kpi/{income,expenses,savings,savings-rate}              (HTML)
+  /dashboard/kpi/{...}/month/2025-02                                 (month drill)
+  /dashboard/kpi/{...}/export                                        (CSV)
+  the same four kinds on the renderer=nil router                     (JSON)
+  /dashboard and /dashboard/kpis
+CMD: diff -rq <dump_master> <dump_work>
+OUT: html_expenses.out, html_income.out, html_savings.out, html_savings-rate.out
+     DIFFER.  (month_*, csv_*, page_dashboard, page_kpis: byte-identical by `cmp`.)
+
+CMD: for k in ...; do echo $(( $(stat -c%s work) - $(stat -c%s master) )); done
+OUT: income 21   expenses 21   savings 21   savings-rate 21
+CMD: diff -u <master> <branch> | cat -A
+OUT (identical shape in all four files, one hunk, one added line):
+     @@ -58,6 +58,7 @@$
+                          $
+                          $
+                          $
+     +                    $                       <- 20 spaces + LF, 21 bytes
+                          <tr class="hover:bg-gray-50 ..." onclick="openKPIMonthDetail('expenses', '2025-01')">$
+Master-native baseline pinned (per the oracle-calibration rule): master already
+emits FOUR whitespace-only lines between <tbody> and the first <tr>; the branch
+emits FIVE. The regression is exactly one line, not the whole block.
+
+CAUSE — the one template action attempt 3 did NOT trim
+(web/templates/components/kpi-detail.html:93):
+    {{$noCoverage := and (eq .Type "healthcare") .HealthcareNoCoverageInRange}}
+It sits on its own line with NO `{{-`/`-}}` markers, so its surrounding
+newline+indent text node is emitted for EVERY kind. The manifest's item 4 added
+trims to the two `{{if}}/{{else}}/{{end}}` wrappers only:
+  :49 `{{if and (eq .Type "healthcare") .HealthcareNoCoverageInRange -}}`
+  :52 `{{- else -}}`  :54 `{{- end}}`
+  :114 `{{if $noCoverage -}}` :116 `{{- else -}}` :118 `{{- end}}`
+Those two are correct — they account for the drop from +213/+63/+63/+21 to a
+uniform +21. Line 93 is the sole remaining source. This is a near-miss: the
+missing piece is trim markers on kpi-detail.html:93.
+
+WHAT IS IN SCOPE: ruling KD-2026-08-30d names this explicitly as part of the
+attempt-3 contract ("template {{- -}} trim markers so pre-existing kinds' rendered
+HTML is byte-identical to master (K5, attempt-2 regression was inert whitespace)"),
+and K5 / Design 7 say "byte-identical". No command I can run shows the criterion
+met, so I report it not met.
+
+MATERIALITY (facts for the lead's adjudication; I am not ruling on it):
+CMD: tr -d ' \t\n\r' < X | md5sum, master vs branch
+OUT: income 005b6da8642b == 005b6da8642b ; expenses 1cea4dfc0887 == 1cea4dfc0887 ;
+     savings 8ebf07be1ccd == 8ebf07be1ccd ; savings-rate d154e0185f14 == d154e0185f14
+CMD: diff | count changed lines containing non-whitespace
+OUT: income 0, expenses 0, savings 0, savings-rate 0
+The added text node lands between <tbody> and <tr>, where the HTML parser discards
+it. The delta is DOM-inert. It is nonetheless a real miss against the written
+criterion and against attempt 1, which met it exactly (KD1.1.checker-tests:
+"cmp branch.dump master.dump -> TWIN-DUMP IDENTICAL, 47185 bytes").
+
+K5 sub-parts that DO pass:
+(a) "no test edits except additions": CMD `git diff --numstat master --` gives
+    handlers_http_test.go 616/0 — zero deletion lines. The one changed expectation
+    the manifest declares (dark:text-gray-400 -> -300 at :2527) lives inside
+    TestHandleKPIDetail_Healthcare_NoCoverageInRange_ShowsDashNotZero, itself a
+    KD1-added test, so the file still shows +616/-0.
+(b) JSON responses: key-level compare of my twin dumps —
+    income/expenses/savings/savings-rate all ADDED {'HealthcareNoCoverageInRange':
+    False}, REMOVED [], CHANGED {}. One additive always-false key, nothing else.
+    Acceptable per the coordinator's stated allowance; I would pass K5 on this alone.
+(c) CSV exports and month drill-downs for all four pre-existing kinds: `cmp`
+    byte-identical.
+(d) TestHandleKPIDetail_ExpensesResponseByteIdentical --- PASS (attempt-1 mutation
+    already proved it load-bearing).
+
+=====================================================================
+KD-2026-08-30d — signed month rows, Total = sum of displayed rows  PASS
+=====================================================================
+I READ THE THREE PRODUCTION LINES (git diff master -- handlers.go):
+  :671  classifiedMonthlyTotals:  totals[m] = -set.SumAmount()   (was math.Abs(...))
+  :755  handleKPIMonthDetail case "living":     total = -sumSigned(monthLiving)
+  :763  handleKPIMonthDetail case "healthcare": total = -sumSigned(monthHealthcare)
+DOC COMMENTS UPDATED as claimed: :653-667 (classifiedMonthlyTotals) states the
+negated-signed-sum contract, the "Total tile is the sum of these same displayed
+values (one rounding path)" reconciliation guarantee, and the documented
+net-refund divergence; :534-539 (the per-month loop) and :746-750 / :758-759 (both
+drill-down cases) cite ruling KD-2026-08-30d.
+SINGLE SOURCE (surface enumeration, by grep not by diff):
+CMD: grep -n "classifiedMonthlyTotals" internal/handlers/dashboard/handlers.go
+OUT: :668 the one definition; :475,:476 handleKPIDetail (modal rows AND the Total
+     tile, which sums the same `values` slice); :843,:844 handleKPIExport (CSV).
+     No second month-reduction loop for these kinds exists.
+
+THE TWO NEW TESTS — I READ THEM, THEN PROVED THEM BY MUTATION.
+CMD: go test -count=1 -v -run '...' ./internal/handlers/dashboard/
+OUT: --- PASS: TestHandleKPIDetail_LivingSignedRowsReconcileWithRenderedTotal
+     --- PASS: TestHandleKPIMonthDetail_HealthcareSignedNotAbs
+     --- PASS: TestHandleKPIDetail_Healthcare_NoCoverageInRange_ShowsDashNotZero
+Test (a) at :2633 is a refund-dominant two-month living fixture (Jan +500 reversal,
+Feb Rent -1000) and asserts on RENDERED STRINGS via formatMoneyExpected: Jan row
+`-$500.00`, Feb row `$1,000.00`, rendered Total == `$500.00` == the sum of the two
+rendered rows == formatMoney(Metrics.LivingExpensesTotal) for this net-spend range.
+Test (b) at :2676 drills /dashboard/kpi/healthcare/month/2025-02 on a
+refund-dominant healthcare month and asserts Total == -100 exactly (not Abs), plus
+Type/TotalLabel.
+
+MUTATION A — scratch copy, `totals[m] = -set.SumAmount()` reverted to
+  `math.Abs(set.SumAmount())` (exactly the mutation you asked for):
+  OUT: --- FAIL: TestHandleKPIDetail_LivingSignedRowsReconcileWithRenderedTotal
+       handlers_http_test.go:2650: body missing Jan row -$500.00
+       handlers_http_test.go:2661: rendered Total = $1,500.00, want $500.00
+                                   (must equal the sum of the rendered rows)
+       and the ORACLE also flips: ORACLE FAIL.
+  It is the ONLY test in the package that dies — the new test is precisely the
+  guard for the reverted line.
+MUTATION B — both drill-down negations reverted to Abs:
+  OUT: --- FAIL: TestHandleKPIMonthDetail_HealthcareSignedNotAbs
+       --- FAIL: TestOracleKD1_MonthDrillMatchesSignedRow   ORACLE FAIL
+MUTATION C — ONLY the living drill-down negation reverted to Abs:
+  OUT: package suite `ok` (GREEN) ; oracle --- FAIL:
+       TestOracleKD1_MonthDrillMatchesSignedRow, ORACLE FAIL
+  => the living month-drill sign is guarded by the oracle but NOT by any committed
+     repo test. See observation O1.
+
+=====================================================================
+Dash-cell a11y contrast (dark:text-gray-300)                      PASS
+=====================================================================
+CMD: grep -n 'dark:text-gray-300' web/templates/components/kpi-detail.html
+OUT: :51  <p class="text-xs text-gray-500 dark:text-gray-300">no coverage in this range</p>
+     :115 <td class="p-3 text-sm text-right text-gray-500 dark:text-gray-300">&mdash;</td>
+     (both em-dash elements; the other hits are pre-existing <th> labels)
+CMD: grep -n 'dark:text-gray-400' ... handlers_http_test.go
+OUT: no match — the single adjusted assertion is :2527
+     `strings.Contains(body, "text-gray-500 dark:text-gray-300\">&mdash;</td>")`
+MUTATION D — both `text-gray-500 dark:text-gray-300` pairs reverted to -gray-400:
+  OUT: --- FAIL: TestHandleKPIDetail_Healthcare_NoCoverageInRange_ShowsDashNotZero
+  The assertion is load-bearing on the exact rendered class string.
+
+=====================================================================
+K1 — titles + card wiring                                        PASS
+=====================================================================
+CMD: go test -count=1 -v -run '...'
+OUT: --- PASS: TestHandleKPIDetail_Living_Title
+     --- PASS: TestHandleKPIDetail_Healthcare_Title
+     --- PASS: TestHandleKPIDetail_LivingHealthcare_RenderedTitles
+     --- PASS: TestDashboardKPIs_LivingHealthcareCardsWiredToOwnKinds
+CMD: grep -rn "openKPIDetail(" web/templates/ web/static/js/
+OUT: kpis.html:57  onclick="openKPIDetail('living')"
+     kpis.html:101 onclick="openKPIDetail('healthcare')"
+     kpis.html:7 'income', :32 'expenses', :141 'expenses' (Budget card — the
+     spec's own declared backlog item, correctly untouched), verdict-bar 'savings'.
+
+=====================================================================
+K2 / K3 / K3b — classification + single Per Month figure          PASS
+=====================================================================
+OUT: --- PASS: TestHandleKPIDetail_LivingClassification
+     --- PASS: TestHandleKPIDetail_LivingPerMonthMatchesCardFigure
+     --- PASS: TestHandleKPIDetail_HealthcareClassificationExcludesLiving
+     --- PASS: TestHandleKPIDetail_HealthcarePerMonthMatchesCoverageClippedCard
+     --- PASS: TestHandleKPIDetail_Healthcare_NoCoverageInRange_ShowsDashNotZero
+Unchanged in behaviour by attempt 3 (every one of those fixtures is
+single-month-net-spend, where -SumAmount and Abs coincide) and independently
+re-derived at attempt 2 (KD1.2.checker-tests lines 54-127).
+
+=====================================================================
+K4 — living month drill-down                                     PASS
+=====================================================================
+OUT: --- PASS: TestHandleKPIMonthDetail_LivingExcludesHealthAndPlanExcluded
+Asserts Type=living, TotalLabel="Living Spent", Count==2, no "Health Insurance
+Premium"/"Lucid Loan Payment", Total==1300 — the same 1300 the parent modal row
+renders. Caveat recorded as O1: this test's fixture is net-spend, so it does not
+discriminate the sign (mutation C proves it stays green under Abs).
+
+=====================================================================
+K6 — no category literal, no duplicated exclusion logic          PASS
+=====================================================================
+CMD: grep -c "Health Insurance" internal/handlers/dashboard/handlers.go
+OUT: 0     (exit 1 — zero matches, comments included)
+SURFACE ENUMERATION (grep, not diff): every living/healthcare classification goes
+through the shared helpers — :473 metrics.LivingOutflows [modal], :474
+FilterByCategory(metrics.HealthInsuranceCategory) [modal], :751 / :759 [month
+drill], :843 / :844 [export], :1011 / :1012 [chart]. Exclusion logic exists in
+exactly one function, planSyncExclusions (:79), called at :117 (inside
+gatherDashboardCalcInputs), :251, :316, :751, :842.
+
+=====================================================================
+K8 — Export CSV for the new kinds, single source                  PASS
+=====================================================================
+OUT: --- PASS: TestHandleKPIExport_Living
+     --- PASS: TestHandleKPIExport_Healthcare
+I read TestHandleKPIExport_Living (:2541): asserts 200, `len(body) == 0` fatal
+("living export body is empty (K8 regression)"), parses the CSV, header ==
+[Month "Living Expenses"], and the 2025-01 row == "1300.00" — the same figure the
+modal's Jan row renders. Export and modal share classifiedMonthlyTotals (grep
+above), so mutation A's sign change moves both together.
+
+=====================================================================
+K9 — strict rendered-string equality, no ±0.01 slack             PASS
+=====================================================================
+I READ BOTH Per-Month tests. :2305-2311 and :2372-2379 each do
+  want := formatMoneyExpected(<derived figure>)
+  got  := extractDollarStringAfter(t, body, "Per Month")
+  if got != want { t.Errorf(...) }
+No math.Abs, no tolerance constant in either.
+CMD: grep -n "0\.01|math.Abs(got|tolerance|epsilon" handlers_http_test.go
+OUT: only :2508 `math.Abs(got-150) > 0.01` — that is the K3b test's TOTAL-tile
+     assertion, not one of the two Per-Month tests K9 names. Recorded as O2.
+
+=====================================================================
+K7 — a11y                                        NOT MY LANE
+=====================================================================
+checker-a11y's criterion. Two facts my renders establish that bear on it: the
+no-coverage state is carried by REAL TEXT ("no coverage in this range"), and both
+em-dash elements now render `text-gray-500 dark:text-gray-300` (mutation D proves
+the class is asserted).
+
+=====================================================================
+SCOPE                                                              OK
+=====================================================================
+CMD: git diff --numstat master --      (working tree; worker output is
+     UNCOMMITTED, so master...HEAD is empty and proves nothing. HEAD == master ==
+     5f39601e6c1c8de26e169eb96869a55cabfd4c1b, verified by `git rev-parse`.)
+OUT: 1/0     .swarm/ledger.tsv
+     188/25  internal/handlers/dashboard/handlers.go
+     616/0   internal/handlers/dashboard/handlers_http_test.go
+     13/3    web/templates/components/kpi-detail.html
+     2/2     web/templates/components/kpis.html
+CMD: git status --porcelain | grep -v '^??'   -> exactly those five.
+     Untracked: .swarm/* run artifacts and `budget2.old-1345`, which the spec's
+     Territories section declares pre-existing and to be left alone.
+All inside the spec's permitted list (KD-RUN-SPEC.md lines 20-26).
+kpi-month-detail.html NOT touched (the spec's conditional allowed it).
+CRITICAL GLOBS (.swarm/critical.globs: storage/**, dataloader/**,
+retirement/engine/**, transfers/**, accounts/accounts.go, mcpsvc/confirm/**):
+none appears in the diff.
+ATTEMPT-3 ISOLATION: attempt-2 output was never committed, so I cannot mechanically
+isolate the attempt-3-only diff. Corroboration: KD1.3.files lists exactly
+handlers.go, handlers_http_test.go, kpi-detail.html; against the numbers
+KD1.2.checker-tests recorded (177/25, 535/0, 12/4, 2/2) the deltas are +11/-0,
++81/-0, +1/-1, and kpis.html UNCHANGED at 2/2 — consistent with three files touched
+this attempt. Corroboration, not proof.
+
+=====================================================================
+OBSERVATIONS (backlog, NOT failures)
+=====================================================================
+O1. The LIVING month-drill negation (handlers.go:755) is guarded only by the
+    tier-3 oracle (TestOracleKD1_MonthDrillMatchesSignedRow), which is NOT
+    committed into the package — mutation C reverts that one line to Abs and the
+    whole repo suite stays GREEN. The healthcare twin IS covered by a committed
+    test (TestHandleKPIMonthDetail_HealthcareSignedNotAbs). Promoting the oracle's
+    living month-drill check into handlers_http_test.go (V3 pattern) would close it.
+O2. handlers_http_test.go:2508 still uses `math.Abs(got-150) > 0.01` for the K3b
+    Total-tile figure. Outside K9's wording (which names the two Per-Month tests),
+    but it is the same rendered-string-arithmetic class K9 exists to close.
+O3. verdictDollarRe (`\$([\d,]+\.\d{2})`) does not capture a leading "-", so
+    extractDollarStringAfter returns "$500.00" for a rendered "-$500.00". The
+    reconcile test's Total assertion therefore cannot detect a sign flip in the
+    Total TILE alone; it detects the mutation only via the row strings and the
+    magnitude. Not a defect today (mutation A kills the test), but the helper is
+    sign-blind.
+O4. formatMoneyExpected remains a hand-maintained mirror of the unexported
+    templates.formatMoney (the "dual formatters" class) — carried over from
+    KD1.2.checker-tests O1, still open.
+O5. handleKPIExport still has no `default` arm (pre-existing on master).
+O6. kpis.html:141 (Budget card) still opens the generic expenses modal — the
+    spec's own declared backlog item, correctly not touched.

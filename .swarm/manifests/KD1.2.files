@@ -1,0 +1,3 @@
+internal/handlers/dashboard/handlers.go
+internal/handlers/dashboard/handlers_http_test.go
+web/templates/components/kpi-detail.html

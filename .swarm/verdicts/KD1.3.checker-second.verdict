@@ -1,0 +1,144 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: KD1
+ATTEMPT: 3
+---
+Method: worked in a `cp -a /tmp/.../kd1check` copy for all probe tests. One
+process error: I ran `git stash push/pop` against the REAL tree while
+diffing rendered HTML against master — caught immediately, popped back, and
+verified `git diff --stat` on the real tree matches the pre-stash diff byte
+for byte (213/616/16/4 lines changed across the four touched files,
+identical to before). Real tree's only lasting change from my session is
+this verdict file. All further comparisons were redone safely in the
+scratch copy. go build/test/vet only, package-scoped; binary/server never
+run.
+
+## Priority attacks that DID NOT refute the claim (re-verified real)
+
+1. **Prior attempt-1 fixture (zero-coverage healthcare tile)** — rebuilt
+   verbatim (refund-only HI row, no coverage overlap): dash tile + "no
+   coverage in this range" text render, no `$0.00` beside the non-zero row.
+   Genuinely fixed. PASS.
+2. **Prior attempt-2 fixture (refund-dominant two-month Total divergence)**
+   — rebuilt verbatim (Jan net +500 refund via 100 spend + 600 refund, Feb
+   -1000): Jan row renders `-$500.00`, Feb `$1,000.00`, Total renders
+   `$500.00` = sum of the two rendered rows. Reconciles. PASS.
+3. **Whole-range net refund (documented accepted divergence)** — built a
+   2-month all-refund living fixture (Jan +2000, Feb +100): rendered Total
+   is `-$2,100.00` (negative), Low/High also negative, vs-Avg renders
+   sensible signed percentages (`-284.6%`, `-109.2%`), nothing crashes.
+   Matches ruling KD-2026-08-30d's documented divergence exactly. My first
+   pass at this probe used the pre-existing `extractDollarStringAfter`
+   helper and wrongly reported "not negative" — that helper's regex
+   (`verdictDollarRe = \$([\d,]+\.\d{2})`, defined in a pre-existing file
+   unrelated to KD1) starts matching at `$` and never captures a leading
+   `-`; the raw response body clearly showed `-$2,100.00`. Self-corrected
+   per rule 6 before treating it as a finding — this is a pre-existing
+   test-helper limitation, not a KD1 defect, and not currently exercised by
+   any KD1 test in a way that would mask a real negative-Total bug (7(a)/
+   K2/K3 fixtures all net positive-displayed, so the helper's blind spot
+   never fires on the shipped suite).
+4. **formatMoney sign rendering**: `-$500.00`, never `$-500.00`. Confirmed
+   in `internal/templates/render.go:425` — negation handled before the `$`
+   prefix is appended.
+5. **K4 parent-row == drill-down for a refund month**: JSON-decoded both
+   sides for the same fixture (Jan net +500 refund): parent row `Value =
+   -500`, month-drill `Total = -500`. Exact match. (My first pass mixed
+   `setupTestEnvWithRenderer` — which returns HTML, not JSON — into
+   `decodeMonthDetail`, producing a JSON-decode error; not a code defect,
+   fixed by using `setupTestEnv` per the existing K4-style test pattern.)
+6. **CSV export for a refund month**: `Month,Living Expenses` header,
+   `2025-01,-500.00` / `2025-02,1000.00` rows — signed, coherent, matches
+   the modal.
+7. **classifiedMonthlyTotals callers**: grep confirms exactly two call
+   sites (handleKPIDetail, handleKPIExport), both gated to living/
+   healthcare; no pre-existing kind (income/expenses/savings/savings-rate)
+   reads it. `handleKPIMonthDetail`'s income/expenses/default(savings)
+   switch cases are byte-unmodified (confirmed via source read, not diff
+   inference).
+8. **K5 JSON byte-identity**: `TestHandleKPIDetail_ExpensesResponseByteIdentical`
+   re-run green; independently confirmed the marshaled-JSON comparison is a
+   real strict-equality assertion, not a subset check.
+9. **K6 grep gate**: `grep -n "Health Insurance" handlers.go` → only
+   `HealthInsuranceCategory`/`HealthInsurance` symbol references, 0 literal
+   uses outside the metrics helper.
+10. **Oracle**: `bash .swarm/tier3/KD1/accept.sh` re-run independently in
+    the scratch copy → `ORACLE PASS`, ends with no leftover
+    `zz_oracle_kd1_test.go` in the tree. Read the oracle test file itself:
+    all five sub-tests use genuinely discriminating multi-month fixtures
+    (the living test even includes an ExcludeFromPlanSync "Lucid Loan" row
+    in the signed-sum month, verifying plan-exclusion isn't broken by this
+    attempt's sign-convention change) — not tautological.
+11. Color: the row `<td>` for `.Value` is unconditionally `text-red-600`
+    regardless of sign (a refund row is red too), but the SIGN is always
+    present as literal text (`-$500.00`), so ACCESSIBILITY.md point 8
+    ("meaning never conveyed by color alone") is not violated — the color
+    choice is arguably confusing UX for a refund month, but that is a
+    pre-existing pattern KD1 reused verbatim from the "expenses" branch
+    (same `<td>` used a static red class for `.Expenses` before this
+    attempt too) and out of this attempt's written scope to redesign.
+    Flagging as a backlog observation only.
+
+## THE FAIL — attempt-3's own explicit contract line is not met: pre-existing
+## kinds' rendered HTML is NOT byte-identical to master
+
+Ruling KD-2026-08-30d (which IS attempt 3's governing, specific scope)
+enumerates, as a required deliverable alongside the two signed-row tests:
+"template {{- -}} trim markers so pre-existing kinds' rendered HTML is
+byte-identical to master (K5, attempt-2 regression was inert whitespace)."
+The manifest claims this was done and independently verified: "Traced by
+hand: for the false path (the four pre-existing kinds...), the trimmed
+output is now byte-identical to what a single unconditional line would
+have produced — matching the pre-KD1 baseline exactly."
+
+This claim is false. PROOF: captured `/dashboard/kpi/expenses` rendered
+HTML (via the real renderer, `setupTestEnvWithRenderer`, a fixed 3-month
+fixture) from master (`git stash` the four KD1 files in the scratch copy,
+capture, `git stash pop`) and from attempt 3, then diffed byte for byte:
+master = 101 lines, attempt 3 = 102 lines — exactly one extra blank line,
+inserted immediately before the first `<tr>` in `<tbody>`. Root cause:
+attempt 2/3 added a new unconditional template line,
+`{{$noCoverage := and (eq .Type "healthcare") .HealthcareNoCoverageInRange}}`
+(kpi-detail.html, right after the pre-existing `{{$avg}}`/`{{$type}}`/
+`{{$isRate}}` assignment lines), with no `{{- -}}` trim markers — unlike the
+two `{{if}}/{{else}}/{{end}}` blocks the manifest describes trimming, this
+assignment line was never touched, and it executes for every kpiType
+(income/expenses/savings/savings-rate too, not just the two new kinds),
+so it is not confined to "healthcare" despite the variable's name. The
+worker's "traced by hand" claim addressed only the two if/else/end blocks
+it explicitly lists, not this third new line — the actual full-render
+comparison was evidently never run.
+
+No test in the suite catches this: `TestHandleKPIDetail_ExpensesResponseByteIdentical`
+asserts the JSON response (via `setupTestEnv`, no renderer) which is
+unaffected by template whitespace, so K5's own literal text ("responses
+byte-identical") is satisfied even though the ruling's rendered-HTML
+commitment is not — the gap escapes the shipped suite entirely, matching
+this constitution's warning that worker manifests overclaim verification
+the suite doesn't actually check.
+
+Impact assessment (for proportionality, not to pre-empt the lead's call):
+a whitespace-only text node between block-level elements has zero visual
+rendering difference in any browser, zero DOM-structural difference for
+any script querying by tag/class, and zero accessibility-tree difference —
+this is the same "inert" characterization the ruling itself uses for the
+attempt-2 instance of this defect class. The fix is a one-line change
+(add `{{- -}}` to the new assignment, or fold it inside the `{{if}}` that
+already needs it). I am not asserting user-facing harm; I am asserting the
+attempt's own explicit, written acceptance line is unmet and the
+manifest's specific verification claim about it is false.
+
+## Scope
+In scope: kpi-detail.html is one of KD1's listed files; the offending line
+was added by KD1 (attempt 2, retained in attempt 3); the "byte-identical to
+master" commitment was written into THIS attempt's own governing ruling
+(KD-2026-08-30d), not an earlier general ruling being second-guessed.
+Fixable without exceeding KD1's file list.
+
+## Recommended remedy (not prescriptive)
+Trim the new `{{$noCoverage := ...}}` line, e.g.
+`{{- $noCoverage := and (eq .Type "healthcare") .HealthcareNoCoverageInRange -}}`,
+or move it inside the `{{else}}` branch of the header's type switch where
+it's actually needed. Re-diff master vs. all four pre-existing kinds'
+rendered HTML (not just JSON) before re-claiming byte-identity.

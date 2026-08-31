@@ -1,0 +1,3 @@
+web/templates/pages/major-expenses.html
+internal/handlers/majorexpenses/handlers.go
+internal/handlers/majorexpenses/handlers_test.go

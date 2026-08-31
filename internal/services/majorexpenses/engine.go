@@ -137,6 +137,51 @@ func AnnotateRecurringPayments(payments []models.RecurringPayment, defs []models
 	return out
 }
 
+// ComputePlanSyncExclusions classifies ts against ALL defs in one full Match
+// pass, then returns the subset of matched transactions whose def carries
+// ExcludeFromPlanSync — keyed by transaction Hash, valued with the def that
+// claimed it. The what-if dashboard sync uses this to exclude spending the
+// plan already models separately (an ExpenseSource) from its living-expense
+// average.
+//
+// D-SY-b: this MUST match against the full defs list, never a
+// flagged-only filtered one. MatchTransaction is first-def-wins, so
+// filtering to flagged defs before matching would let a flagged def steal
+// transactions that rightfully belong to an earlier UNFLAGGED def (e.g. a
+// keyword-only "Gym" def ahead of an amount-only "Car Loan" flagged def
+// whose amount happens to coincide with a gym payment).
+//
+// Nil/empty-safe: a nil ts, nil/empty defs, or nil pins all produce an
+// empty (non-nil) map.
+func ComputePlanSyncExclusions(ts *models.TransactionSet, defs []models.MajorExpense, pins map[string]string) map[string]models.MajorExpense {
+	out := make(map[string]models.MajorExpense)
+	if ts == nil || len(defs) == 0 {
+		return out
+	}
+
+	flagged := make(map[string]models.MajorExpense)
+	for _, d := range defs {
+		if d.ExcludeFromPlanSync {
+			flagged[d.ID] = d
+		}
+	}
+	if len(flagged) == 0 {
+		return out
+	}
+
+	result := Match(ts, defs, MatchOptions{Pins: pins})
+	for id, txns := range result.Groups {
+		def, ok := flagged[id]
+		if !ok {
+			continue
+		}
+		for _, t := range txns {
+			out[t.Hash] = def
+		}
+	}
+	return out
+}
+
 // exactAmountTolerance is the slack used when matching against an
 // "exact" amount (Min == Max). One cent absorbs floating-point noise
 // without expanding the match into nearby amounts.

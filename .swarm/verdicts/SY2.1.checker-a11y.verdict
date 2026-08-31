@@ -1,0 +1,141 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: SY2
+ATTEMPT: 1
+---
+METHOD
+- git diff master -- web/templates/pages/major-expenses.html: +19/-0, two new
+  <label> blocks (edit form ~1111-1128, create form ~1221-1240 in worktree
+  copy) wrapping the new `exclude_from_plan_sync` checkbox. Handler change in
+  internal/handlers/majorexpenses/handlers.go sets
+  ExcludeFromPlanSync: parseFormBool(r, "exclude_from_plan_sync") in the one
+  shared parseExpenseForm — not a template/a11y concern, noted only for
+  completeness.
+- Built a scratch server from a `cp -a` copy at
+  /tmp/.../scratchpad/sy2-a11y/budget2 (go build ./cmd/server), ran it on
+  127.0.0.1:18099 with BUDGET_DATA_DIR pointed at the copy's own
+  data/ (real major_expenses.json fixture, 20+ real expenses), BUDGET2_BACKUP_DIR
+  and BUDGET2_IMPORT_DIR redirected into scratch dirs. killPreviousInstance()
+  traced (cmd/server/main.go:432) — only GETs $addr/killme on the SAME port
+  (18099), never touches :8080; confirmed port 8080 (live app) answered 307
+  before and after, scratch server process killed cleanly at the end.
+- Dumped the real rendered GET /major-expenses (full page, 32257 lines,
+  3.07MB) — both is_internal_transfer and exclude_from_plan_sync checkboxes
+  present in every one of the ~20 per-expense edit-form fragments plus the
+  create form.
+- Built light.html / dark.html harnesses: real page markup, <link> rewritten
+  to the scratch server's actual served /static/css/tailwind.css and
+  /static/css/styles.css (not hand-built CSS), <html class="light"|"dark">.
+  Forced open the two collapsed containers that hide this content by default
+  (native <details id="major-expenses-add-panel"> for the create form, and
+  CSS rule `#major-expenses-list tbody[data-open="false"] > tr.major-expense-
+  detail-row{display:none}` for each edit form) by setting `open` / flipping
+  data-open to "true" as static HTML attributes — equivalent to the state
+  after a user click, no page JS executed (JS execution is the tests lane's
+  job per instructions; this is a static-attribute trace of that toggle).
+- Ran `npx @axe-core/cli` against both file:// harnesses (results in
+  /tmp/.../scratchpad/sy2-a11y/audit/{light,dark}-axe.json).
+
+1-6. STRUCTURE/FORMS/CONTRAST/KEYBOARD/CHARTS/PROJECT-SPECIFIC (ACCESSIBILITY.md)
+Automated axe results, both themes: 2 violation rule-types total
+(color-contrast: 890 occurrences, serious; empty-table-header: 27
+occurrences, minor). Filtered every violation node's `html`/`target` for
+"exclude_from_plan_sync", "Modeled in retirement plan", "living-expense
+sync", "is_internal_transfer": 0 matches in both themes. Sampled the
+color-contrast failures: 3 distinct fg/bg combos overall
+(white-on-#6366f1 date-range buttons at 4.46:1, red-600/red-400 font-mono
+transaction amounts, and the exceptions-table `.w-6` header cells for
+empty-table-header) — none touch this task's markup. `git diff master`
+confirms none of those classes/elements appear in SY2's diff.
+OBSERVATION (pre-existing, out of SY2 scope, attributed via git diff
+master): the 890/27 axe findings above are present on master's own
+major-expenses.html render and are unrelated to this task — reported as
+observations for the backlog per scope-ruling precedent 2026-08-29c/d, not
+a FAIL.
+
+Point 4 (label association): both new checkboxes are literally INSIDE a
+`<label>...</label>` element (input + span siblings, both children of the
+label) in both forms — verified via regex extraction of the label block
+around each `name="exclude_from_plan_sync"` input, byte-for-byte the same
+wrapping pattern the sibling `is_internal_transfer` checkbox already uses.
+PASS.
+
+Point 7 (contrast >=4.5:1): the task brief asserted `text-gray-500` measured
+4.4:1 on this app's backgrounds in a recent audit and flagged it as a likely
+finding if the new helper text used it. Verified empirically instead of
+trusting the claim: the edit-form checkbox sits in a `<td class="...
+bg-gray-50 dark:bg-gray-700/50">` (line 1076 area); the create-form checkbox
+sits in the `#major-expenses-results` `bg-white` panel. Computed WCAG
+relative-luminance contrast with the ACTUAL Tailwind hex values pulled from
+the project's built web/static/css/tailwind.css (`.text-gray-500{color:rgb(
+107 114 128)}`, `.bg-gray-50{background-color:rgb(249 250 251)}`,
+`.bg-white{background-color:rgb(255 255 255)}`):
+  gray-500 (#6b7280) on gray-50 (#f9fafb) = 4.63:1
+  gray-500 (#6b7280) on white  (#ffffff) = 4.83:1
+Both clear the 4.5:1 text threshold. Cross-checked against the real DOM+CSS
+via axe-core color-contrast (which composites actual computed styles, not
+guessed hex): zero contrast violations on any node containing
+"exclude_from_plan_sync" or the new label/helper text, in EITHER theme. The
+`text-gray-500 dark:text-gray-400` pattern itself is pre-existing (present
+verbatim in `git show master:...major-expenses.html` on the sibling
+checkbox and on unrelated `·` separators/table headers) — SY2 replicated it
+into new content, but the replication does not fail contrast on this page's
+actual backgrounds. Not a FAIL; noted because the task brief specifically
+asked for a check, not because a defect was found.
+
+Point 12 (dark-mode parity): `dark:border-gray-600`, `dark:text-gray-300`,
+`dark:text-gray-400` on the new checkbox/label/span are byte-identical to
+the sibling's dark classes in both forms (diffed programmatically: edit-form
+class strings equal, create-form class strings equal). Dark-mode axe pass
+above (dark.html) confirms no contrast regression in dark theme either.
+PASS.
+
+9. KEYBOARD & FOCUS: new `<input type="checkbox">` has no `tabindex`,
+`disabled`, or `aria-hidden` — natively focusable and in document tab order,
+immediately after the sibling checkbox in both forms (focus order follows
+visual/DOM order — unchanged). Focus-ring class `focus:ring-indigo-500` is
+identical to the sibling's (no `focus:outline-none` added anywhere near this
+markup — the one `focus:outline-none` in this file, line 942, is the
+pre-existing unrelated "Add a major expense" toggle button, which pairs it
+with `focus:ring-2 focus:ring-indigo-400`, also pre-existing/out of scope).
+Since the new checkbox's classes are byte-identical to the already-shipped
+sibling, whatever focus-visibility behavior that sibling has, the new
+checkbox inherits unchanged. PASS.
+
+4/ARIA-misuse: state conveyed solely via the native `checked` attribute
+(`{{if .Expense.ExcludeFromPlanSync}}checked{{end}}` in the edit form, plain
+unchecked default in the create form) — no `role="checkbox"`, no
+`aria-checked`, no ARIA added at all. Native semantics, no misuse. PASS.
+Helper text ("The retirement plan models this expense separately...") is a
+nested `<span>` INSIDE the same label as the sibling's helper span — not a
+separate `aria-describedby` block — identical pattern to `is_internal_
+transfer`'s helper text. Consistent with the sibling; not a new pattern.
+
+5. Distinct accessible names: computed accessible name (label text content,
+per the browser's accname algorithm for a label-wrapped checkbox) for the
+new checkbox is "Modeled in retirement plan — excluded from the plan's
+living-expense sync [...] The retirement plan models this expense
+separately; keep it out of the synced living-expense figure." vs. the
+sibling's "Treat as internal transfer — matches are dropped at load time,
+not counted as spending." Fully distinct text, no shared leading substring,
+no ambiguity between the two checkboxes sitting next to each other. PASS.
+
+15 (motion): no animation/transition added by this change. N/A.
+
+OBSERVATIONS (non-blocking, for the lead)
+- Pre-existing, unrelated to SY2 (git diff master confirms): 890 axe
+  color-contrast hits (white-on-#6366f1 date-range buttons at 4.46:1; red-
+  600/red-400 font-mono transaction amounts) and 27 empty-table-header hits
+  (`.w-6` bulk-pin header cells) across the major-expenses page. Out of
+  scope for this task per the scope-discipline rule; flagged for the a11y
+  backlog / final full-site pass.
+- The manifest's out-of-territory note (internal/services/mcpsvc/curate/
+  upsert.go referencing a not-yet-landed ExcludeFromPlanSync field on
+  majorExpenseRow) is a build/tests-lane concern, not an a11y finding —
+  observed only, no opinion offered.
+- Scratch server + harness artifacts left at
+  /tmp/claude-1000/-home-darrell-work-agents2--claude-worktrees-budget2-whatif-sync-issue-b3c3d7/74f28a87-94f7-4f9f-a967-7ebf6cc2f738/scratchpad/sy2-a11y/
+  (audit/light.html, audit/dark.html, audit/{light,dark}-axe.json) — scratch
+  path outside the repo, scratch-server process killed after use, live
+  app on :8080 unaffected (confirmed 307 before/after).

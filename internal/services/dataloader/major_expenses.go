@@ -104,8 +104,9 @@ func (dl *DataLoader) AddMajorExpense(me models.MajorExpense) ([]models.MajorExp
 }
 
 // UpdateMajorExpense replaces the entry with matching ID. Fields copied
-// from updates: Name, Keywords, ExpectedMin, ExpectedMax, Notes. ID and
-// CreatedAt are preserved from the existing entry; UpdatedAt is bumped.
+// from updates: Name, Keywords, ExpectedMin, ExpectedMax, Notes,
+// IsInternalTransfer, ExcludeFromPlanSync. ID and CreatedAt are preserved
+// from the existing entry; UpdatedAt is bumped.
 func (dl *DataLoader) UpdateMajorExpense(id string, updates models.MajorExpense) ([]models.MajorExpense, error) {
 	tx, done := dl.beginWrite()
 	defer done()
@@ -122,6 +123,7 @@ func (dl *DataLoader) UpdateMajorExpense(id string, updates models.MajorExpense)
 			list[i].ExpectedMax = updates.ExpectedMax
 			list[i].Notes = updates.Notes
 			list[i].IsInternalTransfer = updates.IsInternalTransfer
+			list[i].ExcludeFromPlanSync = updates.ExcludeFromPlanSync
 			list[i].UpdatedAt = time.Now().UTC()
 			found = true
 			break

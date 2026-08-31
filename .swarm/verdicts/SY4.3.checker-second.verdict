@@ -1,0 +1,126 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: SY4
+ATTEMPT: 3
+---
+Scope per manifest: internal/services/metrics/metrics.go (new LivingOutflows, rewritten
+Calculate body, +2 test files new/extended), internal/handlers/dashboard/handlers.go
+(buildBudgetVsActualChartData rewritten to use metrics.LivingOutflows, +test), no direct edit
+to mcpsvc/spend this attempt (transitive fix only). Confirmed via `git diff HEAD` hunk reads on
+both files; probes run exclusively via `go test -overlay` per the new run convention — zero
+on-disk files added to the repo tree at any point (confirmed via `git status --porcelain`
+before writing this verdict).
+
+FIRST: re-ran both prior winning probes through the real, rewritten Calculate (overlay-based).
+Both now PASS:
+  flagged-net-refund:   LivingExpensesTotal=3000 want 3000; PlanExcludedTotal=-500 want -500
+  remainder-net-refund: LivingExpensesTotal=3000 want 3000; PlanExcludedTotal=500  want 500
+Ruling SY-2026-08-30c's and SY-2026-08-30d's own counterexamples are both genuinely fixed.
+
+ATTACK 1 — BOTH signs diverging simultaneously (flagged group net refund AND remainder net
+refund, same window). Overlay probe: remainder = -1000+4000 (net +3000, refund), flagged =
+-2000+2500 (net +500, refund). Result: LivingExpensesTotal=3000 (correct, = |remainder|
+exactly), PlanExcludedTotal=-500 (correct sign). The set-exclusion architecture (LivingOutflows
++ ordinary Abs) is robust to arbitrary combined sign permutations at the metrics.Calculate
+layer -- this is a genuine, verified improvement over attempts 1-2's subtraction-based shape.
+Not a defect.
+
+ATTACK 2 — Per-month granularity with a remainder refund in ONE month only. Overlay probe:
+Jan remainder nets +1500 (refund), Feb is ordinary -1500 spend. LivingExpensesTrend =
+[1500, 1500] (both months correctly show |month remainder|, Jan unaffected by its own sign
+flip). Range total = |sum over ALL living rows in range| = |(-500+2000)+(-1500)| = |0| = 0 --
+confirmed this is computed as ONE range-level Abs of the signed sum (matching totalExpenses'
+own convention), NOT a naive sum of the per-month Abs trend values (which would wrongly give
+3000). Not a defect.
+
+ATTACK 3 — LivingOutflows aliasing/mutation. Overlay probe: captured `outflows.Transactions`
+length and signed sum before calling LivingOutflows, called it, re-checked after -- both
+identical (len 3->3, sum -3900->-3900). Read the implementation directly: `result :=
+&models.TransactionSet{}` is a fresh struct, `append` starts from a nil slice, so no backing
+array of the input is ever touched. TotalExpenses from the real Calculate = 3900 (every
+dollar), confirmed via the same probe, unaffected by the flag. Not a defect.
+
+ATTACK 4 — summarize_spending transitively. Grepped summary.go directly: `living_monthly_actual`
+flows ONLY through `m := metrics.Calculate(filtered, ..., planExclusions)` at line 298; every
+other `math.Abs` mention in the file is an unrelated, pre-existing convention for
+CategoryTotals/by-month breakdown rows (documented in the file's own doc comments), not a
+second implementation of the living figure. No split-classification risk here. Not a defect.
+
+ATTACK 5 — Worker's scope-note claim (CombinedCumulativeBalance's own pre-existing "abs of
+parts" precondition break, claimed identical with/without the flag). Re-verified myself via
+overlay, NOT by trusting the manifest's transcript. First attempt at reproducing (living-only
+fixture, no HI/healthcare component) showed NEITHER breaks -- inconclusive, because a
+healthcare-target of 0 trivially prevents any sign divergence between living and healthcare
+components. Second attempt, WITH an HI premium row and nonzero healthcare target (the
+condition that actually exercises the sign-interaction): both WITH and WITHOUT the flag broke
+the invariant by the IDENTICAL magnitude (diff=800 in both cases, to the decimal). This
+independently CONFIRMS the worker's claim: this specific invariant break is master-native
+(healthcareTotal/livingTotal are each independently Abs'd, unrelated to SY4's flag) and out of
+scope per ruling SY-2026-08-30d's own precedent. Correctly omitted from the shipped test suite.
+Not a defect -- this is the strongest attack that failed to break the work.
+
+ATTACK 6 — THE CHART'S OWN CUMULATIVE WALK REGRESSED (CONFIRMED DEFECT, NEW THIS ATTEMPT).
+Read buildBudgetVsActualChartData's rewritten body: the Living BAR value now correctly calls
+`metrics.LivingOutflows` (matches metrics.go, no split classifier). But the walk's `running`
+computation was NOT correspondingly rewritten -- it still does
+`running += monthTarget - (livingMonth + hcAmt)`, summing TWO INDEPENDENTLY-Abs'd quantities
+(livingMonth from the new LivingOutflows-based Abs, hcAmt from the pre-existing healthcare
+Abs). On master/attempts 1-2, this was harmless: `livingMonth` was DEFINED as `expAmt - hcAmt`
+(a pure algebraic identity), so `livingMonth + hcAmt` collapsed to `expAmt` EXACTLY regardless
+of any sign, by cancellation alone -- no Abs-recombination ever actually happened. Attempt 3's
+rewrite decoupled `livingMonth` from that identity (it's now an independently-computed
+`math.Abs(monthlyLiving[m].SumAmount())`), so the walk's `livingMonth+hcAmt` term is now a
+GENUINE sum-of-two-Abs, which diverges from the true `|living+healthcare|` (the quantity
+metrics.go's own rewritten walk correctly computes via ONE Abs over its merged
+`nonExcludedOutflows` set) whenever living and healthcare have opposite signs within a month --
+the EXACT defect class this whole attempt exists to eliminate, reintroduced in the one place
+(the chart's walk) that was not rewritten to match.
+
+PROOF (two overlay probes, `go test -overlay`, no on-disk files):
+  (a) Direct comparison, chart vs metrics.Calculate, SAME data/target (500 living / 300
+      healthcare), one month: living remainder nets +2000 (refund), healthcare nets -300
+      (ordinary premium spend), no plan exclusion involved at all (planExclusions=nil -- this
+      is not even about the SY4 flag, it is a chart/metrics baseline-consistency regression):
+        chart running[0]   = -1500
+        metrics CombinedCumulativeBalance[0] = -885.2156057494867
+        diff ~= 615 (real dollars, on the dashboard's rendered "Cumulative balance" line)
+  (b) Isolated the target-accrual-formula question (chart's `monthTarget` and metrics.go's
+      `accrual` use genuinely different formulas for partial/edge months, a separate,
+      pre-existing, much smaller effect) by re-running with a NEGLIGIBLE target (0.01/0.01):
+        chart running[0]   = -2299.98
+        metrics CombinedCumulativeBalance[0] = -1699.9796303901437
+        diff ~= 600.00 -- essentially UNCHANGED from (a), confirming the divergence is almost
+        entirely `|living|+|healthcare| - |living+healthcare|` = |2000|+|300|-|2000-300| =
+        2300-1700 = 600, NOT the target-formula difference (which shrank to ~0.02 as expected
+        at this target scale).
+  This is provably NEW: on master (and attempts 1-2), `livingMonth+hcAmt` was an exact
+  algebraic identity equal to `expAmt` with zero sign-dependence -- the chart's walk and
+  metrics.go's walk computed the literal same `spend`/`expAmt` quantity by construction, so no
+  divergence of this kind was possible pre-attempt-3, with or without any plan exclusion.
+
+Fix, confined to SY4's own touched file (handlers.go's buildBudgetVsActualChartData): mirror
+metrics.go's own fix exactly -- merge the month's living and healthcare transactions into one
+set BEFORE taking Abs (analogous to `nonExcludedOutflows`), and use that single Abs value as
+the walk's `spend` term, instead of separately Abs'ing `livingMonth` and `hcAmt` and adding them.
+
+Own build/test re-verification: `go test ./internal/services/metrics/...
+./internal/handlers/dashboard/... ./internal/services/mcpsvc/spend/... -count=1` all `ok` (the
+shipped suite never compares the chart's walk against metrics.Calculate's walk for the same
+data, so this divergence has no test coverage in either direction).
+
+STRONGEST ATTACK THAT FAILED TO BREAK IT: Attack 5 (the worker's own scope-note claim about the
+pre-existing CombinedCumulativeBalance invariant). This was the attack most likely to produce a
+false FAIL if I had trusted the manifest's transcript at face value or used an under-powered
+fixture (my own first attempt at it was inconclusive) -- independently re-derived and confirmed
+TRUE with a fixture that actually exercises the sign interaction (both break, identical
+magnitude 800 to the decimal), correctly leaving it out of scope per ruling SY-2026-08-30d's own
+precedent.
+
+VERDICT: FAIL on Attack 6 -- buildBudgetVsActualChartData's cumulative-balance walk still sums
+two independently-Abs'd quantities (a "second implementation" of the pattern metrics.go's own
+Calculate correctly rewrote this attempt to use ONE Abs over a merged set), producing a
+~$600-and-up divergence from the dashboard's own KPI walk whenever living and healthcare (or,
+by construction, any bucket split) diverge in sign within a month -- a genuine, newly-introduced
+regression, not the pre-existing master-native quirk the manifest correctly identifies
+elsewhere.

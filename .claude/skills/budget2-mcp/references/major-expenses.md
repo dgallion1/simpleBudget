@@ -42,7 +42,14 @@ anything outside it as anomalous), `category`, `notes`, `pin_hash` (pin the
 transaction that prompted the expense in the same call),
 `is_internal_transfer` (treat matches as money moving between the user's own
 accounts — this feeds the transfer classifier, dropping matches from
-spending totals; use it for broker patterns the built-in list misses).
+spending totals; use it for broker patterns the built-in list misses),
+`exclude_from_plan_sync` (omit to leave unchanged; this expense is already
+modeled separately in the what-if plan, e.g. a car loan as its own
+ExpenseSource, so the dashboard sync excludes its matched transactions from
+the synced living-expense figure instead of double-counting them). Until the
+dashboard budget-actuals consume the same flag (task SY4), a flagged expense
+is excluded from the plan sync but still counts toward dashboard spending
+targets — expect an apparent overspend of the flagged amount there.
 
 ## pin_transactions ✏️
 

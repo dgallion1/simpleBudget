@@ -69,9 +69,9 @@ type DashboardMetrics struct {
 	// targets. Drives the "Budget" KPI card so the user sees a single
 	// "am I net over my whole plan?" number that nets a category being
 	// under against another being over.
-	CombinedTarget          float64 `json:"combined_target"`           // BudgetTarget + HealthcareTarget
-	CombinedActualMonthly   float64 `json:"combined_actual_monthly"`   // ActualMonthly + HealthcareActual
-	CombinedPerMonthDelta   float64 `json:"combined_per_month_delta"`  // CombinedActualMonthly - CombinedTarget; positive = over
+	CombinedTarget        float64 `json:"combined_target"`          // BudgetTarget + HealthcareTarget
+	CombinedActualMonthly float64 `json:"combined_actual_monthly"`  // ActualMonthly + HealthcareActual
+	CombinedPerMonthDelta float64 `json:"combined_per_month_delta"` // CombinedActualMonthly - CombinedTarget; positive = over
 	// CombinedCumulativeDelta = LivingCumulativeDelta + HealthcareCumulativeDelta
 	// = (LivingExpensesTotal - BudgetTarget*MonthsInRange) +
 	// (HealthcareTotal - HealthcareTarget*coverageMonths), where coverageMonths
@@ -80,7 +80,7 @@ type DashboardMetrics struct {
 	// terms accrue over different month counts (HC1: healthcare prorated from
 	// actual coverage start).
 	CombinedCumulativeDelta float64 `json:"combined_cumulative_delta"`
-	HasCombinedTarget       bool    `json:"has_combined_target"`       // CombinedTarget > 0
+	HasCombinedTarget       bool    `json:"has_combined_target"` // CombinedTarget > 0
 
 	// Cumulative target totals over the date range. Surfaced on the Budget
 	// card so the user can read off "Living spent X of Y" and "Health spent
@@ -116,6 +116,25 @@ type DashboardMetrics struct {
 	// spends partition TotalExpenses exactly under the precondition above.
 	// Populated only when HasCombinedTarget; nil otherwise.
 	CombinedCumulativeBalance []float64 `json:"combined_cumulative_balance"`
+
+	// PlanExcludedTotal/PlanExcludedCount (SY4) are DISPLAY-ONLY annotation
+	// data: the flagged group's SIGNED NET spend and transaction count --
+	// spend the what-if plan sync already excludes from its living-expense
+	// average because it models it separately (an ExpenseSource, e.g. a car
+	// loan flagged models.MajorExpense.ExcludeFromPlanSync). Ruling
+	// SY-2026-08-30d (attempt 3): these fields are NEVER arithmetically
+	// subtracted from LivingExpensesTotal/ActualMonthly/CumulativeDelta/
+	// LivingExpensesTrend above -- those are computed via SET EXCLUSION
+	// (metrics.LivingOutflows) before the ordinary |sum| arithmetic runs, so
+	// the exclusion is already reflected in them by construction. This pair
+	// exists purely so callers can annotate ("$X modeled elsewhere, N
+	// transactions") without recomputing it. PlanExcludedTotal is POSITIVE
+	// when the flagged group is a net SPEND and NEGATIVE when it is a net
+	// REFUND (refunds exceeding payments) -- the same signed convention
+	// whatif/sync.go's ExcludedGroups.Total uses (ruling SY-2026-08-30a),
+	// never math.Abs. Zero when planExclusions was nil/empty.
+	PlanExcludedTotal float64 `json:"plan_excluded_total"`
+	PlanExcludedCount int     `json:"plan_excluded_count"`
 }
 
 // PeriodComparison holds metrics for two periods for comparison

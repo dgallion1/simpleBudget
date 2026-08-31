@@ -1,0 +1,314 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: SY4
+ATTEMPT: 1
+---
+CONTRACT: .swarm/SY-RUN-SPEC.md "SY4 — acceptance criteria (Tier 2; HC merged
+as 4c3b65e, unblocked)", criteria 1-5 (6 is a LEAD data-migration action, not
+verified here). Design: the flag affects the LIVING-BUDGET comparison ONLY;
+TotalIncome/TotalExpenses/NetSavings/SavingsRate are unchanged.
+
+METHOD NOTE — mutation without writing the shared tree
+All 11 mutations used Go's build overlay (`go test -overlay=<json>`):
+substitution happens in the BUILD, never on disk. sha256sum over ALL TWELVE
+manifest files before and after every run:
+  $ diff <before.sha> <after.sha>
+    ALL 12 FILES BYTE-IDENTICAL
+My only write is this verdict file. No port used, no server started, no
+write-mode git, no repo-root binary executed.
+
+-------------------------------------------------------------------------
+1. BUILD / VET / TESTS / GOFMT — PASS
+-------------------------------------------------------------------------
+  $ go build ./...                      BUILD_EXIT=0  (no output)
+  $ go vet ./...                        VET_EXIT=0    (no output)
+  $ go test ./internal/services/metrics/... ./internal/handlers/dashboard/... ./internal/services/mcpsvc/spend/... -count=1
+    ok  	budget2/internal/services/metrics	0.004s
+    ok  	budget2/internal/handlers/dashboard	0.606s
+    ok  	budget2/internal/services/mcpsvc/spend	0.673s
+    EXIT=0
+  $ go test ./... -count=1
+    FULL_TREE_EXIT=0 ; zero non-"ok" lines ; 49 packages ok
+  $ gofmt -l $(cat .swarm/manifests/SY4.1.files)
+    (no output — all 12 files clean)
+  -count=1 throughout: no cached passes.
+
+-------------------------------------------------------------------------
+2. CRITERION-1 ARITHMETIC — PASS
+-------------------------------------------------------------------------
+Read from source (metrics.go): TotalIncome/TotalExpenses/NetSavings/
+SavingsRate are computed ABOVE the exclusion, and the only subtraction is
+    livingTotal := totalExpenses - healthcareTotal - planExcludedTotal
+so the design constraint holds structurally, not by luck.
+
+TESTS ASSERT IT, and I proved they are load-bearing rather than reading them:
+  MUT A_living — drop `- planExcludedTotal`:
+    --- FAIL: TestCalculateMetrics_PlanExclusions_DropsLivingByExactFlaggedNetTotalExpensesUnchanged
+        plan_exclusions_test.go:62: LivingExpensesTotal drop = 0, want 600 (the flagged net exactly)
+        plan_exclusions_test.go:65: LivingExpensesTotal (with flag) = 4100, want 3500
+    --- FAIL: TestCalculateMetrics_PlanExclusions_CombinedCumulativeBalanceInvariantHolds
+    --- FAIL: TestComparison_PlanExclusionsAppliedToBothWindows
+  MUT A_trend — drop the per-month `- excludedAmt`:
+    --- FAIL: ..._LivingTrendExcludesFlaggedMonth
+        plan_exclusions_test.go:184: LivingExpensesTrend[Jan] = 2100, want 1500
+  MUT A_walk — drop the combined-cumulative walk's spend subtraction:
+    --- FAIL: ..._CombinedCumulativeBalanceInvariantHolds
+        last CombinedCumulativeBalance point = -1395.48..., want -795.48... (== -CombinedCumulativeDelta)
+  MUT A_hi2 — disable the HI-first skip in PlanExcludedOutflows (D-SY-e):
+    --- FAIL: ..._HIOverlapExcludedOnceNotDoubleSubtracted
+        PlanExcludedTotal = 700, want 0 ; PlanExcludedCount = 1, want 0
+        LivingExpensesTotal = 2300, want 3000 (the overlap row must not be subtracted twice)
+  MUT A_cmp — pass nil to the COMPARISON window only inside Comparison:
+    --- FAIL: TestComparison_PlanExclusionsAppliedToBothWindows
+        Previous.LivingExpensesTotal = 2100, want 1500
+  Every arm of the living arithmetic — range total, per-month trend, combined
+  walk, HI ordering, and both Comparison windows — dies under the mutation
+  that breaks exactly it.
+
+TOTALS UNCHANGED: plan_exclusions_test.go:42-56 asserts TotalExpenses,
+TotalIncome, NetSavings AND SavingsRate are identical with-flag vs
+without-flag on the same fixture, plus an absolute pin
+(`TotalExpenses = 4100 ... flag never removes a dollar of real spend`).
+
+NIL == EMPTY == PRE-CHANGE FOR EVERY FIELD: the test uses a genuine golden
+comparison, not a field checklist that could omit one —
+    withNil  := Calculate(..., nil)
+    withEmpty:= Calculate(..., map[string]models.MajorExpense{})
+    if !reflect.DeepEqual(withNil, withEmpty) { ... }
+and a THIRD case (a map whose only key matches no transaction Hash) also
+DeepEqual'd against nil. reflect.DeepEqual follows both *DashboardMetrics
+pointers, so this covers every field including the new ones — exactly what
+criterion 5(b) asks.
+
+-------------------------------------------------------------------------
+3. CRITERION-2/3 COMPLETENESS — THE SPLIT-CLASSIFICATION HUNT — PASS
+-------------------------------------------------------------------------
+I enumerated the surfaces MYSELF by grep before opening the manifest's table,
+then compared. My enumeration found NO surface the manifest missed.
+
+(a) Every Calculate/Comparison call site in the repo (non-test):
+  $ grep -rn "metrics\.Calculate(|Calculate(|metrics\.Comparison(" --include=*.go .
+    handlers.go:130   handleDashboard        -> planExclusions
+    handlers.go:219   handleKPIsPartial      -> planExclusions
+    metrics.go:594/595 Comparison's two internal calls -> planExclusions
+    summary.go:298    summarize_spending     -> planExclusions
+    handlers.go:140/224 metrics.Comparison   -> planExclusions
+  Five Calculate sites, two Comparison sites, ALL threaded. No site passes a
+  literal nil in production code.
+
+(b) EVERY call site derives the map from the UNFILTERED set — read at each
+  site, not assumed:
+    handlers.go:129  planExclusions := planSyncExclusions(data.Active())   [handleDashboard]
+    handlers.go:218  planExclusions := planSyncExclusions(data.Active())   [handleKPIsPartial]
+    handlers.go:283  planExclusions := planSyncExclusions(data.Active())   [handleChartData, budget-vs-actual]
+    summary.go:254   planExclusions := deps.planSyncExclusions(ts)         [ts = ts.Active() at :241, BEFORE the window filter at :256]
+  In every case `filtered`/the window-filtered set is what goes to Calculate,
+  while `data.Active()`/pre-filter `ts` is what builds the map — the
+  HealthcareCoverageStart discipline the spec requires.
+
+(c) Independent hunt for OTHER living-actual arithmetic. I listed every
+  function in handlers.go and checked each site that touches
+  GroupByMonth/SumAmount/HealthInsuranceCategory:
+    handlers.go:401-439  handleKPIDetail   -> income/expenses/savings only (fields the design leaves UNCHANGED) — correctly cleared
+    handlers.go:558-599  handleKPIExport   -> same — correctly cleared
+    handlers.go:706-762  buildBudgetVsActualChartData -> TOUCHED; uses
+        metrics.PlanExcludedOutflows(outflows, planExclusions).GroupByMonth(),
+        livingMonth := expAmt - hcAmt - excludedAmt (:739), and the walk at
+        :762 consumes that same livingMonth — no second classifier
+    handlers.go:1034-1045 buildSpendingTrendChartData -> total spend by category — correctly cleared
+    verdict.go:186-191   BuildBudgetVerdict -> reads ONLY m.CombinedCumulativeDelta,
+        m.LivingExpensesTotal, m.HealthcareTotal, m.CumulativeDelta,
+        m.HealthcareCumulativeDelta — zero transaction arithmetic, so it
+        inherits the adjustment. Correctly cleared, unmodified.
+    summary.go:340-347   budget block -> round2(m.BudgetTarget/m.ActualMonthly/
+        m.CombinedCumulativeDelta) — all from the adjusted struct
+  Crucially, `PlanExcludedOutflows` is the ONE implementation of the HI-first
+  rule, and both Calculate and the chart builder call it (grep confirms
+  exactly two production call sites) — the rule is not re-implemented per
+  surface. That is what ruling 2026-08-29a demands.
+
+(d) Templates and client JS carry NO local re-classification or second
+  exclusion source:
+    kpis.html            — only {{formatMoney .Metrics.*}} / .PeriodComparison.* / .BudgetVerdict.*; no arithmetic
+    dashboard-verdict-bar.html — only {{formatMoney $v.*}}; no arithmetic
+    budget-vs-actual.html — I read the WHOLE file: a container <div
+      data-chart-url=...> plus static prose. It renders no figure at all.
+    $ grep -rn "living|Living" web/static/js/   -> no matches
+    $ git status --porcelain -- <the three templates> web/static/js/  -> empty
+  All three templates and all JS are untouched, as claimed.
+
+MY ENUMERATION vs THE MANIFEST'S 18 ROWS: every surface I found appears in
+the table with the same disposition. No missed surface. Rows 1-4, 12, 13
+TOUCHED; 5-11, 14-17 CLEARED; 18 (whatif sync) correctly marked out of
+territory — and I confirmed independently that sync.go computes its own
+target-side figure and does not import metrics.Calculate.
+
+-------------------------------------------------------------------------
+4. CRITERION-4 RENDERED-STRING SUMS, ONE ROUNDING PATH — PASS
+-------------------------------------------------------------------------
+TestDashboardVerdictBar_RenderedFiguresReflectPlanExclusion
+(plan_exclusions_render_test.go) is a real end-to-end pipeline, not a
+hand-built struct: a models.TransactionSet with FRACTIONAL-CENT amounts
+(-1804.415 rent, -300.415 premium, -600.415 flagged) and a flagged def, run
+through the real metrics.Calculate -> BuildBudgetVerdict ->
+renderer.RenderToString("dashboard-verdict-bar"), then it extracts the
+DOLLAR FIGURES BACK OUT OF THE RENDERED HTML:
+    gotSpent := extractDollarAfter(t, out, "Spent</div>")
+    total := extractDollarBefore(t, out, "over budget")
+    living := extractDollarAfter(t, out, "Living:")
+    healthcare := extractDollarAfter(t, out, "Healthcare:")
+    if got, want := living+healthcare, total; math.Abs(got-want) > 0.001 {...}
+So both halves of the rule are covered: the Spent figure reflects the
+exclusion (`wantSpent := m.TotalExpenses - m.PlanExcludedTotal`), and the
+rendered Living + Healthcare still sum to the rendered combined total to the
+cent, now with SY4's arithmetic feeding the pipeline.
+
+ONE ROUNDING PATH — I checked for the W2 dual-formatter class rather than
+assuming its absence:
+  $ grep -n "toLocaleString|toFixed|Math.round|formatMoney|formatNumber|Intl\." \
+        budget-vs-actual.html kpis.html dashboard-verdict-bar.html
+    -> every hit is a Go template {{formatMoney ...}}; ZERO JS number
+       formatting in any of the three.
+  $ grep -rn "toLocaleString|toFixed" web/static/js/
+    -> charts.js:234 only, and I read its context: it formats a PERCENT on
+       the donut legend row (`pctNum.toFixed(1) + '%'`).
+  charts.js does contain two Intl currency formatters (lines ~207 and ~460),
+  and I traced both rather than stopping at the grep: the first (fmtMoney)
+  renders `it.amount` in the major-expense donut legend — a group spend
+  total, which SY4 deliberately does not change; the second
+  (formatCurrency) renders the what-if projection's final-balance label.
+  NEITHER renders a living-budget figure. No living dollar figure is
+  produced by two formatters, so there is no figure whose Go and JS
+  renderings could disagree.
+
+-------------------------------------------------------------------------
+5. MUTATIONS — PASS on (a); (b) is met but THINLY — see FINDING F1
+-------------------------------------------------------------------------
+(a) Revert the living subtraction -> the exact arithmetic tests fail:
+    demonstrated five ways under criterion 2 above (A_living, A_trend,
+    A_walk, A_hi2, A_cmp). Decisive.
+(c) Chart builder's own subtraction:
+    MUT C_chartcalc — `livingMonth := expAmt - hcAmt` in buildBudgetVsActualChartData:
+      --- FAIL: TestBuildBudgetVsActualChartData_PlanExclusionRemovesFlaggedSpendFromLivingAndCumulative
+          plan_exclusions_chart_test.go:47: trace[0].y (Living) = [2100 1500], want [1500 1500]
+          plan_exclusions_chart_test.go:57: trace[2].y (cumulative) = [-950 -1300], want [-350 -700]
+    Both the bar trace AND the cumulative walk are guarded.
+
+(b) "make one call site pass nil while defs exist -> a test fails". I did not
+stop at one; I mutated ALL FOUR production wiring points independently:
+    MUT B_spend  (summary.go:254 -> nil)
+      --- FAIL: TestSummarizeSpendingBudgetBlockReflectsPlanSyncExclusion
+          plan_exclusions_test.go:86: budget.living_monthly_actual = 2061.9, want ~1472.78
+      GUARDED.
+    MUT B_dash   (handlers.go:129, handleDashboard -> nil)        -> ALL PACKAGES ok. UNGUARDED.
+    MUT B_kpis   (handlers.go:218, handleKPIsPartial -> nil)      -> ALL PACKAGES ok. UNGUARDED.
+    MUT B_chart  (handlers.go:283, handleChartData -> nil)        -> ALL PACKAGES ok. UNGUARDED.
+Per the criterion as written ("if NONE does, that's a FAIL-grade gap"), the
+bar is cleared: B_spend fails. I therefore do not FAIL SY4 on this. But three
+of the four wiring points are untested, which is a real durability gap in
+exactly the defect class this task exists to close — recorded as F1 with the
+reproduction, because I believe the lead should act on it.
+
+-------------------------------------------------------------------------
+6. SCOPE — PASS (both sanctioned deviations verified, and one is bigger than
+   the sanction described — see F2)
+-------------------------------------------------------------------------
+Reconciliation of the working tree against .swarm/manifests/SY4.1.files:
+    IN MANIFEST NOT IN TREE: NONE
+    IN TREE NOT IN MANIFEST: only the accepted SY siblings —
+      SY1: whatif/sync.go(+test), models/major_expense.go,
+           dataloader/major_expenses.go(+test), majorexpenses/engine.go(+test),
+           components/whatif/sync-preview.html
+      SY2: handlers/majorexpenses/handlers.go(+test), pages/major-expenses.html
+      SY3: mcpsvc/curate/{upsert.go,expenses.go,upsert_test.go}, the skill doc
+      plus .swarm/ledger.tsv (lead) and ONE stray artifact (see F3)
+No HC-territory file is dirty beyond the sanctioned transfers_test.go — HC's
+work is merged at 4c3b65e and its files are clean.
+
+SANCTIONED DEVIATION 1 — internal/services/dataloader/transfers_test.go.
+Verified genuinely signature-only: the diff is two lines, both call-argument
+changes, no assertion touched, no test added:
+    -	m := metrics.Calculate(ts.Active().FilterByDateRange(start, end), start, end, 0, 0)
+    +	m := metrics.Calculate(ts.Active().FilterByDateRange(start, end), start, end, 0, 0, start, true, nil)
+It is, however, NOT the "mechanical `, nil`" the sanction described — it adds
+THREE arguments. See F2 for why, and for the master-health consequence.
+I did not accept "coverageStart=start, hasCoverage=true" as harmless on
+argument; I PROVED those two choices are inert for these assertions by
+flipping them:
+    MUT D — `start, true` -> `time.Time{}, false`:
+      ok  	budget2/internal/services/dataloader	0.017s   (both tests still pass)
+    baseline, same two tests:
+      ok  	budget2/internal/services/dataloader	0.015s
+  With healthcareTarget==0 the coverage args cannot reach any asserted field,
+  so the edit is behavior-neutral either way. Mechanical in effect.
+
+SANCTIONED DEVIATION 2 — internal/models/dashboard.go. Diff is (i) three
+struct-tag comment realignments (CombinedTarget/CombinedActualMonthly/
+CombinedPerMonthDelta/HasCombinedTarget) that are pure gofmt output, and
+(ii) the new PlanExcludedTotal/PlanExcludedCount block with its doc comment.
+No field renamed, no tag changed, no behavior. Confirmed mechanical.
+
+-------------------------------------------------------------------------
+FINDINGS
+-------------------------------------------------------------------------
+F1 (durability gap, criterion 2/5 — the split-classification class itself).
+   Three of the four production wiring points can be silently reverted to nil
+   with the ENTIRE test suite staying green:
+     handlers.go:129 handleDashboard, :218 handleKPIsPartial, :283
+     handleChartData — each mutated to `planExclusions := nil`, and
+     `go test ./internal/services/metrics/... ./internal/handlers/dashboard/...
+      ./internal/services/mcpsvc/spend/...` returns ok/ok/ok every time.
+   The reason is structural: the dashboard tests exercise the CONSUMERS
+   directly — plan_exclusions_render_test.go calls metrics.Calculate itself
+   and plan_exclusions_chart_test.go calls buildBudgetVsActualChartData
+   itself, both passing an explicit map — so nothing ever executes the
+   handler code that builds the map from data.Active(). The SY4 changes to
+   handlers_test.go are purely mechanical `, nil` signature updates (I read
+   the whole diff), adding no wiring coverage. mcpsvc/spend is the only site
+   with a handler-level test, and it is the only one that fails.
+   Today the wiring is CORRECT — I read all four sites and they build from
+   the unfiltered set. This is not a defect in shipped behavior; it is an
+   absence of a guard on the exact seam ruling 2026-08-29a says to guard.
+   Recommended follow-up (the V3 "promote the probe" pattern): a test task
+   seeding a flagged def into the loader's major_expenses.json, driving
+   GET /dashboard and GET /dashboard/charts/data/budget-vs-actual through the
+   router, and asserting the rendered/JSON living figure reflects the
+   exclusion. My three overlay mutations are the ready-made calibration for
+   it — each must fail the new test.
+F2 (master health, PRE-EXISTING, outside SY4's scope — for the lead, not a
+   FAIL). master at 4c3b65e does not compile its dataloader TEST package:
+     $ git show master:internal/services/metrics/metrics.go | grep "^func Calculate"
+       func Calculate(..., coverageStart time.Time, hasCoverage bool) *models.DashboardMetrics   [7 params]
+     $ git show master:internal/services/dataloader/transfers_test.go | grep metrics.Calculate
+       :137  metrics.Calculate(..., start, end, 0, 0)     [5 args]
+       :280  metrics.Calculate(..., start, end, 0, 0)     [5 args]
+   The HC merge changed the signature and left this caller behind — it was
+   fenced as foreign territory at the time. `go build ./...` hides it (build
+   ignores _test.go), which is why it survived the merge gate. The tree is
+   green ONLY because SY4's uncommitted edit repairs it. Two consequences the
+   lead should weigh: (i) SY4's transfers_test.go edit is load-bearing for
+   master's health, not merely cosmetic, so it must not be dropped from the
+   commit; (ii) a `go vet ./...` or `go test ./...` gate on master would have
+   caught this at HC's merge, whereas `go build ./...` never will.
+F3 (commit hygiene, not SY4's): an untracked 16MB ELF binary sits in the repo
+   root — `budget2.old-1345` (Aug 30 13:45), and `git check-ignore` reports it
+   is NOT ignored. A blind `git add -A` at commit time would commit it. I did
+   not execute it (repo-root binaries port-kill). Not created by SY4; flagging
+   for the commit step.
+
+-------------------------------------------------------------------------
+SUMMARY
+-------------------------------------------------------------------------
+All five verifiable SY4 criteria are met, each on a quoted command's output.
+The living-only design holds structurally (totals computed above the
+subtraction) and is guarded by five independent mutations; nil == empty ==
+no-match is a true golden reflect.DeepEqual over the whole struct; my own
+grep enumeration of living-actual surfaces found nothing the manifest's 18
+rows missed, all four map-building sites derive from the UNFILTERED set, and
+the HI-first rule has exactly one implementation consumed by both surfaces;
+the rendered-string test runs a fractional-cent flagged fixture through the
+real pipeline and asserts on figures extracted from the HTML, with no living
+figure formatted by JS anywhere. The one soft spot is F1: three of four
+wiring points are unguarded by tests, which clears the criterion as written
+(the fourth fails) but deserves a follow-up test task.

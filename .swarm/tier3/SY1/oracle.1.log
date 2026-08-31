@@ -1,0 +1,10 @@
+CHECK contract-tests: PASS
+CHECK server-up: PASS
+CHECK preview-group-name: PASS
+CHECK preview-group-count: PASS
+CHECK preview-group-monthly: PASS
+CHECK preview-guard-fields: PASS
+CHECK apply-200: PASS
+CHECK apply-saved-living: PASS
+checks passed: 8, failed: 0
+ORACLE PASS

@@ -485,3 +485,33 @@ per user decision 2026-08-30).
 - kpis.html Monthly Healthcare card: text-emerald-600 "Target ... under" line 3.43:1 light.
 - kpis.html Budget card breakdown: text-rose-500 / text-emerald-500 lines 3.34:1 / 2.31:1 light.
 - budget-vs-actual chart: plotly dashed target-line color contrast never assessed in either theme (JS-rendered).
+
+## SY run (2026-08-30) — backlog from checker findings (see SY-RUN-SPEC.md rulings)
+- CombinedCumulativeBalance walk assumes per-month |sum| partitions the
+  range-level |sum| — FALSE for any refund-dominant month (one large
+  outflow-typed credit suffices, given inferred typing). MASTER-NATIVE
+  (proven identical with planExclusions=nil, both lanes' probes, SY4
+  attempts 3-4); SY4 only makes the chart walk AGREE with metrics.go, it
+  does not fix the shared assumption. Unrecorded in code — needs an issue
+  or documented skip so it is not rediscovered a fourth time.
+- The chart-vs-metrics walk equality test guards the SPEND term only
+  (tiny-target calibration suppresses the pre-existing flat-monthTarget
+  vs day-prorated accrual difference, which remains untested).
+- Negative-net excluded groups render "$-163/mo" not "-$163/mo"
+  (formatNumber as-is per D-SY-e); pick a convention before more
+  surfaces render PlanExcludedTotal (currently annotation-only, not yet
+  rendered anywhere).
+- SY2 flagged-side checked-state assertion is unanchored (bare
+  substring); windowing it like its unflagged sibling is a one-liner
+  (checker-tests SY2.1 F1).
+- SY3 doc pass leftovers: list_major_expenses now returns
+  exclude_from_plan_sync on every row (undocumented); skill doc should
+  note keeping Lucid on is_internal_transfer until the SY4 code is
+  DEPLOYED and the data migration below is done.
+- gitignore the stray repo-root binaries (untracked 16MB budget2.old-1345
+  nearly rode into a blind `git add -A` twice this run).
+- DATA MIGRATION after SY4 deploys (SY-RUN-SPEC.md SY4 criterion 6):
+  flip Lucid b388e1c8 is_internal_transfer→false,
+  exclude_from_plan_sync→true, re-sync, verify living ≈7,128.66 and
+  Lucid visible in spending totals again. Do NOT flip before the new
+  binary is running — old code ignores the new flag entirely.

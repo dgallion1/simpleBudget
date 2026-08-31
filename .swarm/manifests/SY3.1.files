@@ -1,0 +1,4 @@
+internal/services/mcpsvc/curate/upsert.go
+internal/services/mcpsvc/curate/expenses.go
+internal/services/mcpsvc/curate/upsert_test.go
+.claude/skills/budget2-mcp/references/major-expenses.md

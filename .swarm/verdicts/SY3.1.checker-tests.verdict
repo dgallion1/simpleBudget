@@ -1,0 +1,276 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: SY3
+ATTEMPT: 1
+---
+CONTRACT (.swarm/SY-RUN-SPEC.md, "SY3 — acceptance criteria (Tier 1)")
+- curate/upsert.go: `ExcludeFromPlanSync *bool json:"exclude_from_plan_sync,omitempty"`
+  with jsonschema description, nil = leave unchanged (IsInternalTransfer is
+  the pattern), applied on create and edit, echoed in the response struct.
+- curate/expenses.go: list output includes `exclude_from_plan_sync`.
+- Tool COUNT unchanged -> README / server_test want-list untouched. Update
+  .claude/skills/budget2-mcp/references/major-expenses.md (upsert params +
+  one-line semantics, including the D-SY-g caveat until SY4 lands).
+- Tests in the curate package for nil/true/false on create and edit.
+
+METHOD NOTE — mutation without writing the shared tree
+Mutations were applied with Go's build overlay (`go test -overlay=<json>`),
+which substitutes file contents in the BUILD ONLY; nothing was ever written
+to disk. In a tree with three concurrent runs (HC, SY1, SY2-in-flight) this
+removes any window in which a mutated upsert.go could be compiled or copied
+by another agent. Verified regardless with sha256sum bracketing:
+  BEFORE: 8a860257cb65acf5f228c405e2bd81cb1c50f45f835b79471c0b38284cb30dbc  internal/services/mcpsvc/curate/upsert.go
+          e9da433c9896b8ef6a6053b10f26d1251f601e9fe39f9bb30f86ccc292b12219  internal/services/mcpsvc/curate/expenses.go
+  AFTER:  8a860257cb65acf5f228c405e2bd81cb1c50f45f835b79471c0b38284cb30dbc  internal/services/mcpsvc/curate/upsert.go
+          e9da433c9896b8ef6a6053b10f26d1251f601e9fe39f9bb30f86ccc292b12219  internal/services/mcpsvc/curate/expenses.go
+Byte-identical. My only write to the tree is this verdict file. I started no
+server and used no port. No write-mode git; no prebuilt repo-root binary run.
+
+-------------------------------------------------------------------------
+1. BUILD / TEST / GOFMT — PASS
+-------------------------------------------------------------------------
+  $ go build ./...
+    BUILD_EXIT=0   (no output)
+  No retry was needed: the SY2 worker's in-flight edits to
+  internal/handlers/majorexpenses/ and web/templates/pages/major-expenses.html
+  were present in the tree and compiled cleanly on the first attempt.
+
+  $ go test ./internal/services/mcpsvc/curate/... -count=1
+    ok  	budget2/internal/services/mcpsvc/curate	0.319s
+    TEST_EXIT=0
+  -count=1 defeats the test cache — a real execution, not a cached pass.
+  Full verbose run: 39 tests, all PASS.
+
+  $ gofmt -l internal/services/mcpsvc/curate/upsert.go \
+        internal/services/mcpsvc/curate/expenses.go \
+        internal/services/mcpsvc/curate/upsert_test.go
+    (no output — all three clean)
+
+-------------------------------------------------------------------------
+2. POINTER / NIL-MERGE SEMANTICS MATCH IsInternalTransfer ON BOTH PATHS,
+   RESPONSE ECHO PRESENT — PASS
+-------------------------------------------------------------------------
+Read from source (internal/services/mcpsvc/curate/upsert.go), not the manifest.
+
+INPUT SHAPE (upsert.go:24) — byte-for-byte the IsInternalTransfer shape one
+line above it, pointer type and omitempty included:
+  IsInternalTransfer  *bool `json:"is_internal_transfer,omitempty" jsonschema:"treat matches as money moving between the user's own accounts, ..."`
+  ExcludeFromPlanSync *bool `json:"exclude_from_plan_sync,omitempty" jsonschema:"leave unchanged if omitted; when true, the what-if dashboard sync excludes this expense's matched transactions from the synced living-expense figure because it is already modeled separately in the plan (e.g. a car loan as its own ExpenseSource)"`
+The jsonschema description is present and states the nil-semantics explicitly
+("leave unchanged if omitted"), as the criterion requires.
+
+APPLIED ON BOTH CREATE AND EDIT — this is a structural property, and I
+verified it structurally rather than trusting the claim. upsert.go:87-128:
+  var (target models.MajorExpense; create = strings.TrimSpace(in.ID) == ""; found bool)
+  if !create {                       // edit: target loaded from `existing`
+      for _, e := range existing { if e.ID == in.ID { target, found = e, true; break } }
+      ...
+  }
+  // ONE merge block, AFTER the create/edit branch, so it runs on both:
+  if in.IsInternalTransfer != nil  { target.IsInternalTransfer  = *in.IsInternalTransfer  }
+  if in.ExcludeFromPlanSync != nil { target.ExcludeFromPlanSync = *in.ExcludeFromPlanSync }
+There is exactly ONE assignment to target.ExcludeFromPlanSync in the file, it
+is nil-guarded, and it sits after the branch — so create (zero-value target)
+and edit (loaded target) traverse the identical code. Immediately below,
+upsert.go:150-157 dispatches to AddMajorExpense (create) or
+UpdateMajorExpense (edit); SY1 already made UpdateMajorExpense copy this
+field explicitly, so the edit path persists it.
+
+RESPONSE ECHO (upsert.go:159-169):
+  out = upsertOutput{ ID: target.ID, Created: create, Expense: majorExpenseRow{
+        ... Notes: target.Notes, IsInternalTransfer: target.IsInternalTransfer,
+        ExcludeFromPlanSync: target.ExcludeFromPlanSync, }, ... }
+Echo present, sourced from the merged target.
+
+NIL-vs-EXPLICIT-FALSE DISAMBIGUATION proven on actual JSON decoding, which is
+the property the *bool exists for:
+  $ go test -overlay=<probe> -count=1 -v -run TestProbeListRowSerializesFalse ./internal/services/mcpsvc/curate/
+    PROBE-IN omitted -> nil pointer = true
+    PROBE-IN explicit false -> non-nil pointer to false = true
+Omitting the key yields nil (leave unchanged); sending `false` explicitly
+yields a non-nil pointer to false (overwrite). The two are distinguishable,
+which is exactly what a plain `bool` could not do.
+
+TOOL DESCRIPTION: registerUpsert's prose gained one sentence for
+exclude_from_plan_sync placed adjacent to the existing is_internal_transfer
+sentence (upsert.go:64-70), so the model-facing description covers it too.
+
+-------------------------------------------------------------------------
+3. LIST OUTPUT INCLUDES THE FIELD, WITHOUT omitempty SO false SERIALIZES
+   — PASS
+-------------------------------------------------------------------------
+Asserted on the SERIALIZED JSON, not on the struct tag, because "false must
+render" is a claim about output bytes:
+  $ go test -overlay=<probe> -count=1 -v -run TestProbeListRowSerializesFalse ./internal/services/mcpsvc/curate/
+    PROBE-ROW marshal(zero value) = {"id":"x","name":"n","keywords":null,"expected_min":0,"expected_max":0,"is_internal_transfer":false,"exclude_from_plan_sync":false,"count":0,"pinned_count":0,"total":0}
+    PROBE-ROW contains exclude_from_plan_sync:false = true
+    PROBE-ROW marshal(true) contains :true = true
+The zero-value row emits `"exclude_from_plan_sync":false` — it is NOT
+suppressed. Tag is `json:"exclude_from_plan_sync"` with no omitempty, matching
+`is_internal_transfer` in the same struct (visible side by side in the marshal
+output above). Populated in the row-building loop from `e.ExcludeFromPlanSync`
+(expenses.go:113). Note this struct is shared: majorExpenseRow is also
+upsertOutput.Expense, so the upsert response inherits the same non-suppressing
+behaviour.
+
+-------------------------------------------------------------------------
+4. TOOL COUNT UNCHANGED; README AND WANT-LIST UNTOUCHED — PASS
+-------------------------------------------------------------------------
+  $ git diff --stat master -- README.md internal/services/mcpsvc/server_test.go internal/services/mcpsvc/server.go
+    (empty — no diff)
+  $ git status --porcelain -- README.md internal/services/mcpsvc/server_test.go internal/services/mcpsvc/server.go
+    (empty — not modified, not untracked)
+Both the tracked-diff and the working-tree status are empty, so these paths
+are untouched by any run in this tree.
+Beyond the diff, I confirmed the count MECHANICALLY rather than inferring it
+from an absent diff — a field added to an existing tool must not register a
+new one:
+  $ go test ./internal/services/mcpsvc/ -count=1 -run 'Tool|Register|Server' -v
+    --- PASS: TestNewServerExposesTheAssumptionsResource (0.01s)
+    --- PASS: TestNewServerRegistersAllThirtyTwoTools (0.02s)
+    --- PASS: TestServerInstructionsCarryLoadBearingClaims (0.00s)
+    ok  	budget2/internal/services/mcpsvc	0.028s
+The want-list test still passes at THIRTY-TWO tools. The worker added a field,
+not a tool.
+
+-------------------------------------------------------------------------
+5. SKILL DOC — PASS
+-------------------------------------------------------------------------
+  $ git diff master -- .claude/skills/budget2-mcp/references/major-expenses.md
+Adds to the upsert_major_expense params list:
+  `exclude_from_plan_sync` (omit to leave unchanged; this expense is already
+  modeled separately in the what-if plan, e.g. a car loan as its own
+  ExpenseSource, so the dashboard sync excludes its matched transactions from
+  the synced living-expense figure instead of double-counting them).
+followed by the SY4 caveat. Verified the caveat is present VERBATIM (compared
+against the dispatch's required sentence with whitespace normalised, so a
+line-wrap cannot create a false negative):
+  $ python3 -c "<normalise doc whitespace; substring test>"
+    caveat present verbatim (whitespace-normalised): True
+    upsert param name present: True
+    mentions of exclude_from_plan_sync in doc: 1
+    mentions SY4: True
+The sentence reads: "Until the dashboard budget-actuals consume the same flag
+(task SY4), a flagged expense is excluded from the plan sync but still counts
+toward dashboard spending targets — expect an apparent overspend of the
+flagged amount there."
+
+-------------------------------------------------------------------------
+6. THE NEW TESTS GENUINELY DISCRIMINATE — PASS (mutation-proven)
+-------------------------------------------------------------------------
+Green baseline first:
+  $ go test ./internal/services/mcpsvc/curate/... -count=1 -v -run 'ExcludeFromPlanSync|IsInternalTransfer'
+    --- PASS: TestUpsertMergesIsInternalTransferOnUpdate (0.01s)
+    --- PASS: TestUpsertSetsExcludeFromPlanSyncOnCreate (0.01s)
+    --- PASS: TestUpsertMergesExcludeFromPlanSyncOnUpdate (0.01s)
+I read both new tests. They drive the REAL MCP tool
+(`call(t, cs, "upsert_major_expense", map[string]any{...})`), so they exercise
+JSON decoding end to end — which independently pins the wire name
+`exclude_from_plan_sync` — and they assert on BOTH the persisted value
+(deps.Expenses.LoadMajorExpenses()) and the echoed response
+(out.Expense.ExcludeFromPlanSync), not just one.
+
+MUT-1 — the mutation the criterion names: replace the nil-guarded merge with
+an unconditional overwrite that is nil-SAFE (so it does not merely crash, it
+silently does the wrong thing — the real zero-value-overwrite bug shape):
+    target.ExcludeFromPlanSync = in.ExcludeFromPlanSync != nil && *in.ExcludeFromPlanSync
+  $ go test -overlay=<MUT-1> -count=1 ./internal/services/mcpsvc/curate/
+    --- FAIL: TestUpsertMergesExcludeFromPlanSyncOnUpdate (0.01s)
+        upsert_test.go:292: exclude_from_plan_sync must survive an update that does not mention it
+    FAIL	budget2/internal/services/mcpsvc/curate
+Exactly the edit-path nil leg fails, at exactly the assertion that guards it.
+The test is load-bearing. Restored (nothing was ever on disk; sha unchanged).
+
+MUT-2 — raw unconditional deref (`= *in.ExcludeFromPlanSync`), to establish
+that the CREATE-with-omitted-field path is actually traversed by the suite:
+  $ go test -overlay=<MUT-2> -count=1 ./internal/services/mcpsvc/curate/
+    --- FAIL: TestUpsertCreatesAnExpenseAndReturnsItsID (0.00s)
+    --- FAIL: TestUpsertLeavesUnmentionedFieldsAlone (0.00s)
+    --- FAIL: TestUpsertClearsKeywordsOnlyWithAnExplicitEmptyList (0.00s)
+    --- FAIL: TestUpsertRejectsTheSameConfigurationsThePageRejects/no_name_on_create
+        upsert_test.go:95: error "upsert_major_expense panicked: runtime error: invalid memory address or nil pointer dereference" does not mention "name"
+This matters for the criterion's "nil ... on create" leg: the existing create
+tests all omit the field and would panic on a nil deref, so the nil-on-create
+path IS exercised, even though no test asserts the resulting false directly
+(see FINDINGS F1).
+
+Coverage matrix against "nil/true/false on create and edit":
+  create + true  -> TestUpsertSetsExcludeFromPlanSyncOnCreate (stored AND echoed)
+  create + false -> TestUpsertSetsExcludeFromPlanSyncOnCreate (second create)
+  create + nil   -> traversed by the existing create tests (MUT-2 evidence);
+                    not directly asserted — F1
+  edit   + nil   -> TestUpsertMergesExcludeFromPlanSyncOnUpdate leg 1
+                    (previously-true value survives; killed by MUT-1)
+  edit   + false -> leg 2 (explicit false clears stored true; echo checked)
+  edit   + true  -> leg 3 (explicit true sets stored false)
+
+-------------------------------------------------------------------------
+7. SCOPE — PASS
+-------------------------------------------------------------------------
+Work is UNCOMMITTED, so I diffed the working tree, not master...HEAD.
+SY3's footprint from `git status --porcelain`, intersected with SY3 territory:
+  M .claude/skills/budget2-mcp/references/major-expenses.md
+  M internal/services/mcpsvc/curate/expenses.go
+  M internal/services/mcpsvc/curate/upsert.go
+  M internal/services/mcpsvc/curate/upsert_test.go
+Exactly the four paths in .swarm/manifests/SY3.1.files — nothing extra,
+nothing missing. No new file was created (upsert_test.go was extended, not
+replaced), so no untracked SY3 artifact exists either.
+Symbol-containment sweep (excluding .swarm and the unrelated
+.claude/worktrees/ checkout):
+  $ grep -rln "ExcludeFromPlanSync|exclude_from_plan_sync" --include=*.go --include=*.md .
+    .claude/skills/budget2-mcp/references/major-expenses.md   <- SY3
+    internal/services/mcpsvc/curate/{upsert.go,expenses.go,upsert_test.go}  <- SY3
+    internal/handlers/whatif/{sync.go,sync_plan_exclusions_test.go}         <- SY1
+    internal/models/major_expense.go                                        <- SY1
+    internal/services/dataloader/{major_expenses.go,plan_sync_exclusion_test.go} <- SY1
+    internal/services/majorexpenses/{engine.go,plan_sync_test.go}           <- SY1
+    internal/handlers/majorexpenses/{handlers.go,handlers_test.go}          <- SY2 (in flight)
+Every occurrence attributes to SY3, SY1 (accepted) or SY2 (in progress). SY3
+wrote nothing into SY1's or SY2's files.
+FOREIGN dirty paths seen and ATTRIBUTED, never counted against SY3:
+  HC: internal/handlers/dashboard/**, internal/models/dashboard.go,
+      internal/services/metrics/**, internal/services/mcpsvc/spend/**,
+      internal/services/dataloader/transfers_test.go,
+      web/templates/components/kpis.html, .swarm/HC*
+  SY1: internal/handlers/whatif/sync.go (+ its test), models/major_expense.go,
+      dataloader/major_expenses.go (+ test), majorexpenses/engine.go (+ test),
+      web/templates/components/whatif/sync-preview.html
+  SY2 (mid-edit during my run): internal/handlers/majorexpenses/handlers.go,
+      handlers_test.go, web/templates/pages/major-expenses.html,
+      .swarm/manifests/SY2.1.files
+  LEAD: .swarm/ledger.tsv, .swarm/NEXT.md
+CRITICAL GLOBS: .swarm/critical.globs lists internal/services/mcpsvc/confirm/**
+— SY3 touched internal/services/mcpsvc/curate/**, a DIFFERENT package, not
+covered by any critical glob. No critical path touched.
+
+-------------------------------------------------------------------------
+FINDINGS (backlog — none block acceptance)
+-------------------------------------------------------------------------
+F1 (test-coverage nit): there is no direct assertion that a create which
+   OMITS exclude_from_plan_sync stores false. The path is traversed (MUT-2
+   panics prove it) and the outcome is structurally forced by the zero-value
+   target, so the risk is negligible — but the criterion's matrix reads
+   "nil/true/false on create and edit", and the create+nil cell rests on an
+   indirect argument rather than an assertion. One added line in
+   TestUpsertSetsExcludeFromPlanSyncOnCreate would close it.
+F2 (doc completeness, spec-satisfied): the skill doc documents the field as an
+   UPSERT param and carries the SY4 caveat, which is all the criterion asks.
+   It does not mention that list_major_expenses now RETURNS
+   exclude_from_plan_sync on every row, nor D-SY-g's operational advice to
+   keep the Lucid group on is_internal_transfer until SY4 is accepted. Both
+   are outside SY3's written criteria; flagging for the SY4 doc pass.
+
+-------------------------------------------------------------------------
+SUMMARY
+-------------------------------------------------------------------------
+All four SY3 acceptance criteria met, each on a quoted command's output.
+The nil-merge is structurally proven to run on both create and edit (one
+guarded assignment after the branch), the list row is proven to serialize
+false on actual marshalled JSON, the tool count is proven unchanged by the
+want-list test passing at thirty-two rather than merely by an empty diff, and
+the new edit-path nil test is proven load-bearing by a nil-safe
+unconditional-overwrite mutation that fails it at the exact guarding
+assertion. Nothing outside SY3 territory was modified; the tree is
+byte-identical after my mutations.

@@ -18,17 +18,18 @@ type listExpensesInput struct {
 }
 
 type majorExpenseRow struct {
-	ID                 string        `json:"id"`
-	Name               string        `json:"name"`
-	Keywords           []string      `json:"keywords"`
-	ExpectedMin        float64       `json:"expected_min"`
-	ExpectedMax        float64       `json:"expected_max"`
-	Notes              string        `json:"notes,omitempty"`
-	IsInternalTransfer bool          `json:"is_internal_transfer"`
-	Count              int           `json:"count"`
-	PinnedCount        int           `json:"pinned_count"`
-	Total              float64       `json:"total"`
-	Transactions       []pinnableRow `json:"transactions,omitempty"`
+	ID                  string        `json:"id"`
+	Name                string        `json:"name"`
+	Keywords            []string      `json:"keywords"`
+	ExpectedMin         float64       `json:"expected_min"`
+	ExpectedMax         float64       `json:"expected_max"`
+	Notes               string        `json:"notes,omitempty"`
+	IsInternalTransfer  bool          `json:"is_internal_transfer"`
+	ExcludeFromPlanSync bool          `json:"exclude_from_plan_sync"`
+	Count               int           `json:"count"`
+	PinnedCount         int           `json:"pinned_count"`
+	Total               float64       `json:"total"`
+	Transactions        []pinnableRow `json:"transactions,omitempty"`
 }
 
 type deletedExpenseRow struct {
@@ -104,17 +105,18 @@ func registerListExpenses(s *mcp.Server, deps Deps) {
 				keywords = []string{}
 			}
 			rows = append(rows, majorExpenseRow{
-				ID:                 e.ID,
-				Name:               e.Name,
-				Keywords:           keywords,
-				ExpectedMin:        e.ExpectedMin,
-				ExpectedMax:        e.ExpectedMax,
-				Notes:              e.Notes,
-				IsInternalTransfer: e.IsInternalTransfer,
-				Count:              len(sorted),
-				PinnedCount:        pinned,
-				Total:              total,
-				Transactions:       txRows,
+				ID:                  e.ID,
+				Name:                e.Name,
+				Keywords:            keywords,
+				ExpectedMin:         e.ExpectedMin,
+				ExpectedMax:         e.ExpectedMax,
+				Notes:               e.Notes,
+				IsInternalTransfer:  e.IsInternalTransfer,
+				ExcludeFromPlanSync: e.ExcludeFromPlanSync,
+				Count:               len(sorted),
+				PinnedCount:         pinned,
+				Total:               total,
+				Transactions:        txRows,
 			})
 		}
 		sort.Slice(rows, func(i, j int) bool {

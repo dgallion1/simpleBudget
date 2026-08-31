@@ -506,6 +506,236 @@ func TestParseExpenseForm_IsInternalTransfer(t *testing.T) {
 	})
 }
 
+// TestParseExpenseForm_ExcludeFromPlanSync mirrors
+// TestParseExpenseForm_IsInternalTransfer: the checkbox posts
+// "exclude_from_plan_sync" and parseExpenseForm must set the model field
+// only when the box was checked, defaulting to false when the key is
+// absent entirely (browsers omit unchecked checkboxes from the POST body).
+func TestParseExpenseForm_ExcludeFromPlanSync(t *testing.T) {
+	t.Run("checkbox on yields true", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("name", "Car loan")
+		form.Set("keywords", "auto loan")
+		form.Set("exclude_from_plan_sync", "on")
+		req := httptest.NewRequest("POST", "/major-expenses", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if err := req.ParseForm(); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		me, err := parseExpenseForm(req)
+		if err != nil {
+			t.Fatalf("parseExpenseForm: %v", err)
+		}
+		if !me.ExcludeFromPlanSync {
+			t.Error("expected ExcludeFromPlanSync=true when checkbox value is 'on'")
+		}
+	})
+
+	t.Run("missing checkbox yields false", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("name", "Groceries")
+		form.Set("keywords", "wegmans")
+		req := httptest.NewRequest("POST", "/major-expenses", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if err := req.ParseForm(); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		me, err := parseExpenseForm(req)
+		if err != nil {
+			t.Fatalf("parseExpenseForm: %v", err)
+		}
+		if me.ExcludeFromPlanSync {
+			t.Error("expected ExcludeFromPlanSync=false when checkbox is omitted")
+		}
+	})
+}
+
+// TestHandleAdd_ExcludeFromPlanSync_Persists is the end-to-end round trip
+// for the create path: posting the checkbox "on" must persist true, and
+// omitting it entirely must persist false. Asserted against the saved
+// record (not just the response), matching TestHandleUpdate_Success.
+func TestHandleAdd_ExcludeFromPlanSync_Persists(t *testing.T) {
+	t.Run("flag on persists true", func(t *testing.T) {
+		dl, cleanup := setupTestEnv(t)
+		defer cleanup()
+
+		form := url.Values{}
+		form.Set("name", "Car Loan")
+		form.Set("keywords", "auto loan")
+		form.Set("exclude_from_plan_sync", "on")
+
+		req := httptest.NewRequest("POST", "/major-expenses", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		newRouter().ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+
+		out, err := dl.LoadMajorExpenses()
+		if err != nil {
+			t.Fatalf("load: %v", err)
+		}
+		if len(out) != 1 || !out[0].ExcludeFromPlanSync {
+			t.Errorf("expected persisted ExcludeFromPlanSync=true, got: %+v", out)
+		}
+	})
+
+	t.Run("flag absent persists false", func(t *testing.T) {
+		dl, cleanup := setupTestEnv(t)
+		defer cleanup()
+
+		form := url.Values{}
+		form.Set("name", "Groceries")
+		form.Set("keywords", "wegmans")
+
+		req := httptest.NewRequest("POST", "/major-expenses", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		newRouter().ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+		}
+
+		out, err := dl.LoadMajorExpenses()
+		if err != nil {
+			t.Fatalf("load: %v", err)
+		}
+		if len(out) != 1 || out[0].ExcludeFromPlanSync {
+			t.Errorf("expected persisted ExcludeFromPlanSync=false, got: %+v", out)
+		}
+	})
+}
+
+// TestHandleUpdate_ExcludeFromPlanSync_Persists covers the update path
+// (parseExpenseForm is shared, but the acceptance criteria calls out both
+// paths explicitly since handleUpdate has its own storage call).
+func TestHandleUpdate_ExcludeFromPlanSync_Persists(t *testing.T) {
+	dl, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	list, err := dl.AddMajorExpense(makeExpense("seed", "Car Loan", []string{"auto loan"}, 0, 0))
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	id := list[0].ID
+
+	form := url.Values{}
+	form.Set("name", "Car Loan")
+	form.Set("keywords", "auto loan")
+	form.Set("exclude_from_plan_sync", "on")
+
+	req := httptest.NewRequest("PUT", "/major-expenses/"+id, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+
+	out, err := dl.LoadMajorExpenses()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(out) != 1 || !out[0].ExcludeFromPlanSync {
+		t.Errorf("expected persisted ExcludeFromPlanSync=true after update, got: %+v", out)
+	}
+
+	// Editing again without the checkbox must clear it back to false —
+	// proves the update path doesn't just "stick" a true value.
+	form2 := url.Values{}
+	form2.Set("name", "Car Loan")
+	form2.Set("keywords", "auto loan")
+	req2 := httptest.NewRequest("PUT", "/major-expenses/"+id, strings.NewReader(form2.Encode()))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w2 := httptest.NewRecorder()
+	newRouter().ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w2.Code, w2.Body.String())
+	}
+	out2, err := dl.LoadMajorExpenses()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(out2) != 1 || out2[0].ExcludeFromPlanSync {
+		t.Errorf("expected persisted ExcludeFromPlanSync=false after re-edit without checkbox, got: %+v", out2)
+	}
+}
+
+// TestMajorExpenseEditForm_RendersExcludeFromPlanSyncCheckedState renders
+// the actual page templates (not the JSON fallback) and asserts the
+// per-expense edit form's exclude_from_plan_sync checkbox reflects the
+// stored value — the "edit form renders the stored state checked"
+// acceptance criterion. Mirrors the checked-state assertion style used by
+// internal/templates/render_aca_test.go and render_joint_life_test.go.
+func TestMajorExpenseEditForm_RendersExcludeFromPlanSyncCheckedState(t *testing.T) {
+	dl, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	if _, err := dl.AddMajorExpense(makeExpense("flagged", "Car Loan", []string{"auto loan"}, 0, 0)); err != nil {
+		t.Fatalf("seed flagged: %v", err)
+	}
+	if _, err := dl.UpdateMajorExpense("flagged", models.MajorExpense{
+		Name:                "Car Loan",
+		Keywords:            []string{"auto loan"},
+		ExcludeFromPlanSync: true,
+	}); err != nil {
+		t.Fatalf("flip flag on: %v", err)
+	}
+	if _, err := dl.AddMajorExpense(makeExpense("unflagged", "Groceries", []string{"wegmans"}, 0, 0)); err != nil {
+		t.Fatalf("seed unflagged: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/major-expenses", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+
+	label := `Modeled in retirement plan`
+	if !strings.Contains(body, label) {
+		t.Fatalf("expected checkbox label %q in rendered page, got:\n%s", label, body)
+	}
+
+	// Isolate each expense's edit-form fragment by its unique detail-row id
+	// so the assertion can't accidentally match the sibling expense's box.
+	flaggedIdx := strings.Index(body, `id="major-expense-detail-flagged"`)
+	unflaggedIdx := strings.Index(body, `id="major-expense-detail-unflagged"`)
+	if flaggedIdx == -1 || unflaggedIdx == -1 {
+		t.Fatalf("expected both detail rows in rendered page, got:\n%s", body)
+	}
+	end := len(body)
+	if unflaggedIdx > flaggedIdx && unflaggedIdx < end {
+		end = unflaggedIdx
+	}
+	flaggedSection := body[flaggedIdx:end]
+	if !strings.Contains(flaggedSection, `name="exclude_from_plan_sync" value="on"`) {
+		t.Fatalf("expected exclude_from_plan_sync checkbox in flagged expense's section, got:\n%s", flaggedSection)
+	}
+	if !strings.Contains(flaggedSection, "checked") {
+		t.Errorf("expected exclude_from_plan_sync checkbox checked for flagged expense, got:\n%s", flaggedSection)
+	}
+
+	unflaggedSection := body[unflaggedIdx:]
+	if idx := strings.Index(unflaggedSection, `name="exclude_from_plan_sync" value="on"`); idx == -1 {
+		t.Fatalf("expected exclude_from_plan_sync checkbox in unflagged expense's section, got:\n%s", unflaggedSection)
+	} else {
+		// The "checked" attribute, if present, appears on the same input
+		// element as the name/value pair above — check only the next ~200
+		// chars after the match so a later expense's checked state (there
+		// is none here, but future fixtures might add one) can't leak in.
+		windowEnd := idx + 200
+		if windowEnd > len(unflaggedSection) {
+			windowEnd = len(unflaggedSection)
+		}
+		if strings.Contains(unflaggedSection[idx:windowEnd], "checked") {
+			t.Errorf("expected exclude_from_plan_sync checkbox unchecked for unflagged expense, got:\n%s", unflaggedSection[idx:windowEnd])
+		}
+	}
+}
+
 func TestHandlePin_Success(t *testing.T) {
 	dl, cleanup := setupTestEnv(t)
 	defer cleanup()
@@ -1112,8 +1342,8 @@ func TestParseRangeFromRequest(t *testing.T) {
 	}
 
 	cases := []struct {
-		name             string
-		req              *http.Request
+		name               string
+		req                *http.Request
 		wantStart, wantEnd time.Time
 	}{
 		{

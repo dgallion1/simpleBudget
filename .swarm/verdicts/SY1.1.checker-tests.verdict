@@ -1,0 +1,397 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: SY1
+ATTEMPT: 1
+---
+METHOD / SHARED-TREE COMPLIANCE
+No cp -a of the repo was taken. All evidence is package-scope, run in place.
+Mutation testing was done with `go test -overlay=<json>` (Go's build overlay),
+which substitutes file contents in the build only — ZERO writes to the shared
+tree. My only write is this verdict file. `git status --porcelain` before and
+after my run differs by exactly one file, and that file is NOT mine (see
+CONCURRENT-AGENT ARTIFACT below).
+
+HC ATTRIBUTION (per the lead's live update)
+The tree-wide build is currently broken in HC territory. Verified:
+  $ go build -o /dev/null ./cmd/server
+  # budget2/internal/handlers/dashboard
+  internal/handlers/dashboard/handlers.go:96:73: not enough arguments in call to metrics.Calculate
+  	have (*models.TransactionSet, "time".Time, "time".Time, float64, float64)
+  	want (*models.TransactionSet, "time".Time, "time".Time, float64, float64, "time".Time, bool)
+  EXIT=1
+This is HC's file, HC's territory, HC's metrics.Calculate signature change.
+ATTRIBUTED TO HC — not an SY1 defect. None of the four SY packages import
+internal/handlers/dashboard, so every build/test below is unaffected.
+NOTE: I ran the FULL oracle myself at 15:42 local, BEFORE this breakage
+landed, and it succeeded end to end (see criterion 6). I therefore have
+first-hand oracle evidence and do not need to fall back to the lead's log
+alone — though I verified that log too.
+
+-------------------------------------------------------------------------
+CRITERION 1 — ExcludeFromPlanSync field, JSON tag, UpdateMajorExpense copy,
+Add/Save/Load round-trip.  RESULT: PASS
+-------------------------------------------------------------------------
+(a) Field + tag, asserted on the RENDERED JSON, not the struct source.
+  $ go test -overlay=<probe> -count=1 -v -run TestProbeExcludeFromPlanSyncTag ./internal/models/
+    PROBE-TAG kind=bool tag="exclude_from_plan_sync,omitempty"
+    PROBE-TAG marshal(true)  = {"id":"x",...,"exclude_from_plan_sync":true,...}
+    PROBE-TAG marshal(false) = {"id":"x","name":"n","keywords":null,"expected_min":0,"expected_max":0,"created_at":...}
+    PROBE-TAG unmarshal -> true
+  Tag string is exactly `exclude_from_plan_sync,omitempty`; omitempty verified
+  by the field's ABSENCE from marshal(false); unmarshal of the wire name sets
+  the field. Exactly what D-SY-a specifies.
+
+(b) UpdateMajorExpense copies it — PROVEN by mutation, not by reading the diff.
+  Mutation M3: delete the line `list[i].ExcludeFromPlanSync = updates.ExcludeFromPlanSync`
+  from internal/services/dataloader/major_expenses.go via overlay.
+  $ go test -overlay=<M3> -count=1 -run 'ExcludeFromPlanSync' ./internal/services/dataloader/
+    --- FAIL: TestUpdateMajorExpense_CopiesExcludeFromPlanSync (0.01s)
+        plan_sync_exclusion_test.go:88: expected ExcludeFromPlanSync=true after update,
+          got {ID:car ... IsInternalTransfer:false ExcludeFromPlanSync:false ...}
+    FAIL	budget2/internal/services/dataloader
+  The new test dies when the guarded line is removed. It is real evidence.
+
+(c) Add/Save/Load round-trip: TestExcludeFromPlanSync_AddSaveLoadRoundTrip and
+  TestExcludeFromPlanSync_SaveLoadRoundTrip pass in the unmutated tree (see
+  criterion 5 run). I READ them: they assert true survives AND that an
+  unflagged sibling defaults to false, and the Update test re-reads from DISK
+  (LoadMajorExpenses) rather than trusting the returned slice.
+
+-------------------------------------------------------------------------
+CRITERION 2 — exported classifier with the EXACT pinned signature, built from
+one full Match pass (D-SY-b), nil/empty-safe.  RESULT: PASS
+-------------------------------------------------------------------------
+(a) Signature pinned by the oracle's planted contract test
+  (.swarm/tier3/SY1/accept.sh stage 1 writes a compile-time assertion
+   `var _ func(*models.TransactionSet, []models.MajorExpense, map[string]string) map[string]models.MajorExpense = ComputePlanSyncExclusions`).
+  $ bash .swarm/tier3/SY1/accept.sh   (my own run)
+    CHECK contract-tests: PASS
+  A signature deviation would be a compile error here. It compiled.
+
+(b) D-SY-b (full-defs Match, NOT flagged-only) — PROVEN by mutation.
+  Mutation M1: filter defs to flagged-only before Match (the exact defect
+  D-SY-b forbids), via overlay on engine.go.
+  $ go test -overlay=<M1> -count=1 -run 'TestComputePlanSyncExclusions' ./internal/services/majorexpenses/
+    --- FAIL: TestComputePlanSyncExclusions_FirstDefWinsTrap
+        plan_sync_test.go:27: gym row matches the earlier unflagged def; it must not be excluded
+    --- FAIL: TestComputePlanSyncExclusions_PinToUnflaggedDefBeatsFlaggedMatch
+        plan_sync_test.go:67: row pinned to an unflagged def must not appear in the exclusion map
+    FAIL
+  Two of the worker's tests kill the forbidden implementation. The GYM trap is
+  live, not decorative.
+
+(c) Nil/empty safety: TestComputePlanSyncExclusions_NilSafe covers all-nil,
+  nil-ts-with-flagged-defs, nil-defs, and empty-ts-no-flagged-defs, asserting
+  non-nil AND len==0. Passes (criterion 5 run). Oracle's TestOracleSY1NilSafe
+  independently asserts the all-nil case.
+
+-------------------------------------------------------------------------
+CRITERION 3 — computeDashboardSync loads defs+pins, applies D-SY-e ordering,
+NewMonthlyExpenses formula unchanged, ExcludedGroups per D-SY-d/e sorted by
+Name.  RESULT: FAIL (one sub-clause of D-SY-d is measurably violated;
+                     everything else in this criterion is PASS)
+-------------------------------------------------------------------------
+PASSING PARTS:
+
+(a) Loads via loader.LoadMajorExpenses()/loader.LoadTransactionPins() and
+  classifies over the FILTERED outflows. Read at sync.go:149-174:
+    filtered := data.Active().FilterByDateRange(yearAgo, now)
+    outflows := filtered.FilterByType(models.Outflow)
+    ...
+    exclusions := majorexpenses.ComputePlanSyncExclusions(outflows, defs, pins)
+  `outflows` is the 12-month-filtered set, as the criterion requires. The
+  `months` block (sync.go:152-158) is byte-identical to master's.
+
+(b) D-SY-e ordering (HI check FIRST) — PROVEN by mutation.
+  Mutation M2: move the Health-Insurance `continue` to AFTER the exclusions
+  lookup, i.e. exactly the ordering D-SY-e forbids.
+  $ go test -overlay=<M2> -count=1 -run 'TestComputeDashboardSync_Excludes|TestHandleWhatIfSync_RendersExcludedGroupsSection' ./internal/handlers/whatif/
+    --- FAIL: TestComputeDashboardSync_ExcludesFlaggedMajorExpenseGroup (0.02s)
+        sync_plan_exclusions_test.go:142: excluded group count = 5, want 4 (the HI-overlap row must NOT be counted here)
+        sync_plan_exclusions_test.go:146: excluded group total = 2500.00, want 2000.00
+        sync_plan_exclusions_test.go:150: excluded group monthly = 246.58, want ~197.37
+    --- FAIL: TestHandleWhatIfSync_RendersExcludedGroupsSection (0.01s)
+        sync_plan_exclusions_test.go:221: preview missing excluded group count
+  The 2500-vs-2000 delta is precisely the HI-overlap row (-500) leaking into
+  the group total. D-SY-e's "excluded once, as HI, and NOT in the group total"
+  is enforced by a test that dies when the ordering is swapped.
+
+(c) NewMonthlyExpenses = |signed sum of remaining| / months, verified through
+  the SAVED value (no rounding path) by the oracle:
+    CHECK apply-saved-living: PASS
+  The oracle asserts saved == 9500/months and its failure message names the
+  two wrong answers it discriminates against (master ~11500/months, and
+  flagged-def-filtering ~9000/months). Independently, the worker's
+  TestComputeDashboardSync_ExcludesFlaggedMajorExpenseGroup asserts
+  10500/months on its own fixture (10 groceries + the gym row that first-def-
+  wins keeps in living).
+
+FAILING PART — D-SY-d's determinism MUST:
+
+D-SY-d states, normatively: "sorted by Name (determinism: syncPlanHash hashes
+canonical JSON; the struct must stay map-free and slice order must be
+deterministic or preview/apply hash equality breaks)."
+
+`syncPlan` IS map-free (verified: syncPlanHash's own comment at sync.go:344
+and the struct definition). `ExcludedGroups` IS sorted by Name (sync.go:218).
+But the sort key is NOT UNIQUE and `sort.Slice` is NOT STABLE, so when two
+flagged defs share a Name the slice order falls back to Go's randomized map
+iteration over `excludedByID` (which is keyed by def.ID, not Name).
+
+PROVEN EMPIRICALLY, not argued. Probe: two flagged defs both named "Car Loan"
+(ids a/b, exact-amounts 500 and 700), 40 consecutive computeDashboardSync
+calls against UNCHANGED data:
+  $ go test -overlay=<probe> -count=1 -v -run TestProbeDuplicateNameDeterminism ./internal/handlers/whatif/
+    PROBE-A distinct syncPlanHash values over 40 runs: 2
+    PROBE-A ExcludedGroups order seen 36/40: [{"Name":"Car Loan","MonthlyAmount":49.31506849315068,"Total":500,"Count":1},{"Name":"Car Loan","MonthlyAmount":69.04109589041096,"Total":700,"Count":1}]
+    PROBE-A ExcludedGroups order seen  4/40: [{"Name":"Car Loan","MonthlyAmount":69.04109589041096,"Total":700,"Count":1},{"Name":"Car Loan","MonthlyAmount":49.31506849315068,"Total":500,"Count":1}]
+The two hashes are attributable to ExcludedGroups ORDER specifically — the
+logged JSON shows the same two elements in swapped order and nothing else
+differs.
+
+USER-FACING CONSEQUENCE is the exact one D-SY-d names. sync.go:525-539:
+    plan, err := computeDashboardSync(settings)
+    hash, err := syncPlanHash(plan)
+    if hash != expectedHash {
+        renderRetargetedError(w, "refusing to apply: the dashboard data changed
+        since this sync was previewed. Re-open the sync preview and try again",
+        http.StatusConflict, ...)
+So a user with two same-named flagged major expenses gets an intermittent 409
+on apply, on data that never changed — and re-opening the preview does not
+reliably fix it. This is the "preview/apply hash equality breaks" failure the
+decision was written to prevent.
+
+REACHABILITY (this is not a hypothetical invalid state): majorexpenses.Validate
+(internal/services/majorexpenses/validate.go, read in full) enforces name
+non-empty and <=200 chars. It does NOT enforce uniqueness. Duplicate names are
+accepted by both the web form and the MCP curate path.
+
+NEWLY INTRODUCED BY SY1, not pre-existing: `ExcludedGroups` is the only slice
+in `syncPlan` sorted on a non-unique key. The pre-existing sibling sort
+(incomePatterns by Description, sync.go:233) is safe because
+insights.IncomePatterns groups BY description internally, so its keys are
+unique by construction. The comment at sync.go:227-231 spells out this exact
+hazard for that slice; SY1 added a slice that does not meet the same bar.
+
+CORROBORATING MUTATION: removing the sort entirely (M4) does NOT fail any
+test — `go test -overlay=<M4> -run TestComputeDashboardSync ./internal/handlers/whatif/`
+returns `ok budget2/internal/handlers/whatif 0.034s`. The worker's
+TestComputeDashboardSync_ExcludedGroupsOrderIsDeterministic uses a fixture
+that yields exactly ONE excluded group, so the sort it claims to guard is
+unobservable to it. The test survives deletion of the thing it guards.
+
+WHAT IS MISSING (precise): a deterministic tiebreaker on the ExcludedGroups
+ordering — e.g. sort by (Name, def.ID) with the ID carried on
+syncExcludedGroup or captured in the comparator — plus a determinism test
+whose fixture contains at least TWO excluded groups, so the assertion is not
+vacuous. The current test cannot detect the regression it is named for.
+
+-------------------------------------------------------------------------
+CRITERION 4 — preview renders the excluded section (name, $X/mo via
+formatNumber, count) only when non-empty; annotation mentions plan-modeled
+exclusions; guard fields unchanged and still round-trip.  RESULT: PASS
+-------------------------------------------------------------------------
+Asserted on the RENDERED string, not the template source.
+  $ go test -overlay=<probe> -count=1 -v -run 'TestProbeRenderedAnnotation|TestProbeSectionAbsentWhenEmpty' ./internal/handlers/whatif/
+    PROBE-B contains("expenses modeled separately in the plan") = true
+    PROBE-B contains("Excluded from living expenses — modeled separately in the plan") = true
+    PROBE-B contains("Car Loan — $") = true
+    PROBE-B contains("(1 transactions)") = true
+    PROBE-B contains("name=\"expected_scenario\"") = true
+    PROBE-B contains("name=\"plan_hash\"") = true
+    PROBE-B contains("name=\"expected_revision\"") = true
+    PROBE-B rendered excerpt: ...excluding Health Insurance — premiums are modeled under
+      Healthcare — and expenses modeled separately in the plan)</span> | </p> | </div> |
+      <div class="space-y-1"> | <h4 ...>Excluded from living expenses — modeled separately
+      in the plan</h4> | <ul ...list-disc list-inside"> | <li>Car Loan — $245/mo (1 transactions)</li>
+    PROBE-C code=200 contains-section=false
+PROBE-C is the "only when non-empty" half: same handler, an UNFLAGGED def,
+section string absent from the rendered body. Both halves of the conditional
+are exercised against rendered output.
+Guard-field ROUND-TRIP (not just presence) proven end-to-end by my oracle run:
+    CHECK preview-guard-fields: PASS
+    CHECK apply-200: PASS
+i.e. the hash/revision/scenario scraped out of the rendered preview were
+POSTed back to /whatif/sync/apply and accepted with HTTP 200 — preview→apply
+with unchanged data still succeeds. `git diff` on the template shows the
+hidden-field block is untouched.
+formatNumber path (D-SY-f): rendered "$245/mo" — the template func, no new
+Go-side rounding.
+
+-------------------------------------------------------------------------
+CRITERION 5 — required unit-test cases exist AND assert what they claim.
+RESULT: PASS on coverage; one test is vacuous (reported under criterion 3).
+-------------------------------------------------------------------------
+I opened all three new test files and confirmed each named case, then proved
+the load-bearing ones by mutation.
+  1. first-def-wins trap ............ TestComputePlanSyncExclusions_FirstDefWinsTrap
+                                      — killed by M1. PROVEN.
+  2. pin to a FLAGGED def excludes .. TestComputePlanSyncExclusions_PinToFlaggedDefExcludes
+                                      — read: the row's amount (-617) matches
+                                        no rule and it has no keyword, so only
+                                        the pin can produce the exclusion. The
+                                        assertion is non-trivial.
+  3. pin to an UNFLAGGED def beats
+     a flagged amount match ......... TestComputePlanSyncExclusions_PinToUnflaggedDefBeatsFlaggedMatch
+                                      — killed by M1. PROVEN.
+  4. HI + flagged overlap: excluded
+     once, absent from group total .. TestComputeDashboardSync_ExcludesFlaggedMajorExpenseGroup
+                                      — killed by M2 (count 5 vs 4, total
+                                        2500 vs 2000). PROVEN.
+  5. refund in a flagged group ...... TestComputePlanSyncExclusions_RefundInFlaggedGroupIsExcluded
+                                      — PROVEN by mutation M5 (add
+                                        `if t.Amount >= 0 { continue }` to the
+                                        classifier's emit loop):
+      --- FAIL: TestComputePlanSyncExclusions_RefundInFlaggedGroupIsExcluded
+          plan_sync_test.go:85: refund row: want excluded by def car like its
+            siblings, got ok=false def={...}
+  6. persistence round-trip ......... TestExcludeFromPlanSync_AddSaveLoadRoundTrip,
+                                      TestExcludeFromPlanSync_SaveLoadRoundTrip,
+                                      TestUpdateMajorExpense_CopiesExcludeFromPlanSync
+                                      — the last killed by M3. PROVEN.
+All six required cases are present and (except #2, which I verified by
+reading the fixture's construction) survive mutation of the thing they guard.
+Not required by criterion 5 but present and VACUOUS:
+TestComputeDashboardSync_ExcludedGroupsOrderIsDeterministic — see criterion 3.
+
+-------------------------------------------------------------------------
+CRITERION 6 — `bash .swarm/tier3/SY1/accept.sh` ends ORACLE PASS.
+RESULT: PASS
+-------------------------------------------------------------------------
+I ran the oracle MYSELF from the repo root (output redirected to my own temp
+file; I did not touch .swarm/tier3/SY1/oracle.1.log):
+  $ bash .swarm/tier3/SY1/accept.sh > <scratch>/oracle.checker.log 2>&1; echo "ORACLE_EXIT=$?"
+    ORACLE_EXIT=0
+    CHECK contract-tests: PASS
+    CHECK server-up: PASS
+    CHECK preview-group-name: PASS
+    CHECK preview-group-count: PASS
+    CHECK preview-group-monthly: PASS
+    CHECK preview-guard-fields: PASS
+    CHECK apply-200: PASS
+    CHECK apply-saved-living: PASS
+    checks passed: 8, failed: 0
+    ORACLE PASS
+Exit status 0, final line exactly ORACLE PASS. This run happened at 15:42
+local, before HC's dashboard breakage; the script's stage-2 server build
+succeeded at that time. A re-run NOW would fail at server-build for the HC
+reason quoted at the top — attributed to HC, not SY1.
+Gate-contract preconditions independently verified:
+  $ ls -la .swarm/tier3/SY1/
+    -rwxrwxr-x  accept.sh          (executable — mode bit present)
+    -rw-rw-r--  oracle.1.log       (log exists at THIS attempt, 1)
+  $ tail -1 .swarm/tier3/SY1/oracle.1.log | od -c
+    0000000   O   R   A   C   L   E       P   A   S   S  \n
+  Final line is exactly "ORACLE PASS", no trailing junk.
+  No report.md in .swarm/tier3/SY1/ — the directory is new, so the gate reads
+  the oracle contract, not the legacy blind-arm one.
+The oracle also cleaned up after itself: the planted
+internal/services/majorexpenses/zz_oracle_sy1_test.go is gone (`ls
+internal/services/majorexpenses/` shows only engine.go, engine_test.go,
+plan_sync_test.go, validate.go, validate_test.go).
+
+-------------------------------------------------------------------------
+BUILD / TEST / FORMAT BASELINE (unmutated tree)
+-------------------------------------------------------------------------
+  $ go build ./internal/models/ ./internal/services/majorexpenses/ ./internal/services/dataloader/ ./internal/handlers/whatif/
+    BUILD_EXIT=0   (no output)
+  $ go test -count=1 ./internal/services/majorexpenses/ ./internal/handlers/whatif/ ./internal/services/dataloader/ ./internal/models/
+    ok  	budget2/internal/services/majorexpenses	0.003s
+    ok  	budget2/internal/handlers/whatif	10.511s
+    ok  	budget2/internal/services/dataloader	1.626s
+    ok  	budget2/internal/models	0.004s
+    EXIT=0
+  (-count=1 defeats the test cache; these are real executions, not cached.)
+  internal/services/dataloader passed WITH HC's modified transfers_test.go
+  compiled in — no cross-run interference observed.
+  $ gofmt -l internal/models/major_expense.go internal/services/majorexpenses/engine.go \
+      internal/services/majorexpenses/plan_sync_test.go internal/services/dataloader/major_expenses.go \
+      internal/services/dataloader/plan_sync_exclusion_test.go internal/handlers/whatif/sync.go \
+      internal/handlers/whatif/sync_plan_exclusions_test.go
+    (no output — all seven files clean)
+
+-------------------------------------------------------------------------
+SCOPE
+-------------------------------------------------------------------------
+The work is UNCOMMITTED (HEAD is f9c569e, the master merge), so I diffed the
+working tree, not master...HEAD.
+SY1's footprint is exactly its declared territory — 5 modified tracked files
+plus 3 new test files:
+  M internal/models/major_expense.go
+  M internal/services/dataloader/major_expenses.go
+  M internal/services/majorexpenses/engine.go
+  M internal/handlers/whatif/sync.go
+  M web/templates/components/whatif/sync-preview.html
+  ?? internal/services/dataloader/plan_sync_exclusion_test.go
+  ?? internal/services/majorexpenses/plan_sync_test.go
+  ?? internal/handlers/whatif/sync_plan_exclusions_test.go
+This reconciles exactly against .swarm/manifests/SY1.1.files (11 lines: those
+8 plus the 2 manifest files and oracle.1.log). Nothing extra, nothing missing.
+Symbol-leakage sweep confirms containment:
+  $ grep -rln "ExcludeFromPlanSync\|ComputePlanSyncExclusions\|exclude_from_plan_sync" \
+      --include=*.go --include=*.html --include=*.md . | grep -v "^./.swarm"
+    ./internal/handlers/whatif/sync.go
+    ./internal/handlers/whatif/sync_plan_exclusions_test.go
+    ./internal/models/major_expense.go
+    ./internal/services/dataloader/major_expenses.go
+    ./internal/services/dataloader/plan_sync_exclusion_test.go
+    ./internal/services/majorexpenses/engine.go
+    ./internal/services/majorexpenses/plan_sync_test.go
+  Seven files, all SY1 territory. In particular NO SY symbol appears in
+  internal/services/dataloader/transfers_test.go — the worker did not touch
+  HC's file, as it claimed.
+CRITICAL GLOBS: .swarm/critical.globs lists `internal/services/dataloader/**`.
+SY1 touched internal/services/dataloader/major_expenses.go and added
+plan_sync_exclusion_test.go there. This is EXPLICITLY authorized by the SY1
+territory block in .swarm/SY-RUN-SPEC.md ("internal/services/dataloader/
+major_expenses.go + NEW test file (do NOT touch transfers_test.go — HC's)"),
+and SY1 is Tier 3, the highest verification tier. Permitted; noted for the
+record, not a finding.
+FOREIGN (HC) dirty paths seen and ATTRIBUTED, never counted against SY1:
+  internal/handlers/dashboard/{handlers.go,handlers_test.go,verdict.go,
+  verdict_fractional_cent_test.go}, internal/models/dashboard.go,
+  internal/services/mcpsvc/spend/{summary.go,summary_test.go},
+  internal/services/metrics/{metrics.go,metrics_test.go},
+  internal/services/dataloader/transfers_test.go,
+  web/templates/components/kpis.html, .swarm/HC* artifacts.
+LEAD-OWNED: .swarm/ledger.tsv (modified) — not SY1 worker output.
+
+CONCURRENT-AGENT ARTIFACT (disclosure)
+During my run a file appeared that is neither mine nor the worker's:
+  internal/handlers/whatif/zz_probe_sy1check_refund_test.go  (15:45, 1976 bytes)
+Its header reads "PROBE (adversarial checker, throwaway)". This is
+checker-second probing the shared tree in place. It is NOT SY1 output and must
+not be counted in SY1's manifest reconciliation; it also must not be left
+behind at commit time. My own probes wrote nothing to the tree (overlay only).
+
+-------------------------------------------------------------------------
+FINDINGS (backlog — NOT the basis of this FAIL)
+-------------------------------------------------------------------------
+F1 (criterion 3 / D-SY-f, spec-silent): the excluded-group `Total` accumulates
+   `math.Abs(t.Amount)` per row, so a refund inside a flagged group INFLATES
+   the displayed group total, while the living-expense side accumulates the
+   SIGNED amount so refunds REDUCE it. The two figures therefore use opposite
+   refund conventions, and the "excluded" amount shown to the user will not
+   equal the amount actually removed from living expenses whenever a refund is
+   present. The spec pins neither convention for ExcludedGroups (D-SY-e says
+   only "accumulated at the sync site from actually-skipped rows"), so I do
+   not fail on it — but it is the rendered-arithmetic class (ruling
+   2026-08-29b) and the major-expenses page already uses net-spend elsewhere.
+   Worth a lead ruling before SY4 makes a second surface render this figure.
+F2 (deferred by design, D-SY-g): living ACTUALS still include flagged spend
+   while the synced TARGET now excludes it. Documented gap owned by SY4.
+   Confirmed in scope-terms only: no metrics/dashboard file was touched.
+
+-------------------------------------------------------------------------
+SUMMARY
+-------------------------------------------------------------------------
+Criteria 1, 2, 4, 5, 6: PASS, each on a command whose output is quoted above,
+with the load-bearing tests proven by mutation rather than by inspection.
+Criterion 3: FAIL on D-SY-d's explicit "slice order must be deterministic"
+requirement — two flagged defs sharing a Name produce 2 distinct
+syncPlanHash values over 40 runs on unchanged data, which is exactly the
+preview/apply hash break the decision forbids; and the test named for that
+guarantee survives deletion of the sort it guards.
+If the lead rules the duplicate-Name case out of SY1's scope, every other
+criterion is independently satisfied and the task passes as built.

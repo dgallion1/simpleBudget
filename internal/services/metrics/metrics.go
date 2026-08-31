@@ -6,6 +6,7 @@ package metrics
 import (
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"budget2/internal/models"
@@ -254,6 +255,84 @@ func ClippedHealthcareMonths(segStart, segEnd, coverageStart time.Time, hasCover
 	return MonthsBetween(start, segEnd)
 }
 
+// PlanExcludedOutflows returns the subset of outflows whose Hash is a key in
+// planExclusions -- transactions the what-if plan sync already excludes from
+// its living-expense average because it models them separately (an
+// ExpenseSource, e.g. a car loan; see
+// majorexpenses.ComputePlanSyncExclusions). Any row in
+// HealthInsuranceCategory is skipped even when it also appears in
+// planExclusions: the healthcare split above already removes HI-category
+// rows from living, and D-SY-e's ordering (mirrored here from the sync's own
+// iteration) claims an HI+flagged overlap row for HI exactly once, never
+// double-subtracting it. Nil-safe: a nil outflows or empty/nil
+// planExclusions returns an empty, non-nil *models.TransactionSet, so
+// callers can call .SumAmount()/.Len()/.GroupByMonth() unconditionally.
+//
+// This function is used two ways: (1) as DISPLAY-ONLY annotation data
+// (PlanExcludedTotal/PlanExcludedCount below, and whatif/sync.go's own
+// ExcludedGroups preview), and (2) as the building block LivingOutflows
+// uses to derive the SET every living arithmetic actually runs on (ruling
+// SY-2026-08-30d) -- never arithmetic subtraction. See LivingOutflows' doc
+// for why (2) is a set-exclusion, not a subtracted total.
+func PlanExcludedOutflows(outflows *models.TransactionSet, planExclusions map[string]models.MajorExpense) *models.TransactionSet {
+	result := &models.TransactionSet{}
+	if outflows == nil || len(planExclusions) == 0 {
+		return result
+	}
+	for _, t := range outflows.Transactions {
+		if strings.EqualFold(t.Category, HealthInsuranceCategory) {
+			continue
+		}
+		if _, ok := planExclusions[t.Hash]; ok {
+			result.Transactions = append(result.Transactions, t)
+		}
+	}
+	return result
+}
+
+// LivingOutflows returns the outflows that count toward the living-expense
+// figures: every row in outflows EXCEPT HealthInsuranceCategory rows
+// (tracked separately by the Healthcare KPI) and any row PlanExcludedOutflows
+// claims (a flagged plan-sync exclusion, with the same HI-first precedence --
+// an HI+flagged overlap row is removed once, as HI, matching D-SY-e).
+//
+// Ordinary |sum| living arithmetic (math.Abs(LivingOutflows(...).SumAmount()))
+// then runs DIRECTLY on this set at every granularity Calculate needs (range
+// total, per-month trend) and in the dashboard's budget-vs-actual chart --
+// this function is the ONLY place any row is ever excluded. Ruling
+// SY-2026-08-30d (attempt 3, rewriting SY-2026-08-30c's contract): SET
+// EXCLUSION, never an arithmetic subtraction of a separately-computed total
+// from an already-Abs'd figure. That subtraction shape breaks whenever the
+// REMAINDER itself nets a refund (e.g. an outflow-typed credit misclassified
+// into Outflow, per the "type is inferred, not bank-supplied" ledger
+// convention), independent of the flagged group's own sign -- Abs(S+F)-F
+// (or any signed variant of it) is not equal to Abs(S) in general; only
+// computing Abs directly on the remaining transactions is.
+//
+// Nil-safe: nil outflows or nil/empty planExclusions still applies the HI
+// filter, so `math.Abs(LivingOutflows(outflows, nil).SumAmount())` reproduces
+// pre-SY4 master's `totalExpenses - healthcareTotal` byte-for-byte on
+// all-outflows-negative data (and is MORE correct than that subtraction
+// shape whenever HI itself nets a refund -- a side effect, not a new
+// healthcareTotal computation; healthcareTotal/healthcareOutflows above are
+// untouched by this function).
+func LivingOutflows(outflows *models.TransactionSet, planExclusions map[string]models.MajorExpense) *models.TransactionSet {
+	result := &models.TransactionSet{}
+	if outflows == nil {
+		return result
+	}
+	for _, t := range outflows.Transactions {
+		if strings.EqualFold(t.Category, HealthInsuranceCategory) {
+			continue
+		}
+		if _, ok := planExclusions[t.Hash]; ok {
+			continue
+		}
+		result.Transactions = append(result.Transactions, t)
+	}
+	return result
+}
+
 // Calculate derives the dashboard's KPI/trend metrics over [rangeStart,
 // rangeEnd]. coverageStart/hasCoverage (from HealthcareCoverageStart,
 // applied to the FULL unfiltered transaction set -- never ts, which is
@@ -264,7 +343,31 @@ func ClippedHealthcareMonths(segStart, segEnd, coverageStart time.Time, hasCover
 // healthcare budget exactly as healthcareTarget==0 does --
 // HasHealthcareTarget=false, and every healthcare-derived field stays
 // finite (no NaN/Inf) because the division below is guarded.
-func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budgetTarget, healthcareTarget float64, coverageStart time.Time, hasCoverage bool) *models.DashboardMetrics {
+//
+// planExclusions (SY4) is the transaction-Hash -> flagged-def map from
+// majorexpenses.ComputePlanSyncExclusions, computed by the caller over the
+// FULL unfiltered transaction set -- same discipline as coverageStart, and
+// the SAME map the what-if dashboard sync already excludes from its own
+// living-expense average. nil/empty means "no exclusions", reproducing
+// pre-SY4 behavior for every field exactly (LivingOutflows applies the HI
+// filter identically either way).
+//
+// Ruling SY-2026-08-30d (attempt 3): flagged rows are removed from the
+// outflow SET (via LivingOutflows) BEFORE the living-expenses figures below
+// (LivingExpensesTotal, ActualMonthly, PerMonthDelta, CumulativeDelta,
+// LivingExpensesTrend, and the combined cumulative walk's living share) are
+// computed with the ordinary |sum| arithmetic -- never an arithmetic
+// subtraction of a separately-computed exclusion amount from an
+// already-Abs'd total (attempts 1-2's shape, both wrong: attempt 1 used
+// Abs on the flagged group's net, attempt 2 signed it but still subtracted
+// from Abs(everything), which breaks whenever the REMAINDER itself nets a
+// refund independent of the flagged group's sign). See LivingOutflows' doc.
+// PlanExcludedTotal/PlanExcludedCount below are DISPLAY-ONLY annotation
+// data, never fed back into any of these figures. TotalIncome/TotalExpenses/
+// NetSavings/SavingsRate are computed above this point, from the FULL
+// outflow set, and are untouched -- they reflect every dollar actually
+// spent regardless of the flag.
+func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budgetTarget, healthcareTarget float64, coverageStart time.Time, hasCoverage bool, planExclusions map[string]models.MajorExpense) *models.DashboardMetrics {
 	income := ts.FilterByType(models.Income)
 	outflows := ts.FilterByType(models.Outflow)
 
@@ -306,7 +409,28 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 	healthcareCumulativeDelta := healthcareTotal - healthcareTarget*coverageMonths
 	hasHealthcareTarget := healthcareTarget > 0 && coverageMonths > 0
 
-	livingTotal := totalExpenses - healthcareTotal
+	// Plan-sync exclusions (SY4, ruling SY-2026-08-30d): PlanExcludedTotal/
+	// PlanExcludedCount below are DISPLAY-ONLY annotation data -- the SIGNED
+	// net spend (matching the SY1 `Total += -t.Amount` convention in
+	// whatif/sync.go: positive = net spend, negative = net refund) and row
+	// count of the flagged group, for surfaces that want to annotate. They
+	// are NEVER used in the living-expense arithmetic below (grep this
+	// function for `PlanExcluded` outside this block and the final struct
+	// literal -- there is none). Living instead uses SET EXCLUSION via
+	// LivingOutflows (see its doc for why arithmetic subtraction from an
+	// already-Abs'd total was wrong).
+	planExcludedSet := PlanExcludedOutflows(outflows, planExclusions)
+	planExcludedTotal := -planExcludedSet.SumAmount()
+	planExcludedCount := planExcludedSet.Len()
+
+	// livingOutflows already excludes HealthInsuranceCategory rows (the
+	// same rows healthcareOutflows above tracks) AND flagged rows -- the
+	// ordinary |sum| living arithmetic runs directly on it. This REPLACES
+	// the pre-SY4 `totalExpenses - healthcareTotal` subtraction shape
+	// entirely; healthcareTotal itself (computed above) is untouched and
+	// used only by the Healthcare KPI fields below.
+	livingOutflows := LivingOutflows(outflows, planExclusions)
+	livingTotal := math.Abs(livingOutflows.SumAmount())
 	actualMonthly := livingTotal / monthsInRange
 	perMonthDelta := actualMonthly - budgetTarget
 	cumulativeDelta := livingTotal - budgetTarget*monthsInRange
@@ -333,6 +457,17 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 	monthlyIncome := income.GroupByMonth()
 	monthlyOutflows := outflows.GroupByMonth()
 	monthlyHealthcare := healthcareOutflows.GroupByMonth()
+	monthlyLiving := livingOutflows.GroupByMonth()
+	// nonExcludedOutflows is the combined cumulative walk's basis below:
+	// every outflow EXCEPT plan-sync-excluded rows -- HI stays in (the walk
+	// nets living+healthcare together against CombinedTarget, matching its
+	// pre-SY4 basis exactly aside from the plan exclusion). Built by
+	// merging the two disjoint sets already classified above rather than a
+	// third independent classifier.
+	nonExcludedOutflows := &models.TransactionSet{
+		Transactions: append(append([]models.Transaction{}, livingOutflows.Transactions...), healthcareOutflows.Transactions...),
+	}
+	monthlyNonExcluded := nonExcludedOutflows.GroupByMonth()
 
 	// Get sorted months
 	monthSet := make(map[string]bool)
@@ -370,7 +505,13 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 			hcAmt = math.Abs(hc.SumAmount())
 		}
 
-		livingMonth := expAmt - hcAmt
+		// Set exclusion (ruling SY-2026-08-30d) -- math.Abs runs directly on
+		// livingOutflows' month bucket, never an arithmetic subtraction from
+		// expAmt (which breaks whenever the REMAINDER itself nets a refund).
+		livingMonth := 0.0
+		if lo, ok := monthlyLiving[m]; ok {
+			livingMonth = math.Abs(lo.SumAmount())
+		}
 
 		incomeTrend = append(incomeTrend, incAmt)
 		expensesTrend = append(expensesTrend, expAmt)
@@ -417,8 +558,13 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 			accrual := budgetTarget*MonthsBetween(segStart, segEnd) +
 				healthcareTarget*ClippedHealthcareMonths(segStart, segEnd, coverageStart, hasCoverage)
 
+			// Set exclusion (ruling SY-2026-08-30d): spend is |sum| of
+			// nonExcludedOutflows' month bucket -- all outflows except
+			// plan-sync-excluded rows (HI stays in; matches
+			// CombinedCumulativeDelta's living+healthcare basis exactly).
+			// Never an arithmetic subtraction from monthlyOutflows' |sum|.
 			spend := 0.0
-			if bucket, ok := monthlyOutflows[cur.Format("2006-01")]; ok {
+			if bucket, ok := monthlyNonExcluded[cur.Format("2006-01")]; ok {
 				spend = math.Abs(bucket.SumAmount())
 			}
 
@@ -472,10 +618,21 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 		HealthcareCoverageStart:        coverageStart,
 		HealthcareHasCoverage:          hasCoverage,
 		HealthcareCoverageStartInRange: healthcareCoverageInRange,
+		PlanExcludedTotal:              planExcludedTotal,
+		PlanExcludedCount:              planExcludedCount,
 	}
 }
 
-func Comparison(data *models.TransactionSet, start, end time.Time, compType string, settings *models.WhatIfSettings) *models.PeriodComparison {
+// planExclusions (SY4) is threaded straight through to both Calculate calls
+// below unmodified: a transaction's flagged status is a fact about the
+// ledger keyed by Hash, not something that varies between the current and
+// comparison windows, so the SAME map applies to both. Without this, the
+// "vs prior" deltas kpis.html renders (ActualMonthlyChange,
+// CumulativeDeltaChange) would compare an exclusion-adjusted current figure
+// against an unadjusted comparison figure -- a surface computing living
+// actuals directly from Calculate, so it must consume the same map
+// (criterion 3, split-classification rule).
+func Comparison(data *models.TransactionSet, start, end time.Time, compType string, settings *models.WhatIfSettings, planExclusions map[string]models.MajorExpense) *models.PeriodComparison {
 	duration := end.Sub(start)
 
 	var compStart, compEnd time.Time
@@ -513,8 +670,8 @@ func Comparison(data *models.TransactionSet, start, end time.Time, compType stri
 	// on that caller discipline. Both windows below then clip against the
 	// same coverage start, not a per-window re-derivation.
 	coverageStart, hasCoverage := HealthcareCoverageStart(data.Active())
-	currentMetrics := Calculate(currentFiltered, start, end, currentTarget, healthTarget, coverageStart, hasCoverage)
-	compMetrics := Calculate(compFiltered, compStart, compEnd, compTarget, healthTarget, coverageStart, hasCoverage)
+	currentMetrics := Calculate(currentFiltered, start, end, currentTarget, healthTarget, coverageStart, hasCoverage, planExclusions)
+	compMetrics := Calculate(compFiltered, compStart, compEnd, compTarget, healthTarget, coverageStart, hasCoverage, planExclusions)
 
 	incomeChange := PercentChange(currentMetrics.TotalIncome, compMetrics.TotalIncome)
 	expensesChange := PercentChange(currentMetrics.TotalExpenses, compMetrics.TotalExpenses)

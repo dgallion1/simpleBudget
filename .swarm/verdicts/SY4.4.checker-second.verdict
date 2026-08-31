@@ -1,0 +1,105 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: SY4
+ATTEMPT: 4
+---
+Scope per manifest: internal/handlers/dashboard/handlers.go (walk-only rewrite) + new
+internal/handlers/dashboard/plan_exclusions_chart_walk_test.go. Confirmed via
+`git diff HEAD --stat` on every other SY4-touched file (metrics.go, metrics_test.go,
+models/dashboard.go, mcpsvc/spend/{register,summary}.go, dataloader/transfers_test.go) --
+byte counts consistent with what I already reviewed at attempt 3, nothing moved.
+handlers_test.go shows as dirty but its diff (checked directly) is the same mechanical `, nil`
+call-site adaptation from attempt 1 (function signature gained a parameter), not new this
+attempt. The untracked `budget2.old-1345` artifact is a stray environment file, unrelated,
+untouched. All probes via `go test -overlay` only -- confirmed zero on-disk additions via
+`git status --porcelain` before writing this verdict.
+
+FIRST: re-ran my exact attempt-3 winning probe (chart walk vs metrics.Calculate's
+CombinedCumulativeBalance, same opposite-sign living/healthcare month, planExclusions=nil)
+through the real, rewritten buildBudgetVsActualChartData:
+  chart running[0] = -900; metrics CombinedCumulativeBalance[0] = -885.2156057494867
+The catastrophic ~$615 divergence from attempt 3 is GONE -- collapsed to a ~$14.78 residual
+(addressed below, Attack 1). Re-ran the analogous both-signs-diverging case (flagged group ALSO
+net-refund, healthcare present): same result, ~$14.78 residual, not the ~$615-800 attempt-3
+defect. The core spend-side merge-then-Abs fix is genuine and effective.
+
+ATTACK 1 — Residual divergence at realistic (non-tiny) target values. My re-run above used
+target=(500,300), NOT the shipped test's tiny (1,1) calibration, and found a ~$14.78 residual
+where the shipped test (at 1,1) would show only a few cents. Investigated whether this is a
+NEW gap in the fix or the SAME pre-existing, disclosed target-accrual-formula mismatch the
+manifest explicitly calls out (chart's flat `monthTarget` vs metrics.go's
+MonthsBetween-prorated `accrual`, "pre-dating SY4 entirely"). Applied the SAME identical-with/
+without-flag test the coordinator established as the standard for this exact question (used at
+attempt 3 for the CombinedCumulativeBalance invariant, and again here): re-ran both the
+nil-exclusions and the flagged-def variant at target=(500,300) -- BOTH produced the IDENTICAL
+diff (-14.784394250513287, to the double-precision digit). Since the divergence is byte-for-
+byte identical whether or not any plan exclusion is active, it cannot be attributed to this
+task's fix; it is the disclosed, pre-existing, out-of-scope accrual-formula difference,
+confirmed by the same methodology this run has already established as dispositive. Not a FAIL
+basis -- recorded as an observation: the target-accrual-formula mismatch between the chart and
+metrics.go is real and scales with target magnitude (not just "a few cents" at realistic
+dollar figures), worth its own backlog ticket, but it predates and is independent of SY4.
+
+ATTACK 2 — Merge composition: HI+flagged overlap row. Overlay probe: a single transaction that
+is BOTH Category="Health Insurance" AND matched to a flagged def. At the shipped test's own
+calibration scale (tiny target, isolating away Attack 1's confound): Living bar = 0 (correctly
+excluded from living, HI-first per LivingOutflows' own ordering), Healthcare bar = 700
+(claimed once), chart walk vs metrics walk diff < $0.04. My FIRST attempt at this probe used
+target=(100,100) and showed a spurious ~$3.70 "divergence" -- re-verified against Attack 1's
+finding and confirmed it was the SAME pre-existing target-formula noise at that target scale,
+not a double-count; re-ran at the calibrated tiny target and it vanished. No double-count, no
+drop of the overlap row.
+
+ATTACK 3 — Month-key alignment: a living-only month (refund-heavy, zero HI rows) and a
+separate HI-only month (zero living rows), verifying the merge-then-GroupByMonth doesn't drop
+or duplicate either month's bucket. Overlay probe (calibrated tiny target): chart=[-1498,
+-1896], metrics=[-1497.96, -1896.12], diff < $0.04 at both points -- both months correctly
+present and correctly valued in the walk. This is structurally guaranteed anyway by reading the
+code: `nonExcludedOutflows` is built by CONCATENATING the two already-classified transaction
+LISTS first (`append(append([]models.Transaction{}, livingOutflows.Transactions...),
+healthcareOutflows.Transactions...)`), then `GroupByMonth()` runs ONCE over the merged list --
+there is no separate "union of two months-maps" step that could silently drop a month present
+in only one source map. Not a defect.
+
+ATTACK 4 — Residual consumer of the old `livingMonth+hcAmt` sum. Grepped handlers.go directly:
+the expression no longer exists anywhere in the file (only a comment referencing it as the
+thing NOT to do). The Living bar (`livingValues`) still uses the independent
+`math.Abs(monthlyLiving[m].SumAmount())` (per the dispatch note: "the Living BAR value stays
+as-is... that part is correct and tested") -- confirmed this is a SEPARATE variable from the
+walk's `spend`, never recombined with `hcAmt` anywhere downstream. Not a defect.
+
+ATTACK 5 — Equality test calibration claim. Read plan_exclusions_chart_walk_test.go in full
+(not trusting the name): the fixture genuinely has a sign-divergent Jan (living remainder nets
++3000 via a $4000 outflow-typed credit against a $1000 grocery spend, opposite-signed from
+Jan's -$400 Healthcare bucket) alongside an ordinary spend-only Feb -- not an all-spend fixture
+that would prove nothing. Both `nil` and `flagged def` subtests run the identical fixture.
+The test's own comment is honest and specific about why target=(1,1) is used (to suppress the
+disclosed, unrelated accrual-formula noise) and quotes real calibration numbers from a
+documented both-ends mutation run (reverting the fix reproduced the exact ~$800/point failure
+described in the manifest). This is a legitimate, load-bearing test, not a vacuous one.
+
+ATTACK 6 — Walk completeness/order vs the bar arrays. Every overlay probe above cross-checked
+`len(chartCumY) == len(m.CombinedCumulativeBalance)` and asserted point-by-point (not just a
+final-value comparison), so any dropped/reordered/duplicated month would have surfaced as a
+length mismatch or an early-index divergence -- none did, across four independent fixtures
+(opposite-sign, both-signs-diverging, HI+flagged overlap, living-only/HI-only month pair).
+
+Own build/test re-verification: `go test ./internal/handlers/dashboard/... 
+./internal/services/metrics/... ./internal/services/mcpsvc/spend/... -count=1` all `ok`;
+`gofmt -l` clean on both touched files.
+
+STRONGEST ATTACK THAT FAILED TO BREAK IT: Attack 1 (residual divergence at realistic target
+values) -- this looked, on first measurement, like exactly the same class of defect that failed
+attempt 3 (a real, dollar-scale, silently-wrong number on the dashboard's own chart), and my
+first two composition probes (Attacks 2/3) initially "failed" for the same reason before I
+isolated the confound. Applying the identical-with/without-flag test rigorously (not just
+once, but re-deriving it myself independently rather than accepting the manifest's transcript)
+is what separated a real regression from the disclosed, pre-existing, out-of-scope
+accrual-formula quirk.
+
+VERDICT: PASS. The spend-side merge-then-Abs fix genuinely and completely closes attempt 3's
+regression (the chart's cumulative walk now agrees with metrics.Calculate's walk to within the
+same disclosed, pre-existing, flag-independent noise floor, across every sign combination and
+month-alignment edge case I could construct), the diff is confined to exactly the two files
+claimed, and the new equality test is load-bearing rather than vacuous.

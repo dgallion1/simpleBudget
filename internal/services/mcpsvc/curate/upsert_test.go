@@ -236,6 +236,85 @@ func TestUpsertMergesIsInternalTransferOnUpdate(t *testing.T) {
 	}
 }
 
+// TestUpsertSetsExcludeFromPlanSyncOnCreate covers create-time true/false,
+// mirroring TestUpsertMergesIsInternalTransferOnUpdate's bool-merge coverage
+// but for the create path where there is no existing value to merge with.
+func TestUpsertSetsExcludeFromPlanSyncOnCreate(t *testing.T) {
+	deps, _ := newDeps(t, ledger())
+	cs := connect(t, deps)
+
+	out := decodeToolResult[upsertOutput](t, call(t, cs, "upsert_major_expense", map[string]any{
+		"name": "Car Loan", "keywords": []any{"car loan"}, "exclude_from_plan_sync": true,
+	}))
+	list, _ := deps.Expenses.LoadMajorExpenses()
+	if len(list) != 1 || !list[0].ExcludeFromPlanSync {
+		t.Errorf("stored = %+v, want exclude_from_plan_sync true", list)
+	}
+	if !out.Expense.ExcludeFromPlanSync {
+		t.Errorf("echoed expense.exclude_from_plan_sync = %v, want true", out.Expense.ExcludeFromPlanSync)
+	}
+
+	out2 := decodeToolResult[upsertOutput](t, call(t, cs, "upsert_major_expense", map[string]any{
+		"name": "Groceries", "keywords": []any{"groceries"}, "exclude_from_plan_sync": false,
+	}))
+	list2, _ := deps.Expenses.LoadMajorExpenses()
+	var groceries models.MajorExpense
+	for _, e := range list2 {
+		if e.ID == out2.ID {
+			groceries = e
+		}
+	}
+	if groceries.ExcludeFromPlanSync {
+		t.Errorf("stored = %+v, want exclude_from_plan_sync false", groceries)
+	}
+	if out2.Expense.ExcludeFromPlanSync {
+		t.Errorf("echoed expense.exclude_from_plan_sync = %v, want false", out2.Expense.ExcludeFromPlanSync)
+	}
+}
+
+// TestUpsertMergesExcludeFromPlanSyncOnUpdate is the load-bearing test for
+// this task's merge behavior on edit, matching
+// TestUpsertMergesIsInternalTransferOnUpdate: nil (omitted) must leave the
+// stored value alone, while explicit true/false must overwrite it.
+func TestUpsertMergesExcludeFromPlanSyncOnUpdate(t *testing.T) {
+	deps, _ := newDeps(t, ledger())
+	if _, err := deps.Expenses.AddMajorExpense(models.MajorExpense{
+		ID: "me-carloan", Name: "Car Loan", Keywords: []string{"car loan"}, ExcludeFromPlanSync: true,
+	}); err != nil {
+		t.Fatalf("AddMajorExpense: %v", err)
+	}
+	cs := connect(t, deps)
+
+	// Omitted: must survive an update that does not mention it.
+	call(t, cs, "upsert_major_expense", map[string]any{"id": "me-carloan", "notes": "checked"})
+	list, _ := deps.Expenses.LoadMajorExpenses()
+	if !list[0].ExcludeFromPlanSync {
+		t.Error("exclude_from_plan_sync must survive an update that does not mention it")
+	}
+	if list[0].Notes != "checked" {
+		t.Errorf("notes = %q, want the update applied", list[0].Notes)
+	}
+
+	// Explicit false: must overwrite the stored true.
+	out := decodeToolResult[upsertOutput](t, call(t, cs, "upsert_major_expense", map[string]any{
+		"id": "me-carloan", "exclude_from_plan_sync": false,
+	}))
+	list, _ = deps.Expenses.LoadMajorExpenses()
+	if list[0].ExcludeFromPlanSync {
+		t.Error("exclude_from_plan_sync = true, want cleared by the explicit false")
+	}
+	if out.Expense.ExcludeFromPlanSync {
+		t.Errorf("echoed expense.exclude_from_plan_sync = %v, want false", out.Expense.ExcludeFromPlanSync)
+	}
+
+	// Explicit true again: must overwrite the stored false.
+	call(t, cs, "upsert_major_expense", map[string]any{"id": "me-carloan", "exclude_from_plan_sync": true})
+	list, _ = deps.Expenses.LoadMajorExpenses()
+	if !list[0].ExcludeFromPlanSync {
+		t.Error("exclude_from_plan_sync = false, want set by the explicit true")
+	}
+}
+
 // TestUpsertClearsAnAmountBoundWithExplicitZero covers passing 0 explicitly,
 // distinct from omitting the field (which leaves it alone).
 func TestUpsertClearsAnAmountBoundWithExplicitZero(t *testing.T) {

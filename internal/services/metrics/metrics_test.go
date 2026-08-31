@@ -124,7 +124,7 @@ func TestCalculateComparison_PreviousPeriod(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := Comparison(ts, start, end, "previous", nil)
+	result := Comparison(ts, start, end, "previous", nil, nil)
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -163,7 +163,7 @@ func TestCalculateComparison_YearOverYear(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := Comparison(ts, start, end, "year", nil)
+	result := Comparison(ts, start, end, "year", nil, nil)
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -195,7 +195,7 @@ func TestCalculateComparison_NoComparisonData(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := Comparison(ts, start, end, "previous", nil)
+	result := Comparison(ts, start, end, "previous", nil, nil)
 
 	if result == nil {
 		t.Fatal("expected non-nil result")
@@ -213,7 +213,7 @@ func TestCalculateComparison_InvalidType(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := Comparison(ts, start, end, "bogus", nil)
+	result := Comparison(ts, start, end, "bogus", nil, nil)
 
 	if result != nil {
 		t.Errorf("expected nil for unknown comparison type, got %+v", result)
@@ -231,7 +231,7 @@ func TestCalculateComparison_PopulatesBudgetDeltas(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	pc := Comparison(ts, start, end, "previous", nil)
+	pc := Comparison(ts, start, end, "previous", nil, nil)
 	if pc == nil || !pc.HasData {
 		t.Fatalf("expected non-nil comparison with HasData=true, got %+v", pc)
 	}
@@ -265,7 +265,7 @@ func TestCalculateComparison_SavingsRateChange(t *testing.T) {
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	result := Comparison(ts, start, end, "previous", nil)
+	result := Comparison(ts, start, end, "previous", nil, nil)
 	if result == nil {
 		t.Fatal("expected non-nil result")
 	}
@@ -335,7 +335,7 @@ func TestCalculateMetrics_BasicTotals(t *testing.T) {
 		makeTransaction("Groceries", -500, time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
 	)
 
-	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true)
+	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true, nil)
 
 	if !floatEqual(m.TotalIncome, 6000) {
 		t.Errorf("TotalIncome = %v, want 6000", m.TotalIncome)
@@ -379,7 +379,7 @@ func TestCalculateMetrics_ExcludesTransfers(t *testing.T) {
 		paired, counterLeg, external,
 	)
 
-	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true)
+	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true, nil)
 
 	if m.TransactionCount != 5 {
 		t.Fatalf("TransactionCount = %v, want 5 -- transfers stay in the ledger", m.TransactionCount)
@@ -409,7 +409,7 @@ func TestCalculateMetrics_ZeroIncome(t *testing.T) {
 		makeTransaction("Rent", -1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
 	)
 
-	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true)
+	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true, nil)
 
 	if m.SavingsRate != 0 {
 		t.Errorf("SavingsRate = %v, want 0 when no income", m.SavingsRate)
@@ -432,7 +432,7 @@ func TestCalculateMetrics_TrendsLimitedToSixMonths(t *testing.T) {
 	}
 	ts := makeTransactionSet(txns...)
 
-	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true)
+	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true, nil)
 
 	if len(m.IncomeTrend) != 6 {
 		t.Errorf("IncomeTrend length = %v, want 6", len(m.IncomeTrend))
@@ -455,7 +455,7 @@ func TestCalculateMetrics_TrendsLimitedToSixMonths(t *testing.T) {
 
 func TestCalculateMetrics_EmptyTransactionSet(t *testing.T) {
 	ts := makeTransactionSet()
-	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true)
+	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true, nil)
 
 	if m.TotalIncome != 0 || m.TotalExpenses != 0 || m.NetSavings != 0 {
 		t.Errorf("expected all zeros, got income=%v, expenses=%v, savings=%v",
@@ -478,7 +478,7 @@ func TestCalculateMetrics_MonthsInRange_ApproxFromDates(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC) // 90-day inclusive span
 
-	m := Calculate(ts, start, end, 0, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, 0, 0, fullCoverage, true, nil)
 
 	// Jan 1 to Mar 31: end.Sub(start) = 89 days; +1 for inclusive = 90 days / 30.4375 ≈ 2.957
 	if m.MonthsInRange < 2.90 || m.MonthsInRange > 3.05 {
@@ -495,7 +495,7 @@ func TestCalculateMetrics_ActualMonthly_DividesExpensesByMonths(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC) // ~3 months
 
-	m := Calculate(ts, start, end, 0, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, 0, 0, fullCoverage, true, nil)
 
 	if !floatEqual(m.TotalExpenses, 9000) {
 		t.Fatalf("precondition: TotalExpenses = %v, want 9000", m.TotalExpenses)
@@ -516,7 +516,7 @@ func TestCalculateMetrics_BudgetOverTarget(t *testing.T) {
 	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC) // ~3 months
 
 	target := 5000.0
-	m := Calculate(ts, start, end, target, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, target, 0, fullCoverage, true, nil)
 
 	if !m.HasBudgetTarget {
 		t.Errorf("HasBudgetTarget = false, want true (target=%v)", target)
@@ -544,7 +544,7 @@ func TestCalculateMetrics_BudgetUnderTarget(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC)
 
-	m := Calculate(ts, start, end, 5000, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, 5000, 0, fullCoverage, true, nil)
 
 	// ActualMonthly ≈ 3044; PerMonthDelta = 3044 - 5000 = ~-1956
 	// (90 days / 30.4375 ≈ 2.957 months; 9000/2.957 ≈ 3044)
@@ -564,7 +564,7 @@ func TestCalculateMetrics_NoBudgetTarget(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	m := Calculate(ts, start, end, 0, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, 0, 0, fullCoverage, true, nil)
 
 	if m.HasBudgetTarget {
 		t.Errorf("HasBudgetTarget = true, want false when target=0")
@@ -597,7 +597,7 @@ func TestCalculateMetrics_HealthcareUnderTarget(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC) // ~1.94 months
 
-	m := Calculate(ts, start, end, 0, 2000, fullCoverage, true)
+	m := Calculate(ts, start, end, 0, 2000, fullCoverage, true, nil)
 
 	if !m.HasHealthcareTarget {
 		t.Errorf("HasHealthcareTarget = false, want true (target=2000)")
@@ -630,7 +630,7 @@ func TestCalculateMetrics_HealthcareOverTarget(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
 
-	m := Calculate(ts, start, end, 0, 2000, fullCoverage, true)
+	m := Calculate(ts, start, end, 0, 2000, fullCoverage, true, nil)
 
 	if m.HealthcarePerMonthDelta <= 0 {
 		t.Errorf("HealthcarePerMonthDelta = %v, want positive (over)", m.HealthcarePerMonthDelta)
@@ -652,7 +652,7 @@ func TestCalculateMetrics_HealthcareIgnoresOtherCategories(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	m := Calculate(ts, start, end, 0, 1500, fullCoverage, true)
+	m := Calculate(ts, start, end, 0, 1500, fullCoverage, true, nil)
 	if !floatEqual(m.HealthcareTotal, 1500) {
 		t.Errorf("HealthcareTotal = %v, want 1500 (only Health Insurance counts)", m.HealthcareTotal)
 	}
@@ -667,7 +667,7 @@ func TestCalculateMetrics_HealthcareCategoryCaseInsensitive(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	m := Calculate(ts, start, end, 0, 1500, fullCoverage, true)
+	m := Calculate(ts, start, end, 0, 1500, fullCoverage, true, nil)
 	if !floatEqual(m.HealthcareTotal, 1500) {
 		t.Errorf("HealthcareTotal = %v, want 1500 (case-insensitive match)", m.HealthcareTotal)
 	}
@@ -680,7 +680,7 @@ func TestCalculateMetrics_NoHealthcareTarget(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	m := Calculate(ts, start, end, 0, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, 0, 0, fullCoverage, true, nil)
 	if m.HasHealthcareTarget {
 		t.Errorf("HasHealthcareTarget = true, want false when target=0")
 	}
@@ -703,7 +703,7 @@ func TestCalculateMetrics_LivingExpensesExcludeHealthInsurance(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC) // ~1 month
 
-	m := Calculate(ts, start, end, 4000, 1500, fullCoverage, true)
+	m := Calculate(ts, start, end, 4000, 1500, fullCoverage, true, nil)
 
 	// TotalExpenses keeps every outflow (Total Expenses card unchanged)
 	if !floatEqual(m.TotalExpenses, 5000) {
@@ -736,7 +736,7 @@ func TestCalculateMetrics_LivingExpensesTrendExcludesHealthcare(t *testing.T) {
 		makeTransaction("Rent", -3000, feb, models.Outflow, "Housing"),
 		makeTransaction("Premium", -1500, feb, models.Outflow, "Health Insurance"),
 	)
-	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true)
+	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true, nil)
 
 	if len(m.LivingExpensesTrend) != len(m.TrendLabels) {
 		t.Fatalf("LivingExpensesTrend length = %d, want %d", len(m.LivingExpensesTrend), len(m.TrendLabels))
@@ -762,7 +762,7 @@ func TestCalculateMetrics_HealthcareTrendPopulated(t *testing.T) {
 		txns = append(txns, makeTransaction("Premium", -1500, date, models.Outflow, "Health Insurance"))
 	}
 	ts := makeTransactionSet(txns...)
-	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 1500, fullCoverage, true)
+	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 1500, fullCoverage, true, nil)
 
 	if len(m.HealthcareTrend) != len(m.TrendLabels) {
 		t.Errorf("HealthcareTrend length = %d, want %d (aligned with TrendLabels)",
@@ -787,7 +787,7 @@ func TestCalculateMetrics_CombinedNetsLivingAndHealthcare(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	m := Calculate(ts, start, end, 3000, 2000, fullCoverage, true)
+	m := Calculate(ts, start, end, 3000, 2000, fullCoverage, true, nil)
 
 	if !m.HasCombinedTarget {
 		t.Errorf("HasCombinedTarget = false, want true")
@@ -812,7 +812,7 @@ func TestCalculateMetrics_CombinedDegeneratesWhenOnlyOneTarget(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	m := Calculate(ts, start, end, 4000, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, 4000, 0, fullCoverage, true, nil)
 	if !floatEqual(m.CombinedTarget, 4000) {
 		t.Errorf("CombinedTarget = %v, want 4000 (living only)", m.CombinedTarget)
 	}
@@ -832,7 +832,7 @@ func TestCalculateMetrics_CumulativeTargetTotalsExposed(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC) // ~1.02 months
 
-	m := Calculate(ts, start, end, 4000, 2000, fullCoverage, true)
+	m := Calculate(ts, start, end, 4000, 2000, fullCoverage, true, nil)
 
 	wantLiving := 4000 * m.MonthsInRange
 	wantHealth := 2000 * m.MonthsInRange
@@ -856,7 +856,7 @@ func TestCalculateMetrics_CombinedZeroTargets(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	m := Calculate(ts, start, end, 0, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, 0, 0, fullCoverage, true, nil)
 	if m.HasCombinedTarget {
 		t.Errorf("HasCombinedTarget = true, want false when both targets are 0")
 	}
@@ -873,7 +873,7 @@ func TestCalculateMetrics_SingleDayRange_NoDivideByZero(t *testing.T) {
 			t.Fatalf("Calculate panicked on single-day range: %v", r)
 		}
 	}()
-	m := Calculate(ts, day, day, 5000, 0, fullCoverage, true)
+	m := Calculate(ts, day, day, 5000, 0, fullCoverage, true, nil)
 
 	// (0 + 1) / 30.4375 ≈ 0.0329
 	if m.MonthsInRange < 0.03 || m.MonthsInRange > 0.04 {
@@ -891,7 +891,7 @@ func TestCalculateMetrics_CombinedCumulativeBalance_NoTargetReturnsNil(t *testin
 		makeTransaction("Rent", -1500, feb, models.Outflow, "Housing"),
 	)
 
-	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true)
+	m := Calculate(ts, ts.MinDate(), ts.MaxDate(), 0, 0, fullCoverage, true, nil)
 
 	if m.CombinedCumulativeBalance != nil {
 		t.Errorf("CombinedCumulativeBalance = %v, want nil when no combined target", m.CombinedCumulativeBalance)
@@ -917,7 +917,7 @@ func TestCalculateMetrics_CombinedCumulativeBalance_AccumulatesMonthlyBalance(t 
 		makeTransaction("Rent", -2000, feb, models.Outflow, "Housing"),
 	)
 
-	m := Calculate(ts, start, end, 1500, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, 1500, 0, fullCoverage, true, nil)
 
 	if len(m.CombinedCumulativeBalance) != 2 {
 		t.Fatalf("CombinedCumulativeBalance length = %d, want 2", len(m.CombinedCumulativeBalance))
@@ -951,7 +951,7 @@ func TestCalculateMetrics_CombinedCumulativeBalance_LastIsNegationOfCumulativeDe
 		makeTransaction("Premium", -400, time.Date(2025, 3, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
 	)
 
-	m := Calculate(ts, start, end, 1200, 350, fullCoverage, true) // combined target = 1550
+	m := Calculate(ts, start, end, 1200, 350, fullCoverage, true, nil) // combined target = 1550
 
 	if len(m.CombinedCumulativeBalance) == 0 {
 		t.Fatalf("CombinedCumulativeBalance empty; want non-empty when combined target is set")
@@ -981,7 +981,7 @@ func TestCalculateMetrics_CombinedCumulativeBalance_MoreThanSixMonths_CapsAndCar
 	}
 	ts := makeTransactionSet(txns...)
 
-	m := Calculate(ts, start, end, 1000, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, 1000, 0, fullCoverage, true, nil)
 
 	if len(m.CombinedCumulativeBalance) != 6 {
 		t.Fatalf("CombinedCumulativeBalance length = %d, want 6 (capped to last 6 of 8 walked months)", len(m.CombinedCumulativeBalance))
@@ -1005,7 +1005,7 @@ func TestCalculateMetrics_CombinedCumulativeBalance_PartialMonthRange(t *testing
 		makeTransaction("Rent", -800, time.Date(2025, 3, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
 	)
 
-	m := Calculate(ts, start, end, 750, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, 750, 0, fullCoverage, true, nil)
 
 	if len(m.CombinedCumulativeBalance) != 3 {
 		t.Fatalf("CombinedCumulativeBalance length = %d, want 3 (Jan, Feb, Mar)", len(m.CombinedCumulativeBalance))
@@ -1028,7 +1028,7 @@ func TestCalculateMetrics_CombinedCumulativeBalance_ZeroTransactionMiddleMonth(t
 		makeTransaction("Rent", -1000, time.Date(2025, 3, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
 	)
 
-	m := Calculate(ts, start, end, 800, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, 800, 0, fullCoverage, true, nil)
 
 	if len(m.CombinedCumulativeBalance) != 3 {
 		t.Fatalf("CombinedCumulativeBalance length = %d, want 3 (Jan, Feb, Mar -- Feb still gets a point)", len(m.CombinedCumulativeBalance))
@@ -1281,7 +1281,7 @@ func TestPhaseAdjustedMonthlyTarget_FlowsIntoCalculateMetrics(t *testing.T) {
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
 	target := phaseAdjustedMonthlyTarget(s, start, end)
-	m := Calculate(ts, start, end, target, 0, fullCoverage, true)
+	m := Calculate(ts, start, end, target, 0, fullCoverage, true, nil)
 
 	if !m.HasBudgetTarget {
 		t.Fatalf("HasBudgetTarget = false, want true")
@@ -1431,7 +1431,7 @@ func TestCalculateMetrics_CoverageInsideWindow_ClipsHealthcareAccrual(t *testing
 	ts, start, end := healthcareCoverageFixture()
 	coverage := time.Date(2026, 5, 5, 0, 0, 0, 0, time.UTC)
 
-	m := Calculate(ts, start, end, 0, 1000, coverage, true)
+	m := Calculate(ts, start, end, 0, 1000, coverage, true, nil)
 
 	if !m.HasHealthcareTarget {
 		t.Fatal("HasHealthcareTarget = false, want true")
@@ -1457,7 +1457,7 @@ func TestCalculateMetrics_CoverageBeforeWindow_FullAccrualUnchanged(t *testing.T
 	ts, start, end := healthcareCoverageFixture()
 	coverage := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC) // long before the window
 
-	m := Calculate(ts, start, end, 0, 1000, coverage, true)
+	m := Calculate(ts, start, end, 0, 1000, coverage, true, nil)
 
 	wantMonthsInRange := MonthsBetween(start, end)
 	if !floatEqual(m.HealthcareTargetTotal, 1000*wantMonthsInRange) {
@@ -1472,7 +1472,7 @@ func TestCalculateMetrics_CoverageAfterWindow_SuppressesWithoutNaN(t *testing.T)
 	ts, start, end := healthcareCoverageFixture()
 	coverage := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC) // after the window ends
 
-	m := Calculate(ts, start, end, 0, 1000, coverage, true)
+	m := Calculate(ts, start, end, 0, 1000, coverage, true, nil)
 
 	if m.HasHealthcareTarget {
 		t.Error("HasHealthcareTarget = true, want false when coverage starts after the window")
@@ -1495,7 +1495,7 @@ func TestCalculateMetrics_CoverageAfterWindow_SuppressesWithoutNaN(t *testing.T)
 func TestCalculateMetrics_NoCoverageFlag_SuppressesWithoutNaN(t *testing.T) {
 	ts, start, end := healthcareCoverageFixture()
 
-	m := Calculate(ts, start, end, 0, 1000, time.Time{}, false)
+	m := Calculate(ts, start, end, 0, 1000, time.Time{}, false, nil)
 
 	if m.HasHealthcareTarget {
 		t.Error("HasHealthcareTarget = true, want false when hasCoverage=false")
@@ -1522,15 +1522,15 @@ func TestCalculateMetrics_CoverageStartInRange_ExactBoundaries(t *testing.T) {
 
 	// Coverage start exactly at rangeStart and exactly at rangeEnd both
 	// count as "inside" (inclusive range).
-	atStart := Calculate(ts, start, end, 0, 1000, start, true)
+	atStart := Calculate(ts, start, end, 0, 1000, start, true, nil)
 	if !atStart.HealthcareCoverageStartInRange {
 		t.Error("coverage start == rangeStart: HealthcareCoverageStartInRange = false, want true")
 	}
-	atEnd := Calculate(ts, start, end, 0, 1000, end, true)
+	atEnd := Calculate(ts, start, end, 0, 1000, end, true, nil)
 	if !atEnd.HealthcareCoverageStartInRange {
 		t.Error("coverage start == rangeEnd: HealthcareCoverageStartInRange = false, want true")
 	}
-	oneDayAfter := Calculate(ts, start, end, 0, 1000, end.AddDate(0, 0, 1), true)
+	oneDayAfter := Calculate(ts, start, end, 0, 1000, end.AddDate(0, 0, 1), true, nil)
 	if oneDayAfter.HealthcareCoverageStartInRange {
 		t.Error("coverage start one day after rangeEnd: HealthcareCoverageStartInRange = true, want false")
 	}
@@ -1565,7 +1565,7 @@ func TestComparisonDerivesCoverageStartFromFullLedgerNotWindow(t *testing.T) {
 
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
-	result := Comparison(ts, start, end, "previous", settings)
+	result := Comparison(ts, start, end, "previous", settings, nil)
 	if result == nil || !result.HasData {
 		t.Fatalf("expected non-nil comparison with HasData=true, got %+v", result)
 	}
@@ -1610,7 +1610,7 @@ func TestComparisonCoverageStartExcludesSuppressedDuplicates(t *testing.T) {
 
 	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
-	result := Comparison(ts, start, end, "previous", settings)
+	result := Comparison(ts, start, end, "previous", settings, nil)
 	if result == nil || !result.HasData {
 		t.Fatalf("expected non-nil comparison with HasData=true, got %+v", result)
 	}

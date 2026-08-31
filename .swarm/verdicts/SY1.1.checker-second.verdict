@@ -1,0 +1,95 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: SY1
+ATTEMPT: 1
+---
+SCOPE: internal/models/major_expense.go, internal/services/majorexpenses/engine.go,
+internal/services/dataloader/major_expenses.go, internal/handlers/whatif/sync.go,
+web/templates/components/whatif/sync-preview.html — all SY1 territory per SY-RUN-SPEC.md.
+Foreign HC-territory dirty files (internal/handlers/dashboard/**, internal/models/dashboard.go,
+internal/services/metrics/**, internal/services/mcpsvc/spend/**,
+internal/services/dataloader/transfers_test.go, web/templates/components/kpis.html) were not
+touched and are attributed to the concurrent HC run per the coordinator's live update; not
+probed further (a coordinator message mid-task confirmed internal/handlers/dashboard doesn't
+currently compile tree-wide because of HC's own calibration work — irrelevant to SY1, whose
+four packages don't import dashboard handlers; internal/handlers/whatif built and tested clean
+throughout).
+
+ATTACK 1 — Hash-collision on duplicate transactions (twins). D-SY-b/AC2 return
+map[string]models.MajorExpense keyed by transaction Hash; sync.go's aggregation loop looks up
+`exclusions[t.Hash]` per row. If two DISTINCT transactions (different StableID) shared an
+identical Hash and diverged in classification (one pinned into a flagged group, its twin
+naturally matching a different unflagged def), the Hash-keyed map would misclassify both.
+VERIFIED FALSE ALARM: internal/services/dataloader/loader.go:717 `deduplicateTransactions`
+runs unconditionally inside LoadDataContext (loader.go:366), keyed on exact Hash, keeping only
+the first occurrence — before computeDashboardSync ever sees the data. Two rows with identical
+Hash cannot coexist in the TransactionSet computeDashboardSync operates on. Confirmed by
+reading assignStableIDs' own comment ("two rows with the same content Hash are exact
+duplicates, and dedup keeps the first") and the call graph LoadData -> LoadDataContext ->
+deduplicateTransactions. This attack is dead; no FAIL from it.
+
+ATTACK 2 — syncPlanHash determinism across preview/apply. Read plan.ExcludedGroups
+construction: aggregated into a local `map[string]excludedTotal` keyed by def.ID, then
+converted to a slice and `sort.Slice`'d by Name before assignment — matches the existing
+TestComputeDashboardSync_ExcludedGroupsOrderIsDeterministic (two live computeDashboardSync
+calls, hash-compared). No map field survives into syncPlan (syncExcludedGroup has no map/slice
+members needing further sorting), so json.Marshal's encoding is deterministic. No defect found.
+
+ATTACK 3 — D-SY-e HI+flagged overlap, first-def-wins trap, pin precedence: read the sync.go
+loop (HI check strictly before the exclusions-map lookup, both `continue`), and exercised the
+package's own TestComputeDashboardSync_ExcludesFlaggedMajorExpenseGroup fixture logic by
+inspection — order and one-time exclusion match D-SY-e as written. No defect found.
+
+ATTACK 4 — REFUND NETTING IN THE DISPLAYED GROUP TOTAL (CONFIRMED DEFECT). sync.go's
+aggregation loop for excluded groups does:
+    agg.Total += math.Abs(t.Amount)
+i.e. it sums the ABSOLUTE VALUE of every row assigned to a flagged group, regardless of sign.
+AC5 explicitly requires a refund (positive-amount, Outflow-typed) inside a flagged group to be
+"skipped like its siblings" — the worker's classifier-level test proves exclusion-membership
+for such a row, but no test (classifier-level or sync.go-level) exercises what a refund does to
+the group's DISPLAYED Total. This directly contradicts the established, already-shipped
+convention for the exact same concept (a major-expense group total) one package over:
+internal/handlers/majorexpenses/handlers.go:~366-370 computes group totals as
+`total += -t.Amount` specifically "so refunds reduce the group total instead of inflating it
+via AbsAmount" (identical language repeated at ~409 for the unmatched-total sibling
+computation). SY1's sync.go reintroduces the exact bug that sibling code was written to avoid.
+
+PROOF (throwaway probe, added/run/deleted inside internal/handlers/whatif/, confirmed removed
+via `git status --porcelain` before writing this verdict):
+  Fixture: 4x "Car Loan Payment,-500,Auto Payment" (four months) + one
+  "Car Loan Payment,500,Auto Payment" (a same-description credit/reversal — classified Outflow
+  because "loan payment" hits classifier.NeverIncomeKeywords, and stays positive per
+  ClassifyTransactions' "keep credits positive" rule; all five rows exact-amount-match the
+  car-loan def's ExpectedMin=ExpectedMax=500 flagged def).
+  True net excluded from consideration: 4*500 - 500 = $1500.
+  Worker's code produced: plan.ExcludedGroups[0].Total = $2500.00, Count=5.
+  ($2500 = 5 * abs(500) — every row summed as a positive magnitude, refund included.)
+  Test output:
+    group Total = 2500.00 (net-would-be=1500.00 gross-would-be=2500.00) Count=5
+    DEFECT: excluded group Total = 2500.00, want net 1500.00
+  A $1000 swing (a $500 credit inflates the shown total by $1000 instead of reducing it by
+  $500) on a figure the preview renders directly to the user via formatNumber
+  ("{{Name}} — ${{formatNumber .MonthlyAmount}}/mo ({{.Count}} transactions)", D-SY-d/f) — this
+  is exactly the "rendered figures must be true" defect class (ruling 2026-08-29b lineage): the
+  displayed exclusion total does not equal what was actually netted out of the plan.
+  NewMonthlyExpenses itself is unaffected (the row is still unconditionally `continue`d out of
+  totalExpenses regardless of sign) — the bug is confined to the informational ExcludedGroups
+  Total/MonthlyAmount, but that is precisely the field D-SY-d exists to make trustworthy
+  ("preview transparency").
+  Neither the worker's tests nor `.swarm/tier3/SY1/accept.sh` (grepped, not executed per
+  instructions) contain "refund" or "reversal" — this scenario was untested at both the primary
+  and oracle layers.
+
+Fix would be a one-line change (`agg.Total += -t.Amount` guarded by the same sign convention
+the sibling handlers.go code uses, or equivalently sum signed and take abs once) — small,
+squarely in SY1's own sync.go file, not a scope-exceeding rewrite.
+
+STRONGEST ATTACK THAT FAILED TO BREAK IT: Attack 1 (Hash-collision on twins) — a real-looking
+risk given the map is Hash-keyed and this exact codebase has prior art for StableID-vs-Hash
+identity subtlety (transaction_pins.go, duplicate_decisions.go), but falsified by the
+unconditional exact-Hash dedup that runs before computeDashboardSync ever sees the data.
+
+VERDICT: FAIL on Attack 4 (refund/credit rows in a flagged group inflate the displayed
+ExcludedGroups.Total instead of netting, contradicting AC5's refund requirement's evident
+intent and the codebase's own established convention for the identical concept).

@@ -1117,6 +1117,15 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                         <span class="text-gray-500 dark:text-gray-400">— matches are dropped at load time, not counted as spending</span>
                     </span>
                 </label>
+                <label class="flex items-center gap-2 mt-1">
+                    <input type="checkbox" name="exclude_from_plan_sync" value="on"
+                        {{if .Expense.ExcludeFromPlanSync}}checked{{end}}
+                        class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+                    <span class="text-gray-600 dark:text-gray-300">
+                        Modeled in retirement plan — excluded from the plan's living-expense sync
+                        <span class="text-gray-500 dark:text-gray-400">— The retirement plan models this expense separately; keep it out of the synced living-expense figure.</span>
+                    </span>
+                </label>
             </form>
             {{if .Transactions}}
             <div class="mt-2 text-xs">
@@ -1216,6 +1225,16 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             Treat as internal transfer
             <span class="block text-gray-500 dark:text-gray-400">
                 Drop matches at load time so they don't show as spending. Use this for transfers to your own brokerage / savings (e.g. "schwab moneylink", "fid bkg svc").
+            </span>
+        </span>
+    </label>
+    <label class="flex items-start gap-2 text-xs">
+        <input type="checkbox" name="exclude_from_plan_sync" value="on"
+            class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+        <span class="text-gray-600 dark:text-gray-300">
+            Modeled in retirement plan — excluded from the plan's living-expense sync
+            <span class="block text-gray-500 dark:text-gray-400">
+                The retirement plan models this expense separately; keep it out of the synced living-expense figure.
             </span>
         </span>
     </label>

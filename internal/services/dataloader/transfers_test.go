@@ -134,7 +134,7 @@ func TestLoadData_MetricsExcludeEveryTransferRow(t *testing.T) {
 
 	start := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
-	m := metrics.Calculate(ts.Active().FilterByDateRange(start, end), start, end, 0, 0)
+	m := metrics.Calculate(ts.Active().FilterByDateRange(start, end), start, end, 0, 0, start, true, nil)
 
 	if m.TransactionCount != 5 {
 		t.Fatalf("TransactionCount = %d, want 5 -- transfers stay in the ledger", m.TransactionCount)
@@ -277,7 +277,7 @@ func TestResolveTransfer_ConfirmSurvivesReload(t *testing.T) {
 	// And the confirmed pair now sits outside the totals too.
 	start := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
-	m := metrics.Calculate(ts.Active().FilterByDateRange(start, end), start, end, 0, 0)
+	m := metrics.Calculate(ts.Active().FilterByDateRange(start, end), start, end, 0, 0, start, true, nil)
 	if math.Abs(m.TotalIncome-wantIncome) > 0.005 {
 		t.Errorf("TotalIncome = %.2f, want %.2f", m.TotalIncome, wantIncome)
 	}

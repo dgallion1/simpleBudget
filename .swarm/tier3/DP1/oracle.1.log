@@ -1,0 +1,15 @@
+== A1/A2: oracle fixture + real-data tests ==
+ok  	budget2/internal/services/dataloader	0.021s
+== A3: package suites ==
+ok  	budget2/internal/services/dataloader	1.463s
+ok  	budget2/internal/services/mcpsvc	0.035s
+ok  	budget2/internal/services/mcpsvc/admin	4.042s
+ok  	budget2/internal/services/mcpsvc/confirm	0.044s
+ok  	budget2/internal/services/mcpsvc/curate	0.437s
+ok  	budget2/internal/services/mcpsvc/ledger	0.364s
+ok  	budget2/internal/services/mcpsvc/plan	5.065s
+ok  	budget2/internal/services/mcpsvc/snapshot	0.003s
+ok  	budget2/internal/services/mcpsvc/spend	0.716s
+== A4: list_duplicates description names the pending→posted shape ==
+A4 ok
+ORACLE PASS

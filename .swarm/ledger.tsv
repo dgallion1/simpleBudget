@@ -96,3 +96,5 @@ SY1	3	tests,second	accepted	2	worker-coder	gate-ok-tier3-attempt-2-oracle-pass-d
 SY2	2	tests,a11y,second	accepted	1	worker-coder	gate-ok-attempt-1-tri-lane-pass
 SY4	2	tests,second	accepted	4	worker-coder	gate-ok-attempt-4-dual-lane-pass-chart-walk-merge-then-abs
 SY3	1	tests	accepted	1	worker-coder	gate-ok-attempt-1-nil-merge-mutation-killed
+DP1	3	tests,second	accepted	1	worker-coder	gate-ok-tier3-attempt-1-oracle-pass-dual-lane
+DP2	1	tests	accepted	1	worker-local	gate-ok-attempt-1-mutation-verified

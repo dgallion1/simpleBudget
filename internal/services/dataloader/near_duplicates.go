@@ -16,6 +16,22 @@ import (
 // settings UI until real-world false-positive data warrants tuning.
 const (
 	duplicateWindowDays = 7
+
+	// pendingPostedWindowDays bounds the third candidate shape (see
+	// isPendingPostedPair): the pending side and the posted side of the
+	// same settlement are usually captured on the same day or the next,
+	// but bank settlement lag occasionally pushes it out a couple more
+	// days, so 3 days balances catching real settlements against pairing
+	// unrelated same-amount charges.
+	pendingPostedWindowDays = 3
+
+	// pendingPostedPrefixMinLen is the minimum shared byte-wise prefix
+	// length (after normalization) required for the pending→posted
+	// shape's description-affinity check when neither normalized string
+	// is a prefix of the other. 12 bytes is enough to require matching
+	// on a real merchant-name fragment (not just a shared first word)
+	// while tolerating a rewritten tail.
+	pendingPostedPrefixMinLen = 12
 )
 
 // checkPrefixRE matches descriptions that look like a posted check
@@ -39,8 +55,11 @@ type DuplicatePair struct {
 	Right models.Transaction
 }
 
-// detectNearDuplicatePairs scans transactions for bill-pay → posted-
-// check candidate pairs as defined in spec §2.
+// detectNearDuplicatePairs scans transactions for near-duplicate candidate
+// pairs as defined in spec §2: a scheduled bill pay settling as a posted
+// check, a same-day (or next-day) re-export of the same bank row under a
+// rewritten Description, or a pending charge settling as a posted charge
+// with both Description and Original Description rewritten.
 //
 // Pairing is greedy by smallest date difference: a transaction can
 // appear in at most one pair, ties broken by lexicographically smaller
@@ -129,13 +148,16 @@ func detectNearDuplicatePairs(txns []models.Transaction) []DuplicatePair {
 }
 
 // isCandidatePair returns true if (a, b) look like a near-duplicate by
-// either of two shapes:
+// any of three shapes:
 //   - exactly one of (a, b) looks like a scheduled bill pay AND the other
 //     looks like a posted check, or
 //   - both are a same-day (or next-day) re-export of the same bank row:
 //     their Original Description values match once whitespace and case
 //     differences are ignored, even though Description itself was
-//     rewritten between exports.
+//     rewritten between exports, or
+//   - one is a Pending charge and the other is the same charge settled
+//     Posted, with both Description and Original Description rewritten
+//     by the bank in between (see isPendingPostedPair).
 //
 // Callers only reach this with rows already bucketed by matching sign,
 // amount-in-cents, and TransactionType (see detectNearDuplicatePairs).
@@ -145,7 +167,10 @@ func isCandidatePair(a, b models.Transaction) bool {
 	if (aBP && bPC) || (aPC && bBP) {
 		return true
 	}
-	return isSameDayReimportPair(a, b)
+	if isSameDayReimportPair(a, b) {
+		return true
+	}
+	return isPendingPostedPair(a, b)
 }
 
 // isSameDayReimportPair implements the second candidate shape: a
@@ -163,6 +188,78 @@ func isSameDayReimportPair(a, b models.Transaction) bool {
 		return false
 	}
 	return normalizeOriginalDescription(a.OriginalDescription) == normalizeOriginalDescription(b.OriginalDescription)
+}
+
+// isPendingPostedPair implements the third candidate shape: a card swipe
+// captured once while Pending and again after it settles Posted, where the
+// bank rewrites BOTH Description and Original Description between the two
+// exports (so isSameDayReimportPair's Original Description match can never
+// fire). The only remaining signals are the status transition itself, the
+// account, and whatever fragment of the merchant name survives the
+// rewrite -- so this shape is deliberately narrower than the other two: the
+// window is 3 days (pendingPostedWindowDays, wider than the 1-day reimport
+// window because bank settlement lag varies more than a same-day
+// re-export), the status split must be exact (one side "pending", the
+// other a postedStatusKeywords match, neither side's Status empty -- an
+// empty Status is ambiguous here in a way it isn't for classify(), because
+// there is no description-shape signal like "Check #NNN" to fall back on),
+// and the same account is required to avoid pairing coincidental same-
+// amount charges on different cards.
+func isPendingPostedPair(a, b models.Transaction) bool {
+	if dayDiff(a.Date, b.Date) > pendingPostedWindowDays {
+		return false
+	}
+	if a.AccountID != b.AccountID {
+		return false
+	}
+	aPending, bPending := isPendingStatus(a.Status), isPendingStatus(b.Status)
+	aPosted, bPosted := isPostedStatus(a.Status), isPostedStatus(b.Status)
+	if !((aPending && bPosted) || (bPending && aPosted)) {
+		return false
+	}
+	na := normalizeOriginalDescription(a.Description)
+	nb := normalizeOriginalDescription(b.Description)
+	if na == "" || nb == "" {
+		return false
+	}
+	if strings.HasPrefix(na, nb) || strings.HasPrefix(nb, na) {
+		return true
+	}
+	return commonPrefixLen(na, nb) >= pendingPostedPrefixMinLen
+}
+
+// isPendingStatus reports whether a Status value marks the pending side of
+// isPendingPostedPair. An empty Status does not qualify (see that
+// function's doc comment).
+func isPendingStatus(status string) bool {
+	s := strings.ToLower(strings.TrimSpace(status))
+	return s != "" && strings.Contains(s, "pending")
+}
+
+// isPostedStatus reports whether a Status value marks the posted side of
+// isPendingPostedPair. An empty Status does not qualify, and a status
+// containing "pending" never qualifies even if it also contains a posted
+// keyword.
+func isPostedStatus(status string) bool {
+	s := strings.ToLower(strings.TrimSpace(status))
+	if s == "" || strings.Contains(s, "pending") {
+		return false
+	}
+	return containsAny(s, postedStatusKeywords)
+}
+
+// commonPrefixLen returns the length in bytes of the longest common prefix
+// of a and b.
+func commonPrefixLen(a, b string) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	i := 0
+	for i < n && a[i] == b[i] {
+		i++
+	}
+	return i
 }
 
 // whitespaceRunRE collapses runs of whitespace to a single space so that

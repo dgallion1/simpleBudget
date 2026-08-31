@@ -1,0 +1,87 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: DP1
+ATTEMPT: 1
+---
+Worked in a `cp -a /home/darrell/bin/ai/budget2 /tmp/dp1check` copy for all builds/tests; real tree
+untouched (git status before/after identical, scratch dir removed).
+
+A1 (fixture + guards): `bash .swarm/tier3/DP1/accept.sh` → ORACLE PASS in the copy. Read every
+guard test in near_duplicates_test.go and the staged oracle test
+(.swarm/tier3/DP1/zz_oracle_dp1_test.go) — cross-account, 4-day window, alien description,
+both-pending, posted-empty-status, short-prefix all assert 0 pairs; verbatim Harbor Freight
+asserts 1. Ran them.
+
+A2 (real-data regression): ran TestOracleDP1_RealData plus my own throwaway probe
+(TestProbeDP1_ListPairs) dumping all 11 unresolved pairs from a copy of data/. Inspected every one:
+all 11 are genuine same-day/next-day pending→posted settlement pairs (Amazon Prime, Walgreens x2,
+Tops, Google Cloud, Spotify, OpenAI, Home Depot, Amazon Mktplace, Harbor Freight, Wegmans) — no
+false positives. Confirmed 5 resolved + 1 kept_both still bind (oracle asserts this; I did not
+independently re-derive the ledger, only ran the assertion).
+
+Attack 1 — false negatives (ATTACK SURFACE, confirmed real but out of FAIL scope): wrote a probe
+(TestProbeDP1_MissedPairs) enumerating same-account/same-cents Pending/Posted pairs NOT in the
+paired set. Found genuine missed pending→posted dupes: Grammarly (-144.00, common prefix "grammarly"
+= 9 bytes < the spec's 12-byte pendingPostedPrefixMinLen), BJ's Wholesale/-634.40 and BJ's
+Membership/-64.50 (apostrophe/rewording defeats the byte prefix), Grubhub*FiveGuys/-59 and -58
+(aggregator name vs merchant name, zero common prefix), and Amazon Mktplace/-30.81 (4-day gap,
+outside the 3-day window). Every one of these misses is a direct, mechanical consequence of the
+exact constants the spec dictates (pendingPostedWindowDays=3, pendingPostedPrefixMinLen=12,
+Description-only HasPrefix/common-prefix logic) — the implementation matches the spec's own
+algorithm verbatim, and A2's "exactly 11" was itself calibrated by the spec author running this
+same algorithm against live data (DP-RUN-SPEC.md A2 note). Not a FAIL: no acceptance criterion
+promises catching every true duplicate, and the spec explicitly owns this precision/recall
+tradeoff. Backlog observation only.
+
+Attack 2 — greedy-pairing "steal": built a synthetic 3-txn fixture (posted "Check #123", a
+shape-1 bill-pay candidate 2 days out, and a shape-3 pending candidate 1 day out sharing a prefix
+with the check description). Confirmed the shape-3 candidate wins the greedy smallest-date-diff
+selection and the shape-1 candidate is left unpaired (1 pair formed, not the 2 that existed in the
+2-txn-only case). This is real but is a property of the pre-existing, spec-frozen greedy 1:1
+pairing loop ("No change to... the greedy pairing loop" — DP-RUN-SPEC.md "Explicitly out of
+scope") — shapes 1 and 2 could already steal from each other before DP1; adding a third shape only
+adds more candidates into the same unmodified mechanism. A2's real-data check is the actual test
+for whether this bites the 6 live decisions, and it passes (5 resolved + 1 kept_both bind).
+Backlog observation, not a FAIL.
+
+Boundary probes (synthetic, all matched spec exactly): exactly-3-day gap → paired (1); status
+"posted pending confirmation" (contains both words) → 0 pairs (correctly excluded by
+isPostedStatus's "does not contain pending" rule); unicode multibyte description prefix
+("Café Münchën...") → paired correctly, no crash/panic from byte-wise prefix cutting a rune;
+whitespace-only descriptions on both sides → 0 pairs (normalizeOriginalDescription's empty-after-
+trim guard fires, per the manifest's noted defensive addition).
+
+A3: `go test -count=1 ./internal/services/dataloader/ ./internal/services/mcpsvc/...` green in the
+copy, both via accept.sh and standalone.
+
+A4: grep confirms the description edit; `git diff -- internal/services/mcpsvc/admin/duplicates.go`
+shows exactly a 2-line Description-string insertion inside the existing single `mcp.AddTool` call
+— no new tool, no schema/name change, tool count unchanged.
+
+A5: grep confirms all three shapes enumerated in the doc comments on
+`detectNearDuplicatePairs` and `isCandidatePair`.
+
+Regression: `git diff internal/services/dataloader/near_duplicates.go` read in full — every hunk is
+additive (two new consts, doc-comment updates, one new disjunct call, three new functions); classify,
+pairKey, identityKey, isSameDayReimportPair, the greedy loop, duplicateWindowDays are byte-identical
+to master. near_duplicates_test.go diff is purely additive (one new helper + 7 new tests); no
+existing test was edited.
+
+Foreign territory: `git status --porcelain` on the 5 foreign paths (dashboard handlers x3,
+tailwind.css, dashboard-verdict-bar.html) empty before and after — untouched.
+
+No git-state changes made; only throwaway probe files under /tmp, all removed
+(`rm -rf /tmp/dp1check /tmp/dp1_probe*.go`); confirmed real repo tree git status unchanged from
+start.
+
+Backlog observations (not FAIL grounds — spec-inherited tradeoffs, not implementation defects):
+1. Six live true pending→posted duplicates are still missed (Grammarly, BJ's Wholesale, BJ's
+   Membership, Grubhub*FiveGuys x2, 4-day Amazon Mktplace) due to the spec's chosen 3-day window
+   and 12-byte Description-prefix rule. If precision/recall gets revisited, OriginalDescription
+   (not just Description) or a token-overlap match instead of a byte-prefix would catch the
+   aggregator-name-vs-merchant-name and apostrophe/rewording cases.
+2. The greedy pairing loop lets a closer-in-date shape-3 candidate steal a partner from a
+   shape-1/2 candidate, potentially orphaning an existing decision on some future dataset even
+   though it did not happen on the current live data. Pre-existing architecture, unchanged by
+   design per spec's explicit scope fence.

@@ -1,0 +1,182 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DP2
+ATTEMPT: 1
+---
+All work done in `cp -a` copies under the session scratchpad (both deleted at
+the end). The only write to the real tree is this verdict file.
+
+NOTE ON BASELINE: DP1 is also uncommitted in this checkout, so
+`git diff master` on the test file shows DP1+DP2 combined (105 insertions).
+DP2's incremental delta was isolated by three independent means (below).
+
+--------------------------------------------------------------------------
+C1. Diff: the only DP2 change is the one new test; style matches neighbors;
+    fixtures are as claimed.  -> PASS
+--------------------------------------------------------------------------
+(a) No pre-existing line was altered.
+  $ git --no-pager diff --numstat -- internal/services/dataloader/near_duplicates_test.go
+  105	0	internal/services/dataloader/near_duplicates_test.go
+  Zero deletions => every change to this file vs master is a pure insertion,
+  so DP2 could not have modified any master or DP1 line.
+
+(b) Function inventory, master vs worktree
+  $ diff <(git show master:.../near_duplicates_test.go | grep '^func ') \
+         <(grep '^func ' .../near_duplicates_test.go)
+  Added: makeTxAccount, TestDetect_PendingPosted_{HarborFreightVerbatim,
+  CrossAccountNoMatch, WindowExceeded, AlienDescriptionNoMatch,
+  BothPendingNoMatch, PostedEmptyStatusNoMatch, ShortPrefixNoMatch,
+  NegativeBothPosted}.
+  .swarm/manifests/DP1.1.manifest.md enumerates makeTxAccount + the first
+  SEVEN of those verbatim. Residual attributable to DP2 = exactly
+  TestDetect_PendingPosted_NegativeBothPosted (worktree line 321). Confirms
+  "exactly one new test".
+
+(c) mtime attribution (DP1 verdicts landed between DP1's and DP2's edits)
+  $ stat -c '%y  %n' ...
+  2026-08-30 20:45:16  internal/services/dataloader/near_duplicates.go
+  2026-08-30 20:46:08  internal/services/mcpsvc/admin/duplicates.go
+  2026-08-30 20:52:32  .swarm/verdicts/DP1.1.checker-second.verdict
+  2026-08-30 20:54:17  .swarm/verdicts/DP1.1.checker-tests.verdict
+  2026-08-30 20:55:45  internal/services/dataloader/near_duplicates_test.go
+  Both non-test files predate DP1's PASS verdicts; only the test file was
+  written afterwards => DP2 touched the test file and nothing else.
+
+(d) The two non-test modified files are DP1's, not DP2's, by content:
+  near_duplicates.go adds exactly the decls DP1's manifest declares
+  (pendingPostedWindowDays, pendingPostedPrefixMinLen, isPendingPostedPair,
+  isPendingStatus, isPostedStatus, commonPrefixLen) and nothing more;
+  duplicates.go's diff is a Description-string edit only:
+    -"...within 7 days -- and are waiting for the user "
+    +"...within 7 days, or a Pending charge that "
+    +"re-appears Posted with a rewritten description within 3 days -- ..."
+
+(e) Style match: the new test is a flat `func TestDetect_...(t *testing.T)`
+    using the file's established one-liner assertion
+      if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+          t.Errorf("expected 0 pairs (both Posted), got %d", len(got))
+      }
+    byte-for-byte the same shape as master's TestDetect_NegativeBothChecks
+    (line 115) and DP1's six negative siblings.
+
+(f) Fixtures are exactly as claimed:
+    - both sides Status "Posted"           (literal args to makeTxAccount)
+    - both AccountID "usaa-credit"         (same account)
+    - both Amount -188.98, Date 2026-05-01 (same amount/date)
+    - TransactionType models.Outflow on both (set by makeTx, .../near_duplicates_test.go:16)
+    - OriginalDescription DIFFER: "HARBOR FREIGHT TOOLS3185 PENFIELD     NY"
+      vs "Harbor Freight Tools USA"
+    - asserts len(got) != 0 -> expects 0 pairs
+    Throwaway probe (added to a scratch copy, run, then deleted) proved the
+    "shape 2 cannot fire" claim is real rather than incidental:
+      norm(a.OriginalDescription)="harbor freight tools3185 penfield ny"
+      norm(b.OriginalDescription)="harbor freight tools usa"
+    -> unequal after normalizeOriginalDescription, so isSameDayReimportPair
+    returns false. Same probe:
+      norm(a.Description)="harbor freight tools"
+      norm(b.Description)="harbor freight tools usa"
+      shape3-affinity-would-match=true
+    i.e. shape 3's description-affinity test WOULD match this fixture; the
+    status split is the sole guard holding it to zero pairs. The fixture is
+    therefore aimed precisely at the both-posted exclusion.
+
+--------------------------------------------------------------------------
+C2. `go test -count=1 -run TestDetect ./internal/services/dataloader/` passes
+    -> PASS
+--------------------------------------------------------------------------
+  $ go test -count=1 -run TestDetect ./internal/services/dataloader/
+  ok  	budget2/internal/services/dataloader	0.003s
+  EXIT=0
+  $ go test -count=1 -v -run TestDetect_PendingPosted_NegativeBothPosted ./internal/services/dataloader/
+  === RUN   TestDetect_PendingPosted_NegativeBothPosted
+  --- PASS: TestDetect_PendingPosted_NegativeBothPosted (0.00s)
+  ok  	budget2/internal/services/dataloader	0.003s
+  Supporting (same scratch copy):
+  $ go test -count=1 ./internal/services/dataloader/   -> ok  1.375s
+  $ go vet ./internal/services/dataloader/             -> VET OK
+  $ go build ./...                                     -> BUILD OK
+  -count=1 used throughout; no cached result was accepted as evidence.
+
+--------------------------------------------------------------------------
+C3. The test is load-bearing (mutation kills it)  -> PASS
+--------------------------------------------------------------------------
+In a SECOND scratch copy (/tmp .../mut), the both-posted exclusion in
+internal/services/dataloader/near_duplicates.go:217 was neutralized:
+  -	if !((aPending && bPosted) || (bPending && aPosted)) {
+  +	if !((aPending && bPosted) || (bPending && aPosted) || (aPosted && bPosted)) {
+  $ go test -count=1 -run TestDetect ./internal/services/dataloader/
+  --- FAIL: TestDetect_PendingPosted_NegativeBothPosted (0.00s)
+      near_duplicates_test.go:332: expected 0 pairs (both Posted), got 1
+  FAIL	budget2/internal/services/dataloader	0.003s
+The new test FAILS when the guard it names is removed, and the failure
+message is the guard's own semantics ("both Posted"). Load-bearing confirmed.
+The real tree was never mutated; both scratch copies were rm -rf'd.
+
+OBSERVATION (not a defect): master's pre-existing TestDetect_NegativeBothChecks
+also fails under this same mutation (its two "Check #99658N" rows share a
+>=12-byte normalized prefix and empty==equal AccountIDs). So the new test is
+not the UNIQUE detector of this particular mutation. It does cover a fixture
+shape no existing test covers -- ordinary merchant descriptions (not
+check-shaped), an explicit non-empty AccountID, and non-empty differing
+OriginalDescriptions -- which is the live Harbor Freight negative from the
+DP1 defect report. Defence-in-depth, which is the stated point of a
+test-only promotion.
+
+--------------------------------------------------------------------------
+C4. Scope: nothing outside the manifest  -> PASS
+--------------------------------------------------------------------------
+  $ cat .swarm/manifests/DP2.1.files
+  internal/services/dataloader/near_duplicates_test.go     (one line)
+  $ git status --porcelain
+   M .swarm/ledger.tsv                                  <- lead-owned, excluded
+   M internal/services/dataloader/near_duplicates.go    <- DP1 (mtime 20:45, pre-DP1-verdict)
+   M internal/services/dataloader/near_duplicates_test.go <- DP2 manifest path
+   M internal/services/mcpsvc/admin/duplicates.go       <- DP1 (mtime 20:46, pre-DP1-verdict)
+  ?? .swarm/DP-RUN-SPEC.md, .swarm/manifests/DP{1,2}.1.*, .swarm/tier3/DP1/,
+     .swarm/verdicts/DP1.1.*                            <- lead-owned, excluded
+  ?? budget2.old-1345                                   <- pre-existing, excluded
+No file outside the manifest is attributable to DP2. The declared foreign
+territory (internal/handlers/dashboard/*, web/static/css/tailwind.css,
+web/templates/components/dashboard-verdict-bar.html) does not appear in
+git status at all -- clean, untouched.
+
+Real-tree integrity: `git status --porcelain` is byte-identical before and
+after this verification run.
+
+critical.globs: internal/services/dataloader/** IS a critical glob, and DP2 is
+Tier 1. Reproducing swarm/gate.sh's manifest_hits_glob() logic (gate.sh:269-310,
+DEFAULT_TEST_GLOBS includes **/*_test.go) against DP2.1.files:
+  internal/services/dataloader/near_duplicates_test.go:
+    critical=True test-exempt=True -> counts_toward_escalation=False
+  MANIFEST_HITS_GLOB: NO (tier 1 stands)
+The gate exempts test paths from the critical-glob escalation trigger by
+design, so Tier 1 is correct for a test-only manifest.
+
+--------------------------------------------------------------------------
+CONSTRAINTS HONORED / DISCLOSURES
+--------------------------------------------------------------------------
+- The budget2 binary was never invoked; no `go run`; no server started.
+- No git-state change (no checkout/stash/branch/commit/index write) anywhere.
+- Both /tmp scratch copies removed.
+- NOT RUN, and why: the repo's composite target `make check`
+  (Makefile:77 = vet static vuln css-verify test) was deliberately not run.
+  The DP-RUN-SPEC territory section and CLAUDE.md's concurrent-runs rule
+  ("a shared tree cannot require a green FULL suite from a checker") scope
+  verification to ./internal/services/dataloader/ while a foreign session
+  holds uncommitted edits in this checkout. Package-scope evidence + go vet
+  + go build ./... is cited above in its place.
+- NOT MECHANICALLY DEMONSTRABLE: "matching the file's existing style" is a
+  judgement, supported above by the byte-level assertion-shape comparison
+  against master's TestDetect_NegativeBothChecks rather than by a command.
+
+FINDINGS FOR THE LEAD'S BACKLOG (none are FAILs):
+F1. No DP2 section exists in .swarm/DP-RUN-SPEC.md and no .swarm/briefs/DP2.md.
+    The spec's "Territories" list names only DP1.* paths, so .swarm/manifests/
+    DP2.*, .swarm/verdicts/DP2.* and ledger row DP2 are written outside the
+    written territory list. DP2's acceptance criteria exist only in the
+    dispatch message.
+F2. Redundancy noted in C3: the mutation used is also caught by a pre-existing
+    master test. Worth knowing when judging the marginal value of the
+    promotion, but the new test is still load-bearing and covers a fixture
+    shape nothing else covers.

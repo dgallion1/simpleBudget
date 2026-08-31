@@ -28,6 +28,14 @@ func makeTxOriginal(date string, amount float64, desc, status, original string) 
 	return t
 }
 
+// makeTxAccount is a sibling of makeTx for the pending->posted shape, which
+// additionally keys on AccountID.
+func makeTxAccount(date string, amount float64, desc, status, account string) models.Transaction {
+	t := makeTx(date, amount, desc, status)
+	t.AccountID = account
+	return t
+}
+
 func TestDetect_SameDayReimport_LucidPair(t *testing.T) {
 	// Live example from IMPORT_FIXES_SPEC.md T13: the aggregator's first
 	// export carries the raw bank text with a "Category Pending"
@@ -225,5 +233,102 @@ func TestDetect_CheckRegexTolerance(t *testing.T) {
 		if got := detectNearDuplicatePairs(txns); len(got) != 1 {
 			t.Errorf("desc %q should still match check pattern, got %d pairs", desc, len(got))
 		}
+	}
+}
+
+// --- Third shape: pending->posted settlement pair ---
+
+// Verbatim live example from the DP1 defect report: an aggregator export
+// captured the charge while Pending, a later overlapping export captured
+// it Posted with BOTH Description and Original Description rewritten by
+// the bank.
+func TestDetect_PendingPosted_HarborFreightVerbatim(t *testing.T) {
+	pending := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools USA", "Pending", "usaa-credit")
+	pending.OriginalDescription = "Harbor Freight Tools USA"
+	posted := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools", "Posted", "usaa-credit")
+	posted.OriginalDescription = "HARBOR FREIGHT TOOLS3185 PENFIELD     NY"
+
+	txns := []models.Transaction{pending, posted}
+	pairs := detectNearDuplicatePairs(txns)
+	if len(pairs) != 1 {
+		t.Fatalf("expected 1 pair, got %d", len(pairs))
+	}
+	if pairs[0].Key == "" {
+		t.Error("pair key should be non-empty")
+	}
+}
+
+func TestDetect_PendingPosted_CrossAccountNoMatch(t *testing.T) {
+	pending := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools USA", "Pending", "usaa-credit")
+	posted := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools", "Posted", "usaa-checking")
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (different accounts), got %d", len(got))
+	}
+}
+
+func TestDetect_PendingPosted_WindowExceeded(t *testing.T) {
+	pending := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools USA", "Pending", "usaa-credit")
+	posted := makeTxAccount("2026-05-05", -188.98, "Harbor Freight Tools", "Posted", "usaa-credit") // 4 days
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (window exceeded), got %d", len(got))
+	}
+}
+
+func TestDetect_PendingPosted_AlienDescriptionNoMatch(t *testing.T) {
+	pending := makeTxAccount("2026-05-01", -188.98, "Home Depot", "Pending", "usaa-credit")
+	posted := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools", "Posted", "usaa-credit")
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (alien description), got %d", len(got))
+	}
+}
+
+func TestDetect_PendingPosted_BothPendingNoMatch(t *testing.T) {
+	a := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools USA", "Pending", "usaa-credit")
+	a.OriginalDescription = "Harbor Freight Tools USA"
+	b := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools", "Pending", "usaa-credit")
+	// Distinct OriginalDescription so shape 2 (same-day reimport) cannot
+	// fire; this isolates shape 3's status-split rule.
+	b.OriginalDescription = "Harbor Freight Tools"
+	txns := []models.Transaction{a, b}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (both pending), got %d", len(got))
+	}
+}
+
+func TestDetect_PendingPosted_PostedEmptyStatusNoMatch(t *testing.T) {
+	pending := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools USA", "Pending", "usaa-credit")
+	posted := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools", "", "usaa-credit")
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (posted side has empty status), got %d", len(got))
+	}
+}
+
+func TestDetect_PendingPosted_ShortPrefixNoMatch(t *testing.T) {
+	pending := makeTxAccount("2026-05-01", -188.98, "Ab Cdefghij", "Pending", "usaa-credit")
+	posted := makeTxAccount("2026-05-01", -188.98, "Ab Cdxyzabc", "Posted", "usaa-credit")
+	// Neither is a prefix of the other, and the shared prefix ("ab cd" ==
+	// 5 bytes) is below pendingPostedPrefixMinLen (12).
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (prefix too short), got %d", len(got))
+	}
+}
+
+func TestDetect_PendingPosted_NegativeBothPosted(t *testing.T) {
+	// Two Posted transactions with same account, amount, and date, but
+	// different OriginalDescription values. The same-day-reimport shape
+	// cannot fire (different Original Description), and the pending->posted
+	// shape cannot fire (both are Posted, not Pending->Posted).
+	a := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools", "Posted", "usaa-credit")
+	a.OriginalDescription = "HARBOR FREIGHT TOOLS3185 PENFIELD     NY"
+	b := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools USA", "Posted", "usaa-credit")
+	b.OriginalDescription = "Harbor Freight Tools USA"
+	txns := []models.Transaction{a, b}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (both Posted), got %d", len(got))
 	}
 }

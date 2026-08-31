@@ -1,0 +1,212 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DP1
+ATTEMPT: 1
+---
+All verification performed in an isolated `cp -a` copy at
+$SCRATCH/work (keeps .git); the only write to the real tree is this
+verdict file. No git-state changes; the budget2 binary was never invoked.
+
+=== A1 — unit tests cover the verbatim positive case and every named guard === MET
+
+Command: go test -count=1 -v -run TestDetect ./internal/services/dataloader/
+Observed (7 new tests, all PASS, plus all 16 pre-existing TestDetect_* PASS):
+  --- PASS: TestDetect_PendingPosted_HarborFreightVerbatim (0.00s)
+  --- PASS: TestDetect_PendingPosted_CrossAccountNoMatch (0.00s)
+  --- PASS: TestDetect_PendingPosted_WindowExceeded (0.00s)
+  --- PASS: TestDetect_PendingPosted_AlienDescriptionNoMatch (0.00s)
+  --- PASS: TestDetect_PendingPosted_BothPendingNoMatch (0.00s)
+  --- PASS: TestDetect_PendingPosted_PostedEmptyStatusNoMatch (0.00s)
+  --- PASS: TestDetect_PendingPosted_ShortPrefixNoMatch (0.00s)
+  ok  	budget2/internal/services/dataloader	0.003s
+
+I read each new test body (near_duplicates_test.go lines 238-319) and confirmed
+the assertions match the names: the verbatim test uses the exact defect-report
+rows (2026-05-01, -188.98, "Harbor Freight Tools USA"/Pending vs
+"Harbor Freight Tools"/orig "HARBOR FREIGHT TOOLS3185 PENFIELD     NY"/Posted,
+same AccountID) and asserts len(pairs)==1 with a non-empty Key; each guard
+asserts len==0.
+
+MUTATION PROOF (each new test proven load-bearing; mutation applied to
+near_duplicates.go in the scratch copy, file byte-restored after each — final
+`diff -q` reported FILE RESTORED IDENTICAL):
+  M1 `return isPendingPostedPair(a,b)` -> `return false`
+     => --- FAIL: TestDetect_PendingPosted_HarborFreightVerbatim
+        near_duplicates_test.go:254: expected 1 pair, got 0
+  M2 pendingPostedWindowDays 3 -> 4
+     => --- FAIL: TestDetect_PendingPosted_WindowExceeded (got 1)
+  M3 pendingPostedPrefixMinLen 12 -> 4
+     => --- FAIL: TestDetect_PendingPosted_ShortPrefixNoMatch (got 1)
+  M4 delete the `a.AccountID != b.AccountID` guard
+     => --- FAIL: TestDetect_PendingPosted_CrossAccountNoMatch (got 1)
+  M5 isPostedStatus accepts empty status
+     => --- FAIL: TestDetect_PendingPosted_PostedEmptyStatusNoMatch (got 1)
+  M6 isPostedStatus always true
+     => --- FAIL: TestDetect_PendingPosted_BothPendingNoMatch + PostedEmptyStatus
+  M7 description-affinity branch always true
+     => --- FAIL: TestDetect_PendingPosted_AlienDescriptionNoMatch + ShortPrefix
+  M8 status-split condition neutralised (`if false`)
+     => --- FAIL: TestDetect_NegativeBothChecks,
+                  TestDetect_PendingPosted_BothPendingNoMatch,
+                  TestDetect_PendingPosted_PostedEmptyStatusNoMatch
+No mutation survived; every guard test fails for exactly the thing it guards.
+
+OBSERVATION (not a FAIL — see FINDINGS F1): DP-RUN-SPEC A1 names five guards
+including "posted/posted-with-differing-orig-desc". near_duplicates_test.go has
+no dedicated NEW test of that name. Its behaviour is nonetheless proven twice:
+the oracle subtest TestOracleDP1_Guards/both-posted-differing-original PASSes,
+and the permanent pre-existing TestDetect_NegativeBothChecks FAILS under
+mutation M8, i.e. it does bite on the status-split rule. The dispatch brief's
+enumerated guard list is covered in full.
+
+=== A2 / A3 — oracle === MET
+
+Command: bash .swarm/tier3/DP1/accept.sh   (run by me, in the scratch copy)
+Final lines observed:
+  == A4: list_duplicates description names the pending→posted shape ==
+  A4 ok
+  ORACLE PASS
+  EXIT=0
+Artifacts: `ls -l .swarm/tier3/DP1/accept.sh` -> -rwxrwxr-x (executable);
+`tail -1 .swarm/tier3/DP1/oracle.1.log | cat -A` -> `ORACLE PASS$`.
+No report.md in .swarm/tier3/DP1/ (`ls` shows accept.sh, oracle.1.log,
+zz_oracle_dp1_test.go only), so the oracle contract, not the legacy blind-arm
+contract, applies.
+
+Oracle non-vacuity, verified by me rather than assumed:
+  go test -count=1 -v -run TestOracleDP1 ./internal/services/dataloader/
+  => all four top-level tests RUN and PASS, including all six named subtests:
+     cross-account, window-exceeded-4-days, alien-description, both-pending,
+     both-posted-differing-original, empty-status-not-pending-side.
+
+FAIL-END proof (no git checkout used — `git show HEAD:...` piped to a temp file,
+swapped in, then byte-restored):
+  master near_duplicates.go + the oracle test file =>
+    --- FAIL: TestOracleDP1_HarborFreightPair
+        expected 1 pair, got 0
+    --- FAIL: TestOracleDP1_RealData
+        expected exactly 11 unresolved pairs on live data, got 0: []
+
+A2 independently re-derived with my own throwaway probe (written, run, deleted)
+that loads a copy of data/ and prints the queue:
+  PROBE|counts unresolved=11 resolved=5 keptboth=1
+  PROBE|-4.99|2026-07-12|AMAZON PRIME PMTS [Pending] || Amazon [Posted]
+  PROBE|-8.13|2026-07-12|WALGREENS #9992 [Pending] || Walgreens [Posted]
+  PROBE|-10.00|2025-11-18|WALGREENS #9992 [Pending] || Walgreens [Posted]
+  PROBE|-15.96|2026-05-02|TOPS MARKETS #417 [Pending] || Tops Markets [Posted]
+  PROBE|-16.17|2026-05-01|Google CLOUD Cz3Z8v [Pending] || Google Cloud [Posted]
+  PROBE|-18.99|2026-03-18|Spotify USA [Pending] || Spotify [Posted]
+  PROBE|-21.60|2026-05-03|OPENAI *CHATGPT SUBSCR [Pending] || OpenAI [Posted]
+  PROBE|-32.24|2026-05-01|THE HOME DEPOT #1247 [Pending] || The Home Depot [Posted]
+  PROBE|-152.40|2025-11-18|AMAZON MKTPLACE PMTS [Pending] || Amazon [Posted]
+  PROBE|-188.98|2026-05-01|Harbor Freight Tools USA [Pending] || Harbor Freight Tools [Posted]
+  PROBE|-252.14|2026-05-02|WEGMANS #018 [Pending] || Wegmans [Posted]
+This is exactly the 11-merchant list enumerated in DP-RUN-SPEC A2's 2026-08-30
+amendment, every pair has exactly one Pending and one Posted side, every pair
+is same-account (usaa-credit-card), the Harbor Freight -188.98 / 2026-05-01
+pair is present, and resolved=5 / kept_both=1 (every recorded decision still
+binds).
+
+A3 package suites, from the same accept.sh run (all with -count=1, cache
+defeated):
+  ok budget2/internal/services/dataloader 1.561s
+  ok budget2/internal/services/mcpsvc 0.038s
+  ok budget2/internal/services/mcpsvc/admin 3.996s
+  ok budget2/internal/services/mcpsvc/confirm 0.044s
+  ok budget2/internal/services/mcpsvc/curate 0.459s
+  ok budget2/internal/services/mcpsvc/ledger 0.382s
+  ok budget2/internal/services/mcpsvc/plan 5.248s
+  ok budget2/internal/services/mcpsvc/snapshot 0.003s
+  ok budget2/internal/services/mcpsvc/spend 0.738s
+Additionally, the ONE non-test consumer of the changed data outside those
+packages was located by
+  grep -rn "UnresolvedDuplicates|ResolvedDuplicates|KeptBothDuplicates" --include=*.go .
+  => internal/handlers/duplicates/handlers.go:72-73 (the Duplicates page)
+and its package suite was run:
+  go test -count=1 ./internal/handlers/duplicates/ => ok  0.019s
+Hygiene: `go vet ./internal/services/dataloader/ ./internal/services/mcpsvc/...`
+=> no issues found; `gofmt -l` on the three changed files => empty.
+(Per the brief, no full-repo sweep was run; the tree is shared.)
+
+=== A4 — list_duplicates description names the shape, no schema/name/count drift === MET
+
+Command: git diff -U0 -- internal/services/mcpsvc/admin/duplicates.go
+Complete set of changed lines (3 lines, 2+/1-, confirmed by
+`git diff --numstat` => `2	1	internal/services/mcpsvc/admin/duplicates.go`):
+  -  "bill pay and a posted check for the identical amount within 7 days -- and are waiting for the user " +
+  +  "bill pay and a posted check for the identical amount within 7 days, or a Pending charge that " +
+  +  "re-appears Posted with a rewritten description within 3 days -- and are waiting for the user " +
+Every changed line is inside the Description string literal. `Name:
+"list_duplicates"`, the input/output schema types, and mcp.AddTool call are
+untouched, so the tool COUNT is unchanged by construction. `git status
+--porcelain` shows README.md, .claude/skills/budget2-mcp/SKILL.md and
+server_test.go unmodified => no README/skill/server_test drift.
+Oracle's own A4 grep: "A4 ok".
+
+=== A5 — doc comments enumerate all three shapes === MET
+
+Command: read of internal/services/dataloader/near_duplicates.go lines 58-62
+and 150-161.
+  L58-62 (detectNearDuplicatePairs): "...a scheduled bill pay settling as a
+  posted check, a same-day (or next-day) re-export of the same bank row under a
+  rewritten Description, or a pending charge settling as a posted charge with
+  both Description and Original Description rewritten."
+  L150-161 (isCandidatePair): header changed from "either of two shapes:" to
+  "any of three shapes:", followed by three bullets, the third being
+  "one is a Pending charge and the other is the same charge settled Posted...
+  (see isPendingPostedPair)".
+Constants also carry rationale doc comments (L20-33).
+
+=== SCOPE === CLEAN
+
+Command: git diff --stat (working tree vs HEAD) on the real checkout:
+  .swarm/ledger.tsv                                  |   1 +
+  internal/services/dataloader/near_duplicates.go    | 107 +++++++++++++++-
+  internal/services/dataloader/near_duplicates_test.go |  90 ++++++++++++
+  internal/services/mcpsvc/admin/duplicates.go       |   3 +-
+  4 files changed, 195 insertions(+), 6 deletions(-)
+The three source files are exactly .swarm/manifests/DP1.1.files.
+.swarm/ledger.tsv change is the lead-owned row `DP1 3 tests,second dispatched 1
+worker-coder -` (lead territory).
+Untracked (git status --porcelain -uall): .swarm/DP-RUN-SPEC.md,
+.swarm/manifests/DP1.1.{files,manifest.md}, .swarm/tier3/DP1/{accept.sh,
+oracle.1.log,zz_oracle_dp1_test.go}, and budget2.old-1345 (pre-existing,
+excluded by the brief). All within DP territory.
+FOREIGN TERRITORY: `git status --porcelain --` on
+internal/handlers/dashboard/{handlers.go,handlers_test.go,handlers_http_test.go},
+web/static/css/tailwind.css,
+web/templates/components/dashboard-verdict-bar.html
+=> EMPTY output: untouched (and currently clean in this checkout).
+Tier: internal/services/dataloader/** is in .swarm/critical.globs; the task is
+Tier 3, which permits it. internal/services/mcpsvc/admin/duplicates.go is not
+in critical.globs.
+
+=== SPLIT-CLASSIFICATION HUNT (recurring defect class 1) === CLEAN
+
+Enumerated every surface that could re-implement pending/posted pairing rather
+than trusting the diff:
+  grep -rn "isCandidatePair|detectNearDuplicatePairs|isPendingPostedPair|isPendingStatus|isPostedStatus|commonPrefixLen|postedStatusKeywords" --include=*.go internal/ cmd/
+  grep -rniE "pending" --include=*.go internal/ cmd/ (excluding spending/depending)
+  grep -rniE "pending" web/templates web/static/js
+Results:
+- pendingPostedWindowDays and pendingPostedPrefixMinLen appear ONLY in
+  internal/services/dataloader/near_duplicates.go (lines 20-33 defs, 209/228
+  uses). No second threshold anywhere.
+- postedStatusKeywords is referenced only in near_duplicates.go (lines 46, 248,
+  285). isPendingStatus/isPostedStatus have no callers outside that file.
+- detectNearDuplicatePairs has exactly one production caller:
+  internal/services/dataloader/loader.go:1020. The Duplicates page and the MCP
+  tools read the resulting queue; none re-derives pending/posted pairing.
+- internal/services/transfers/transfers.go has its own unexported
+  isCandidatePair, but it is transfer-leg matching (pre-existing, no Status /
+  pending-posted logic) — a name collision, not a second classifier.
+- web/templates and web/static/js: the only "pending" hits are
+  whatif-pending-card (a loading skeleton) and whatifChartsReloadPending (a JS
+  flag). No client-side duplicate classification.
+- The greedy loop's own window is untouched: duplicateWindowDays = 7 at line 18
+  and the loop test `if diff < 0 || diff > duplicateWindowDays` at line 118 are
+  unchanged in the diff; the 3-day rule is self-enforced inside
+  isPendingPostedPair (line 209), exactly as the spec required.
+- dayDiff (line 307) takes the absolute difference, so the window is
+  order-independent.

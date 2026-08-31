@@ -515,3 +515,16 @@ per user decision 2026-08-30).
   exclude_from_plan_sync→true, re-sync, verify living ≈7,128.66 and
   Lucid visible in spending totals again. Do NOT flip before the new
   binary is running — old code ignores the new flag entirely.
+
+## ND run backlog (2026-08-31)
+- Greedy per-index pairing is order-dependent: an adversarially-ordered
+  3-way same-cents collision lets a Scheduled decoy steal a Posted row from
+  its true Pending partner (checker-second probe, ND1). Pre-existing,
+  inert on real data; revisit only if a real dataset hits it.
+- Gap-B token affinity can pair two DISTINCT same-amount payments sharing
+  two generic merchant tokens ("Discover Card Payment" scheduled vs
+  "Discover Card Minimum Payment" posted). v1 constants are hardcoded by
+  spec §9 pending real false-positive data; kept_both exists for these.
+- Amazon pending→posted at 4 days (2025-11 $30.81) stays outside the
+  3-day window by design; revisit window width only with false-positive
+  data.

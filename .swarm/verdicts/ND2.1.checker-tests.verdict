@@ -1,0 +1,141 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: ND2
+ATTEMPT: 1
+---
+All work done in an isolated `cp -a` copy at
+/tmp/claude-1000/-home-darrell-work-agents2--claude-worktrees-duplicate-records-issue-fc48ba/23ccf584-289a-4cd0-aa01-376f90d57e50/scratchpad/nd2work
+No git-state change and no write to the real tree except this verdict file.
+The compiled budget2 binary was never executed.
+
+== Criterion 1 — both tests exist; TestDetect suite passes; build clean ==
+cmd: grep -n '^func Test' internal/services/dataloader/near_duplicates_test.go
+out: line 439 func TestDetect_ScheduledSettled_ExactlyOneSharedTokenNoMatch(t *testing.T) {
+     line 457 func TestDetect_ScheduledSettled_CheckPrefixExclusionNoMatch(t *testing.T) {
+     (35 Test funcs total)
+
+cmd: go build ./...
+out: no output; BUILD_EXIT=0
+
+cmd: go test -count=1 -v -run TestDetect ./internal/services/dataloader/
+out: 35 "--- PASS:" lines, zero FAIL, incl.
+     --- PASS: TestDetect_ScheduledSettled_ExactlyOneSharedTokenNoMatch (0.00s)
+     --- PASS: TestDetect_ScheduledSettled_CheckPrefixExclusionNoMatch (0.00s)
+     PASS / ok budget2/internal/services/dataloader 0.003s / EXIT=0
+
+cmd: make check   (repo's own composite target: vet static vuln css-verify test)
+out: every package "ok", final lines
+     "/home/darrell/go-sdk/go/bin/go test -count=1 ./internal/handlers/accounts
+      ok budget2/internal/handlers/accounts 0.715s
+      ✓ all checks passed"  MAKE_EXIT=0
+     (internal/templates ok 0.883s — foreign-territory render_kpi_month_detail_test.go
+      rides along in the copy and does not break the suite.)
+STATUS: PASS
+
+== Criterion 2 — both mutation kills re-run by me ==
+Baseline copy of near_duplicates.go saved to scratchpad/nd_orig.go first.
+
+MUTATION 1: `sharedTokenCount(a.Description, b.Description) >= 2` -> `>= 1`
+  (near_duplicates.go:299, applied with perl -0pi -e)
+cmd: go test -count=1 -run TestDetect ./internal/services/dataloader/
+out: --- FAIL: TestDetect_ScheduledSettled_ExactlyOneSharedTokenNoMatch (0.00s)
+         near_duplicates_test.go:446: expected 0 pairs (exactly 1 shared token,
+         below the >=2 threshold), got 1
+     FAIL  budget2/internal/services/dataloader 0.003s
+  EXACTLY ONE test failed — the target test, and only it. In particular the
+  pre-existing TestDetect_ScheduledSettled_SingleSharedTokenNoMatch SURVIVED the
+  mutation, confirming the new test is not redundant with it.
+cmd: cp nd_orig.go back; cmp nd_orig.go near_duplicates.go -> "REVERT1 OK" (byte-identical)
+
+MUTATION 2: deleted the 4-line checkPrefixRE exclusion block (near_duplicates.go:295-298)
+cmd: awk NR 283-296 after mutation shows isScheduledSettledPair going straight from the
+     scheduled/posted split check to `return sharedTokenCount(...) >= 2` — block gone.
+cmd: go test -count=1 -run TestDetect ./internal/services/dataloader/
+out: --- FAIL: TestDetect_ScheduledSettled_CheckPrefixExclusionNoMatch (0.00s)
+         near_duplicates_test.go:464: expected 0 pairs (checkPrefixRE exclusion), got 1
+     FAIL  budget2/internal/services/dataloader 0.003s
+  EXACTLY ONE test failed — the target test, and only it (notably
+  TestDetect_ScheduledSettled_CheckShapeRegression still passed).
+cmd: cp nd_orig.go back; cmp -> "REVERT2 OK"; go test -count=1 -run TestDetect
+out: ok budget2/internal/services/dataloader 0.003s
+
+FIXTURE HONESTY PROBE (throwaway zz_probe_nd2_test.go, deleted after the run) —
+confirms each test asserts what its NAME claims, not merely 0 pairs by accident:
+  PROBE1 shared(Lucid, Lucid Bill Payment)=1 tokensA=[lucid] tokensB=[lucid]
+      -> the pair genuinely shares EXACTLY ONE token, so it discriminates >=2 from >=1.
+  PROBE2 shared(Check #12345 Monroe Water, Monroe Water)=2
+         tokensA=[12345 monroe water] tokensB=[monroe water]
+  PROBE2 checkPrefixRE(Check #12345 Monroe Water)=true, checkPrefixRE(Monroe Water)=false
+  PROBE2 isScheduledStatus(Scheduled Bill Pay)=true, isPostedStatus(Posted)=true
+      -> 2 shared tokens, same account, same day, correct scheduled/posted split,
+         one side check-shaped: every other isScheduledSettledPair condition holds,
+         so ONLY the exclusion keeps the pair count at 0. Matches the mutation result.
+STATUS: PASS
+
+== Criterion 3 — scope on the REAL tree; near_duplicates.go unchanged from ND1 ==
+cmd: git status --porcelain (real tree, read-only)
+out:  M .swarm/NEXT.md                                        <- lead
+      M .swarm/ledger.tsv                                     <- lead
+      M internal/services/dataloader/near_duplicates.go       <- ND1 (uncommitted)
+      M internal/services/dataloader/near_duplicates_test.go  <- ND1 + ND2
+      M internal/services/mcpsvc/admin/duplicates.go          <- ND1 (uncommitted)
+      M web/static/js/dashboard.js                            <- FOREIGN
+      M web/templates/components/kpi-month-detail.html        <- FOREIGN
+      ?? budget2.old-1345                                     <- FOREIGN
+      ?? internal/templates/render_kpi_month_detail_test.go   <- FOREIGN
+      ?? .swarm/{ND-RUN-SPEC.md,manifests/ND*,tier3/ND1/,verdicts/ND1.1.*}
+  NO source file outside ND1's three is attributable to ND2, and no new untracked
+  source file was introduced by ND2. Matches .swarm/manifests/ND2.1.files, which
+  lists internal/services/dataloader/near_duplicates_test.go only.
+  NOTE: internal/services/dataloader/** IS in .swarm/critical.globs; the brief
+  authorizes near_duplicates_test.go explicitly, so this is in-scope, not a breach.
+
+near_duplicates.go identical to ND1's ACCEPTED state — no byte snapshot of that
+state exists anywhere in the tree, so I proved it by four converging observations
+rather than by cmp, and I say so plainly:
+ (a) cmd: awk '/^const \(/,/^\)/' near_duplicates.go | md5sum
+     out: 04cf65a18bb393ff637d5f9d13cfc3fd  — EXACT match to the value recorded in
+     .swarm/verdicts/ND1.1.checker-tests.verdict:208 at ND1 acceptance.
+ (b) Every line-number anchor cited in the ND1 verdict still lands on the same text
+     today: checkPrefixRE exclusion at 295-297, `>= 2` threshold at 299,
+     tokenizeDescription at 315-330, checkPrefixRE literal at 42,
+     billPayStatusKeywords at 45, postedStatusKeywords at 46. A single inserted or
+     deleted line anywhere above would have shifted these.
+ (c) cmd: diff <(grep -oE '^func ...' master's near_duplicates.go) <(same on worktree)
+     out: exactly 5 additions — hasPendingPostedAffinity, isScheduledSettledPair,
+     isScheduledStatus, tokenizeDescription, sharedTokenCount — i.e. precisely the
+     set ND1's manifest declares, and ZERO symbols beyond ND1's design.
+     Lines 40-46 byte-identical to master.
+ (d) cmd: bash .swarm/tier3/ND1/accept.sh   (run in the copy)
+     out: A1/A2/A3 ok, A4 all 10 packages ok, "A5 ok", final line "ORACLE PASS",
+          ORACLE_EXIT=0
+ (e) cmd: cmp real-tree vs copy for both files after all my mutate/revert cycles
+     out: "SRC IDENTICAL real-vs-copy", "TEST IDENTICAL real-vs-copy" — my probes
+          left no residue and the real tree carries the reverted source.
+STATUS: PASS
+
+== Criterion 4 — no existing test weakened or deleted; pure addition ==
+cmd: git diff --stat -- internal/services/dataloader/near_duplicates_test.go
+out: 1 file changed, 147 insertions(+)   [zero deletions]
+cmd: git diff -U0 -- ...near_duplicates_test.go | grep -c '^-[^-]'
+out: 0
+cmd: git show HEAD:...near_duplicates_test.go | grep -c '^func Test'  -> 24
+     grep -c '^func Test' on worktree file                            -> 35
+     diff of the two func lists -> 11 pure additions, no removals, no renames:
+       9 are ND1's (OrigDescAffinity..., OrigDescEmpty..., InsuranceVerbatim,
+       MonroeWaterVerbatim, SingleSharedTokenNoMatch, BothPostedNoMatch,
+       CrossAccountNoMatch, WindowExceededNoMatch, CheckShapeRegression) exactly as
+       ND1's manifest describes; the remaining 2 are ND2's, under the file's
+       "--- Mutation-kill regression tests (ND2, promoted from ND1 checker probes) ---"
+       banner. So ND2's net contribution is EXACTLY two test functions plus comments.
+STATUS: PASS
+
+== Foreign territory ==
+web/static/js/dashboard.js, web/templates/components/kpi-month-detail.html,
+internal/templates/render_kpi_month_detail_test.go, budget2.old-1345 — present in
+the copy, attributed to the other run, not touched, not a FAIL. They did not break
+`make check`.
+
+== Findings ==
+None. No defect found in ND2's four criteria.

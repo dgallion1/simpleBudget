@@ -77,9 +77,11 @@ func registerListDuplicates(s *mcp.Server, deps Deps) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "list_duplicates",
 		Description: "List pairs of transactions that look like the same payment recorded twice -- a scheduled " +
-			"bill pay and a posted check for the identical amount within 7 days, or a Pending charge that " +
-			"re-appears Posted with a rewritten description within 3 days -- and are waiting for the user " +
-			"to decide between them. This is the queue behind the app's Duplicates page. Each pair has a " +
+			"bill pay and a posted check for the identical amount within 7 days, a scheduled bill pay or " +
+			"recurring autopay that instead settles as an ordinary posted ACH/autopay charge (not a check) " +
+			"within 7 days, or a Pending charge that re-appears Posted with a rewritten description within " +
+			"3 days -- and are waiting for the user to decide between them. This is the queue behind the " +
+			"app's Duplicates page. Each pair has a " +
 			"pair_key, which is what resolve_duplicates and undo_resolve take; the two sides are called left and " +
 			"right and the order carries NO meaning about which is the real charge. amount is the SIGNED amount " +
 			"exactly as stored (an expense is negative), matching search_transactions for the same transaction. " +

@@ -1,0 +1,15 @@
+== A1/A2/A3: oracle fixture + guard + real-data tests ==
+ok  	budget2/internal/services/dataloader	0.020s
+== A4: package suites ==
+ok  	budget2/internal/services/dataloader	1.487s
+ok  	budget2/internal/services/mcpsvc	0.034s
+ok  	budget2/internal/services/mcpsvc/admin	3.978s
+ok  	budget2/internal/services/mcpsvc/confirm	0.044s
+ok  	budget2/internal/services/mcpsvc/curate	0.435s
+ok  	budget2/internal/services/mcpsvc/ledger	0.366s
+ok  	budget2/internal/services/mcpsvc/plan	5.353s
+ok  	budget2/internal/services/mcpsvc/snapshot	0.003s
+ok  	budget2/internal/services/mcpsvc/spend	0.739s
+== A5: list_duplicates description names the scheduled→autopay shape ==
+A5 ok
+ORACLE PASS

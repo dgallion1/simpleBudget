@@ -1,0 +1,289 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: ND1
+ATTEMPT: 1
+---
+All work done in an isolated `cp -a` copy at
+$SCRATCH/nd1/repo (`.git` preserved). No writes to the real tree except this
+verdict file. No git-state changes. The compiled budget2 binary was never run.
+
+== ORACLE (Tier-3 gate contract) ==
+cmd: cd $SCRATCH/nd1/repo && bash .swarm/tier3/ND1/accept.sh ; echo EXIT=$?
+out (verbatim tail):
+    == A1/A2/A3: oracle fixture + guard + real-data tests ==
+    ok  	budget2/internal/services/dataloader	0.017s
+    == A4: package suites ==
+    ok  	budget2/internal/services/dataloader	1.534s
+    ok  	budget2/internal/services/mcpsvc	0.035s
+    ok  	budget2/internal/services/mcpsvc/admin	4.015s
+    ok  	budget2/internal/services/mcpsvc/confirm	0.044s
+    ok  	budget2/internal/services/mcpsvc/curate	0.458s
+    ok  	budget2/internal/services/mcpsvc/ledger	0.375s
+    ok  	budget2/internal/services/mcpsvc/plan	5.347s
+    ok  	budget2/internal/services/mcpsvc/snapshot	0.003s
+    ok  	budget2/internal/services/mcpsvc/spend	0.722s
+    == A5: list_duplicates description names the scheduled→autopay shape ==
+    A5 ok
+    ORACLE PASS
+    EXIT=0
+Independently re-run by me (not a re-read of the lead's log). Gate preconditions
+also checked in the real tree:
+  cmd: stat -c '%A %n' .swarm/tier3/ND1/accept.sh
+  out: -rwxrwxr-x .swarm/tier3/ND1/accept.sh          (executable)
+  cmd: tail -n1 .swarm/tier3/ND1/oracle.1.log | cat -A
+  out: ORACLE PASS$                                   (attempt-1 log, exact marker)
+  cmd: ls .swarm/tier3/ND1/ | grep -c report.md
+  out: 0                                              (no legacy blind-arm flip)
+
+A "ok" line from `go test -run` proves nothing if the filter matched no tests, so
+I re-ran the oracle package verbosely:
+cmd: go test -count=1 -v -run 'TestOracleND1' ./internal/services/dataloader/
+out: 17 RUN lines; --- PASS: TestOracleND1_SettlementPairs, --- PASS:
+     TestOracleND1_Guards, --- PASS: TestOracleND1_RealData; ok 0.016s
+
+== A1 — seven verbatim pairs each detected in isolation ==
+cmd: go test -count=1 -v -run 'TestOracleND1_SettlementPairs' ./internal/services/dataloader/
+out (each subtest RUN then parent PASS):
+    TestOracleND1_SettlementPairs/bjs-wholesale-634.40
+    TestOracleND1_SettlementPairs/bjs-membership-64.50
+    TestOracleND1_SettlementPairs/grubhub-fiveguys-59
+    TestOracleND1_SettlementPairs/grubhub-fiveguys-58
+    TestOracleND1_SettlementPairs/grammarly-144
+    TestOracleND1_SettlementPairs/usaa-insurance-464.99
+    TestOracleND1_SettlementPairs/monroe-water-20
+    --- PASS: TestOracleND1_SettlementPairs (0.00s)
+Assertion read (not just the name): each subtest calls
+detectNearDuplicatePairs([]{a,b}) and t.Fatalf unless len(pairs)==1
+(.swarm/tier3/ND1/zz_oracle_nd1_test.go:68-80). Discriminating power PROVEN by
+mutation M1 (near_duplicates.go replaced with `git show
+master:internal/services/dataloader/near_duplicates.go`): all seven subtests FAIL
+on master. STATUS: PASS.
+
+== A2 — guards detect 0 pairs; Hyundi check shape still detects 1 ==
+cmd: go test -count=1 -v -run 'TestOracleND1_Guards' ./internal/services/dataloader/
+out: subtests gapA-cross-account, gapB-window-8-days, gapB-single-token,
+     gapB-both-posted, google-one-vs-google-com, amazon-30.81-4-day-window,
+     check-shape-hyundi-regression; --- PASS: TestOracleND1_Guards (0.00s)
+Assertions read: the six guard cases assert len(got)!=0 -> t.Errorf; the Hyundi
+case asserts len(got)!=1 -> t.Fatalf (zz_oracle_nd1_test.go:129-146). STATUS: PASS.
+Observation (oracle calibration, not a worker defect): the guard labelled
+"single-shared-token" uses "Monroe County Water Authority" vs "Wire Fee", which
+my probe measures at ZERO shared tokens, not one:
+  probe out: PROBE shared(Monroe County Water Authority, Wire Fee) = 0
+The spec's own §Design-2 calibration text says the same ("`Wire Fee` vs Monroe
+scheduled shares 0"), so the oracle matches the spec; the label is the only
+mismatch. See FINDING F1 for the consequence.
+
+== A3 — real data through the loader ==
+cmd: go test -count=1 -v -run 'TestOracleND1_RealData' ./internal/services/dataloader/
+out: --- PASS: TestOracleND1_RealData (0.01s)
+Assertions read (zz_oracle_nd1_test.go:183-224): copies data/ to t.TempDir(),
+storage.New + New(...).LoadData(), then asserts len(UnresolvedDuplicates())==7 AND
+each of the seven date|amount signatures present, len(ResolvedDuplicates())==16,
+len(KeptBothDuplicates())==1. Discriminating power PROVEN: under M1
+(revert to master) --- FAIL: TestOracleND1_RealData; under M2 (Gap-A fallback
+removed) FAIL; under M5 (Gap-B unwired) FAIL. STATUS: PASS.
+
+== A4 — package suites ==
+cmd: go build ./...                                          -> BUILD_EXIT=0, no output
+cmd: go vet ./internal/services/dataloader/... ./internal/services/mcpsvc/...  -> VET_EXIT=0, no output
+cmd: go test -count=1 ./internal/services/dataloader/ ./internal/services/mcpsvc/...
+out: ok dataloader 1.485s; ok mcpsvc 0.039s; ok mcpsvc/admin 3.993s;
+     ok mcpsvc/confirm 0.044s; ok mcpsvc/curate 0.443s; ok mcpsvc/ledger 0.378s;
+     ok mcpsvc/plan 5.436s; ok mcpsvc/snapshot 0.003s; ok mcpsvc/spend 0.729s
+     TEST_EXIT=0
+(-count=1 defeats the test cache.) STATUS: PASS.
+
+== A5 — list_duplicates description mentions the autopay/ACH shape ==
+cmd: grep -n autopay internal/services/mcpsvc/admin/duplicates.go
+out: 81:  "recurring autopay that instead settles as an ordinary posted ACH/autopay charge (not a check) " +
+cmd: git diff master -- internal/services/mcpsvc/admin/duplicates.go
+out: only the Description string literal in registerListDuplicates changed; no
+     code/behaviour lines touched. STATUS: PASS.
+
+== Worker's own new unit tests (criterion 3) ==
+cmd: go test -count=1 -v -run 'TestDetect_PendingPosted_OrigDesc|TestDetect_ScheduledSettled' ./internal/services/dataloader/
+out: --- PASS for all nine:
+    TestDetect_PendingPosted_OrigDescAffinityWhenDescriptionPrefixFails
+    TestDetect_PendingPosted_OrigDescEmptyOnOneSideNoMatch
+    TestDetect_ScheduledSettled_InsuranceVerbatim
+    TestDetect_ScheduledSettled_MonroeWaterVerbatim
+    TestDetect_ScheduledSettled_SingleSharedTokenNoMatch
+    TestDetect_ScheduledSettled_BothPostedNoMatch
+    TestDetect_ScheduledSettled_CrossAccountNoMatch
+    TestDetect_ScheduledSettled_WindowExceededNoMatch
+    TestDetect_ScheduledSettled_CheckShapeRegression
+    ok  budget2/internal/services/dataloader  0.004s
+cmd: git diff master -- internal/services/dataloader/near_duplicates_test.go
+out: pure addition of 111 lines; zero removed/modified lines -> no existing test
+     weakened or deleted.
+
+MUTATION EVIDENCE (each mutation applied to the worker's near_duplicates.go in the
+scratch copy, tests re-run, file restored and byte-compared afterwards --
+"RESTORED-OK"). Results:
+  M1 revert whole file to master:
+     worker FAIL: OrigDescAffinityWhenDescriptionPrefixFails, ScheduledSettled_
+     InsuranceVerbatim, ScheduledSettled_MonroeWaterVerbatim; oracle FAIL (all 7
+     A1 subtests + RealData).
+  M2 Gap-A orig-desc fallback (line 252) -> `return false`:
+     worker FAIL: OrigDescAffinityWhenDescriptionPrefixFails; oracle FAIL (5 A1
+     subtests + RealData).  => the Gap-A test guards the thing it names.
+  M3 remove the `na=="" || nb==""` ineligibility in hasPendingPostedAffinity:
+     worker FAIL: OrigDescEmptyOnOneSideNoMatch; ORACLE STILL PASSES.
+     => the worker's test catches an empty-orig regression the oracle does not.
+  M5 unwire isScheduledSettledPair from isCandidatePair -> `return false`:
+     worker FAIL: ScheduledSettled_InsuranceVerbatim, _MonroeWaterVerbatim;
+     oracle FAIL (usaa-insurance, monroe-water, RealData).
+  M4 `sharedTokenCount(...) >= 2` -> `>= 1`:
+     NO test fails -- neither the worker's nor the oracle's. See FINDING F1.
+  M6 remove the checkPrefixRE exclusion: no test fails (equivalent for the
+     fixtures used, because classify() claims the Hyundi pair before Gap B is
+     reached). The exclusion is nonetheless LOAD-BEARING, proven directly:
+       probe (exclusion intact):  classify(a)=bp:false pc:false,
+         classify(b)=bp:false pc:true, shared=3, pairs=0,
+         isScheduledSettledPair=false
+       probe (exclusion removed): pairs=1
+     on scheduled "Check #12345 Hyundi Motor" vs posted "Check #12345 Hyundi
+     Motor Finance". So (c) is behaviourally verified even though no committed
+     test covers it. See FINDING F2.
+  M7 Gap-B internal window duplicateWindowDays -> 30: no test fails. This is an
+     EQUIVALENT mutant, not a weak test: detectNearDuplicatePairs already caps
+     the greedy search at `diff > duplicateWindowDays` (near_duplicates.go:130),
+     so the inner check is redundant and the 8-day guard is enforced by the outer
+     cap that WindowExceededNoMatch does exercise.
+  M8 remove the `s == ""` early return in isScheduledStatus: no test fails. Also
+     an EQUIVALENT mutant -- strings.Contains("", "scheduled") is already false.
+
+== Design conformance to the spec's FIXED design (criterion 4) ==
+(a) orig-desc fallback uses the SAME affinity rule.
+    cmd: git show master:internal/services/dataloader/near_duplicates.go > master_nd.go
+    Master's inline rule (master_nd.go:220-227) is `na==""||nb=="" -> false`,
+    `HasPrefix either way -> true`, else `commonPrefixLen(na,nb) >=
+    pendingPostedPrefixMinLen`. The worker's hasPendingPostedAffinity
+    (near_duplicates.go:260-270) is that rule verbatim, and
+    isPendingPostedPair:242 calls it on Description, :252 on
+    OriginalDescription. Only removed lines in the whole file diff are the two
+    `na := normalizeOriginalDescription(a.Description)` lines (moved into the
+    helper), `return isPendingPostedPair(a, b)`, and three doc-comment lines:
+    cmd: git diff master -- internal/services/dataloader/near_duplicates.go | grep '^-'
+    out: -// any of three shapes:
+         -//     by the bank in between (see isPendingPostedPair).
+         -	return isPendingPostedPair(a, b)
+         -// amount charges on different cards.
+         -	na := normalizeOriginalDescription(a.Description)
+         -	nb := normalizeOriginalDescription(b.Description)
+    Empty-orig ineligibility proven behaviourally by M3 above.
+(b) new shape checked LAST in isCandidatePair.
+    near_duplicates.go:179-192 -- classify() pair, then isSameDayReimportPair,
+    then isPendingPostedPair, then `return isScheduledSettledPair(a, b)` (:191).
+(c) checkPrefixRE exclusion on BOTH sides.
+    near_duplicates.go:295-297:
+        if checkPrefixRE.MatchString(strings.TrimSpace(a.Description)) ||
+            checkPrefixRE.MatchString(strings.TrimSpace(b.Description)) {
+            return false
+    Load-bearing, proven by the M6 probe pair above (0 pairs intact / 1 removed).
+(d) exact stopword set and >=2 shared-token rule.
+    Threshold: near_duplicates.go:299 `return sharedTokenCount(a.Description,
+    b.Description) >= 2`. Behaviourally live -- probe on the spec's own Lucid
+    calibration (scheduled "Lucid" / posted "Lucid Bill Payment", same account,
+    2 days apart):
+        PROBE shared(Lucid, Lucid Bill Payment) = 1
+        PROBE pairs(one-shared-token Lucid fixture) = 0
+    and the two real hits measure 2:
+        PROBE shared(USAA INSURANCE BILL PAYMENT, USAA Property and Casualty Insurance) = 2
+        PROBE shared(Monroe County Water Authority, Monroe Water) = 2
+    Stopword set compared element-by-element against the spec's 17 words:
+        PROBE stopwords: len=17 missing=[] extra=[]
+    Tokenizer matches the spec (lowercase, split on non-alphanumeric runs, drop
+    len<3 and stopwords): near_duplicates.go:315-330;
+        PROBE tokenize('Monroe County Water Authority') = [monroe county water authority]
+(e) constants / pairKey / classify() / keyword lists untouched.
+    cmd: per-function md5 of `awk '/^func NAME\(/,/^}/'` on master_nd.go vs the
+         worker's file:
+    out: UNCHANGED classify, pairKey, commonPrefixLen, dayDiff, containsAny,
+         normalizeOriginalDescription, isPendingStatus, isPostedStatus,
+         isSameDayReimportPair
+    cmd: awk '/^const \(/,/^\)/' on both | md5sum
+    out: 04cf65a18bb393ff637d5f9d13cfc3fd  (identical both sides)
+    cmd: grep -n 'billPayStatusKeywords|postedStatusKeywords =|checkPrefixRE = '
+    out: identical literals at identical line numbers 42/45/46 in both files.
+    STATUS: PASS.
+
+== Split-classification / single-source discipline (criterion 5) ==
+Surfaces ENUMERATED and checked for a second copy of any shape threshold,
+keyword list, regex or token rule:
+  1. internal/services/dataloader/near_duplicates.go  -- the ONLY definition site.
+  2. internal/services/dataloader/loader.go:1020 -- `pairs :=
+     detectNearDuplicatePairs(txns)`; consumes, does not re-derive.
+  3. internal/handlers/duplicates/handlers.go -- grep for `Check #|check\s*#|
+     "pending"|"posted"|"scheduled"|HasPrefix|Contains(` returns NOTHING.
+  4. internal/services/mcpsvc/admin/duplicates.go -- same grep returns NOTHING
+     (prose only).
+  5. internal/services/mcpsvc/admin/{resolve,undo,status,register}.go,
+     internal/handlers/explorer/handlers.go, internal/templates/page_data.go --
+     none match the shape-identifier grep.
+  6. web/templates/pages/duplicates.html, web/templates/components/*.html,
+     web/static/js/*.js -- grep -niE 'check\s*#|bill pay|autopay|scheduled|
+     prefix|stopword|shared token' returns NOTHING outside foreign territory.
+cmd: grep -rn --include=*.go -E
+     'checkPrefixRE|billPayStatusKeywords|postedStatusKeywords|pendingPostedPrefixMinLen|pendingPostedWindowDays|duplicateWindowDays|isCandidatePair|isPendingPostedPair|isScheduledSettledPair|isSameDayReimportPair|sharedTokenCount|tokenizeDescription|scheduledPaidTokenStopwords|hasPendingPostedAffinity|isScheduledStatus|isPostedStatus|isPendingStatus|detectNearDuplicatePairs'
+     . | grep -v '_test.go' | grep -v '^\./\.swarm'
+out: every hit is inside internal/services/dataloader/near_duplicates.go, plus
+     loader.go:1020, plus three hits on an UNRELATED same-named
+     `isCandidatePair` in package internal/services/transfers
+     (transfers.go:214,424,438-446 -- "the structural test for two legs of one
+     transfer", a different package with no shared symbols). No duplicated
+     classification. STATUS: PASS.
+
+== Scope ==
+cmd: git status --porcelain   (real tree; worker output is uncommitted, so
+     master...HEAD would be empty and prove nothing)
+out:  M .swarm/ledger.tsv
+      M internal/services/dataloader/near_duplicates.go
+      M internal/services/dataloader/near_duplicates_test.go
+      M internal/services/mcpsvc/admin/duplicates.go
+      M web/static/js/dashboard.js                              <- FOREIGN (KD)
+      M web/templates/components/kpi-month-detail.html          <- FOREIGN (KD)
+      ?? .swarm/ND-RUN-SPEC.md
+      ?? .swarm/manifests/ND1.1.files
+      ?? .swarm/manifests/ND1.1.manifest.md
+      ?? .swarm/tier3/ND1/
+      ?? budget2.old-1345                                       <- FOREIGN (KD)
+      ?? internal/templates/render_kpi_month_detail_test.go     <- FOREIGN (KD)
+Reconciled against .swarm/manifests/ND1.1.files: the three modified source files
+are EXACTLY the manifest's three lines, nothing more. The four foreign-territory
+entries are attributed to the concurrent KD session per ND-RUN-SPEC.md
+"Concurrent-run territory" and are NOT counted against this task. No stray oracle
+file was left behind in the real tree:
+cmd: ls internal/services/dataloader/ | grep -i zz_oracle   -> no match.
+internal/services/dataloader/** is a .swarm/critical.globs entry, which is why
+the task is Tier 3; the tier permits it.
+
+== FINDINGS (observations for the lead's backlog, not criterion failures) ==
+F1 (relates to A2 / design point d): NO test in the repo -- worker's or oracle's
+   -- discriminates the >=2 shared-token rule from >=1. Mutation M4 (`>= 2` ->
+   `>= 1`) leaves the worker's nine new tests, the oracle's three tests and the
+   full dataloader suite ALL GREEN. Root cause: the fixture behind both the
+   oracle's `gapB-single-token` guard and the worker's
+   TestDetect_ScheduledSettled_SingleSharedTokenNoMatch is "Monroe County Water
+   Authority" vs "Wire Fee", which shares ZERO tokens, not one. The worker's own
+   failure message is honest about this ("expected 0 pairs (0 shared tokens)");
+   only the test NAME (inherited from the spec's A2 label "single-shared-token")
+   overclaims. Not a FAIL: A1-A5 as written are met, the spec's own calibration
+   text specifies the zero-token Wire Fee case, and I proved the >=2 boundary is
+   behaviourally correct with a probe. Recommend the V3 pattern -- promote my
+   throwaway probe into a committed test in near_duplicates_test.go using the
+   spec's Lucid calibration (scheduled "Lucid" / posted "Lucid Bill Payment",
+   same account, <=7 days => 0 pairs), which fails under M4 and passes today.
+F2 (relates to design point c): the checkPrefixRE exclusion is implemented and
+   load-bearing, but no committed test covers it -- M6 removes it with every
+   test still green, because classify() claims the Hyundi regression fixture
+   before Gap B is reached. A test needs a check-shaped Description that
+   classify() does NOT claim (check desc + scheduled status), e.g. the probe pair
+   I used. Same V3 follow-up.
+F3 (informational): the `dayDiff(a.Date, b.Date) > duplicateWindowDays` guard
+   inside isScheduledSettledPair (near_duplicates.go:284) is dead code relative
+   to the caller -- detectNearDuplicatePairs:130 already rejects any diff >
+   duplicateWindowDays. Harmless and spec-mandated; noting only so a future
+   reader does not mistake M7's survival for a weak test.

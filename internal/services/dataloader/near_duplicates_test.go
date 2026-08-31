@@ -318,6 +318,153 @@ func TestDetect_PendingPosted_ShortPrefixNoMatch(t *testing.T) {
 	}
 }
 
+// --- Gap A: orig-desc affinity fallback ---
+
+func TestDetect_PendingPosted_OrigDescAffinityWhenDescriptionPrefixFails(t *testing.T) {
+	// Description prefix rule fails outright ("BJS WHOLESALE #0075" vs the
+	// bank's prettified "BJ's Wholesale" share no useful prefix), but
+	// OriginalDescription on the posted side still carries the pending
+	// side's raw text as a prefix.
+	pending := makeTxAccount("2026-05-02", -634.40, "BJS WHOLESALE #0075", "Pending", "usaa-credit")
+	pending.OriginalDescription = "BJS WHOLESALE #0075"
+	posted := makeTxAccount("2026-05-02", -634.40, "BJ's Wholesale", "Posted", "usaa-credit")
+	posted.OriginalDescription = "BJS WHOLESALE #0075      WEBSTER      NY"
+
+	txns := []models.Transaction{pending, posted}
+	pairs := detectNearDuplicatePairs(txns)
+	if len(pairs) != 1 {
+		t.Fatalf("expected 1 pair via orig-desc affinity, got %d", len(pairs))
+	}
+}
+
+func TestDetect_PendingPosted_OrigDescEmptyOnOneSideNoMatch(t *testing.T) {
+	// Description prefix also fails, and OriginalDescription is empty on
+	// the pending side, so the orig-desc fallback must not fire either.
+	pending := makeTxAccount("2026-05-02", -634.40, "BJS WHOLESALE #0075", "Pending", "usaa-credit")
+	posted := makeTxAccount("2026-05-02", -634.40, "BJ's Wholesale", "Posted", "usaa-credit")
+	posted.OriginalDescription = "BJS WHOLESALE #0075      WEBSTER      NY"
+
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (empty orig-desc on pending side), got %d", len(got))
+	}
+}
+
+// --- Gap B: scheduled -> settled (non-check) pair ---
+
+func TestDetect_ScheduledSettled_InsuranceVerbatim(t *testing.T) {
+	scheduled := makeTxAccount("2026-05-04", -464.99, "USAA INSURANCE BILL PAYMENT", "Recurring Scheduled Bill Pay", "usaa-checking")
+	posted := makeTxAccount("2026-05-05", -464.99, "USAA Property and Casualty Insurance", "Posted", "usaa-checking")
+	posted.OriginalDescription = "USAA P&C         AUTOPAY    ***********1380"
+
+	txns := []models.Transaction{scheduled, posted}
+	pairs := detectNearDuplicatePairs(txns)
+	if len(pairs) != 1 {
+		t.Fatalf("expected 1 pair, got %d", len(pairs))
+	}
+}
+
+func TestDetect_ScheduledSettled_MonroeWaterVerbatim(t *testing.T) {
+	scheduled := makeTxAccount("2026-05-22", -20.00, "Monroe County Water Authority", "Scheduled Bill Pay", "usaa-checking")
+	posted := makeTxAccount("2026-05-22", -20.00, "Monroe Water", "Posted", "usaa-checking")
+	posted.OriginalDescription = "MONROE WATER     ONLINE PMT ***********7POS"
+
+	txns := []models.Transaction{scheduled, posted}
+	pairs := detectNearDuplicatePairs(txns)
+	if len(pairs) != 1 {
+		t.Fatalf("expected 1 pair, got %d", len(pairs))
+	}
+}
+
+func TestDetect_ScheduledSettled_SingleSharedTokenNoMatch(t *testing.T) {
+	scheduled := makeTxAccount("2026-05-22", -20.00, "Monroe County Water Authority", "Scheduled Bill Pay", "usaa-checking")
+	posted := makeTxAccount("2026-05-22", -20.00, "Wire Fee", "Posted", "usaa-checking")
+	posted.OriginalDescription = "WIRE FEE"
+
+	txns := []models.Transaction{scheduled, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (0 shared tokens), got %d", len(got))
+	}
+}
+
+func TestDetect_ScheduledSettled_BothPostedNoMatch(t *testing.T) {
+	a := makeTxAccount("2026-05-22", -20.00, "Monroe Water", "Posted", "usaa-checking")
+	b := makeTxAccount("2026-05-25", -20.00, "Monroe Water", "Posted", "usaa-checking")
+	txns := []models.Transaction{a, b}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (neither side scheduled), got %d", len(got))
+	}
+}
+
+func TestDetect_ScheduledSettled_CrossAccountNoMatch(t *testing.T) {
+	scheduled := makeTxAccount("2026-05-22", -20.00, "Monroe County Water Authority", "Scheduled Bill Pay", "usaa-checking")
+	posted := makeTxAccount("2026-05-22", -20.00, "Monroe Water", "Posted", "usaa-credit")
+	txns := []models.Transaction{scheduled, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (different accounts), got %d", len(got))
+	}
+}
+
+func TestDetect_ScheduledSettled_WindowExceededNoMatch(t *testing.T) {
+	scheduled := makeTxAccount("2026-05-04", -464.99, "USAA INSURANCE BILL PAYMENT", "Recurring Scheduled Bill Pay", "usaa-checking")
+	posted := makeTxAccount("2026-05-12", -464.99, "USAA Property and Casualty Insurance", "Posted", "usaa-checking") // 8 days
+	txns := []models.Transaction{scheduled, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (window exceeded), got %d", len(got))
+	}
+}
+
+func TestDetect_ScheduledSettled_CheckShapeRegression(t *testing.T) {
+	// A scheduled bill pay settling as an actual Check #NNN row must still
+	// pair via the original classify() shape; Gap B must not interfere
+	// (and cannot, since it explicitly excludes check-shaped descriptions).
+	scheduled := makeTxAccount("2026-05-15", -626.00, "Hyundi Motor Finance", "Scheduled Bill Pay", "usaa-checking")
+	posted := makeTxAccount("2026-05-19", -626.00, "Check #996593", "Posted", "usaa-checking")
+	posted.OriginalDescription = "CHECK # 0000996593"
+
+	txns := []models.Transaction{scheduled, posted}
+	pairs := detectNearDuplicatePairs(txns)
+	if len(pairs) != 1 {
+		t.Fatalf("check-settlement shape regressed: expected 1 pair, got %d", len(pairs))
+	}
+}
+
+// --- Mutation-kill regression tests (ND2, promoted from ND1 checker probes) ---
+
+// TestDetect_ScheduledSettled_ExactlyOneSharedTokenNoMatch guards the
+// sharedTokenCount(...) >= 2 threshold in isScheduledSettledPair. Unlike
+// TestDetect_ScheduledSettled_SingleSharedTokenNoMatch (which shares zero
+// tokens and so also survives a >= 1 mutation), this pair shares exactly
+// one token ("lucid"), so it only fails to pair under the real >= 2 rule.
+func TestDetect_ScheduledSettled_ExactlyOneSharedTokenNoMatch(t *testing.T) {
+	scheduled := makeTxAccount("2026-05-19", -1580.43, "Lucid", "Scheduled Bill Pay", "usaa-checking")
+	posted := makeTxAccount("2026-05-21", -1580.43, "Lucid Bill Payment", "Posted", "usaa-checking")
+	posted.OriginalDescription = "LUCID BILL PMT 622400A0AHSQ"
+
+	txns := []models.Transaction{scheduled, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (exactly 1 shared token, below the >=2 threshold), got %d", len(got))
+	}
+}
+
+// TestDetect_ScheduledSettled_CheckPrefixExclusionNoMatch guards the
+// checkPrefixRE exclusion in isScheduledSettledPair. The scheduled side's
+// Description looks check-shaped but its Status has no posted keyword, so
+// classify() claims neither side (leaving Gap B as the only path); every
+// other isScheduledSettledPair condition holds (2 shared tokens, same
+// account, same day, scheduled/posted split), so only the exclusion itself
+// keeps this pair from matching.
+func TestDetect_ScheduledSettled_CheckPrefixExclusionNoMatch(t *testing.T) {
+	scheduled := makeTxAccount("2026-05-22", -20.00, "Check #12345 Monroe Water", "Scheduled Bill Pay", "usaa-checking")
+	posted := makeTxAccount("2026-05-22", -20.00, "Monroe Water", "Posted", "usaa-checking")
+	posted.OriginalDescription = "MONROE WATER     ONLINE PMT ***********7POS"
+
+	txns := []models.Transaction{scheduled, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
+		t.Errorf("expected 0 pairs (checkPrefixRE exclusion), got %d", len(got))
+	}
+}
+
 func TestDetect_PendingPosted_NegativeBothPosted(t *testing.T) {
 	// Two Posted transactions with same account, amount, and date, but
 	// different OriginalDescription values. The same-day-reimport shape

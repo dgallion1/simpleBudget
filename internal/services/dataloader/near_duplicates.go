@@ -44,6 +44,18 @@ var checkPrefixRE = regexp.MustCompile(`(?i)^check\s*#\s*\d+\b`)
 var (
 	billPayStatusKeywords = []string{"scheduled", "pending", "processing", "bill pay"}
 	postedStatusKeywords  = []string{"posted", "cleared", "processed"}
+
+	// scheduledPaidTokenStopwords are dropped from the token-affinity check
+	// in isScheduledSettledPair because they're either payment-mechanics
+	// noise (pay, pmt, bill, autopay, online, recurring, scheduled, check)
+	// or too generic to signal a shared merchant (the, and, for, inc, llc,
+	// com, www).
+	scheduledPaidTokenStopwords = map[string]bool{
+		"the": true, "and": true, "for": true, "inc": true, "llc": true,
+		"pay": true, "pmt": true, "pmts": true, "bill": true, "payment": true,
+		"autopay": true, "online": true, "recurring": true, "scheduled": true,
+		"check": true, "com": true, "www": true,
+	}
 )
 
 // DuplicatePair is the public-facing detection result. Order of Left
@@ -148,7 +160,7 @@ func detectNearDuplicatePairs(txns []models.Transaction) []DuplicatePair {
 }
 
 // isCandidatePair returns true if (a, b) look like a near-duplicate by
-// any of three shapes:
+// any of four shapes:
 //   - exactly one of (a, b) looks like a scheduled bill pay AND the other
 //     looks like a posted check, or
 //   - both are a same-day (or next-day) re-export of the same bank row:
@@ -157,7 +169,10 @@ func detectNearDuplicatePairs(txns []models.Transaction) []DuplicatePair {
 //     rewritten between exports, or
 //   - one is a Pending charge and the other is the same charge settled
 //     Posted, with both Description and Original Description rewritten
-//     by the bank in between (see isPendingPostedPair).
+//     by the bank in between (see isPendingPostedPair), or
+//   - one is a scheduled bill pay / recurring autopay and the other is the
+//     same payment settled Posted as an ordinary ACH/autopay charge rather
+//     than a physical check (see isScheduledSettledPair).
 //
 // Callers only reach this with rows already bucketed by matching sign,
 // amount-in-cents, and TransactionType (see detectNearDuplicatePairs).
@@ -170,7 +185,10 @@ func isCandidatePair(a, b models.Transaction) bool {
 	if isSameDayReimportPair(a, b) {
 		return true
 	}
-	return isPendingPostedPair(a, b)
+	if isPendingPostedPair(a, b) {
+		return true
+	}
+	return isScheduledSettledPair(a, b)
 }
 
 // isSameDayReimportPair implements the second candidate shape: a
@@ -204,7 +222,11 @@ func isSameDayReimportPair(a, b models.Transaction) bool {
 // empty Status is ambiguous here in a way it isn't for classify(), because
 // there is no description-shape signal like "Check #NNN" to fall back on),
 // and the same account is required to avoid pairing coincidental same-
-// amount charges on different cards.
+// amount charges on different cards. The affinity check itself is tried
+// twice: first on Description, and -- because some banks prettify the
+// posted side's Description enough to defeat the prefix rule while leaving
+// a whitespace-normalized prefix relationship intact in OriginalDescription
+// -- again on OriginalDescription if the first attempt fails.
 func isPendingPostedPair(a, b models.Transaction) bool {
 	if dayDiff(a.Date, b.Date) > pendingPostedWindowDays {
 		return false
@@ -217,8 +239,27 @@ func isPendingPostedPair(a, b models.Transaction) bool {
 	if !((aPending && bPosted) || (bPending && aPosted)) {
 		return false
 	}
-	na := normalizeOriginalDescription(a.Description)
-	nb := normalizeOriginalDescription(b.Description)
+	if hasPendingPostedAffinity(a.Description, b.Description) {
+		return true
+	}
+	// Gap A: USAA's posted exports frequently prettify Description (e.g.
+	// "BJS WHOLESALE #0075" -> "BJ's Wholesale"), which kills the prefix
+	// rule above even though the two rows are the same settlement. The
+	// pending side's raw bank text usually survives untouched in
+	// OriginalDescription, and the posted side's OriginalDescription
+	// carries the same raw text with a location suffix appended, so the
+	// same affinity rule applied there still catches the pair.
+	return hasPendingPostedAffinity(a.OriginalDescription, b.OriginalDescription)
+}
+
+// hasPendingPostedAffinity applies the pending<->posted shape's shared
+// description-affinity rule to any two raw strings: normalize both, then
+// require one to be a prefix of the other or their common prefix to be at
+// least pendingPostedPrefixMinLen bytes. An empty normalized string on
+// either side makes the pair ineligible (never matches empty-vs-anything).
+func hasPendingPostedAffinity(a, b string) bool {
+	na := normalizeOriginalDescription(a)
+	nb := normalizeOriginalDescription(b)
 	if na == "" || nb == "" {
 		return false
 	}
@@ -226,6 +267,84 @@ func isPendingPostedPair(a, b models.Transaction) bool {
 		return true
 	}
 	return commonPrefixLen(na, nb) >= pendingPostedPrefixMinLen
+}
+
+// isScheduledSettledPair implements the fourth candidate shape: a scheduled
+// bill pay (or recurring autopay) that settles as an ordinary ACH/autopay
+// posted charge rather than a physical check -- so classify()'s
+// checkPrefixRE shape never fires and there is no "pending" status for
+// isPendingPostedPair to key on. The only signals available are the status
+// transition (one side scheduled, the other posted) and whatever merchant-
+// name tokens survive the bank's rewrite between the two exports.
+//
+// Deliberately excludes anything classify() would already claim (neither
+// side's Description may match checkPrefixRE) so check settlements keep
+// their existing pair_keys byte-identical.
+func isScheduledSettledPair(a, b models.Transaction) bool {
+	if dayDiff(a.Date, b.Date) > duplicateWindowDays {
+		return false
+	}
+	if a.AccountID != b.AccountID {
+		return false
+	}
+	aSched, bSched := isScheduledStatus(a.Status), isScheduledStatus(b.Status)
+	aPosted, bPosted := isPostedStatus(a.Status), isPostedStatus(b.Status)
+	if !((aSched && bPosted) || (bSched && aPosted)) {
+		return false
+	}
+	if checkPrefixRE.MatchString(strings.TrimSpace(a.Description)) ||
+		checkPrefixRE.MatchString(strings.TrimSpace(b.Description)) {
+		return false
+	}
+	return sharedTokenCount(a.Description, b.Description) >= 2
+}
+
+// isScheduledStatus reports whether a Status value marks the scheduled side
+// of isScheduledSettledPair. An empty Status does not qualify.
+func isScheduledStatus(status string) bool {
+	s := strings.ToLower(strings.TrimSpace(status))
+	if s == "" {
+		return false
+	}
+	return strings.Contains(s, "scheduled") || strings.Contains(s, "bill pay")
+}
+
+// tokenizeDescription lowercases s, splits on runs of non-alphanumeric
+// bytes, and drops tokens shorter than 3 bytes and payment-mechanics
+// stopwords, leaving only fragments likely to identify a merchant.
+func tokenizeDescription(s string) []string {
+	fields := strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+	})
+	tokens := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if len(f) < 3 {
+			continue
+		}
+		if scheduledPaidTokenStopwords[f] {
+			continue
+		}
+		tokens = append(tokens, f)
+	}
+	return tokens
+}
+
+// sharedTokenCount returns the number of distinct tokens (per
+// tokenizeDescription) present in both a and b.
+func sharedTokenCount(a, b string) int {
+	aTokens := make(map[string]bool)
+	for _, tok := range tokenizeDescription(a) {
+		aTokens[tok] = true
+	}
+	shared := 0
+	seen := make(map[string]bool)
+	for _, tok := range tokenizeDescription(b) {
+		if aTokens[tok] && !seen[tok] {
+			seen[tok] = true
+			shared++
+		}
+	}
+	return shared
 }
 
 // isPendingStatus reports whether a Status value marks the pending side of

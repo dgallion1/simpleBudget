@@ -1,0 +1,97 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: ND1
+ATTEMPT: 1
+---
+Worked in an isolated `cp -a` copy under scratch; real tree untouched, no
+git-state changes. Reproduced independently (not trusted from manifest):
+`go build ./...` clean; `bash .swarm/tier3/ND1/accept.sh` → ORACLE PASS;
+`gofmt -l` clean on all three touched files; `go test -count=1
+./internal/services/dataloader/... ./internal/services/mcpsvc/...` all ok.
+
+Design-fidelity check (line-by-line against ND-RUN-SPEC.md's FIXED design):
+- Gap A: `hasPendingPostedAffinity` factored out and reused byte-identically
+  on Description first, OriginalDescription second; empty-normalized-string
+  guard preserved on both calls. Matches spec exactly.
+- Gap B: `isScheduledSettledPair` checked last in `isCandidatePair`; 7-day
+  window + same account + exactly-one-scheduled/other-posted + check-shape
+  exclusion on both sides + >=2 shared-token gate, tokenizer (lowercase,
+  split on non a-z0-9 runs, drop <3 bytes) and stopword list transcribed
+  verbatim (17/17 words match spec's list). `pairKey`, greedy pairing,
+  `classify()`, status keyword lists confirmed untouched via diff.
+- A5: `duplicates.go` diff is prose-only (`git diff --stat`: 5 insertions,
+  3 deletions, no code lines), contains "autopay" (`grep -n autopay`).
+
+Adversarial probes run (throwaway, in the copy only):
+1. Tokenization corner case: `tokenizeDescription("USAA P&C AUTOPAY")` →
+   `["usaa"]` only ("p","c" <3 bytes dropped, "autopay" stopword-dropped)
+   — matches the spec's own insurance-pair calibration math (scheduled
+   side contributes {usaa,insurance}, this string alone can't source the
+   2nd token, consistent with the real fixture pairing off "USAA Property
+   and Casualty Insurance" not "USAA P&C AUTOPAY").
+2. Realistic false-positive construction: "Discover Card Payment"
+   (Scheduled, $35, day 1) vs "Discover Card Minimum Payment" (Posted, $35,
+   day 6) — two hypothetical DISTINCT real charges — DO share 2 tokens
+   ("discover","card") and DO get paired (`sharedTokenCount`=2, 1 pair
+   found). This is a genuine heuristic false-positive class the fixed
+   design's guard list (Google One/Google.com, Wire Fee/Monroe, single-
+   token Lucid) does not cover. Not grounds for FAIL: it's not one of
+   A1-A5's named guards, the design is explicitly "fixed — do not
+   redesign," and spec §9 already documents these constants as
+   v1-hardcoded pending real false-positive data. Reported as an
+   observation below.
+3. Order-dependence / partner-theft probe: built a 3-way collision (a
+   Pending row, its true Posted settlement 2 days later, and a fabricated
+   Scheduled "decoy" 1 day from the Pending row sharing 2 tokens with the
+   Posted row). With array order [pending, posted, decoy] and
+   [pending, decoy, posted] (realistic date-ascending order matching real
+   loader output), the correct pair wins because the earliest-dated row is
+   processed first in the per-i greedy loop and claims its only valid
+   candidate before the decoy competes. With array order
+   [decoy, posted, pending] the decoy DOES steal the posted row, leaving
+   the true pending duplicate undetected — confirmed live
+   (TestProbe_GreedyStealAcrossShapes_ReversedOrder). This is real but is
+   a property of the pre-existing per-index greedy pairing loop (identical
+   before/after this diff — confirmed via `git diff`, and the task's own
+   "no other behavior changes: ... greedy pairing ... untouched" scope
+   line), which Gap-B merely exercises through a wider candidate set; it
+   is not something ND1 could fix without violating "do not redesign."
+   Reported as an observation.
+4. Real-data re-pairing regression check (the strongest test): diffed
+   `UnresolvedDuplicates()+ResolvedDuplicates()+KeptBothDuplicates()`
+   (pair_key + both sides' date/desc/amount) between master's
+   near_duplicates.go and this diff's, both run over the identical live
+   `data/` copy. Result: 17 total pairs before → 24 after, and the ONLY
+   difference is the addition of exactly the 7 expected new UNRESOLVED
+   pairs (all matching spec's list verbatim). Every one of the 16
+   RESOLVED and 1 KEPTBOTH pair_keys is byte-identical before and after —
+   direct proof of no re-pairing regression and no re-pairing of the
+   Lucid ($1580.43, 4 checks + 2 scheduled) or insurance ($464.99) buckets
+   specifically requested for probing.
+5. `isScheduledSettledPair` called directly (bypassing the outflow/sign
+   pre-filter) on a positive-amount pair still returns true — confirmed
+   unreachable through `detectNearDuplicatePairs` (line ~92 filters
+   `t.Amount >= 0` before bucketing), so not a live defect.
+6. Both-empty-status pair: 0 pairs, matches `isScheduledStatus` requiring
+   non-empty.
+
+All A1-A5 criteria independently verified against evidence, not just the
+manifest's claims. No criterion is violated.
+
+OBSERVATIONS (backlog, not FAIL grounds — outside ND1's fixed-design scope):
+- Gap-B's 2-shared-token / stopword-list heuristic will false-positive on
+  realistic fixed-amount recurring bills whose merchant name yields 2+
+  non-generic tokens shared across two genuinely distinct charges within 7
+  days (demonstrated: "Discover Card Payment"/"Discover Card Minimum
+  Payment"). Spec §9 already flags all these constants as v1-hardcoded
+  pending real false-positive data; this is evidence for that future
+  tuning pass, not a defect in this task.
+- The near-duplicate greedy pairing algorithm (unchanged by ND1) is
+  per-array-index order-dependent rather than a global-minimum matching;
+  adding any new candidate shape (Gap A's fallback or Gap B) widens the
+  set of transactions that can compete for a partner, so an adversarially
+  ordered future dataset could have a weaker-signal shape steal a partner
+  from a stronger one. Confirmed inert on the current real dataset (item
+  4). Worth a follow-up task if greedy pairing is ever revisited — out of
+  ND1's explicit scope ("greedy pairing ... untouched").

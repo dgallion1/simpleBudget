@@ -181,6 +181,7 @@ function renderChart(containerId, chartData) {
             }
         });
         renderMajorExpenseBreakdown(data.smaller);
+        renderMajorExpenseCredits(data.credits);
     }
 }
 
@@ -236,6 +237,64 @@ function renderMajorExpenseBreakdown(items) {
         valEl.appendChild(pctEl);
 
         row.appendChild(valEl);
+        target.appendChild(row);
+    });
+}
+
+/**
+ * Render the "net credits" list of major-expense groups whose window
+ * netted to zero or negative (refunds met or exceeded spending) into the
+ * credits sibling div. These are excluded from the donut and from the
+ * "Other" rollup entirely (CB4-2026-09-02a) — a negative folded into a
+ * pie wedge would falsify that wedge's size — so this text list is the
+ * only place they are visible on the dashboard. Clears the div and
+ * renders nothing when the list is empty or missing (old server
+ * response with no "credits" field renders nothing, same as no items).
+ * Built with DOM APIs and textContent — never innerHTML — so any HTML
+ * inside a major-expense name renders as plain text.
+ * @param {Array<{name: string, amount: number}>} items
+ */
+function renderMajorExpenseCredits(items) {
+    const target = document.getElementById('chart-major-expense-credits');
+    if (!target) return;
+
+    while (target.firstChild) {
+        target.removeChild(target.firstChild);
+    }
+
+    if (!items || items.length === 0) {
+        return;
+    }
+
+    const fmtMoney = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+
+    const header = document.createElement('div');
+    header.className = 'font-medium text-gray-700 dark:text-gray-200 mb-1';
+    header.textContent = 'Net credits (refunds exceeded spending)';
+    target.appendChild(header);
+
+    items.forEach(function(it) {
+        const row = document.createElement('div');
+        row.className = 'flex justify-between gap-4 py-0.5';
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'truncate';
+        nameEl.textContent = String(it.name);
+        row.appendChild(nameEl);
+
+        const valEl = document.createElement('span');
+        valEl.className = 'tabular-nums whitespace-nowrap';
+        // Intl.NumberFormat renders a negative amount with a leading
+        // minus sign by default (signDisplay: "auto"), consistent with
+        // the rest of the app's signed money formatting.
+        valEl.textContent = fmtMoney.format(Number(it.amount) || 0);
+        row.appendChild(valEl);
+
         target.appendChild(row);
     });
 }

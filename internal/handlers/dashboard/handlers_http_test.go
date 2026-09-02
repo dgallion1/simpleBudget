@@ -1079,6 +1079,377 @@ func TestBuildMajorExpenseChartData_SubOnePercentPrecision(t *testing.T) {
 	}
 }
 
+// ---------- CB4: net-negative / zero-total major-expense groups ----------
+
+// TestBuildMajorExpenseChartData_NetNegativeGroupGoesToCredits is a
+// CB4-2026-09-02a regression: a major-expense group whose window nets to
+// a refund (total <= 0) must never appear as a donut wedge or inside
+// "Other"/"smaller" -- it belongs in the new "credits" field instead,
+// with no "percent" key.
+func TestBuildMajorExpenseChartData_NetNegativeGroupGoesToCredits(t *testing.T) {
+	expenses := []models.MajorExpense{
+		{ID: "spend", Name: "Spend-bucket", Keywords: []string{"spend-kw"}},
+		{ID: "credit", Name: "Credit-bucket", Keywords: []string{"credit-kw"}},
+	}
+	withMajorExpenses(t, expenses)
+
+	ts := makeTransactionSet(
+		makeTransaction("spend-kw payment", -500,
+			time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Shopping"),
+		makeTransaction("credit-kw purchase", -100,
+			time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Shopping"),
+		makeTransaction("credit-kw return", 400,
+			time.Date(2025, 1, 7, 0, 0, 0, 0, time.UTC), models.Outflow, "Shopping"),
+	)
+	result := buildMajorExpenseChartData(ts)
+
+	data := result["data"].([]map[string]interface{})[0]
+	labels := data["labels"].([]string)
+	values := data["values"].([]float64)
+	for i, v := range values {
+		if v <= 0 {
+			t.Errorf("wedge %q has non-positive value %v; no wedge may be <= 0", labels[i], v)
+		}
+	}
+	for _, l := range labels {
+		if l == "Credit-bucket" {
+			t.Errorf("Credit-bucket (net -300) must not appear as a wedge, got labels=%v", labels)
+		}
+	}
+	if _, ok := result["smaller"]; ok {
+		t.Errorf("expected no 'smaller' field (no rollup with only 2 buckets), got %v", result["smaller"])
+	}
+
+	credits, ok := result["credits"].([]map[string]interface{})
+	if !ok || len(credits) != 1 {
+		t.Fatalf("expected 1 credits entry, got %v", result["credits"])
+	}
+	if credits[0]["name"] != "Credit-bucket" {
+		t.Errorf("credits[0].name = %v, want Credit-bucket", credits[0]["name"])
+	}
+	if a, _ := credits[0]["amount"].(float64); !floatEqual(a, -300) {
+		t.Errorf("credits[0].amount = %v, want -300", credits[0]["amount"])
+	}
+	if _, hasPercent := credits[0]["percent"]; hasPercent {
+		t.Errorf("credits entries must not carry a percent field, got %v", credits[0])
+	}
+}
+
+// TestBuildMajorExpenseChartData_ZeroTotalGoesToCredits is a
+// CB4-2026-09-02a regression: a group with transactions that net to
+// exactly zero is real data (its drilldown is meaningful) but pie
+// geometry cannot render a zero wedge, so it must land in "credits".
+func TestBuildMajorExpenseChartData_ZeroTotalGoesToCredits(t *testing.T) {
+	expenses := []models.MajorExpense{
+		{ID: "spend", Name: "Spend-bucket", Keywords: []string{"spend-kw"}},
+		{ID: "wash", Name: "Wash-bucket", Keywords: []string{"wash-kw"}},
+	}
+	withMajorExpenses(t, expenses)
+
+	ts := makeTransactionSet(
+		makeTransaction("spend-kw payment", -500,
+			time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Shopping"),
+		makeTransaction("wash-kw purchase", -100,
+			time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Shopping"),
+		makeTransaction("wash-kw return", 100,
+			time.Date(2025, 1, 7, 0, 0, 0, 0, time.UTC), models.Outflow, "Shopping"),
+	)
+	result := buildMajorExpenseChartData(ts)
+
+	data := result["data"].([]map[string]interface{})[0]
+	labels := data["labels"].([]string)
+	for _, l := range labels {
+		if l == "Wash-bucket" {
+			t.Errorf("zero-total Wash-bucket must not appear as a wedge, got labels=%v", labels)
+		}
+	}
+
+	credits, ok := result["credits"].([]map[string]interface{})
+	if !ok || len(credits) != 1 {
+		t.Fatalf("expected 1 credits entry for the zero-total group, got %v", result["credits"])
+	}
+	if a, _ := credits[0]["amount"].(float64); !floatEqual(a, 0) {
+		t.Errorf("credits[0].amount = %v, want 0", credits[0]["amount"])
+	}
+}
+
+// TestBuildMajorExpenseChartData_DonutLimitAppliesToPositiveOnly is a
+// CB4-2026-09-02a regression: the donut-limit slice must apply to the
+// POSITIVE buckets only, filtered before slicing. A run of net-negative
+// buckets at the sort tail must not eat a display slot (by inflating the
+// "more than limit" count) and must never leak into "Other".
+func TestBuildMajorExpenseChartData_DonutLimitAppliesToPositiveOnly(t *testing.T) {
+	var expenses []models.MajorExpense
+	var txns []models.Transaction
+	// 9 positive buckets, amounts 900, 800, ..., 100 (descending).
+	for i := 0; i < 9; i++ {
+		name := string(rune('A' + i))
+		expenses = append(expenses, models.MajorExpense{
+			ID: name, Name: name + "-bucket", Keywords: []string{name + "-kw"},
+		})
+		txns = append(txns, makeTransaction(name+"-kw payment", -float64((9-i)*100),
+			time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"))
+	}
+	// 2 trailing net-negative buckets, sorting after every positive one.
+	for i, name := range []string{"Neg1", "Neg2"} {
+		expenses = append(expenses, models.MajorExpense{
+			ID: name, Name: name + "-bucket", Keywords: []string{name + "-kw"},
+		})
+		txns = append(txns,
+			makeTransaction(name+"-kw purchase", -50,
+				time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+			makeTransaction(name+"-kw return", 50+float64(100+i*10),
+				time.Date(2025, 1, 7, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+		)
+	}
+	withMajorExpenses(t, expenses)
+
+	ts := makeTransactionSet(txns...)
+	result := buildMajorExpenseChartData(ts)
+
+	data := result["data"].([]map[string]interface{})[0]
+	labels := data["labels"].([]string)
+	values := data["values"].([]float64)
+
+	// 9 positive buckets > limit(8) -> top 8 + "Other" (rollup of the 9th).
+	if len(labels) != 9 {
+		t.Fatalf("expected 9 wedges (top 8 positive + Other), got %d: %v", len(labels), labels)
+	}
+	if labels[8] != "Other" {
+		t.Errorf("expected wedge 8 = Other, got %q", labels[8])
+	}
+	// The 9th positive bucket (I-bucket, total 100) is the sole "Other"
+	// contributor; the negatives must not add to or appear in it.
+	if !floatEqual(values[8], 100) {
+		t.Errorf("Other value = %v, want 100 (only the 9th positive bucket)", values[8])
+	}
+	for _, v := range values {
+		if v <= 0 {
+			t.Errorf("no wedge may be <= 0, got %v in %v", v, values)
+		}
+	}
+
+	smaller, ok := result["smaller"].([]map[string]interface{})
+	if !ok || len(smaller) != 1 {
+		t.Fatalf("expected exactly 1 smaller entry (I-bucket), got %v", result["smaller"])
+	}
+	if smaller[0]["name"] != "I-bucket" {
+		t.Errorf("smaller[0].name = %v, want I-bucket", smaller[0]["name"])
+	}
+	for _, item := range smaller {
+		if item["name"] == "Neg1-bucket" || item["name"] == "Neg2-bucket" {
+			t.Errorf("smaller must not contain negative buckets, got %v", smaller)
+		}
+	}
+
+	credits, ok := result["credits"].([]map[string]interface{})
+	if !ok || len(credits) != 2 {
+		t.Fatalf("expected 2 credits entries (Neg1, Neg2), got %v", result["credits"])
+	}
+	for _, c := range credits {
+		if c["name"] != "Neg1-bucket" && c["name"] != "Neg2-bucket" {
+			t.Errorf("unexpected credits entry %v", c)
+		}
+	}
+}
+
+// TestBuildMajorExpenseChartData_ExactlyAtThresholdWithTrailingNegatives
+// attacks the Other-rollup boundary the checker-second lane is asked to
+// probe: exactly majorExpenseDonutLimit POSITIVE buckets plus trailing
+// negatives must produce NO "Other" wedge at all (the limit compares
+// against the positive count, not the raw bucket count).
+func TestBuildMajorExpenseChartData_ExactlyAtThresholdWithTrailingNegatives(t *testing.T) {
+	var expenses []models.MajorExpense
+	var txns []models.Transaction
+	for i := 0; i < 8; i++ {
+		name := string(rune('A' + i))
+		expenses = append(expenses, models.MajorExpense{
+			ID: name, Name: name + "-bucket", Keywords: []string{name + "-kw"},
+		})
+		txns = append(txns, makeTransaction(name+"-kw payment", -float64((8-i)*100),
+			time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"))
+	}
+	expenses = append(expenses, models.MajorExpense{
+		ID: "Zulu", Name: "Zulu-bucket", Keywords: []string{"zulukeyword"},
+	})
+	txns = append(txns,
+		makeTransaction("zulukeyword purchase", -50,
+			time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+		makeTransaction("zulukeyword return", 200,
+			time.Date(2025, 1, 7, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+	)
+	withMajorExpenses(t, expenses)
+
+	ts := makeTransactionSet(txns...)
+	result := buildMajorExpenseChartData(ts)
+
+	labels := result["data"].([]map[string]interface{})[0]["labels"].([]string)
+	if len(labels) != 8 {
+		t.Fatalf("expected 8 wedges (no Other; 8 positives == limit), got %d: %v", len(labels), labels)
+	}
+	for _, l := range labels {
+		if l == "Other" {
+			t.Errorf("expected no 'Other' wedge with exactly 8 positive buckets, got labels=%v", labels)
+		}
+	}
+	if _, ok := result["smaller"]; ok {
+		t.Errorf("expected no 'smaller' field, got %v", result["smaller"])
+	}
+	credits, ok := result["credits"].([]map[string]interface{})
+	if !ok || len(credits) != 1 {
+		t.Fatalf("expected 1 credits entry (Zulu-bucket), got %v", result["credits"])
+	}
+}
+
+// TestBuildMajorExpenseChartData_AllNegativeNoNaNPercents is the
+// all-negative edge case: the donut is empty, credits carries every
+// group, and no percent computation may divide by a zero grandTotal.
+func TestBuildMajorExpenseChartData_AllNegativeNoNaNPercents(t *testing.T) {
+	expenses := []models.MajorExpense{
+		{ID: "a", Name: "A-bucket", Keywords: []string{"a-kw"}},
+		{ID: "b", Name: "B-bucket", Keywords: []string{"b-kw"}},
+	}
+	withMajorExpenses(t, expenses)
+
+	ts := makeTransactionSet(
+		makeTransaction("a-kw purchase", -50,
+			time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+		makeTransaction("a-kw return", 200,
+			time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+		makeTransaction("b-kw purchase", -20,
+			time.Date(2025, 1, 7, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+		makeTransaction("b-kw return", 90,
+			time.Date(2025, 1, 8, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+	)
+	result := buildMajorExpenseChartData(ts)
+
+	data := result["data"].([]map[string]interface{})[0]
+	labels := data["labels"].([]string)
+	values := data["values"].([]float64)
+	if len(labels) != 0 || len(values) != 0 {
+		t.Errorf("expected an empty donut (all buckets net-negative), got labels=%v values=%v", labels, values)
+	}
+	if _, ok := result["smaller"]; ok {
+		t.Errorf("expected no 'smaller' field, got %v", result["smaller"])
+	}
+	credits, ok := result["credits"].([]map[string]interface{})
+	if !ok || len(credits) != 2 {
+		t.Fatalf("expected 2 credits entries, got %v", result["credits"])
+	}
+	for _, c := range credits {
+		if pct, has := c["percent"]; has {
+			t.Errorf("credits entries must not carry percent, got %v", pct)
+		}
+		if amt, ok := c["amount"].(float64); ok && math.IsNaN(amt) {
+			t.Errorf("credits amount is NaN: %v", c)
+		}
+	}
+}
+
+// TestBuildMajorExpenseChartData_PositiveOnlyUnchanged pins that a
+// positives-only fixture is byte-identical to pre-CB4 output: no
+// "credits" field appears at all.
+func TestBuildMajorExpenseChartData_PositiveOnlyUnchanged(t *testing.T) {
+	expenses := []models.MajorExpense{
+		{ID: "a", Name: "A-bucket", Keywords: []string{"a-kw"}},
+	}
+	withMajorExpenses(t, expenses)
+
+	ts := makeTransactionSet(
+		makeTransaction("a-kw payment", -500,
+			time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+	)
+	result := buildMajorExpenseChartData(ts)
+	if _, ok := result["credits"]; ok {
+		t.Errorf("expected no 'credits' field for an all-positive fixture, got %v", result["credits"])
+	}
+}
+
+// TestHandleMajorExpenseDrilldown_NetNegativeGroupResolvesSignedTotal is
+// the CB4-2026-09-02a drilldown regression: once bucketMajorExpenses
+// includes a net-negative group, looking it up by name must resolve it
+// (previously impossible -- the old total>0 filter hid it from the
+// bucket list entirely) and return its signed (negative) Total, per the
+// CB3-A contract.
+func TestHandleMajorExpenseDrilldown_NetNegativeGroupResolvesSignedTotal(t *testing.T) {
+	rows := [][]string{
+		{"2025-03-05", "Cruise Deposit", "-200", "Travel"},
+		{"2025-03-12", "Cruise Merchandise Return", "700", "Travel"},
+	}
+	router, cleanup := setupTestEnv(t, rows)
+	defer cleanup()
+
+	if err := loader.SaveMajorExpenses([]models.MajorExpense{
+		{ID: "cruise", Name: "Travel & vacations", Keywords: []string{"Cruise"}},
+	}); err != nil {
+		t.Fatalf("SaveMajorExpenses: %v", err)
+	}
+
+	rec := doGet(t, router, "/dashboard/major-expense?name=Travel+%26+vacations&start=2025-01-01&end=2025-12-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var result map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if cnt, _ := result["Count"].(float64); cnt != 2 {
+		t.Fatalf("Count = %v, want 2 (group must resolve now that it is net-negative)", result["Count"])
+	}
+	tot, _ := result["Total"].(float64)
+	if !floatEqual(tot, -500) {
+		t.Errorf("Total = %.2f, want -500 (signed net; group is net-negative)", tot)
+	}
+}
+
+// TestHandleMajorExpenseDrilldown_OtherExcludesNegativeTail verifies the
+// drilldown's "Other" lookup mirrors the chart builder exactly: the
+// donut-limit slice applies to positive buckets only, so a trailing
+// net-negative group must never appear in the "Other" drilldown's
+// transaction list.
+func TestHandleMajorExpenseDrilldown_OtherExcludesNegativeTail(t *testing.T) {
+	var expenses []models.MajorExpense
+	var rows [][]string
+	for i := 0; i < 9; i++ {
+		name := string(rune('A' + i))
+		expenses = append(expenses, models.MajorExpense{
+			ID: name, Name: name + "-bucket", Keywords: []string{name + "-kw"},
+		})
+		rows = append(rows, []string{"2025-01-05", name + "-kw payment",
+			fmt.Sprintf("%d", -(9-i)*100), "Food"})
+	}
+	expenses = append(expenses, models.MajorExpense{
+		ID: "Zulu", Name: "Zulu-bucket", Keywords: []string{"zulukeyword"},
+	})
+	rows = append(rows,
+		[]string{"2025-01-06", "zulukeyword purchase", "-50", "Food"},
+		[]string{"2025-01-07", "zulukeyword return", "200", "Food"},
+	)
+
+	router, cleanup := setupTestEnv(t, rows)
+	defer cleanup()
+	if err := loader.SaveMajorExpenses(expenses); err != nil {
+		t.Fatalf("SaveMajorExpenses: %v", err)
+	}
+
+	rec := doGet(t, router, "/dashboard/major-expense?name=Other&start=2025-01-01&end=2025-12-31")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var result map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Other = the 9th positive bucket (I-bucket, one txn) only.
+	if cnt, _ := result["Count"].(float64); cnt != 1 {
+		t.Fatalf("Count = %v, want 1 (Other must be just the 9th positive bucket)", result["Count"])
+	}
+	tot, _ := result["Total"].(float64)
+	if !floatEqual(tot, 100) {
+		t.Errorf("Total = %.2f, want 100 (Neg-bucket must not leak into Other)", tot)
+	}
+}
+
 // ---------- buildMerchantsChartData edge cases ----------
 
 func TestBuildMerchantsChartData_LessThanTen(t *testing.T) {

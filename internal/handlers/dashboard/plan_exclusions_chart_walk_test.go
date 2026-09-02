@@ -91,7 +91,7 @@ func TestChartCumulativeWalk_AgreesWithMetricsCombinedCumulativeBalance(t *testi
 		// see the calibration transcript in SY4.4.manifest.md).
 		for i := range m.CombinedCumulativeBalance {
 			if diff := m.CombinedCumulativeBalance[i] - chartCumY[i]; diff > 0.2 || diff < -0.2 {
-				t.Errorf("point %d: metrics.Calculate's CombinedCumulativeBalance = %v, buildBudgetVsActualChartData's cumulative trace = %v -- the two walks must agree (both merge the living+healthcare buckets and take ONE Abs, mirroring each other)",
+				t.Errorf("point %d: metrics.Calculate's CombinedCumulativeBalance = %v, buildBudgetVsActualChartData's cumulative trace = %v -- the two walks must agree (both merge the living+healthcare buckets and take ONE signed negation, CB1: -sum not Abs, mirroring each other)",
 					i, m.CombinedCumulativeBalance[i], chartCumY[i])
 			}
 		}

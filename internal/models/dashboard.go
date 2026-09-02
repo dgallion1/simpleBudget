@@ -98,7 +98,14 @@ type DashboardMetrics struct {
 	// HealthcareTrend above) over [rangeStart, rangeEnd] as passed to
 	// Calculate. Each point adds that calendar month's pro-rated target
 	// accrual (CombinedTarget * the fraction of MonthsInRange the month's
-	// in-range days represent) minus that month's actual outflow spend.
+	// in-range days represent) minus that month's actual outflow spend,
+	// SIGNED (CB1): spend is the negated net of the month's non-excluded
+	// outflow bucket, not its absolute value. An ordinary month nets
+	// outflow-negative so this is positive spend, same as before; a
+	// REFUND-DOMINANT month — one whose outflow-typed rows net POSITIVE,
+	// e.g. a cruise refund exceeding the month's spending — therefore
+	// enters the walk as a CREDIT (the balance rises by accrual PLUS the
+	// net refund), never charged as spend.
 	// Positive = ahead of budget (saved), negative = behind (overspent) —
 	// opposite sign convention from CombinedCumulativeDelta, which uses
 	// actual−target. Capped to the LAST 6 walked points for display; the
@@ -112,8 +119,14 @@ type DashboardMetrics struct {
 	//
 	// Invariant: the last element equals -CombinedCumulativeDelta, up to
 	// float64 summation noise (not month-rounding slack) — the per-month
-	// accruals partition the range's days exactly, and the per-month
-	// spends partition TotalExpenses exactly under the precondition above.
+	// accruals partition the range's days exactly, and the signed per-month
+	// spends (a refund-dominant month contributes a negative spend, i.e. a
+	// credit) partition TotalExpenses exactly under the precondition above
+	// AND the further precondition that the RANGE as a whole still nets
+	// outflow-negative — TotalExpenses is math.Abs of the whole range's net
+	// (unchanged by CB1), so a wholly refund-dominant RANGE (the range's own
+	// outflows net positive) is out of scope: the invariant is not
+	// guaranteed to hold in that case.
 	// Populated only when HasCombinedTarget; nil otherwise.
 	CombinedCumulativeBalance []float64 `json:"combined_cumulative_balance"`
 

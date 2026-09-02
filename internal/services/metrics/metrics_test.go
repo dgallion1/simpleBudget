@@ -1039,6 +1039,54 @@ func TestCalculateMetrics_CombinedCumulativeBalance_ZeroTransactionMiddleMonth(t
 	}
 }
 
+// CB1 regression: a refund-dominant month's outflow-typed rows net POSITIVE
+// (e.g. a furniture-store refund larger than the month's other spending),
+// and must enter the walk as a CREDIT, never charged as spend via
+// math.Abs. A single-month fixture cannot discriminate per-month-abs from
+// signed arithmetic (both give the same magnitude), so this uses two
+// months: Jan is an ordinary spend month, Feb is refund-dominant.
+func TestCalculateMetrics_CombinedCumulativeBalance_RefundDominantMonthEntersAsCredit(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Rent", -1800, time.Date(2025, 1, 12, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		// Feb's outflow-typed rows net +900 (refund-dominant): a $1100
+		// furniture-store return exceeds the month's $200 utility bill.
+		makeTransaction("Furniture return", 1100, time.Date(2025, 2, 3, 0, 0, 0, 0, time.UTC), models.Outflow, "Furniture"),
+		makeTransaction("Utilities", -200, time.Date(2025, 2, 20, 0, 0, 0, 0, time.UTC), models.Outflow, "Utilities"),
+	)
+
+	m := Calculate(ts, start, end, 1200, 0, fullCoverage, true, nil)
+
+	if len(m.CombinedCumulativeBalance) != 2 {
+		t.Fatalf("CombinedCumulativeBalance length = %d, want 2", len(m.CombinedCumulativeBalance))
+	}
+
+	// Harness validity guard: Jan is an ordinary spend month, identical
+	// under the bug and the fix. Jan accrual = 1200*(31/30.4375) =
+	// 1222.1766; balance = accrual - 1800.
+	if !floatEqual(m.CombinedCumulativeBalance[0], -577.82) {
+		t.Errorf("harness error, not the defect under test: Jan point = %.4f, want ~-577.8234", m.CombinedCumulativeBalance[0])
+	}
+
+	// The discriminator: Feb's step must be its accrual PLUS the $900 net
+	// refund (a credit), not accrual minus |900| (which is what math.Abs
+	// on a net-positive outflow bucket produces).
+	// Feb accrual = 1200*(28/30.4375) = 1103.9014.
+	step := m.CombinedCumulativeBalance[1] - m.CombinedCumulativeBalance[0]
+	if math.Abs(step-2003.9014) > 0.01 {
+		t.Errorf("refund-dominant month mis-signed: Feb step = %.4f, want ~2003.9014 (accrual 1103.9014 + 900 credit); per-month abs would give ~203.9014", step)
+	}
+
+	// The documented invariant must hold WITH the refund-dominant month
+	// present -- it is broken under math.Abs because the sign flip means
+	// per-month spends no longer partition TotalExpenses.
+	last := m.CombinedCumulativeBalance[len(m.CombinedCumulativeBalance)-1]
+	if math.Abs(last-(-m.CombinedCumulativeDelta)) > 0.01 {
+		t.Errorf("invariant broken with a refund-dominant month present: last walk point = %.4f, -CombinedCumulativeDelta = %.4f", last, -m.CombinedCumulativeDelta)
+	}
+}
+
 // --- currentHealthcareTarget ---
 
 func TestCurrentHealthcareTarget_NilSettings(t *testing.T) {

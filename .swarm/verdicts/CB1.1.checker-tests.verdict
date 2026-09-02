@@ -1,0 +1,268 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: CB1
+ATTEMPT: 1
+---
+Verification method: all commands run in `cp -a` copies of the worker tree
+(.../scratchpad/verify with the .git pointer intact for read-only go/make runs;
+.../scratchpad/mutate and .../scratchpad/mutate2 with .git REMOVED for the
+mutation probes; .../scratchpad/masterco with the four changed files restored
+from `origin/master` for the test-list baseline). All copies discarded except
+`verify`. Read-only `git diff`/`git status` were run in the worker tree itself;
+no git-state change was made anywhere. No budget2 binary was built as an
+executable or run at any point (`go build ./...` over multiple packages writes
+no binary; only `go build`/`go vet`/`go test`/`make check` were used).
+
+Under test: branch fix/cb-refund-months, base origin/master 040166a, at
+/tmp/.../scratchpad/cb-run. NOTE OF FACT: the work is UNCOMMITTED (working-tree
+modifications); `git diff master...HEAD` would be empty. All diffs below are
+`git diff origin/master --` against the working tree, per the manifest's own
+statement ("Not committed, not pushed"). The brief's word "committed" is read as
+"permanently added to metrics_test.go", which is what the evidence shows.
+
+=========================================================================
+CRITERION 1 — go build / go vet clean; target packages and full suite green
+=========================================================================
+PASS.
+
+  $ cd <verify>; go build ./...          -> BUILD_EXIT=0, zero output
+  $ cd <verify>; go vet ./...            -> VET_EXIT=0, zero output
+    (raw output captured to files and read directly, because the shell hook
+     rewrites go output; both files contain only the EXIT= line)
+
+  $ go test -count=1 ./internal/services/metrics/ ./internal/handlers/dashboard/
+    ok  	budget2/internal/services/metrics	0.004s
+    ok  	budget2/internal/handlers/dashboard	0.710s
+    PKG_EXIT=0
+
+  $ go test -count=1 ./...
+    49 package lines, every one `ok`, no FAIL, no build failure.
+    FULL_EXIT=0
+
+  ADDITIONAL (repo's own composite target, not in the brief but required of me):
+  $ cd <verify>; make check          # target is `vet static vuln css-verify test`
+    line 1: go vet ./...
+    line 2: staticcheck ./...
+    line 3: govulncheck ./...  -> "Your code is affected by 0 vulnerabilities."
+    css-verify ran (tailwind v3.4.17 fetched and CSS rebuilt/compared)
+    test stage runs `go test -count=1 ...` (cache defeated; visible in the log)
+    final line: "✓ all checks passed"   MAKE_CHECK_EXIT=0
+
+=========================================================================
+CRITERION 2 — oracle ends with ORACLE PASS (run by me, not read from the log)
+=========================================================================
+PASS.
+
+  $ ls -l .swarm/tier3/CB1/accept.sh
+    -rwxrwxr-x ... accept.sh                 (executable, as the gate requires)
+  $ cd <verify>; bash .swarm/tier3/CB1/accept.sh
+    ok  	budget2/internal/services/metrics	0.003s     (check A: probe fixture)
+    ok  	budget2/internal/services/metrics	0.004s     (check B: metrics pkg)
+    ok  	budget2/internal/handlers/dashboard	0.805s     (check B: chart walk)
+    ORACLE PASS
+    ORACLE_EXIT=0
+  Final line before my own exit echo is exactly `ORACLE PASS`.
+  Check C (pre-existing invariant guard `..._LastIsNegationOfCumulativeDelta`
+  still passing by exact name) is piped to grep inside accept.sh, so it
+  produces no log line; it did not trip the `fail` path, so it passed.
+  The probe was cleaned up: `ls internal/services/metrics/ | grep zz` -> empty.
+  I did NOT rely on .swarm/tier3/CB1/oracle.1.log; my independent run produced
+  byte-identical content modulo timings.
+
+=========================================================================
+CRITERION 3 — the new test is non-vacuous (mutation kill)
+=========================================================================
+PASS. Two mutations, each in its own `cp -a` copy with .git removed.
+
+  MUTATION A — revert ONLY metrics.go:583 `spend = -bucket.SumAmount()` back to
+  `spend = math.Abs(bucket.SumAmount())` (python3 in-place; asserted exactly 1
+  occurrence before replacing; handlers.go left FIXED).
+
+  $ go test -count=1 -run 'TestCalculateMetrics_CombinedCumulativeBalance_RefundDominantMonthEntersAsCredit' -v ./internal/services/metrics/
+    metrics_test.go:1078: refund-dominant month mis-signed: Feb step = 203.9014,
+      want ~2003.9014 (accrual 1103.9014 + 900 credit); per-month abs would give ~203.9014
+    metrics_test.go:1086: invariant broken with a refund-dominant month present:
+      last walk point = -373.9220, -CombinedCumulativeDelta = 1426.0780
+    --- FAIL: TestCalculateMetrics_CombinedCumulativeBalance_RefundDominantMonthEntersAsCredit
+    MUT_NEWTEST_EXIT=1
+  The test fails BY NAME, and BOTH load-bearing assertions fire (the
+  discriminator and the documented invariant). The Jan harness-validity guard
+  at metrics_test.go:~1073 did NOT fire — correct: it proves the failure is the
+  defect under test, not a broken fixture. Delta is exactly 2*900 = 1800 on the
+  Feb step (2003.9014 vs 203.9014), i.e. 2x the net refund, matching the spec's
+  predicted magnitude.
+
+  $ go test -count=1 -v ./internal/handlers/dashboard/    (same copy)
+    --- FAIL: TestChartCumulativeWalk_AgreesWithMetricsCombinedCumulativeBalance
+        --- FAIL: .../nil_planExclusions
+        --- FAIL: .../flagged_def
+      plan_exclusions_chart_walk_test.go:101: point 0: metrics = -2097.963039014374,
+        chart cumulative trace = 2102 -- the two walks must agree
+      plan_exclusions_chart_walk_test.go:101: point 1: metrics = -3996.1232032854214,
+        chart trace = 204
+    MUT_DASH_EXIT=1
+  The equality suite therefore genuinely BINDS the two surfaces: reverting one
+  site alone breaks it.
+
+  MUTATION B (extra, symmetric direction) — revert ONLY handlers.go:1101 to
+  math.Abs, metrics.go left FIXED:
+  $ go test -count=1 -run 'TestChartCumulativeWalk_AgreesWithMetricsCombinedCumulativeBalance' -v ./internal/handlers/dashboard/
+    --- FAIL (both subtests), EXIT=1
+  So BOTH sites are individually load-bearing; neither change is decorative.
+
+  I read the equality test's fixture (plan_exclusions_chart_walk_test.go:40-52):
+  Jan's living-remainder bucket nets +3000 against a -400 healthcare bucket, so
+  the fixture IS refund-dominant — which is why the mutations kill it rather
+  than the assertion being coincidentally coupled. Its comparison is
+  metrics.CombinedCumulativeBalance vs `result["data"][2]["y"]`, the exact
+  []float64 the chart template serializes.
+
+  Both mutation copies deleted (`rm -rf mutate mutate2`).
+
+=========================================================================
+CRITERION 4 — scope matches the manifest; no test deleted or renamed
+=========================================================================
+PASS.
+
+  $ git diff origin/master --stat --      (in the worker tree, read-only)
+    .swarm/ledger.tsv                         |  1 +
+    internal/handlers/dashboard/handlers.go   | 22 ++++++++++----
+    internal/models/dashboard.go              | 19 ++++++++++--
+    internal/services/metrics/metrics.go      | 35 +++++++++++++++-------
+    internal/services/metrics/metrics_test.go | 48 +++++++++++++++++++++++++++++++
+    5 files changed, 106 insertions(+), 19 deletions(-)
+  $ git diff origin/master --name-status --  -> all five are `M`; no A/D/R.
+  $ git status --porcelain
+    the same 5 modified + untracked .swarm/CB-RUN-SPEC.md,
+    .swarm/manifests/CB1.1.{files,manifest.md}, .swarm/tier3/CB1/
+  This is exactly "4 code/doc files + .swarm bookkeeping". The 4 code/doc files
+  match .swarm/manifests/CB1.1.files line for line; ledger.tsv's single added
+  line is the CB1 row itself (`CB1  3  tests,second  assigned  1  worker-coder
+  refund-dominant-month-in-balance-walk`), lead bookkeeping.
+
+  critical.globs: the six protected paths are internal/services/storage/**,
+  dataloader/**, retirement/engine/**, transfers/**, accounts/accounts.go,
+  mcpsvc/confirm/**. NONE is touched by the diff. (The spec called CB1
+  "dataloader-adjacent"; no dataloader file was in fact modified.)
+
+  No test deleted or renamed:
+  $ diff <(masterco: go test -count=1 -list '.*' ./internal/services/metrics/) \
+         <(verify:   go test -count=1 -list '.*' ./internal/services/metrics/)
+    19a20
+    > TestCalculateMetrics_CombinedCumulativeBalance_RefundDominantMonthEntersAsCredit
+  Exactly one ADDITION, zero removals, zero renames (90 -> 91 test names).
+  `masterco` was built by restoring all four changed files from
+  `git show origin/master:<path>` into a clean copy.
+  $ diff of the same -list on ./internal/handlers/dashboard/ between masterco
+    and verify: identical apart from the `ok ... 0.003s` timing line.
+
+  The manifest's claim that no pre-existing CombinedCumulativeBalance fixture
+  encoded the buggy expectation is corroborated: the six pre-existing tests all
+  pass unmodified (metrics_test.go shows only an addition at line 1039+ in the
+  diff — zero deletions in that file).
+
+  Surface enumeration (done by grep, not by trusting the diff), per the
+  split-classification rule:
+  $ grep -rn 'CombinedCumulativeBalance|combined_cumulative_balance' over all
+    file types, excluding .git/.swarm/_test.go ->
+      web/templates/components/kpis.html:193  data-values="{{toJSON .Metrics.CombinedCumulativeBalance}}"
+        (pass-through of the metrics value; no independent arithmetic — moves automatically)
+      docs/api/internal/models.md:680          (generated gomarkdoc artifact — see FINDING 1)
+      internal/models/dashboard.go:131         (the field + doc — updated)
+      internal/services/metrics/metrics.go:537,632  (the producer — updated)
+  $ grep -rn -- '= -[a-z]*\.SumAmount()' --include=*.go
+      handlers.go:1101  spend = -bucket.SumAmount()      <- CB1
+      metrics.go:583    spend = -bucket.SumAmount()      <- CB1
+      (plus pre-existing KD1/SY4 sites handlers.go:671, metrics.go:423)
+  The chart replica (handlers.go buildBudgetVsActualChartData) is the only other
+  arithmetic consumer, and it was fixed. Enumeration matches ruling
+  CB-2026-09-02a.
+
+=========================================================================
+CRITERION 5 — the field doc states the signed contract and the range precondition
+=========================================================================
+PASS. internal/models/dashboard.go, quoted verbatim:
+
+  Signed contract (lines 101-108):
+    101  // in-range days represent) minus that month's actual outflow spend,
+    102  // SIGNED (CB1): spend is the negated net of the month's non-excluded
+    103  // outflow bucket, not its absolute value. An ordinary month nets
+    104  // outflow-negative so this is positive spend, same as before; a
+    105  // REFUND-DOMINANT month — one whose outflow-typed rows net POSITIVE,
+    106  // e.g. a cruise refund exceeding the month's spending — therefore
+    107  // enters the walk as a CREDIT (the balance rises by accrual PLUS the
+    108  // net refund), never charged as spend.
+
+  Range-nets-negative precondition on the invariant (lines 120-129):
+    120  // Invariant: the last element equals -CombinedCumulativeDelta, up to
+    121  // float64 summation noise (not month-rounding slack) — the per-month
+    122  // accruals partition the range's days exactly, and the signed per-month
+    123  // spends (a refund-dominant month contributes a negative spend, i.e. a
+    124  // credit) partition TotalExpenses exactly under the precondition above
+    125  // AND the further precondition that the RANGE as a whole still nets
+    126  // outflow-negative — TotalExpenses is math.Abs of the whole range's net
+    127  // (unchanged by CB1), so a wholly refund-dominant RANGE (the range's own
+    128  // outflows net positive) is out of scope: the invariant is not
+    129  // guaranteed to hold in that case.
+
+  Both site comments were also updated (verified in the diff): metrics.go
+  ~529-537 and ~562-578 (spend site), handlers.go ~1084-1098 (spend site), and
+  both cross-reference the other surface.
+
+=========================================================================
+FINDINGS (not criterion failures — for the lead's backlog)
+=========================================================================
+F1. STALE COMMENT INSIDE AN IN-SCOPE FILE.
+    internal/handlers/dashboard/handlers.go:1026 still reads
+      "// take ONE Abs of the combined signed sum, mirroring metrics.go's own
+       // combined-walk fix exactly."
+    After CB1 the walk takes ONE NEGATION, not ONE Abs. This is the
+    `nonExcludedOutflows` doc block, and BOTH of the worker's new spend-site
+    comments point the reader at it ("see nonExcludedOutflows' doc above"), so
+    a reader following the new comment lands on the pre-CB1 rule. Same stale
+    wording appears in the failure message at
+    internal/handlers/dashboard/plan_exclusions_chart_walk_test.go:94 (a file
+    the worker did not touch and which is not in the manifest).
+    I did not FAIL on this: SPEC.md's surface 3 names "models/dashboard.go
+    field doc + invariant text", and the brief's "both site comments" means the
+    spend-term comments, which WERE updated. Behavior is unaffected. Lead's
+    call whether this belongs to CB1 or a follow-up.
+
+F2. PRE-EXISTING STALE GENERATED ASSET (on master, not caused by CB1).
+    docs/api/internal/models.md:674-680 renders an OLD version of the
+    CombinedCumulativeBalance doc — "Element i = sum_{j<=i} (CombinedTarget -
+    (LivingTrend[j] + HealthcareTrend[j]))", with no Precondition and no
+    Invariant paragraph. That text does not match master's models/dashboard.go
+    either, so the artifact was already stale before CB1; `make docs-api`
+    (gomarkdoc) is not part of `make check`, so nothing regenerates or verifies
+    it. Reported per the "stale generated asset ships inert" rule. Out of CB1's
+    scope; backlog item.
+
+F3. ORACLE GAP (lead-authored accept.sh, not the worker's doing).
+    .swarm/tier3/CB1/accept.sh implements checks A/B/C only. SPEC.md's oracle
+    section also specifies "Real-data check: on the live ledger (read-only
+    copy), the walk's points change ONLY in months that are refund-dominant;
+    all other points byte-identical." No such check exists in accept.sh, and no
+    real-data evidence is in the oracle log. The behavior it would guard is
+    partially covered by check B (six pre-existing ordinary-month fixtures all
+    still pass unmodified, i.e. non-refund months are unchanged on synthetic
+    data), but that is not the live-ledger assertion the spec promised.
+    Also: the spec asks the chart agreement to be checked on "the rendered
+    dashboard chart JSON"; the suite that check B relies on compares
+    result["data"][2]["y"] (the []float64 the template serializes) rather than
+    the serialized string. My mutation B proves it is nonetheless a real bind.
+
+F4. INCOMPLETE SIBLING-SITE OBSERVATION IN THE MANIFEST.
+    Manifest point 5 reports the sibling per-month math.Abs sites at
+    handlers.go:1051 (hcAmt) and :1060 (livingMonth). My grep found the SAME
+    class of site in metrics.go at :500 (expAmt), :505 (hcAmt), :513
+    (livingMonth) — the trend-series mirrors — which the manifest does not
+    mention. All are observation-only under ruling CB-2026-09-02a, so this is
+    not a FAIL; the backlog entry for the sibling class should list five sites,
+    not two. (Range-level sites metrics.go:375/403/433 and the unrelated
+    handlers.go:524/893/1387, explorer, insights sites are correctly untouched.)
+
+F5. STATE OF FACT, not a defect: the work is uncommitted on
+    fix/cb-refund-months. Whoever commits must include the four code/doc files;
+    `git diff master...HEAD` is empty and proves nothing.

@@ -529,12 +529,13 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 	// ClippedHealthcareMonths(seg, coverageStart, hasCoverage) helper
 	// Calculate's own healthcare totals use, so a segment before coverage
 	// starts contributes $0 of healthcare accrual -- less that month's
-	// actual outflow spend (all outflows — living + healthcare — matching
-	// CombinedCumulativeDelta's basis). A month with no transactions still
-	// produces a point: the target accrues, nothing is spent. See the
-	// field doc on models.DashboardMetrics.CombinedCumulativeBalance for
-	// the resulting invariant and its pre-filtered-TransactionSet
-	// precondition.
+	// actual outflow spend, SIGNED (all outflows — living + healthcare —
+	// matching CombinedCumulativeDelta's basis; CB1: a refund-dominant
+	// month enters as a credit, never charged as spend -- see the spend
+	// computation below). A month with no transactions still produces a
+	// point: the target accrues, nothing is spent. See the field doc on
+	// models.DashboardMetrics.CombinedCumulativeBalance for the resulting
+	// invariant and its pre-filtered-TransactionSet precondition.
 	var combinedCumulativeBalance []float64
 	if hasCombinedTarget {
 		loc := rangeStart.Location()
@@ -558,14 +559,28 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 			accrual := budgetTarget*MonthsBetween(segStart, segEnd) +
 				healthcareTarget*ClippedHealthcareMonths(segStart, segEnd, coverageStart, hasCoverage)
 
-			// Set exclusion (ruling SY-2026-08-30d): spend is |sum| of
-			// nonExcludedOutflows' month bucket -- all outflows except
-			// plan-sync-excluded rows (HI stays in; matches
+			// Set exclusion (ruling SY-2026-08-30d): spend is the SIGNED
+			// negated net of nonExcludedOutflows' month bucket -- all
+			// outflows except plan-sync-excluded rows (HI stays in; matches
 			// CombinedCumulativeDelta's living+healthcare basis exactly).
 			// Never an arithmetic subtraction from monthlyOutflows' |sum|.
+			//
+			// CB1 fix: an ordinary month's outflow-typed rows net negative
+			// (SumAmount() < 0), so -SumAmount() is positive spend, same as
+			// the old math.Abs. A REFUND-DOMINANT month -- one whose
+			// outflow-typed rows net POSITIVE, e.g. a cruise refund larger
+			// than the month's spending -- must enter the walk as a CREDIT,
+			// not be charged as spend; -SumAmount() is then negative and
+			// `running += accrual - spend` correctly ADDS the net refund to
+			// the balance. math.Abs flipped this sign (KD ruling: month rows
+			// are signed). This does not touch range-level totalExpenses
+			// (still math.Abs of the whole range's net, line ~375) --
+			// per-month spends still partition that range total exactly
+			// only while the RANGE as a whole nets outflow-negative; a
+			// wholly refund-dominant RANGE is out of scope (unchanged).
 			spend := 0.0
 			if bucket, ok := monthlyNonExcluded[cur.Format("2006-01")]; ok {
-				spend = math.Abs(bucket.SumAmount())
+				spend = -bucket.SumAmount()
 			}
 
 			running += accrual - spend

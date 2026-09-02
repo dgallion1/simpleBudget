@@ -1,0 +1,124 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: CB1
+ATTEMPT: 1
+---
+Scope under test: branch fix/cb-refund-months (base master 040166a) in the
+budget2 worktree at scratchpad/cb-run. All commands run in throwaway
+`cp -a` copies (`.git` removed) or a temporary `git worktree add --detach`
+of master, never in the shared cb-run tree itself except read-only
+`git status`/`git diff`. All throwaway copies and the temp master worktree
+were removed before returning (`git worktree remove --force`, `rm -rf`).
+No budget2 binary was ever executed; only `go build`/`go vet`/`go test`.
+
+1. REAL-DATA DIFFERENTIAL (own probe, not the delivered oracle)
+   - Copied /home/darrell/bin/ai/budget2/data read-only, twice, into scratch
+     (data-master, data-fixed). Wrote a throwaway `_test.go` harness inside
+     package `dashboard` (removed after use) that calls
+     `dataloader.New→LoadData`, `retirement.NewSettingsManager→Load`,
+     `gatherDashboardCalcInputs`, `metrics.Calculate`, and
+     `buildBudgetVsActualChartData` exactly as `handleDashboard` does, over
+     the full active range (data.MinDate()..MaxDate()).
+   - Master tree: `git worktree add --detach <scratch> 040166a`. Fixed tree:
+     `cp -a cb-run` with `.git` removed.
+   - Both loaded identically: 1275 transactions, target=9700,
+     health_target=2255.3, coverage_start=2026-04-28, plan_exclusions_n=0,
+     range 2025-02-04..2026-08-27.
+   - Result: `metrics_walk` and `chart_walk` are BYTE-IDENTICAL between
+     master and fixed (`diff` of the two JSON dumps shows zero difference
+     in either array). Independently recomputing net Outflow-type sum per
+     calendar month across the full range shows every one of the 19 months
+     nets negative (no refund-dominant month exists in this user's live
+     ledger today), so zero-diff is the CORRECT prediction, not a null
+     result: "points change ONLY in refund-dominant months" holds
+     vacuously and honestly (0 refund-dominant months → 0 changed points).
+   - Also confirmed real data has 0 `ExcludeFromPlanSync` flags
+     (`grep -c ExcludeFromPlanSync major_expenses.json` → 0), so
+     monthlyNonExcluded == all Outflow-type transactions for this ledger,
+     validating the above per-month net computation as the correct
+     real-data proxy for "refund-dominant."
+
+2. SURFACE ENUMERATION (split-classification)
+   - `grep -rn CombinedCumulativeBalance|CombinedCumulativeDelta` across
+     .go/.html/.js in cb-run: only three arithmetic producers
+     (metrics.go, handlers.go's chart walk) and one pass-through consumer
+     (kpis.html `data-values="{{toJSON .Metrics.CombinedCumulativeBalance}}"`,
+     which serializes the already-computed field, no independent Abs/sign
+     logic). `web/static/js/charts.js` only renders a pre-computed values
+     array (mode: "balance"); no JS-side recomputation exists.
+   - mcpsvc/spend/summary.go exposes CombinedCumulativeDelta (rounded), not
+     the per-month walk array — no independent per-month abs arithmetic.
+   - Confirmed both fix sites match the manifest exactly
+     (`git diff 040166a -- internal/services/metrics/metrics.go` and
+     `-- internal/handlers/dashboard/handlers.go`): both change
+     `math.Abs(bucket.SumAmount())` → `-bucket.SumAmount()`.
+   - MECHANICAL split-classification proof (own mutation, both directions):
+     reverting ONLY handlers.go's site (metrics.go fixed) →
+     `TestChartCumulativeWalk_AgreesWithMetricsCombinedCumulativeBalance`
+     FAILS both subtests (point 0/1 mismatches of ~$4000, i.e. 2x the
+     fixture's refund). Reverting ONLY metrics.go's site (handlers.go
+     fixed) → the SAME equality test fails AND the new committed regression
+     test `TestCalculateMetrics_CombinedCumulativeBalance_
+     RefundDominantMonthEntersAsCredit` fails with the exact predicted
+     magnitude (Feb step 203.9014 vs wanted 2003.9014, off by 2x900).
+     Pristine master (both unfixed): new regression test FAILS (proves the
+     defect is real and caught); the chart-equality test PASSES (both
+     surfaces share the same bug, so it does NOT gate master — confirms
+     the new regression test, not the pre-existing equality test alone, is
+     what proves correctness, while the equality test is what proves the
+     two surfaces move TOGETHER). This matches the manifest's own
+     "Oracle validation record" claim; I re-derived it independently rather
+     than trusting the record.
+   - Sibling per-month math.Abs sites (handlers.go:1051/1060 bar-chart
+     series, and metrics.go's trend-series mirrors ~500/505/513) are
+     confirmed UNTOUCHED (`sed -n` on both) — consistent with the spec's
+     explicit out-of-scope/observation-only ruling (CB-2026-09-02a). Not a
+     FAIL basis per that ruling.
+
+3. EDGE ATTACKS (own throwaway probes, `probe-fixed` copy, removed after)
+   - Refund-dominant FIRST month of an 8-month range, dropped by the
+     6-point display cap: tail invariant holds
+     (`math.Abs(last-(-delta))<0.01`), and every displayed point differs
+     from an otherwise-identical no-refund baseline by EXACTLY the
+     predicted constant carry-in (2500.00, i.e. (500 ordinary spend) -
+     (-2000 credit)) — proves `running` accumulates before the cap slices
+     the display, so a dropped-from-display refund-dominant month still
+     propagates correctly into the visible tail.
+   - Range that nets refund-dominant OVERALL (wholly refund-dominant
+     range): `Calculate` does not panic, produces no NaN — degrades
+     honestly, matching the field doc's explicit statement that the
+     invariant is "not guaranteed to hold in that case" for this
+     documented-out-of-scope precondition.
+   - Zero-transaction / exactly-zero bucket: covered by the pre-existing,
+     unmodified `_ZeroTransactionMiddleMonth` test (`spend=0.0` when no
+     bucket entry exists — sign-agnostic, still passes green).
+
+4. Committed regression test vs. handlers.go's copy
+   - The new test (`metrics_test.go`) only calls `metrics.Calculate` and by
+     itself would NOT catch a handlers.go-only regression. However the
+     PRE-EXISTING, unmodified `plan_exclusions_chart_walk_test.go`
+     (`git diff 040166a` on it is empty) DOES bind the two surfaces, proven
+     mechanically in (2) above — reverting handlers.go alone fails it. Both
+     tests together are required and both are present/green
+     (`go test ./internal/services/metrics/... ./internal/handlers/dashboard/...`
+     → both `ok`).
+
+FINDINGS (not FAIL grounds — for the lead's backlog)
+- Independently corroborates the primary checker's F3: `.swarm/tier3/CB1/
+  accept.sh` implements checks A/B/C only; it does NOT contain the
+  spec-promised "real-data check" (SPEC's own Oracle section). This is
+  lead-authored pre-dispatch infrastructure, not a worker deliverable — out
+  of CB1's written scope for the WORKER. I substituted my own real-data
+  differential (section 1 above) in its place; it passes.
+- Anomaly, not a defect: at write time, `internal/handlers/dashboard/
+  plan_exclusions_chart_walk_test.go` in the shared `cb-run` tree carries a
+  one-line, string-literal-only diff not present in the manifest ("one Abs"
+  → "one signed negation, CB1: -sum not Abs" inside a `t.Errorf` message).
+  No assertion or fixture changed. Consistent with the documented
+  concurrent-verification-in-one-tree hazard (CLAUDE.md "Concurrent runs in
+  one repo"); did not affect any evidence above, all of which was
+  re-derived independently in disposable copies.
+
+No criterion from CB-RUN-SPEC.md's Task CB1 or its Oracle section is
+unmet by the WORKER's deliverable. VERDICT: PASS.

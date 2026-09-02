@@ -1023,8 +1023,10 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 	// cancellation broke -- |a|+|b| != |a+b| whenever a and b diverge in
 	// sign. The walk must merge the two buckets (living-remainder rows +
 	// HI rows, already classified above -- not a third classifier) and
-	// take ONE Abs of the combined signed sum, mirroring metrics.go's own
-	// combined-walk fix exactly.
+	// take ONE signed negation of the combined sum (CB1: -sum, not Abs --
+	// a refund-dominant combined bucket must enter the walk as a credit,
+	// never be charged as spend), mirroring metrics.go's own combined-walk
+	// fix exactly.
 	nonExcludedOutflows := &models.TransactionSet{
 		Transactions: append(append([]models.Transaction{}, livingOutflows.Transactions...), healthcareOutflows.Transactions...),
 	}
@@ -1081,14 +1083,24 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 		}
 		monthTarget := livingTarget + healthcareTarget*healthcareFraction
 
-		// Set exclusion (ruling SY-2026-08-30e): spend is ONE math.Abs of
-		// the merged non-excluded bucket's signed sum for this month --
-		// NEVER livingMonth+hcAmt (two independent Abs values do not
-		// recombine to the month's true combined |sum| once each is its
-		// own bucket; see nonExcludedOutflows' doc above).
+		// Set exclusion (ruling SY-2026-08-30e): spend is the SIGNED
+		// negated net of the merged non-excluded bucket's sum for this
+		// month -- NEVER livingMonth+hcAmt (two independent Abs values do
+		// not recombine to the month's true combined signed sum once each
+		// is its own bucket; see nonExcludedOutflows' doc above).
+		//
+		// CB1 fix: mirrors metrics.go's combined-walk fix exactly (both
+		// surfaces move together -- see plan_exclusions_chart_walk_test.go
+		// for the chart-vs-metrics equality this depends on). An ordinary
+		// month's non-excluded outflows net negative, so -SumAmount() is
+		// positive spend, same as the old math.Abs. A REFUND-DOMINANT
+		// month -- non-excluded outflows netting POSITIVE, e.g. a cruise
+		// refund larger than the month's spending -- must enter the walk
+		// as a CREDIT (running += monthTarget - spend then ADDS the net
+		// refund), not be charged as spend. math.Abs flipped this sign.
 		spend := 0.0
 		if bucket, ok := monthlyNonExcluded[m]; ok {
-			spend = math.Abs(bucket.SumAmount())
+			spend = -bucket.SumAmount()
 		}
 
 		running += monthTarget - spend

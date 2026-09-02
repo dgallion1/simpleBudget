@@ -362,8 +362,14 @@ func handleMajorExpenseDrilldown(w http.ResponseWriter, r *http.Request) {
 	case "Unmatched":
 		txns = unmatched
 	case "Other":
-		if len(buckets) > majorExpenseDonutLimit {
-			for _, b := range buckets[majorExpenseDonutLimit:] {
+		// "Other" must mirror buildMajorExpenseChartData's rolled-up
+		// tail exactly (CB4-2026-09-02a): the donut-limit slice applies
+		// to the POSITIVE buckets only, so a net-negative group sitting
+		// at the sort tail is never folded into "Other" here either —
+		// it belongs to the "credits" list, not this drilldown.
+		positiveBuckets, _ := splitPositiveMajorExpenseBuckets(buckets)
+		if len(positiveBuckets) > majorExpenseDonutLimit {
+			for _, b := range positiveBuckets[majorExpenseDonutLimit:] {
 				txns = append(txns, b.txns...)
 			}
 		}
@@ -1265,6 +1271,15 @@ type majorExpenseBucket struct {
 // unmatched outflows. Both the chart builder and the drilldown handler
 // call this so they always agree on which transactions belong to which
 // wedge — including pin overrides.
+//
+// This is the SHARED SOURCE (design ruling CB4-2026-09-02a): it returns
+// COMPLETE data — every matched group with at least one transaction,
+// regardless of the sign of its total. A group can legitimately net to
+// zero or negative (refunds exceeding spending in the window); that is
+// real, meaningful data and the drilldown for it is still useful. Any
+// surface that cannot display a non-positive figure (e.g. a pie wedge)
+// applies that constraint itself, locally, documented at the call site —
+// it must not creep back in here and hide data from every consumer.
 func bucketMajorExpenses(ts *models.TransactionSet) (buckets []majorExpenseBucket, unmatched []models.Transaction) {
 	if ts == nil {
 		return nil, nil
@@ -1300,13 +1315,34 @@ func bucketMajorExpenses(ts *models.TransactionSet) (buckets []majorExpenseBucke
 			// AbsAmount. Mirrors the Major Expenses page.
 			total += -t.Amount
 		}
-		if total > 0 {
-			buckets = append(buckets, majorExpenseBucket{name: name, txns: txns, total: total})
-		}
+		// Include every matched group with >=1 transaction, whatever the
+		// sign of its total (CB4-2026-09-02a). match.Groups only ever
+		// holds groups that received at least one transaction, so no
+		// separate "has transactions" check is needed here.
+		buckets = append(buckets, majorExpenseBucket{name: name, txns: txns, total: total})
 	}
 
 	sort.Slice(buckets, func(i, j int) bool { return buckets[i].total > buckets[j].total })
 	return buckets, match.Unmatched
+}
+
+// splitPositiveMajorExpenseBuckets partitions an already total-descending
+// bucket list (bucketMajorExpenses' output) into the positive-total
+// buckets and the zero/negative-total ones. Because the input is sorted
+// descending, every positive bucket sorts strictly before every
+// non-positive one, so the positive buckets are always a contiguous
+// prefix — a single linear scan finds the split point.
+//
+// Both buildMajorExpenseChartData (the donut) and
+// handleMajorExpenseDrilldown's "Other" lookup call this so they agree
+// on exactly which buckets are display-eligible; see CB4-2026-09-02a.
+func splitPositiveMajorExpenseBuckets(buckets []majorExpenseBucket) (positive, credits []majorExpenseBucket) {
+	for i, b := range buckets {
+		if b.total <= 0 {
+			return buckets[:i], buckets[i:]
+		}
+	}
+	return buckets, nil
 }
 
 // buildMajorExpenseChartData renders a pie chart of outflow spending
@@ -1319,8 +1355,21 @@ func bucketMajorExpenses(ts *models.TransactionSet) (buckets []majorExpenseBucke
 // wedges; the rest are rolled into a single "Other" wedge. The list
 // of rolled-up items is returned alongside the chart in the "smaller"
 // field so the client can render a text breakdown.
+//
+// Pie geometry cannot render a wedge with a zero or negative value, so
+// this is where that constraint is applied (CB4-2026-09-02a) — locally,
+// on top of bucketMajorExpenses' complete data. Net-negative and
+// zero-total buckets are excluded from the donut, the "Other" rollup,
+// and "smaller" entirely (folding a negative into "Other" would
+// understate that wedge's true size); they are returned instead in the
+// "credits" field, a flat {name, amount} list — no percent, since a
+// percentage of a negative figure against a positive grand total is
+// meaningless. The donut-limit slice is applied to the positive buckets
+// ONLY, after the sign filter, so negative buckets at the sort tail can
+// never eat a display slot or leak into "Other".
 func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{} {
 	buckets, unmatchedTxns := bucketMajorExpenses(ts)
+	positiveBuckets, creditBuckets := splitPositiveMajorExpenseBuckets(buckets)
 
 	var unmatchedTotal float64
 	for _, t := range unmatchedTxns {
@@ -1332,20 +1381,20 @@ func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{
 		name string
 		val  float64
 	}
-	display := make([]wedge, 0, len(buckets)+2)
+	display := make([]wedge, 0, len(positiveBuckets)+2)
 	var rolledUp []wedge
-	if len(buckets) > majorExpenseDonutLimit {
-		for _, b := range buckets[:majorExpenseDonutLimit] {
+	if len(positiveBuckets) > majorExpenseDonutLimit {
+		for _, b := range positiveBuckets[:majorExpenseDonutLimit] {
 			display = append(display, wedge{b.name, b.total})
 		}
 		var otherTotal float64
-		for _, b := range buckets[majorExpenseDonutLimit:] {
+		for _, b := range positiveBuckets[majorExpenseDonutLimit:] {
 			rolledUp = append(rolledUp, wedge{b.name, b.total})
 			otherTotal += b.total
 		}
 		display = append(display, wedge{"Other", otherTotal})
 	} else {
-		for _, b := range buckets {
+		for _, b := range positiveBuckets {
 			display = append(display, wedge{b.name, b.total})
 		}
 	}
@@ -1395,6 +1444,17 @@ func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{
 			})
 		}
 		out["smaller"] = smaller
+	}
+
+	if len(creditBuckets) > 0 {
+		credits := make([]map[string]interface{}, 0, len(creditBuckets))
+		for _, b := range creditBuckets {
+			credits = append(credits, map[string]interface{}{
+				"name":   b.name,
+				"amount": b.total,
+			})
+		}
+		out["credits"] = credits
 	}
 
 	return out

@@ -1,0 +1,149 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: CB4
+ATTEMPT: 1
+---
+All verification ran in `cp -a` copies (.git pointer removed) of
+scratchpad/cb4-run plus a `git archive b8693e4` extraction of master.
+Go invoked as /home/darrell/go-sdk/go/bin/go (raw binary) because the rtk
+hook rewrites `go`'s output. Copies discarded after use. No budget2 binary
+was executed. The only write to the real tree is this file.
+
+CRITERION 1 — build / vet / tests / make check
+  $ /home/darrell/go-sdk/go/bin/go build ./...        -> exit 0
+  $ /home/darrell/go-sdk/go/bin/go vet ./...          -> exit 0
+  $ go test -count=1 ./internal/handlers/dashboard/
+      -> "ok  budget2/internal/handlers/dashboard  0.736s", exit 0
+  $ go test -count=1 ./...  -> no FAIL lines, FULLTEST_EXIT=0
+  $ PATH=<go>:$PATH make check   (= vet static vuln css-verify test)
+      -> final line "✓ all checks passed", MAKE_CHECK_EXIT=0
+  $ make css-verify -> "tailwind.css is up to date", exit 0
+  MET.
+
+CRITERION 2 — non-vacuity (4 mutations, each in its own cp -a copy,
+`go test -count=1 ./internal/handlers/dashboard/`, all copies discarded):
+  (a) restored `if total > 0 { ... }` inside bucketMajorExpenses
+      -> exit 1; 6 FAILs:
+         TestBuildMajorExpenseChartData_NetNegativeGroupGoesToCredits
+         TestBuildMajorExpenseChartData_ZeroTotalGoesToCredits
+         TestBuildMajorExpenseChartData_DonutLimitAppliesToPositiveOnly
+         TestBuildMajorExpenseChartData_ExactlyAtThresholdWithTrailingNegatives
+         TestBuildMajorExpenseChartData_AllNegativeNoNaNPercents
+         TestHandleMajorExpenseDrilldown_NetNegativeGroupResolvesSignedTotal
+  (b) chart builder bypasses the helper (positiveBuckets -> buckets in the
+      wedge/Other block) -> exit 1; 5 FAILs (the five ChartData tests above).
+  (c) drilldown "Other" bypasses the helper (back to master's
+      `buckets[majorExpenseDonutLimit:]`) -> exit 1; exactly 1 FAIL:
+         TestHandleMajorExpenseDrilldown_OtherExcludesNegativeTail
+      — confirms the manifest's FLAG that the drilldown change was
+      necessary, not cosmetic, and that the named test guards it.
+  (d) `out["credits"] = credits` block removed (replaced with
+      `_ = creditBuckets`) -> exit 1; 5 FAILs (the five ChartData tests).
+  All four mutations killed. MET.
+
+CRITERION 3 — geometry invariants
+  Worker fixtures: read handlers_http_test.go lines 1082-1452; the eight new
+  tests assert what their names claim (no-wedge<=0 loop, credits name/amount
+  equality, absence of a "percent" key, Other == 100 from the sole 9th
+  positive bucket, 8-positive boundary producing no Other wedge, empty
+  labels/values on the all-negative fixture). Proven live by criterion 2.
+  Checker's own fixture (TestCheckerProbeGeometryInvariants, written by me,
+  10 positives with cents + 1 exactly-zero group + 2 net-negative groups +
+  unmatched outflow) -> "--- PASS: TestCheckerProbeGeometryInvariants":
+    INV-1 no wedge <= 0 and none NaN across all 10 wedges.
+    INV-2 credits == exactly {Zero-b:0, N1-b:-50.25, N2-b:-57.25}, no other
+          entries, no "percent" key, and no credit name appears as a wedge
+          or in "smaller".
+    INV-3 donut-limit sliced AFTER the sign filter: 10 wedges = 8 top
+          positives + "Other" + "Unmatched"; Other == P08+P09 only
+          (751.06), "smaller" has exactly 2 entries, no credit in it.
+    INV-4 grandTotal == sum of displayed wedge values == positives+unmatched
+          with credits excluded, and every "smaller" percent reproduces
+          amount/grandTotal*100 under the pre-existing <1% two-decimal /
+          >=1% one-decimal rounding rule.
+  MET.
+
+CRITERION 4 — positives-only parity vs master (b8693e4)
+  Same probe file compiled into both trees; chart map marshaled with
+  json.MarshalIndent (map keys sorted -> canonical); compared with
+  python3 difflib.unified_diff AND cmp (rtk falsifies plain diff).
+  Fixture A: 12 positive buckets (>limit, exercises Other+smaller) with
+  partial refunds and an unmatched outflow ->
+      "IDENTICAL", "bytes master=860 branch=860", "CMP_IDENTICAL".
+      Branch output contains no "credits" key.
+  Fixture B: 3 positive buckets (<limit, else-branch), no unmatched ->
+      "PARITY2 IDENTICAL".
+  Drilldown parity (positives-only, 12 buckets): GET
+  /dashboard/major-expense?name={Other,G03-bucket,Unmatched} response
+  bodies concatenated -> "DRILLDOWN IDENTICAL", 2470 bytes both sides.
+  MET.
+
+CRITERION 5 — JS / template
+  Executed (not inspected) under jsdom 39-pkg install + node v24.12.0,
+  loading the real web/static/js/charts.js and the real markup pair lifted
+  by regex from web/templates/pages/dashboard.html, driving the production
+  entry point renderChart('chart-major-expense', data) with a Plotly stub.
+  All 10 assertions PASS, JS_PROBE_EXIT=0:
+    - data.credits absent          -> credits div innerHTML === "" 
+    - data.credits === []          -> innerHTML === ""
+    - [{Travel & vacations,-1234.5},{Wash,0}] -> rendered text contains
+      "Net credits (refunds exceeded spending)", "-$1,234.50", "$0.00";
+      contains no "%" (no percent leaks into credits)
+    - name "<img src=x onerror=alert(1)>" -> querySelector('img') === null
+      (textContent path, escaped as &lt;img ...&gt;)
+    - re-render with no credits clears previously rendered rows
+    - class sets: credits emits only classes already present in the
+      breakdown block -> extra = [] ("font-medium text-gray-700
+      dark:text-gray-200 mb-1", "flex justify-between gap-4 py-0.5",
+      "truncate", "tabular-nums whitespace-nowrap"); this is why
+      `make css-verify` reports "tailwind.css is up to date".
+  Template div sits inside the "Spending by Major Expense" card, directly
+  after #chart-major-expense-breakdown (dashboard.html:150-151), same
+  utility classes verbatim.
+  Other consumers: `grep -rn "\.smaller" web/static/js web/templates` finds
+  exactly one JS use, charts.js:183 renderMajorExpenseBreakdown(data.smaller),
+  unchanged (diff vs master shows only the added line 184). Go-side surface
+  enumeration: `grep -rn bucketMajorExpenses --include=*.go .` -> exactly two
+  call sites, handlers.go:358 (drilldown) and handlers.go:1371 (chart
+  builder); both route through splitPositiveMajorExpenseBuckets
+  (handlers.go:370 and :1372). internal/services/insights/trends.go mentions
+  bucketMajorExpenses in a comment only and computes its own signed totals
+  with no sign filter — already consistent, out of scope per the manifest.
+  HARNESS GAP DISCLOSED: jsdom is not a browser — Intl formatting was
+  exercised with node's full-icu, and no real Plotly render, matchMedia,
+  or dark-mode class resolution was executed.
+  MET.
+
+CRITERION 6 — scope
+  $ git diff --name-only b8693e4  (in the worker tree; worker output is
+  uncommitted so master...HEAD would be empty and prove nothing) ->
+    .swarm/ledger.tsv
+    internal/handlers/dashboard/handlers.go
+    internal/handlers/dashboard/handlers_http_test.go
+    web/static/js/charts.js
+    web/templates/pages/dashboard.html
+  $ git ls-files --others --exclude-standard ->
+    .swarm/CB4-RUN-SPEC.md, .swarm/manifests/CB4.1.files,
+    .swarm/manifests/CB4.1.manifest.md
+  The four source paths are exactly .swarm/manifests/CB4.1.files; the
+  remainder are lead/worker bookkeeping. No path matches any line of
+  .swarm/critical.globs (storage, dataloader, retirement/engine, transfers,
+  accounts.go, mcpsvc/confirm).
+  No test deleted or renamed: `go test -list '.*' ./internal/handlers/
+  dashboard/` on master vs branch (checker probes filtered out) ->
+  164 vs 172 names; `comm -23` (removed from master) is EMPTY; `comm -13`
+  lists exactly the 8 new CB4 tests.
+  Ledger row: "CB4\t2\ttests,second\tassigned\t1\tworker-coder\t..." —
+  tier 2, checks tests,second, attempt 1, as specified.
+  MET.
+
+OBSERVATIONS (not FAILs; no criterion pins them)
+  O1. Header string is "Net credits (refunds exceeded spending)" but a
+      zero-total group (refunds EQUALLED spending, rendered "$0.00") also
+      appears under it. Wording, not a figure; the function's own JSDoc
+      says "met or exceeded". Lead's call.
+  O2. sort.Slice in bucketMajorExpenses is unstable, so groups with equal
+      totals (e.g. two zero-total credits) have nondeterministic relative
+      order. Pre-existing on master for tied positives; the change widens
+      the set of values that can tie. Not observable in any asserted output.

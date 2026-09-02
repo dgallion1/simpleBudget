@@ -1,0 +1,140 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: CB4
+ATTEMPT: 1
+---
+All probes ran in `cp -a` copies (.git removed) of scratchpad/cb4-run
+("fixed") plus a `git archive b8693e4` extraction ("master"), against a
+`cp -a` of the real /home/darrell/bin/ai/budget2/data (two independent
+copies, one per tree). `go test` invoked via `rtk proxy` because the shell
+hook compresses raw go/git output otherwise (confirmed: uninterposed
+redirect produced a 1-line "Go test: 1 passed" summary; rtk proxy restored
+the full -v log, cross-checked byte-identical against a direct terminal
+run modulo the cache line). No budget2 binary was executed. Source data
+md5sum unchanged before/after (e337b535f4b88f54abdc6442fc6a2908). Only
+write to the shared tree is this verdict file.
+
+ATTACK 1 — REAL DATA (default full-history window + 2025-04 window)
+  Harness: probe_cb4_test.go added only to the two throwaway copies,
+  calling Initialize()+LoadDataContext() against the copied real CSVs,
+  then buildMajorExpenseChartData / bucketMajorExpenses / an httptest
+  call into handleMajorExpenseDrilldown, identically in both trees.
+  - Full-history window: bucketMajorExpenses reports
+    Travel & vacations total=-159.950000 (25 txns). buildMajorExpenseChartData's
+    "credits" list carries {"name":"Travel & vacations","amount":-159.95000000000005}.
+    handleMajorExpenseDrilldown(name=Travel & vacations, full window) returns
+    {"Total":-159.95,"Count":25} — same signed net (floating accumulation of
+    the same 25 txns; -159.95 vs -159.95000000000005 is the same number to
+    the cent, not a divergent figure). PASS on cross-surface consistency.
+  - Positive wedge set, full window: python3-loaded JSON, `labels` list
+    and `values` list from fixed vs master compared with `==` (exact
+    Python list/float equality, no rtk in the path) -> IDENTICAL on both
+    labels and values (8 named wedges + "Other"=45187.21). `smaller` list
+    also byte-for-byte identical. Master has no "credits" key (expected —
+    the field didn't exist pre-fix).
+  - 2025-04 window: no transaction in that calendar month matches
+    "Travel & vacations" (0 txns; the refund-heavy cruise entries are
+    dated 2025-03-30, outside 04-01..04-30), so credits is absent for that
+    window in both trees — not a failure, just an empty case; wedge sets
+    for that window are also byte-identical fixed vs master.
+  No wedge gained, lost, or changed value on either window. MET.
+
+ATTACK 2 — BOUNDARY (donut-limit interaction + all-negative + zero-total)
+  The worker's own handlers_http_test.go (read line-by-line, not by test
+  name) already contains exactly these fixtures and each assertion was
+  read and confirmed to test what its name claims:
+  - TestBuildMajorExpenseChartData_ExactlyAtThresholdWithTrailingNegatives:
+    8 positive + 1 trailing negative -> asserts no "Other" label, no
+    "smaller" key, credits has exactly 1 entry (Zulu-bucket).
+  - TestBuildMajorExpenseChartData_DonutLimitAppliesToPositiveOnly: 9
+    positive + 2 trailing negative -> asserts 9 labels (8 + Other),
+    Other's value == 100 (the 9th positive ONLY, not tainted by the
+    negatives), every value > 0, smaller has exactly 1 entry, credits has
+    exactly 2 (the negatives) and neither leaks into smaller/labels.
+  - TestBuildMajorExpenseChartData_AllNegativeNoNaNPercents: all-negative
+    fixture -> asserts labels/values both length 0, no "smaller" key,
+    credits has 2 entries, no NaN in any credit amount, no "percent" key
+    on any credit.
+  - TestBuildMajorExpenseChartData_ZeroTotalGoesToCredits: a
+    txns-net-to-exactly-zero group -> asserts it is absent from wedge
+    labels and present in credits with amount==0.
+  Ran the full MajorExpense* test subset in the fixed copy:
+  `rtk proxy go test ./internal/handlers/dashboard/ -run MajorExpense -v`
+  -> 23 PASS, 0 FAIL. Also ran the full package suite (`go test ./...`)
+  in the fixed copy -> all packages ok, 0 FAIL lines. MET.
+
+ATTACK 3 — SURFACE ENUMERATION
+  `grep -rn bucketMajorExpenses --include=*.go` (excluding _test.go) in
+  the fixed tree: exactly two call sites, both in
+  internal/handlers/dashboard/handlers.go (the chart builder line 1371
+  and the drilldown line 358), both routed through the new
+  splitPositiveMajorExpenseBuckets helper (lines 370 and 1372) — no
+  third consumer, no competing sign filter. bucketMajorExpenses/
+  majorExpenseBucket/splitPositiveMajorExpenseBuckets are all unexported
+  to the dashboard package, so no other package can call them directly.
+  internal/services/insights/trends.go's MajorExpenseTrends (a separate,
+  independently-implemented Insights-page function) mentions
+  bucketMajorExpenses only in a comment, computes its own per-name totals
+  via a local sumByExpense closure, and applies NO sign filter at all —
+  every name that appears in either period's totals map is included
+  regardless of sign (confirmed by reading trends.go:19-110); this
+  function already surfaces negative nets (fixed under CB3-D, not
+  touched here) and is correctly out of this task's scope, not a second
+  instance of the CB4 defect. internal/handlers/majorexpenses/verdict.go
+  has an unrelated `total <= 0` guard (tracking-coverage percent, not a
+  per-group visibility filter) — different feature, not a hit.
+  web/static/js side: `grep -n Intl.NumberFormat charts.js` shows the new
+  renderMajorExpenseCredits formatter (line 269) uses the identical
+  'en-US' / style:'currency' / min-max 2 fraction digits configuration as
+  the pre-existing renderMajorExpenseBreakdown formatter (line 207) — no
+  dual-formatter divergence. `node -c charts.js` -> syntax OK.
+  MET — no missed surface, no split classifier.
+
+ATTACK 4 — UNMATCHED SIGN (spec-silence check)
+  Confirmed unmatchedTotal CAN go negative on synthetic data: added a
+  throwaway test (discarded, only in the throwaway copy) with a single
+  declared-major-expense-free window containing one $50 outflow and one
+  $300 refund, both unmatched -> unmatchedTotal = -250. Result: labels=[]
+  (no "Unmatched" wedge, correctly suppressed by the pre-existing
+  `if unmatchedTotal > 0` guard) AND result["credits"] key is ABSENT
+  (creditBuckets was empty; there is no code path that ever adds
+  "Unmatched" to credits — it is computed and used only inside
+  buildMajorExpenseChartData, never routed through
+  splitPositiveMajorExpenseBuckets). So a net-negative Unmatched total is
+  computed, then silently vanishes from the chart response entirely: not
+  a wedge, not in credits, not anywhere.
+  This IS the same visibility gap CB4 fixes for declared major-expense
+  groups, applied to the different "Unmatched" pseudo-group. However,
+  reading CB4-RUN-SPEC.md closely: the title ("net-negative
+  MAJOR-EXPENSE groups"), the motivating paragraph ("bucketMajorExpenses'
+  total>0 filter hides any GROUP... while the Major Expenses page shows
+  the SAME GROUP signed"), and all four numbered design-contract bullets
+  are scoped to "every MATCHED group" / "the SHARED SOURCE" — i.e.
+  bucketMajorExpenses' bucket list. Unmatched is a wholly separate code
+  path (a local `unmatchedTotal` accumulator inside
+  buildMajorExpenseChartData, pre-existing since before this task, with
+  its own always-present `if unmatchedTotal > 0` guard) that the spec
+  never names, references, or brings into the "SHARED SOURCE" contract.
+  The spec is SILENT on Unmatched, not contradicted by this behavior.
+  Per the adversarial-lane instruction ("FAIL if the spec's contract
+  covers Unmatched, observation if the spec is silent"): this is an
+  OBSERVATION for the backlog, not a FAIL. Recommend a follow-up task
+  (same pattern as CB4: "Unmatched net-negative visibility") rather than
+  reopening this one.
+
+SCOPE CHECK
+  `git status --porcelain` in the shared cb4-run worktree, before and
+  after this review, is unchanged (same 5 modified + 3 untracked paths
+  the worker/checker-tests already reported) — this review wrote nothing
+  into the shared tree except this verdict file. Real-data source dir
+  md5sum confirmed unchanged.
+
+CONCLUSION: PASS. Every numbered design-contract item verified against
+real data (Travel & vacations case) and against master byte-for-byte for
+positive-wedge parity; every enumerated boundary (limit, limit+1,
+all-negative, zero-total) exercised and holds with no NaN/Inf and no
+sign-inversion; no un-enumerated consumer found; the one asymmetry found
+(Unmatched can silently disappear) is outside this spec's stated
+contract and is reported as a backlog observation, not a defect in this
+task's own scope.

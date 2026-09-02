@@ -1,0 +1,122 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: CB3
+ATTEMPT: 2
+---
+SCOPE: Amendment CB3-c (attempt 2 contract) -- MajorExpenseTrends' inline
+percent-change/direction classifier, trends.go ~68-101. Attempt-1 real-data
+differential for the unchanged CB3-A/B/C/D/E sites stands (re-confirmed
+`go build ./...` and `go test ./...` all green, 49/49 packages, in this
+attempt's tree; no unexpected files in `git status --short` of the shared
+worktree). All probes built in throwaway `cp -a` copies with `.git` removed
+(scratchpad/probe/cb3-fixed, /cb3-mutant1, /cb3-mutant2, all deleted after
+use) and a read-only `cp -a` of the real data dir (scratchpad/probe/data-ro,
+chmod a-w) -- the shared worktree (scratchpad/cb3-run) was never written to
+except by this verdict file's sibling in the real tree. No probe files were
+left in scratchpad/cb3-run (confirmed via `git status --short`, only the
+worker's own diff + attempt-1 verdicts/manifests present).
+
+====================================================================
+1. REAL-LEDGER RE-RUN (attack surface 1)
+====================================================================
+Loaded the real ledger (13 CSVs, 1275 txns post-dedup/classify, byte-
+identical data dir) through the actual production LoadData/LoadMajorExpenses
+/LoadTransactionPins -> MajorExpenseTrends pipeline (direct call, no binary
+executed). April 2025 window, the exact case from attempt-1's FAIL:
+
+  APRIL name="Travel & vacations" current=0 previous=-628
+    change_amount=628 change_percent=100 direction="up"
+
+Sign-consistent: +628 -> +100% -> "up", exactly as the dispatch demanded.
+(Old bug produced change_percent=-100/"down" for this identical row.)
+
+Worker's committed fixture for the mirror shape (previous=0, current<0),
+TestAnalyzeMajorExpenseTrends_RefundDominantPeriodSignedNet: current=-500,
+previous=0 -> change_percent=-100, direction="down" -- PASS.
+
+====================================================================
+2. CONSISTENCY INVARIANT SWEEP (attack surface 2)
+====================================================================
+Swept MajorExpenseTrends over the full real ledger, window sizes 15/30/60/90
+days, from 2024-01-01 through 2026-09-01 (window start advances by the window
+size each iteration) -- 755 total (window, category) rows. For every row,
+asserted: sign(ChangePercent) == sign(ChangeAmount) (both zero together),
+Direction matches strict >5/<-5 band on ChangePercent, and ChangePercent is
+neither NaN nor unbounded (|.| > 1e18).
+
+  SWEEP rows=755 violations=0
+
+====================================================================
+3. BOUNDARY ATTACKS (attack surface 3)
+====================================================================
+- change=0, previous=0 (both legs exactly zero via a matched -300/+300 pair
+  in both periods): current=0 previous=0 change_amount=0 change_percent=0
+  direction="stable". Correct.
+- |changePercent| exactly 5 (previous=-1000, change=+50 -> pct=5 exactly):
+  direction="stable" -- confirms the fix preserved the STRICT >5/<-5
+  operators from master (diffed master's classifier: identical operators,
+  same threshold values, comment-documented as "unchanged").
+- previous negative and tiny (previous=-0.01, current=1000): change_amount=
+  1000.01, change_percent=1.00001e+07 -- large but finite (no NaN/Inf), sign
+  positive on both, direction="up". Consistent.
+- round2()'s structural property (internal/services/mcpsvc/spend/insights.go
+  round2 = math.Round(v*100)/100) cannot flip a sign class: positive input
+  never rounds to negative output and vice versa (only collapses toward
+  zero). Verified with hostile synthetic rows through categoryTrendRows --
+  no case produced roundedCA and roundedCP with opposite nonzero signs;
+  Direction is taken from the pre-rounding classification, not re-derived
+  from the rounded percent, so display-time rounding cannot reintroduce the
+  sign inversion this task closes. (Noted, not a FAIL: raw values very close
+  to zero can independently round to "-0"/"0" on the two fields when
+  |previous| is sub-cent -- mathematically inert for this contract and not
+  reachable by any real major-expense figure in this ledger; flagged as a
+  pre-existing display nuance, out of CB3-c's scope, not a defect in it.)
+
+====================================================================
+4. MUTATION CHECK -- both attempt-1 survivors now killed
+====================================================================
+Reproduced attempt-1's two named mutation survivors by hand-mutating throw-
+away cp -a copies of the CURRENT (attempt-2) code and confirming the new
+committed tests fail on the mutant, then discarded the copies:
+- trends.go pin-path (`totals[def.Name] -= t.Amount` -> `+= math.Abs(...)`):
+  TestAnalyzeMajorExpenseTrends_PinnedRefundNetsSigned FAILS on the mutant
+  ("pinned CurrentAmount = 580.00, want 320") -- killed.
+- trends.go spentSoFar (`-currentMonthOutflows.SumAmount()` -> `math.Abs(...)`):
+  TestCalculateSpendingVelocity_MonthProjectionIdentity FAILS on the mutant
+  ("MonthProjection = -15010.40, want -16170.40") -- killed.
+
+====================================================================
+5. TOOL SURFACE (attack surface 4)
+====================================================================
+mcpsvc/spend/trends.go's get_trends -> categoryTrendRows path traced end to
+end; round2 is applied independently to CurrentAmount/PreviousAmount/
+ChangeAmount/ChangePercent, Direction passed through unchanged from the
+already-correct classification. No sign or direction inconsistency
+reintroduced (see boundary section 3). `go test ./internal/services/mcpsvc/spend/...`
+green.
+
+====================================================================
+OTHER
+====================================================================
+- Direction is technically derived from ChangePercent (>5/<-5), not
+  literally switched on sign(ChangeAmount) as CB3-c's prose states; verified
+  these are mathematically equivalent by construction (changePercent's sign
+  is forced to match change's sign in both branches, so classifying on
+  changePercent's sign is identical to classifying on ChangeAmount's sign at
+  every threshold) -- not a defect, the sweep's 0 violations confirms no
+  divergence exists on real or synthetic data.
+- CB3-E (metrics.PercentChange): confirmed no code-token change (comment-
+  only), consistent with attempt 1.
+- Oracle: `.swarm/tier3/CB3/oracle.2.log` exists, `accept.sh` is executable,
+  final line is exactly `ORACLE PASS`.
+- Full suite: `go build ./...` and `go test ./...` -> 49/49 packages ok, 0
+  FAIL, in the actual worker tree (scratchpad/cb3-run).
+
+VERDICT: PASS. The live sign-inconsistency bug from attempt 1 (Travel
+current=0 previous=-628 -> change=+628 but "down"/-100) is fixed and
+verified against the identical real-data case (now "up"/+100), against a
+755-row real-ledger sweep with zero invariant violations, against boundary
+conditions (0/0, exact +-5 band, tiny negative previous), and both named
+mutation survivors from attempt 1 are now killed by committed tests. No new
+defect found in the classifier fix or its tool-surface consumer.

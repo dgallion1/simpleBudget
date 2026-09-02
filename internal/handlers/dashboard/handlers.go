@@ -380,7 +380,12 @@ func handleMajorExpenseDrilldown(w http.ResponseWriter, r *http.Request) {
 
 	var total float64
 	for _, t := range txns {
-		total += math.Abs(t.Amount)
+		// Signed net (CB3-A): Total = -(sum of signed amounts), matching
+		// bucketMajorExpenses' list-row contract above so the drilldown
+		// modal never disagrees with its own list row. Refunds (positive
+		// Outflow amounts per classifier convention) reduce the total; a
+		// refund-dominant group renders negative.
+		total -= t.Amount
 	}
 	count := len(txns)
 	var avgAmount float64
@@ -1486,10 +1491,13 @@ func buildSpendingTrendChartData(ts *models.TransactionSet) map[string]interface
 func buildMerchantsChartData(ts *models.TransactionSet) map[string]interface{} {
 	outflows := ts.FilterByType(models.Outflow)
 
-	// Group by description (merchant)
+	// Group by description (merchant). Signed net (CB3-B): refunds
+	// (positive Outflow amounts per classifier convention) net against
+	// the merchant instead of inflating it via AbsAmount; a net-refund
+	// merchant renders a negative bar. Ordering stays by total desc.
 	merchantTotals := make(map[string]float64)
 	for _, t := range outflows.Transactions {
-		merchantTotals[t.Label()] += math.Abs(t.Amount)
+		merchantTotals[t.Label()] -= t.Amount
 	}
 
 	// Sort by value
@@ -1560,11 +1568,16 @@ func buildCumulativeChartData(ts *models.TransactionSet) map[string]interface{} 
 			if t.TransactionType == models.Transfer {
 				continue
 			}
-			if t.TransactionType == models.Income {
-				dayTotal += math.Abs(t.Amount)
-			} else {
-				dayTotal -= math.Abs(t.Amount)
-			}
+			// Signed accumulation (CB3-C): the classifier normalizes
+			// purchase amounts negative and keeps refunds (non-income
+			// credits) positive, so a single `+= t.Amount` is correct
+			// for every non-Transfer row -- income adds, a purchase
+			// subtracts, and an outflow-typed refund correctly ADDS to
+			// cash flow. This also reshapes the Income branch: a
+			// negative-amount Income row (an income reversal/chargeback)
+			// now correctly SUBTRACTS from cash flow instead of being
+			// forced positive by AbsAmount.
+			dayTotal += t.Amount
 		}
 		runningTotal += dayTotal
 		dateLabels = append(dateLabels, d)

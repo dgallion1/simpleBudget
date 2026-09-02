@@ -1,0 +1,237 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: CB3
+ATTEMPT: 2
+---
+Scope of this attempt-2 pass: the remediation of my two attempt-1 mutation
+survivors (trends.go:44 pin path; spentSoFar) plus the conceded checker-second
+live bug (Amendment CB3-c), + a full-suite re-run. My attempt-1 evidence for
+CB3-A/B/C/E and the CB3-b docstring stands and is not re-litigated here except
+where the diff could have moved it (see criterion 5).
+
+All work done in cp -a copies under
+/tmp/.../scratchpad/cb3v2/{base,m1_pin,m2_spent,m3a_signeddenom,
+m3b_hardcoded100,m3c_band0,mastercln,prop}; mutant copies had .git AND
+.swarm/tier3 (the oracle probe) removed -- verified `find ... -name
+zz_cb3_oracle_test.go` returned nothing. The only write to the run tree is
+this verdict file (`git status --porcelain` in cb3-run before writing showed
+exactly the 9 modified paths + process artifacts, no probe files of mine).
+No budget2 binary was executed.
+
+--------------------------------------------------------------------
+CRITERION 1 -- full battery + oracle: PASS
+--------------------------------------------------------------------
+  $ cd cb3v2/base && go build ./...      -> no output, BUILD_RC=0
+  $ cd cb3v2/base && go vet ./...        -> no output, VET_RC=0
+  $ cd cb3v2/base && go test -count=1 ./...
+      TEST_RC=0; 47 package lines, every one `ok`; a second run filtered
+      with `grep -v '^ok'` produced zero lines (no FAIL, no build failure).
+      (`-count=1` on every invocation; no cached result was accepted.)
+  $ cd cb3v2/base && bash .swarm/tier3/CB3/accept.sh
+      last line: `ORACLE PASS`, ORACLE_RC=0. I ran it myself in my own copy;
+      the run tree's .swarm/tier3/CB3/oracle.2.log also ends `ORACLE PASS`
+      and accept.sh is executable (`stat -c %A` -> -rwxrwxr-x).
+      The three attempt-2 probes are present in the oracle source:
+      `grep -n 'func TestCB3Oracle' .swarm/tier3/CB3/cb3_oracle_test.go`
+      -> ..._TrendClassifierSignConsistent:169, _PinnedRefundNetsSigned:207,
+      _MonthProjectionIdentity:230 (plus the five attempt-1 probes).
+  $ cd cb3-run && go test -count=1 -v -run 'MajorExpenseTrends|SpendingVelocity'
+        ./internal/services/insights/
+      14 `--- PASS` lines incl. all four new/strengthened tests.
+
+--------------------------------------------------------------------
+CRITERION 2 -- my two attempt-1 mutation survivors are DEAD: PASS
+--------------------------------------------------------------------
+Each mutant is a separate cp -a copy with no oracle probe; the failing test
+is a COMMITTED test in internal/services/insights/trends_test.go.
+
+(a) trends.go:44, PIN path reverted to master's form
+    `totals[def.Name] -= t.Amount` -> `totals[def.Name] += math.Abs(t.Amount)`
+    (keyword path at :49 left fixed, so only the pin path is mutated)
+  $ cd cb3v2/m1_pin && go test -count=1 ./internal/services/insights/
+      --- FAIL: TestAnalyzeMajorExpenseTrends_PinnedRefundNetsSigned
+          trends_test.go:777: pinned CurrentAmount = 580.00, want 320
+          (signed net via PIN path); abs gives 580
+      RC=1.  SURVIVOR KILLED.
+    I read the test (trends_test.go:746-779): the def's only keyword is
+    "zzz-nomatch-2", which matches NEITHER description, so both rows can only
+    reach the def through models.ResolveByIdentity(pins, t) -- a broken pin
+    path drops the trend entirely (t.Fatalf on the missing key), a mis-signed
+    pin path yields 580. The name matches what it asserts.
+
+(b) spentSoFar reverted to abs
+    `spentSoFar := -currentMonthOutflows.SumAmount()`
+    -> `spentSoFar := math.Abs(currentMonthOutflows.SumAmount())`
+  $ cd cb3v2/m2_spent && go test -count=1 ./internal/services/insights/
+      --- FAIL: TestCalculateSpendingVelocity_MonthProjectionIdentity
+          trends_test.go:811: MonthProjection = -15010.40, want -16170.40
+          (signedSpent -580.00 + DailyAverage -556.80 * DaysRemaining 28)
+      RC=1.  SURVIVOR KILLED, and killed TODAY (2026-09-02: DaysRemaining=28
+      is the live clock, so the assertion fired on today's calendar).
+    Date construction read (trends_test.go:789-813): monthStart is built in
+    time.Local (the timezone SpendingVelocity itself uses), d2 = now-1h
+    clamped up to now if it would precede monthStart, d1 = d2-1h clamped to
+    monthStart+1min. signedSpent is hardcoded -580 (the load-bearing pin);
+    the DailyAverage*DaysRemaining term is read back from the result, so this
+    test pins spentSoFar specifically -- dailyAvg/historicalDaily stay pinned
+    by _RefundReducesDailyAverage (550) and _RefundDominantPeriodIsNegative
+    (-550), both of which I re-ran green.
+    Calendar robustness, simulated minute-by-minute over a full year
+    (python3, 366*24*60 iterations, checking monthStart <= d1,d2 <= now):
+    13 bad minutes, all exactly 00:00 on the 1st. Analytically the window is
+    now in [monthStart, monthStart+60s), where the clamp puts d1 one minute
+    AFTER now, dropping the -280 row from the month bucket and breaking the
+    hardcoded -580. See FINDING 1: a 60-second-per-month flake window, not a
+    correctness defect and not in play today.
+
+--------------------------------------------------------------------
+CRITERION 3 -- the CB3-c classifier fix, three mutations: PASS (a),(b);
+               (c) UNPINNED -- reported, see FINDING 2
+--------------------------------------------------------------------
+(a) restore the SIGNED previous denominator
+    `changePercent = (change / math.Abs(previous)) * 100`
+    -> `changePercent = (change / previous) * 100`
+  $ cd cb3v2/m3a_signeddenom && go test -count=1 ./internal/services/insights/
+      --- FAIL: TestAnalyzeMajorExpenseTrends_ZeroCurrentNetRefundPreviousSignConsistent
+          trends_test.go:732: Direction = "down", want "up" (ChangeAmount=+600)
+          trends_test.go:735: ChangePercent = -100.00, want positive
+      RC=1.  CAUGHT -- and this is exactly checker-second's real-ledger shape
+      (current=0, previous<0).
+
+(b) restore the hardcoded previous==0 -> +100 (whole switch replaced by
+    `changePercent = 100`)
+  $ cd cb3v2/m3b_hardcoded100 && go test -count=1 ./internal/services/insights/
+      --- FAIL: TestAnalyzeMajorExpenseTrends_RefundDominantPeriodSignedNet
+          trends_test.go:691: Airline ChangePercent = 100.00, want -100
+          trends_test.go:694: Airline Direction = "up", want "down"
+      RC=1.  CAUGHT.
+
+(c) break the +-5 stable band: `case changePercent > 5 / < -5` -> `> 0 / < -0`
+    (MajorExpenseTrends only; assert-once replace, CategoryTrends' own band
+    untouched)
+  $ cd cb3v2/m3c_band0 && go test -count=1 ./internal/services/insights/
+      ok   (RC=0)
+  $ cd cb3v2/m3c_band0 && go test -count=1 ./...
+      FULLSUITE_RC=0, no FAIL anywhere in the repo
+  $ (oracle probe installed) go test -count=1 -run TestCB3Oracle
+        ./internal/handlers/dashboard/  -> ok, 0 probe failures
+  ANSWER to "a test catches it or existing direction tests pin the band":
+  NEITHER. No committed test and no oracle probe pins the +-5 band for
+  MajorExpenseTrends. The nearest candidate,
+  TestAnalyzeMajorExpenseTrends_GroupsByExpenseName's "Tesla Loan =
+  stable", has change==0, which is stable under any band. See FINDING 2.
+  I confirmed the band LITERAL is unchanged from master by reading
+  `git show 50a5e06:internal/services/insights/trends.go` -- master's
+  classifier also uses `> 5` / `< -5`, so this is a pre-existing coverage
+  gap carried forward, not a value the worker altered.
+
+  Extra evidence on the CB3-c invariant (throwaway probe, validated at both
+  ends, then discarded): a randomized property probe over 20,000 fixtures
+  (120,000 signed rows, seed 7) asserting sign(ChangePercent) ==
+  sign(ChangeAmount), Direction never contradicting ChangeAmount's sign, and
+  "stable" only inside the band:
+      cb3v2/prop      -> --- PASS: TestZZProp_SignAgreement (0.09s)
+      cb3v2/m3a (mutant, fail-end validation)
+                      -> --- FAIL ... sign mismatch: ChangeAmount=739.00
+                         ChangePercent=-94.50 (cur=-43.00 prev=-782.00)
+  So the spec's "ChangePercent's sign must always agree with ChangeAmount's
+  (both zero together)" holds empirically, not just by inspection.
+
+--------------------------------------------------------------------
+CRITERION 4 -- CategoryTrends byte-identical to master: PASS
+--------------------------------------------------------------------
+  $ git show 50a5e06:internal/services/insights/trends.go > master_trends.go
+  $ python3 (difflib.unified_diff over the extracted func bodies; plain diff
+    NOT used -- rtk falsifies its output)
+      master CategoryTrends bytes: 1859   branch bytes: 1859
+      difflib hunks: 0
+      BYTE-IDENTICAL
+  Its classifier (signed `previous` denominator, flat previous==0 -> +100/up,
+  its own +-5 band) is therefore untouched, as Amendment CB3-c requires.
+
+--------------------------------------------------------------------
+CRITERION 5 -- scope: PASS
+--------------------------------------------------------------------
+5a. Attempt-2 diff touches only insights/trends.go + trends_test.go.
+  $ git diff --numstat 50a5e06 --   (working tree; worker output is
+    UNCOMMITTED, HEAD is still 50a5e06, so master...HEAD would be empty)
+      1/0   .swarm/ledger.tsv
+      21/8  internal/handlers/dashboard/handlers.go
+      57/0  internal/handlers/dashboard/handlers_http_test.go
+      93/7  internal/handlers/dashboard/handlers_test.go
+      60/22 internal/services/insights/trends.go
+      226/0 internal/services/insights/trends_test.go
+      7/5   internal/services/mcpsvc/spend/trends.go
+      12/0  internal/services/metrics/metrics.go
+      23/0  internal/services/metrics/metrics_test.go
+    = 9 files, 500/42, matching .swarm/manifests/CB3.1.files exactly (+ the
+    ledger row). My attempt-1 verdict recorded 9 files / 331 ins / 25 del,
+    so attempt 2 added 169/17 -- and insights alone is 286/22 now vs the
+    117/5 implied for attempt 1, i.e. the delta is fully inside insights.
+  Three independent confirmations that the non-insights files did not move:
+    - mtimes (`stat -c %y`): handlers.go 11:21, handlers_http_test 11:28,
+      handlers_test 11:28, metrics.go 11:24, metrics_test 11:24,
+      spend/trends.go 11:33 -- ALL before the attempt-1 verdicts landed
+      (mine 11:47, checker-second's 11:54). Only trends.go (11:59) and
+      trends_test.go (12:01) were written after, plus lead-owned .swarm
+      files (ledger 11:55, cb3_oracle_test.go 11:57, manifest 12:04).
+    - the three handlers.go anchors my attempt-1 verdict recorded by LINE
+      NUMBER still read exactly as recorded (any edit would have shifted
+      them): :388 `total -= t.Amount`, :1500 `merchantTotals[t.Label()] -=
+      t.Amount`, :1580 `dayTotal += t.Amount`.
+    - manifest CB3.1.manifest.md "Files touched this attempt" names only
+      the two insights files.
+5b. go test -list: NO removals.
+  $ go test -count=1 -list '.*' ./...  on a clean master copy (cb3v2/mastercln,
+    50a5e06, foreign zz_*_test.go probes deleted first) and on cb3v2/base,
+    sorted, compared with comm:
+      master 3700 names, branch 3711 names
+      comm -23 (present on master, absent on branch): EMPTY -> 0 removals
+      comm -13 (added): the 11 CB3 tests, incl. this attempt's
+        _PinnedRefundNetsSigned, _MonthProjectionIdentity,
+        _ZeroCurrentNetRefundPreviousSignConsistent.
+    TestBuildCumulativeChartData_PositiveAmountOutflows (ruling CB3-a
+    rewrite) is present in BOTH lists -- rewritten, not deleted, as ruled.
+5c. Ledger row reads attempt 2.
+  $ grep -P '^CB3\t' .swarm/ledger.tsv | cat -A
+      CB3^I3^Itests,second^Iassigned^I2^Iworker-coder^Iattempt1-dual-lane-
+      FAIL-conceded-mutation-gaps-and-inline-pctchange-bug
+    tier=3, checks=tests,second, attempt=2. OK.
+5d. .swarm/critical.globs (storage, dataloader, retirement/engine, transfers,
+    accounts/accounts.go, mcpsvc/confirm): neither attempt-2 path matches
+    any glob.
+
+--------------------------------------------------------------------
+FINDINGS (do not block this attempt; for the lead's adjudication/backlog)
+--------------------------------------------------------------------
+FINDING 1 (criterion 2b, test-hygiene, insights/trends_test.go:789-799):
+  TestCalculateSpendingVelocity_MonthProjectionIdentity has a 60-second-per-
+  month flake window. When time.Now() falls in [monthStart, monthStart+60s)
+  the d1 clamp yields monthStart+1min, which is AFTER now, so the -280 row
+  falls outside SpendingVelocity's [monthStart, now] bucket and the hardcoded
+  signedSpent=-580 no longer holds (spentSoFar would be -860). Proven by
+  simulation, not by reading alone: 13 failing minutes over a simulated year,
+  all at 00:00 on the 1st. A one-line fix (clamp d1 to
+  min(monthStart+1min, now) or derive signedSpent from the fixture rows that
+  actually land in the bucket) would close it. It does NOT affect today's
+  mutant-kill evidence and does not weaken the contract the test pins.
+
+FINDING 2 (criterion 3c, coverage gap, PRE-EXISTING on master):
+  The +-5 stable band in MajorExpenseTrends' classifier is pinned by NOTHING
+  -- not a committed test, not the oracle. Mutating it to +-0 leaves the
+  entire repo suite and all eight oracle probes green, yet it changes what
+  users see (a +3% move would read "up" instead of "stable"). Master has the
+  same literal and the same absence of a test, so this is not a CB3
+  regression; it is a V3-promotion candidate (one fixture with
+  current/previous = 103/100 asserting "stable" and 106/100 asserting "up").
+
+FINDING 3 (spec wording, no code impact): Amendment CB3-c bullet 3 says
+  "Direction derives from the SIGN OF ChangeAmount (up / down / stable)",
+  while the same amendment's context and the worker's implementation derive
+  Direction from ChangePercent through the unchanged +-5 band -- so a
+  sub-5% positive change reads "stable", not "up". The two readings differ
+  only inside the band. I verified the safe part empirically (property probe
+  above): Direction NEVER contradicts the sign of ChangeAmount; "stable" only
+  ever appears inside the band. Recommend the spec text be reconciled with
+  the band so the next enumeration does not reopen it.

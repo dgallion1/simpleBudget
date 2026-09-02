@@ -1,0 +1,8 @@
+ok  	budget2/internal/handlers/dashboard	0.004s
+ok  	budget2/internal/services/metrics	0.002s
+ok  	budget2/internal/handlers/dashboard	0.004s
+ok  	budget2/internal/services/metrics	0.003s
+ok  	budget2/internal/handlers/dashboard	0.745s
+ok  	budget2/internal/services/insights	0.003s
+ok  	budget2/internal/services/mcpsvc/spend	0.660s
+ORACLE PASS

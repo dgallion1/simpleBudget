@@ -616,6 +616,239 @@ func TestAnalyzeMajorExpenseTrends_NoDefsReturnsNil(t *testing.T) {
 	}
 }
 
+// TestAnalyzeMajorExpenseTrends_RefundInNormalPeriodSignedNet is a CB3-D
+// regression: a refund inside an otherwise outflow-dominant period must
+// reduce the period total via signed net, not inflate it via AbsAmount.
+// Delta Air Lines purchase -450, a positive-amount (non-income-keyword)
+// airline credit +100 -> signed net 350; the old per-txn abs bug gives 550.
+func TestAnalyzeMajorExpenseTrends_RefundInNormalPeriodSignedNet(t *testing.T) {
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	defs := []models.MajorExpense{{ID: "air", Name: "Airline", Keywords: []string{"delta air"}}}
+	ts := &models.TransactionSet{Transactions: []models.Transaction{
+		{Description: "Delta Air Lines Ticket", Amount: -450, Category: "Travel",
+			Date: time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), TransactionType: models.Outflow},
+		{Description: "Delta Air Lines Flight Credit", Amount: 100, Category: "Travel",
+			Date: time.Date(2025, 2, 12, 0, 0, 0, 0, time.UTC), TransactionType: models.Outflow},
+	}}
+
+	trends := MajorExpenseTrends(ts, defs, nil, currentStart, currentEnd)
+	got := make(map[string]models.CategoryTrend, len(trends))
+	for _, tr := range trends {
+		got[tr.Category] = tr
+	}
+	air, ok := got["Airline"]
+	if !ok {
+		t.Fatalf("expected trend for 'Airline', got categories: %v", keysOf(got))
+	}
+	if math.Abs(air.CurrentAmount-350) > 0.01 {
+		t.Errorf("Airline CurrentAmount = %.2f, want 350 (signed net); abs gives 550", air.CurrentAmount)
+	}
+	// CB3-c: no previous-period Airline activity (previous=0), current=350>0
+	// -> ChangePercent=+100, Direction="up". Asserting these (not just
+	// CurrentAmount) is what would have caught the CB3-c live bug.
+	if math.Abs(air.ChangePercent-100) > 0.01 {
+		t.Errorf("Airline ChangePercent = %.2f, want 100", air.ChangePercent)
+	}
+	if air.Direction != "up" {
+		t.Errorf("Airline Direction = %q, want \"up\"", air.Direction)
+	}
+}
+
+// TestAnalyzeMajorExpenseTrends_RefundDominantPeriodSignedNet is a CB3-D
+// regression: a REFUND-DOMINANT period (refunds outweigh purchases) must
+// render a NEGATIVE period total, matching CB3-A's drilldown contract.
+// Purchase -150, credit +650 -> signed net -(-150+650) = -500.
+func TestAnalyzeMajorExpenseTrends_RefundDominantPeriodSignedNet(t *testing.T) {
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	defs := []models.MajorExpense{{ID: "air", Name: "Airline", Keywords: []string{"delta air"}}}
+	ts := &models.TransactionSet{Transactions: []models.Transaction{
+		{Description: "Delta Air Lines Ticket", Amount: -150, Category: "Travel",
+			Date: time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), TransactionType: models.Outflow},
+		{Description: "Delta Air Lines Flight Credit", Amount: 650, Category: "Travel",
+			Date: time.Date(2025, 2, 12, 0, 0, 0, 0, time.UTC), TransactionType: models.Outflow},
+	}}
+
+	trends := MajorExpenseTrends(ts, defs, nil, currentStart, currentEnd)
+	got := make(map[string]models.CategoryTrend, len(trends))
+	for _, tr := range trends {
+		got[tr.Category] = tr
+	}
+	air, ok := got["Airline"]
+	if !ok {
+		t.Fatalf("expected trend for 'Airline', got categories: %v", keysOf(got))
+	}
+	if math.Abs(air.CurrentAmount-(-500)) > 0.01 {
+		t.Errorf("Airline CurrentAmount = %.2f, want -500 (refund-dominant period renders negative)", air.CurrentAmount)
+	}
+	// CB3-c conceded shape (previous=0, current<0) -> Direction="down",
+	// ChangePercent=-100 (sign-consistent replacement for the old flat
+	// +100/"up" that ignored the sign of change entirely).
+	if math.Abs(air.ChangePercent-(-100)) > 0.01 {
+		t.Errorf("Airline ChangePercent = %.2f, want -100", air.ChangePercent)
+	}
+	if air.Direction != "down" {
+		t.Errorf("Airline Direction = %q, want \"down\"", air.Direction)
+	}
+}
+
+// TestAnalyzeMajorExpenseTrends_ZeroCurrentNetRefundPreviousSignConsistent
+// covers the OTHER CB3-c conceded shape: current=0, previous<0 (a
+// refund-dominant PREVIOUS period, nothing this period). change =
+// 0-(-600)=+600 must report Direction="up" / ChangePercent>0 -- the live
+// bug divided by the SIGNED previous (-600) and got changePercent=-100,
+// "down", self-contradicting a positive change (spending fell to zero,
+// which is an improvement, not a decline).
+func TestAnalyzeMajorExpenseTrends_ZeroCurrentNetRefundPreviousSignConsistent(t *testing.T) {
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	defs := []models.MajorExpense{{ID: "furn", Name: "Furniture", Keywords: []string{"comfy furniture co"}}}
+	ts := &models.TransactionSet{Transactions: []models.Transaction{
+		// Previous period (Jan): refund-dominant, net -600.
+		{Description: "Comfy Furniture Co Purchase", Amount: -80, Category: "Home",
+			Date: time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), TransactionType: models.Outflow},
+		{Description: "Comfy Furniture Co Store Credit", Amount: 680, Category: "Home",
+			Date: time.Date(2025, 1, 20, 0, 0, 0, 0, time.UTC), TransactionType: models.Outflow},
+		// Current period (Feb): nothing for Furniture.
+	}}
+
+	trends := MajorExpenseTrends(ts, defs, nil, currentStart, currentEnd)
+	got := make(map[string]models.CategoryTrend, len(trends))
+	for _, tr := range trends {
+		got[tr.Category] = tr
+	}
+	furn, ok := got["Furniture"]
+	if !ok {
+		t.Fatalf("expected trend for 'Furniture', got categories: %v", keysOf(got))
+	}
+	if math.Abs(furn.PreviousAmount-(-600)) > 0.01 || math.Abs(furn.CurrentAmount-0) > 0.01 {
+		t.Fatalf("harness error: current=%.2f previous=%.2f, want 0/-600", furn.CurrentAmount, furn.PreviousAmount)
+	}
+	if furn.Direction != "up" {
+		t.Errorf("Direction = %q, want \"up\" (ChangeAmount=+600); the live bug divided by signed previous and reported \"down\"", furn.Direction)
+	}
+	if furn.ChangePercent <= 0 {
+		t.Errorf("ChangePercent = %.2f, want positive (sign must agree with ChangeAmount=+600)", furn.ChangePercent)
+	}
+}
+
+// TestAnalyzeMajorExpenseTrends_PinnedRefundNetsSigned is a CB3-c
+// mutation-survivor regression: both a spend row and a refund row reach
+// their MajorExpense def via the PIN path (models.ResolveByIdentity), not
+// keyword matching -- the def's keywords deliberately do NOT match either
+// description, so a broken pin lookup would leave both rows unmatched
+// (and this trend absent) instead of merely wrong. Signed net:
+// -450 (spend) + 130 (refund) -> total = -(-450+130) = 320; abs gives 580.
+func TestAnalyzeMajorExpenseTrends_PinnedRefundNetsSigned(t *testing.T) {
+	currentStart := time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC)
+
+	defs := []models.MajorExpense{{ID: "furn2", Name: "Furniture Set", Keywords: []string{"zzz-nomatch-2"}}}
+	spend := models.Transaction{
+		Description: "Some Furniture Store", Amount: -450, Category: "Home",
+		Date: time.Date(2025, 3, 5, 0, 0, 0, 0, time.UTC), TransactionType: models.Outflow,
+		Hash: "h-cb3c-pin-spend",
+	}
+	refund := models.Transaction{
+		Description: "Some Furniture Store Refund Credit", Amount: 130, Category: "Home",
+		Date: time.Date(2025, 3, 12, 0, 0, 0, 0, time.UTC), TransactionType: models.Outflow,
+		Hash: "h-cb3c-pin-refund",
+	}
+	pins := map[string]string{
+		"h-cb3c-pin-spend":  "furn2",
+		"h-cb3c-pin-refund": "furn2",
+	}
+	ts := &models.TransactionSet{Transactions: []models.Transaction{spend, refund}}
+
+	trends := MajorExpenseTrends(ts, defs, pins, currentStart, currentEnd)
+	got := make(map[string]models.CategoryTrend, len(trends))
+	for _, tr := range trends {
+		got[tr.Category] = tr
+	}
+	set, ok := got["Furniture Set"]
+	if !ok {
+		t.Fatalf("expected pinned trend for 'Furniture Set' (keywords do not match either description), got categories: %v", keysOf(got))
+	}
+	if math.Abs(set.CurrentAmount-320) > 0.01 {
+		t.Errorf("pinned CurrentAmount = %.2f, want 320 (signed net via PIN path); abs gives 580", set.CurrentAmount)
+	}
+}
+
+// TestCalculateSpendingVelocity_MonthProjectionIdentity is a CB3-c
+// mutation-survivor regression for the spentSoFar site: rows must be
+// dated INSIDE the current calendar month in time.Local, since
+// SpendingVelocity's month-to-date bucket is [month-start, now) in
+// time.Local -- a UTC-midnight first-of-month row can fall BEFORE that
+// local month start west of UTC, silently missing the bucket. Asserts the
+// exact identity, not just the sign, so a mutant that flips spentSoFar
+// back to abs (shifting MonthProjection by 2*|signed net|) is caught.
+func TestCalculateSpendingVelocity_MonthProjectionIdentity(t *testing.T) {
+	now := time.Now()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
+	d2 := now.Add(-time.Hour)
+	if d2.Before(monthStart) {
+		d2 = now
+	}
+	d1 := d2.Add(-time.Hour)
+	if d1.Before(monthStart) {
+		d1 = monthStart.Add(time.Minute)
+		// If `now` itself is within the first minute of the month,
+		// monthStart+1min can be AFTER now, pushing d1 back OUT of the
+		// [monthStart, now] bucket (a 60s/year flake); clamp to whichever
+		// of the two is earlier.
+		if d1.After(now) {
+			d1 = now
+		}
+	}
+
+	ts := &models.TransactionSet{Transactions: []models.Transaction{
+		{Description: "purchase", Amount: -280, Date: d1, TransactionType: models.Outflow},
+		{Description: "merchandise credit", Amount: 860, Date: d2, TransactionType: models.Outflow},
+	}}
+
+	velocity := SpendingVelocity(ts, ts)
+
+	signedSpent := -580.0 // -(-280 + 860)
+	expected := signedSpent + velocity.DailyAverage*float64(velocity.DaysRemaining)
+	if math.Abs(velocity.MonthProjection-expected) > 0.01 {
+		t.Errorf("MonthProjection = %.2f, want %.2f (signedSpent %.2f + DailyAverage %.2f * DaysRemaining %d); an abs spentSoFar mutant breaks this identity",
+			velocity.MonthProjection, expected, signedSpent, velocity.DailyAverage, velocity.DaysRemaining)
+	}
+}
+
+// TestCalculateSpendingVelocity_RefundDominantPeriodIsNegative is a CB3-D
+// regression: unlike TestCalculateSpendingVelocity_RefundReducesDailyAverage
+// above (a net-positive period whose refund merely reduces the average),
+// this period's refunds OUTWEIGH its purchases, so DailyAverage and
+// MonthProjection must go negative -- honest, not clamped to zero.
+func TestCalculateSpendingVelocity_RefundDominantPeriodIsNegative(t *testing.T) {
+	now := time.Now()
+	txns := []models.Transaction{
+		{Description: "purchase", Amount: -150, Date: now, TransactionType: models.Outflow},
+		{Description: "purchase", Amount: -200, Date: now, TransactionType: models.Outflow},
+		{Description: "merchandise credit", Amount: 900, Date: now, TransactionType: models.Outflow},
+	}
+	period := &models.TransactionSet{Transactions: txns}
+
+	velocity := SpendingVelocity(period, period)
+
+	// All same day -> currentDays clamped to 1: net = -(-150-200+900) = -550.
+	const want = -550.0
+	if math.Abs(velocity.DailyAverage-want) > 0.01 {
+		t.Errorf("DailyAverage = %.2f, want %.2f (refund-dominant period is negative)", velocity.DailyAverage, want)
+	}
+	if math.Abs(velocity.HistoricalDaily-want) > 0.01 {
+		t.Errorf("HistoricalDaily = %.2f, want %.2f", velocity.HistoricalDaily, want)
+	}
+	if velocity.MonthProjection >= 0 {
+		t.Errorf("MonthProjection = %.2f, want negative for a refund-dominant month-to-date", velocity.MonthProjection)
+	}
+}
+
 func keysOf(m map[string]models.CategoryTrend) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

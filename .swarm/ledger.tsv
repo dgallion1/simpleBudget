@@ -106,3 +106,4 @@ BF1	1	tests	accepted	1	worker-coder	gate-ok-attempt-1-ported-from-stale-T13-work
 BF2	1	tests	accepted	1	lead	gate-ok-attempt-1-V3-promotion-of-F1-probe
 CB1	3	tests,second	accepted	1	worker-coder	gate-ok-tier3-attempt-1-oracle-pass-dual-lane
 CB2	3	tests,second	accepted	1	worker-coder	gate-ok-tier3-attempt-1-nine-sites-oracle-pass-dual-lane
+CB3	3	tests,second	accepted	2	worker-coder	gate-ok-tier3-attempt-2-after-dual-lane-attempt1-fail

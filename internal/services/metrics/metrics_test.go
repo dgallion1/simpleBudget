@@ -325,6 +325,29 @@ func TestPercentChange_ZeroCurrentNonZeroPrevious(t *testing.T) {
 	}
 }
 
+// TestPercentChange_NegativeBase pins CB3-E: the |previous| denominator is
+// the deliberate signed-base convention (see PercentChange's doc comment),
+// not an abs-per-transaction bug. Both current and previous are negative
+// here, unlike TestPercentChange_NegativePrevious above (positive current,
+// negative previous) -- this covers a negative CURRENT too, e.g. a
+// refund-dominant period's signed net (CB3-A/CB3-D) compared against a
+// prior refund-dominant period.
+func TestPercentChange_NegativeBase(t *testing.T) {
+	// -1000 -> -500: less negative = improvement.
+	// ((-500 - (-1000)) / abs(-1000)) * 100 = (500/1000)*100 = 50
+	got := PercentChange(-500, -1000)
+	if !floatEqual(got, 50.0) {
+		t.Errorf("PercentChange(-500, -1000) = %v, want 50", got)
+	}
+
+	// -1000 -> -1500: more negative = worse.
+	// ((-1500 - (-1000)) / abs(-1000)) * 100 = (-500/1000)*100 = -50
+	got = PercentChange(-1500, -1000)
+	if !floatEqual(got, -50.0) {
+		t.Errorf("PercentChange(-1500, -1000) = %v, want -50", got)
+	}
+}
+
 // --- Calculate ---
 
 func TestCalculateMetrics_BasicTotals(t *testing.T) {

@@ -1,0 +1,8 @@
+internal/handlers/dashboard/handlers.go
+internal/handlers/dashboard/handlers_http_test.go
+internal/handlers/dashboard/handlers_test.go
+internal/services/insights/trends.go
+internal/services/insights/trends_test.go
+internal/services/metrics/metrics.go
+internal/services/metrics/metrics_test.go
+internal/services/mcpsvc/spend/trends.go

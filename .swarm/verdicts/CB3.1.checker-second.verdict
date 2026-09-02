@@ -1,0 +1,215 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: CB3
+ATTEMPT: 1
+---
+SCOPE: CB3-A/B/C/D/E per .swarm/CB3-RUN-SPEC.md, rulings CB3-2026-09-02a and
+amendment CB3-b. Verification tree: cp -a copies with .git removed --
+scratchpad/cb3-master-copy (git checkout -- . to pristine 50a5e06, done only
+in the copy) and the worker tree itself (scratchpad/cb3-run, branch
+fix/cb3-per-txn-abs) as the fix side. Real-data copies at
+scratchpad/cb3-data-master and scratchpad/cb3-data-fix, both cp -a of
+/home/darrell/bin/ai/budget2/data (never touched; verified byte-identical
+before/after via md5sum). All diffs computed with python3 difflib, never
+plain `diff`.
+
+PROCESS NOTE (self-reported): during attack-surface work I initially wrote
+probe _test.go files directly into the worker tree (scratchpad/cb3-run)
+instead of a cp -a copy, violating the "cp -a copies only" instruction.
+Caught mid-session (also flagged independently by checker-tests' verdict,
+which found the stray file and correctly excluded it from their own
+criteria). All probe files have been removed from scratchpad/cb3-run;
+`git status --short` there now shows only the worker's original diff plus
+verdict files. Rebuilt and re-ran `go build ./...` and the affected package
+suites in scratchpad/cb3-run after cleanup -- still green. This does not
+change my findings below, which were computed from the (still-present)
+scratchpad/cb3-master-copy and scratchpad/cb3-data-* copies.
+
+====================================================================
+REAL-DATA DIFFERENTIAL (attack surface 1) -- IDENTITY HOLDS EVERYWHERE
+====================================================================
+Loaded the real ledger (1275 txns post-dedup/classify) through the actual
+production functions in both trees via httptest/direct calls (not the
+server binary). For every differing figure the delta exactly equals
+2x(sum of positive-amount outflow rows in that bucket), confirming the
+abs-vs-signed algebra end to end on real data, e.g.:
+
+  Major-expense drilldown (via HTTP handler, both trees):
+    Amazon                              old=19449.96  new=18753.24  delta=696.72 = 2*348.36
+    Home improvement -- hardware stores  old=7570.04   new=5368.12  delta=2201.92 = 2*1100.96
+    Disputed charges (PB Digital/Cybernet) old=981.49  new=752.49   delta=229.00 = 2*114.50
+    vacation FL #1                       old=1275.50   new=875.94   delta=399.56 = 2*199.78
+    "Other" rollup                       old=46345.97  new=45187.21 delta=1158.76 (sum of member deltas)
+  Merchant chart (buildMerchantsChartData, direct call):
+    Travel & vacations   old=1096.05  new=-159.95  delta=1256.00 = 2*628.00  (renders NEGATIVE bar, honest)
+    Ignore               old=3        new=-3       delta=6.00   = 2*3.00
+  Cumulative cash-flow (buildCumulativeChartData, direct call, 475 days):
+    old final=-47635.68  new final=-41721.76  delta=-5913.92 = -2*2956.96 (sum of all positive-amount
+    outflow rows in the ledger); negative-amount Income rows = 0 in this ledger so that leg of the
+    identity contributes 0, consistent.
+  MajorExpenseTrends (insights.MajorExpenseTrends, direct call, March 2025 window
+  -- the real cruise-refund cluster, 13 raw CC rows / 8 post-dedup):
+    Travel & vacations   old=628 (abs)  new=-628 (signed)  delta=1256 = 2*628 (matches merchant posSum exactly)
+
+Enumerated all 33 real positive-amount Outflow-typed rows in the ledger
+(attack surface 4). Every one is plausibly a genuine refund/credit given its
+description: Amazon/Home Depot/Fitbit/Ui.com/Shop Hampton returns, "ATM Fee
+Rebate", "ADJ DISPUTE-xxxxx" chargeback credits, "Cruises" refunds (all 13
+raw rows negative in the source CC file, flipped positive by the documented
+credit-card sign-convention flip in loader.go:536-551 -- exactly the
+"belongs in the loader" mechanism ruling CB3-2026-09-02a describes), and a
+"Youtube Member" +1.99 that is the same-day reversal of a -1.99 charge 15
+days earlier in the same checking-account file (a real refund, not an
+unsigned export). Traced the credit-card-convention detector
+(usesCreditCardSignConvention, loader.go:583-608): it runs before the
+classifier and is exactly the "unsigned bank export" escape hatch the
+ruling says belongs in the loader, not per-chart. I could not construct a
+real CSV-through-dataloader counterexample where a positive-amount Outflow
+row is NOT a refund -- ruling CB3-2026-09-02a's premise holds against this
+real dataset. (I flag as a narrower, unresolved theoretical gap, not a
+counterexample: a mixed-convention bank file with ANY bank-only signal --
+e.g. one paycheck -- disqualifies the WHOLE file from the CC-convention
+flip per hasBankOnlySignal, so a single mis-signed row inside an otherwise-
+bank-convention file colliding with a NeverIncomeKeywords term like
+"subscription"/"fee"/"debit" would reach the classifier unflipped and stay
+positive without being a refund. No such row exists in this real ledger;
+this is a pre-existing classifier/loader property, not something CB3
+touched, and belongs on the backlog, not this verdict.)
+
+Surface enumeration (attack surface 3): grepped every math.Abs/Math.abs
+site across internal/ and web/. All non-CB3 hits are sort comparators
+(|ChangeAmount| ordering, |Amount| ordering), verdict.go's explicit-sign
+formatting, CategoryTotals/CategoryTrends (abs by design, confirmed
+byte-identical vs master by checker-tests' AST hash), range-level metrics
+totals (TotalExpenses/healthcareTotal/livingTotal -- CB1 precondition,
+unchanged), and unrelated tolerance/matching code (amazon matcher, anomaly
+z-scores, majorexpenses amount matching, recurring-payment cadence
+detection) that abs for comparison/dedup purposes, not for a rendered
+signed total. No unlisted per-transaction/per-period abs feeding a
+rendered figure found. PASS on this surface.
+
+Pre-existing (OUT OF SCOPE, not part of this FAIL): bucketMajorExpenses'
+`if total > 0` filter (handlers.go ~1300, unchanged by CB3's diff, confirmed
+via python3 difflib against master) silently drops any major-expense group
+whose signed net is <= 0 from the ENTIRE donut/list/drilldown surface --
+not just the modal. On the real ledger's default full-history window,
+"Travel & vacations" (net -159.95, the group the spec's own motivating
+example is about) is invisible on this surface in BOTH master and fix: it
+never appears as a wedge, never in "Other", never reachable by name via
+handleMajorExpenseDrilldown's `default` case. The spec's framing ("today
+the Travel group's modal DISAGREES with its own list row") does not hold
+against this real dataset's default view -- there is no list row to
+disagree with, because bucketMajorExpenses hides it first. (It does show
+correctly, net-negative, on the merchant chart, and does show correctly
+signed for narrower windows like March 2025 above, where its net happens to
+be reachable in the top-10-by-|change| trend list.) This is pre-existing
+code the worker did not touch; flagging for the backlog, not failing on it.
+
+====================================================================
+IN-SCOPE DEFECT (grounds for FAIL): CB3-D's signed previous can now be
+negative, and MajorExpenseTrends' own inline percent-change/direction
+classifier was never guarded for it -- produces self-contradictory output,
+reproduced on real production data
+====================================================================
+internal/services/insights/trends.go, MajorExpenseTrends (the exact
+function CB3-D modified), lines ~68-86 (previous==0 branch and the general
+`changePercent = ((current-previous)/previous)*100` branch) were NOT part
+of CB3-D's diff, but they are the direct DOWNSTREAM CONSUMER the spec's own
+text commands the worker to trace: "any division, threshold, or projection
+consuming these that misbehaves on negatives ... is a STOP-and-report
+unless a trivial guard preserves current behavior." Before CB3-D, `current`
+and `previous` were always >= 0 (abs-based), so this arithmetic could never
+divide by a negative or emit a negative-from-zero case; CB3-D's signing
+makes both newly capable of going negative, and this code has no |previous|
+guard analogous to the one CB3-E documents and pins for metrics.PercentChange
+in the SAME task.
+
+Two concrete, real-data-reproduced failure modes:
+
+1. previous == 0, current < 0 (a refund-dominant period following a
+   zero-baseline period): the code hard-codes changePercent=100,
+   direction="up" for ANY nonzero current when previous is 0 -- correct
+   pre-CB3 (current could only be positive), WRONG post-CB3-D. Reproduced
+   on the worker's OWN committed fixture
+   (TestAnalyzeMajorExpenseTrends_RefundDominantPeriodSignedNet,
+   trends_test.go:654): that test asserts CurrentAmount == -500 but never
+   checks Direction/ChangePercent. Actual values, confirmed by direct call:
+     current=-500 previous=0 change_amount=-500 change_percent=100 direction="up"
+   i.e. a $500 net REFUND is reported as "spending up 100%".
+
+2. previous < 0 (a normal period immediately following a refund-dominant
+   one): `(current-previous)/previous` divides by a negative number,
+   flipping the sign relative to change_amount. Reproduced on REAL
+   production ledger data, no synthetic fixture needed -- April 2025,
+   direct call to MajorExpenseTrends(active, defs, pins, Apr1, Apr30):
+     name="Travel & vacations" current=0 previous=-628 change_amount=628
+       change_percent=-100 direction="down"
+   change_amount says the group swung UP $628 (correct: no more cruise
+   refunds landing, so relative to March's $628 net credit the position
+   moved up by exactly that much) while change_percent and direction say
+   "down 100%" -- directly self-contradictory within the same struct, on
+   the household's own real ledger, one calendar month after the exact
+   cruise-refund cluster the spec's own ruling narrative is built around.
+   Synthetic isolation (single-category fixture, no other confounds):
+   previous=-500 (prior period net refund), current=200 (real $200 spend)
+   -> change_amount=700 (correct: up) but change_percent=-140,
+   direction="down" (backwards).
+
+This is the same defect class CB3-E exists to prevent (a signed-base
+percent-change dividing by the base's own sign instead of |base|) -- the
+worker applied that exact lesson to metrics.PercentChange (CB3-E, correctly
+pinned) but did not check trends.go's own separate, duplicate percent-change
+formula 250 lines away in the SAME FILE they were actively editing for
+CB3-D, despite the manifest's "Downstream trace notes" section covering
+monthProjection, burnRateChange's guard, verdict.go's BurnRateChange<0
+classification, and template rendering -- but not this. It surfaces on the
+`get_trends` MCP tool's `major_expense_trends.change_percent`/`direction`
+fields and any UI consumer of the same CategoryTrend struct (the get_trends
+docstring amendment CB3-b explicitly documents change_percent/direction as
+"SIGNED... negative means spending FELL... do not read either as a
+magnitude" -- this bug produces exactly a case where that stated contract
+is violated by the tool's own output, not just misread by a user).
+
+Commands (reproducible against scratchpad/cb3-run, no repo binary executed):
+  cd scratchpad/cb3-run
+  # (temporary probe, removed after use -- see process note above)
+  go test -run TestCB3NegPrevCheck -v ./internal/services/insights/
+    -> NEGPREV name="Airline" current=200 previous=-500 change_amount=700
+       change_percent=-140 direction="down"
+  go test -run TestCB3RealDataProbeInsights -v ./internal/services/insights/
+    -> PROBEI aprtrend name="Travel & vacations" current=0 previous=-628
+       change_amount=628 change_percent=-100 direction="down"
+
+====================================================================
+OTHER CRITERIA
+====================================================================
+- Oracle: independently re-ran scratchpad/cb3-run's .swarm/tier3/CB3/accept.sh
+  twice -> ORACLE PASS both times, matching oracle.1.log.
+- Full suite: `go test ./...` in scratchpad/cb3-run -> all 49 packages ok,
+  0 FAIL lines.
+- CB3-E: git diff shows PercentChange's body untouched (comment-only);
+  confirmed no code-token change.
+- Ruling CB3-2026-09-02a: TestBuildCumulativeChartData_PositiveAmountOutflows
+  retained (not deleted), same fixture, new expectations [5000,6500,7000] --
+  matches the ruling exactly.
+- Amendment CB3-b: get_trends docstring reworded to split category_trends
+  (POSITIVE, unchanged) from major_expense_trends (SIGNED, now documented);
+  category_trends computation (CategoryTotals) confirmed byte-identical to
+  master.
+
+VERDICT: FAIL. Independently found, real-data-reproduced defect (the
+MajorExpenseTrends change_percent/direction sign inversion on a negative
+previous, item 2 above) is distinct from checker-tests' criterion-3 finding
+(missing regression tests on 2 mutated sites) and is a live correctness bug,
+not a coverage gap: the tool emits an internally self-contradictory
+CategoryTrend row (positive change_amount, negative change_percent, "down"
+direction) on the household's actual ledger data one month after a
+refund-dominant period, in the exact function CB3-D modified, which the
+spec's own written downstream-trace requirement obligated the worker to
+catch. Recommend the fix mirror CB3-E's own precedent: divide by
+math.Abs(previous) in MajorExpenseTrends' changePercent calculation (and
+guard the previous==0/current<0 case's direction label), then add a
+committed regression test with previous<0 pinning both change_percent and
+direction, extending the oracle to match (both ends re-validated per the
+oracle-calibration rule).

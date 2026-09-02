@@ -1,0 +1,46 @@
+== A: constant is 5 ==
+== B (C1): window pin tests exist and the dataloader+mcpsvc suites pass ==
+ok  	budget2/internal/services/dataloader	1.444s
+ok  	budget2/internal/services/mcpsvc	0.045s
+ok  	budget2/internal/services/mcpsvc/admin	4.021s
+ok  	budget2/internal/services/mcpsvc/confirm	0.045s
+ok  	budget2/internal/services/mcpsvc/curate	0.417s
+ok  	budget2/internal/services/mcpsvc/ledger	0.364s
+ok  	budget2/internal/services/mcpsvc/plan	5.348s
+ok  	budget2/internal/services/mcpsvc/snapshot	0.004s
+ok  	budget2/internal/services/mcpsvc/spend	0.735s
+== C (C2): live-data probe — one new genuine pair, zero junk, decisions bind ==
+=== RUN   TestProbeND3_RealData
+2026/09/01 23:31:39 Found 13 CSV files in /tmp/TestProbeND3_RealData3169643121/001
+2026/09/01 23:31:39 Loaded 50 transactions from usaa-checking_2025-09-03_to_2025-12-30.csv (account usaa-checking)
+2026/09/01 23:31:39 Loaded 43 transactions from usaa-checking_2026-02-05_to_2026-05-22.csv (account usaa-checking)
+2026/09/01 23:31:39 Loaded 27 transactions from usaa-checking_2026-05-05_to_2026-07-13.csv (account usaa-checking)
+2026/09/01 23:31:39 Loaded 38 transactions from usaa-checking_2026-05-05_to_2026-08-12.csv (account usaa-checking)
+2026/09/01 23:31:39 Loaded 21 transactions from usaa-checking_2026-07-06_to_2026-08-27.csv (account usaa-checking)
+2026/09/01 23:31:39 Account usaa-credit-card is kind "credit"; forcing credit-card sign convention in usaa-credit_2025-02-04_to_2025-11-18.csv
+2026/09/01 23:31:39 Loaded 492 transactions from usaa-credit_2025-02-04_to_2025-11-18.csv (account usaa-credit-card)
+2026/09/01 23:31:39 Account usaa-credit-card is kind "credit"; forcing credit-card sign convention in usaa-credit_2025-09-01_to_2025-12-31.csv
+2026/09/01 23:31:39 Loaded 224 transactions from usaa-credit_2025-09-01_to_2025-12-31.csv (account usaa-credit-card)
+2026/09/01 23:31:39 Account usaa-credit-card is kind "credit"; forcing credit-card sign convention in usaa-credit_2025-11-02_to_2026-03-18.csv
+2026/09/01 23:31:39 Loaded 273 transactions from usaa-credit_2025-11-02_to_2026-03-18.csv (account usaa-credit-card)
+2026/09/01 23:31:39 Account usaa-credit-card is kind "credit"; forcing credit-card sign convention in usaa-credit_2026-03-01_to_2026-04-29.csv
+2026/09/01 23:31:39 Loaded 144 transactions from usaa-credit_2026-03-01_to_2026-04-29.csv (account usaa-credit-card)
+2026/09/01 23:31:39 Account usaa-credit-card is kind "credit"; forcing credit-card sign convention in usaa-credit_2026-04-18_to_2026-05-04.csv
+2026/09/01 23:31:39 Loaded 51 transactions from usaa-credit_2026-04-18_to_2026-05-04.csv (account usaa-credit-card)
+2026/09/01 23:31:39 Account usaa-credit-card is kind "credit"; forcing credit-card sign convention in usaa-credit_2026-05-01_to_2026-07-12.csv
+2026/09/01 23:31:39 Loaded 184 transactions from usaa-credit_2026-05-01_to_2026-07-12.csv (account usaa-credit-card)
+2026/09/01 23:31:39 Account usaa-credit-card is kind "credit"; forcing credit-card sign convention in usaa-credit_2026-05-01_to_2026-08-12.csv
+2026/09/01 23:31:39 Loaded 278 transactions from usaa-credit_2026-05-01_to_2026-08-12.csv (account usaa-credit-card)
+2026/09/01 23:31:39 Loaded 5 transactions from usaa-health_2026-06-11_to_2026-08-11.csv (account usaa-health-checking)
+2026/09/01 23:31:39 Removed 555 duplicate transactions
+2026/09/01 23:31:39 Classified 59 transactions as transfers (24 paired, 35 external)
+2026/09/01 23:31:39 Total transactions after processing: 1275
+    zz_probe_nd3_test.go:73: unresolved queue (1): [2025-11-16|30.81]
+    zz_probe_nd3_test.go:74: kept_winner=23 kept_both=1
+--- PASS: TestProbeND3_RealData (0.02s)
+PASS
+ok  	budget2/internal/services/dataloader	0.018s
+== D (C3): list_duplicates description states 5 days for the pending→posted shape ==
+== E (C4): no stale 3-day wording on the detector's own comments ==
+== F (C5): NEXT.md does not conflate recorded with bound ==
+ORACLE PASS

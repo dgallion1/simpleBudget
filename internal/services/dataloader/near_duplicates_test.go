@@ -269,10 +269,41 @@ func TestDetect_PendingPosted_CrossAccountNoMatch(t *testing.T) {
 
 func TestDetect_PendingPosted_WindowExceeded(t *testing.T) {
 	pending := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools USA", "Pending", "usaa-credit")
-	posted := makeTxAccount("2026-05-05", -188.98, "Harbor Freight Tools", "Posted", "usaa-credit") // 4 days
+	posted := makeTxAccount("2026-05-07", -188.98, "Harbor Freight Tools", "Posted", "usaa-credit") // 6 days
 	txns := []models.Transaction{pending, posted}
 	if got := detectNearDuplicatePairs(txns); len(got) != 0 {
 		t.Errorf("expected 0 pairs (window exceeded), got %d", len(got))
+	}
+}
+
+func TestDetect_PendingPosted_WindowBoundaryFiveDays(t *testing.T) {
+	// Pins the window at exactly 5: together with WindowExceeded (6 days →
+	// 0 pairs) this kills both the 4-day and 6-day mutants of
+	// pendingPostedWindowDays.
+	pending := makeTxAccount("2026-05-01", -188.98, "Harbor Freight Tools USA", "Pending", "usaa-credit")
+	posted := makeTxAccount("2026-05-06", -188.98, "Harbor Freight Tools", "Posted", "usaa-credit") // 5 days
+	txns := []models.Transaction{pending, posted}
+	if got := detectNearDuplicatePairs(txns); len(got) != 1 {
+		t.Errorf("expected 1 pair at the 5-day boundary, got %d", len(got))
+	}
+}
+
+func TestDetect_PendingPosted_FourDayLag_AmazonVerbatim(t *testing.T) {
+	// Verbatim 2025-11 live rows: a card capture that settles 4 days later
+	// (weekend + holiday lag). Outside the old 3-day window — the genuine
+	// settlement pair that motivated widening it to 5 (ND3).
+	pending := makeTxAccount("2025-11-16", -30.81, "AMAZON MKTPLACE PMTS", "Pending", "usaa-credit")
+	pending.OriginalDescription = "AMAZON MKTPLACE PMTS"
+	posted := makeTxAccount("2025-11-20", -30.81, "Amazon", "Posted", "usaa-credit")
+	posted.OriginalDescription = "AMAZON MKTPL*B02UM4581   Amzn.com/billWA"
+
+	txns := []models.Transaction{pending, posted}
+	pairs := detectNearDuplicatePairs(txns)
+	if len(pairs) != 1 {
+		t.Fatalf("expected 1 pair (4-day settlement lag), got %d", len(pairs))
+	}
+	if pairs[0].Key == "" {
+		t.Error("pair key should be non-empty")
 	}
 }
 

@@ -1,0 +1,185 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: ND3
+ATTEMPT: 2
+---
+Verification performed in the shared worktree
+/home/darrell/bin/ai/budget2/.claude/worktrees/nd3-window (reserved for this
+checker by the lead) for read-only/oracle runs; all mutations were done in a
+`cp -a` scratch copy at
+$SCRATCH/nd3copy. No budget2 binary or cmd/ main was built or run at any
+point (`go test` only); /home/darrell/bin/ai/budget2/data was read only by
+the probe, which copies files into t.TempDir().
+
+=========================================================================
+CRITERION 1 — Oracle passes at attempt 2; accept.sh executable; oracle.2.log
+              exists and ends in ORACLE PASS
+=========================================================================
+CMD: cd <worktree> && .swarm/tier3/ND3/accept.sh 2>&1 | tail -25
+OUT (last lines):
+      zz_probe_nd3_test.go:73: unresolved queue (1): [2025-11-16|30.81]
+      zz_probe_nd3_test.go:74: kept_winner=23 kept_both=1
+      --- PASS: TestProbeND3_RealData (0.02s)
+      ok    budget2/internal/services/dataloader   0.018s
+      == D (C3): list_duplicates description states 5 days for the pending→posted shape ==
+      == E (C4): no stale 3-day wording on the detector's own comments ==
+      == F (C5): NEXT.md does not conflate recorded with bound ==
+      ORACLE PASS
+
+CMD (true exit status, not a pipeline's): .swarm/tier3/ND3/accept.sh >log 2>&1; echo $?
+OUT: ACCEPT_SH_EXIT=0    and    tail -1 log => ORACLE PASS
+
+CMD: test -x .swarm/tier3/ND3/accept.sh
+OUT: IS EXECUTABLE  (ls -l: -rwxrwxr-x ... 3327 Sep 1 23:29 accept.sh)
+
+CMD: tail -1 .swarm/tier3/ND3/oracle.2.log | od -c
+OUT: 0000000  O R A C L E   P A S S \n      <- final line is exactly "ORACLE PASS"
+Attempt-numbered log present: .swarm/tier3/ND3/oracle.2.log (3.8K).
+
+CMD: ls -1 .swarm/tier3/ND3/
+OUT: accept.sh, oracle.2.log  -> NO report.md (the legacy blind-arm gate flip
+     is not triggered).
+
+CMD: ls internal/services/dataloader/zz_probe_nd3_test.go; git status --short
+OUT: "No such file or directory" — the oracle removed its staged probe; the
+     worktree's git status after my oracle runs is byte-identical to before
+     (5 modified files + the same untracked .swarm/ entries).
+
+--- Oracle checks proven NON-VACUOUS by mutation (scratch copy only) ---
+M1  pendingPostedWindowDays 5 -> 3 (i.e. master's value):
+    go test -run 'TestDetect_PendingPosted_(FourDayLag_AmazonVerbatim|WindowBoundaryFiveDays|WindowExceeded)' -v
+      --- FAIL: TestDetect_PendingPosted_WindowBoundaryFiveDays
+      --- FAIL: TestDetect_PendingPosted_FourDayLag_AmazonVerbatim
+      --- PASS: TestDetect_PendingPosted_WindowExceeded
+    accept.sh => ORACLE_EXIT_M1=1, ORACLE FAIL, with:
+      ND3 FAIL: pendingPostedWindowDays is not 5           (check A)
+      ND3 FAIL: 4-day Amazon test missing or failing       (check B)
+      ND3 FAIL: 5-day boundary test missing or failing     (check B)
+      ND3 FAIL: package suites                             (check B)
+      ND3 FAIL: live-data probe                            (check C)
+    and the probe failed for the RIGHT reason, not a harness error:
+      zz_probe_nd3_test.go:73: unresolved queue (0): []
+      zz_probe_nd3_test.go:83: unresolved queue must be exactly
+        [2025-11-16|30.81] ... got []
+    (This is the fail-end validation: at master's window the queue is empty,
+    confirming the widened window is what surfaces the Amazon pair.)
+M2  pendingPostedWindowDays 5 -> 6:
+      --- FAIL: TestDetect_PendingPosted_WindowExceeded
+      (boundary tests still PASS; probe still PASSes at 6, so the UPPER bound
+      is pinned by the unit test, not by live data — noted, and the unit test
+      does pin it.)
+    Together M1+M2 pin the constant at exactly 5.
+M3  duplicates.go description "5 days" -> "3 days" (line 83):
+      ND3 FAIL: list_duplicates description does not say 'within 5 days' ...
+      ND3 FAIL: stale 'within 3 days' still present in list_duplicates description
+      ORACLE_EXIT_M34=1
+    -> check D genuinely guards the exact surface checker-second FAILed on
+       at attempt 1.
+M4  NEXT.md reverted to "all 24 recorded decisions still bind" and the
+    six-unbound clause removed:
+      ND3 FAIL: NEXT.md still claims 'all 24 recorded decisions still bind' ...
+      ND3 FAIL: NEXT.md ND3 bullet missing the six-pre-existing-unbound clarification
+M5  reintroduced a stale "// window is 3 days" comment in near_duplicates.go:
+      ND3 FAIL: stale '3 days' text in near_duplicates.go   (check E)
+      ORACLE_EXIT_M5=1
+All six oracle checks (A-F) were shown to fail when the thing they guard is
+reverted. No vacuous check remains.
+
+=========================================================================
+CRITERION 2 — attempt-2 diff is scope-clean
+=========================================================================
+(a) duplicates.go — ONE line, one word:
+CMD: git --no-pager diff origin/master -- internal/services/mcpsvc/admin/duplicates.go
+OUT: 1 file changed, 1 insertion(+), 1 deletion(-)
+      @@ -80,7 +80,7 @@ func registerListDuplicates(s *mcp.Server, deps Deps) {
+      -                     "3 days -- and are waiting for the user to decide between them. This is the queue behind the " +
+      +                     "5 days -- and are waiting for the user to decide between them. This is the queue behind the " +
+     Surrounding context confirms the string reads "... a Pending charge that
+     re-appears Posted with a rewritten description within 5 days --".
+     Nothing else in the file changed.
+
+(b) NEXT.md wording:
+CMD: grep -c 'all 24 loader-bound decisions still bind' .swarm/NEXT.md   -> 1
+CMD: grep -c 'already unbound at the old window' .swarm/NEXT.md          -> 1
+     Full bullet (git diff) reads: "... all 24 loader-bound decisions still
+     bind identically (23 kept_winner + 1 kept_both ...); 6 of the 30
+     recorded entries were already unbound at the old window (pre-existing,
+     likely orphaned by the accounts-file StableID reassignment) and are
+     unchanged."  Recorded (30) vs bound (24) is no longer conflated.
+
+(c) Surface enumeration (split-classification hunt — I enumerated rather
+    than trusting the diff):
+CMD: grep -rn "pendingPostedWindowDays" --include='*.go' . | grep -v .swarm/
+OUT: only near_duplicates.go:20/28/220/233 and near_duplicates_test.go:282
+CMD: grep -rniE 'rewritten description' --include='*.go' --include='*.html'
+       --include='*.js' --include='*.md' . | grep -v '\.swarm/'
+OUT: near_duplicates.go:75,197 (no day count) and
+     mcpsvc/admin/duplicates.go:82 (the fixed one)
+CMD: grep -rniE 'days' web/ internal/handlers/ | grep -iE 'duplicat|pending|posted'
+OUT: (empty) — no web template or handler states the window.
+=> Exactly two production surfaces express the window fact; both now say 5.
+
+=========================================================================
+CRITERION 3 — full repo suite green
+=========================================================================
+CMD: go test -count=1 ./... ; echo $?
+OUT: GO_TEST_EXIT=0 ; grep -E 'FAIL' over the log returned nothing.
+     (-count=1 defeats the test cache.)
+
+=========================================================================
+CRITERION 4 — whole-diff scope
+=========================================================================
+CMD: git diff origin/master --stat
+OUT:
+     .swarm/NEXT.md                                  | 12 ++++++--
+     .swarm/ledger.tsv                               |  1 +
+     internal/services/dataloader/near_duplicates.go | 12 ++++----
+     internal/services/dataloader/near_duplicates_test.go | 33 +++++++++++-
+     internal/services/mcpsvc/admin/duplicates.go    |  2 +-
+     5 files changed, 50 insertions(+), 10 deletions(-)
+CMD: git status --porcelain | grep '^??' | grep -v '^?? \.swarm/'
+OUT: (empty) — every untracked file is under .swarm/ (flags, manifests,
+     tier3, verdicts) i.e. run evidence only.
+Manifest reconciliation: ND3.1.files = {near_duplicates.go,
+near_duplicates_test.go, .swarm/NEXT.md}; ND3.2.files =
+{internal/services/mcpsvc/admin/duplicates.go, .swarm/NEXT.md}; union plus
+the lead-owned .swarm/ledger.tsv row = exactly the 5 changed files. No
+unmanifested file changed.
+Critical globs: .swarm/critical.globs lists internal/services/dataloader/**
+(touched — this is precisely what escalated ND3 to Tier 3, permitted at that
+tier) and internal/services/mcpsvc/confirm/** (NOT touched;
+mcpsvc/admin/ is not a critical glob).
+
+=========================================================================
+TESTS THE WORKER ADDED — read and proven
+=========================================================================
+TestDetect_PendingPosted_FourDayLag_AmazonVerbatim: verbatim 2025-11 rows
+  (Pending "AMAZON MKTPLACE PMTS" 11-16 -30.81 vs Posted "Amazon" /
+  OriginalDescription "AMAZON MKTPL*B02UM4581   Amzn.com/billWA" 11-20,
+  same account) asserts len(pairs)==1 and a non-empty pair key. Killed by
+  M1 (window=3).
+TestDetect_PendingPosted_WindowBoundaryFiveDays: 05-01 -> 05-06 asserts
+  exactly 1 pair. Killed by M1.
+TestDetect_PendingPosted_WindowExceeded (modified 4->6 days): 05-01 ->
+  05-07 asserts 0 pairs. Killed by M2 (window=6).
+Each test asserts what its name claims, and each dies when the constant it
+guards is mutated in the corresponding direction.
+
+=========================================================================
+FINDINGS (not FAILs — outside the brief's criteria and outside the ND3
+manifest; for the lead's backlog)
+=========================================================================
+F1. .swarm/ND-RUN-SPEC.md (the PRIOR ND run's spec, not this task's
+    contract) still records the old fact at lines 56, 85 and 98:
+    "3-day window, same AccountID"; "Amazon $30.81 pending->posted at 4 days
+    (documents the 3-day window staying as-is) — all detect 0 pairs"; and
+    the out-of-scope bullet "sits outside the 3-day window by design".
+    CMD: grep -rniE '(3|three)[ -]days?' --include='*.md' .
+    It is a historical run record, not a user-facing surface and not a live
+    test (the full suite is green), so this is an observation, not a defect
+    in ND3's scope. The forward-looking record (.swarm/NEXT.md) IS correct.
+F2. The live-data probe does not distinguish window=5 from window=6 (M2:
+    the probe still passes at 6). The upper bound rests entirely on
+    TestDetect_PendingPosted_WindowExceeded, which does hold it. No action
+    needed; recorded so the oracle's coverage is not overstated.

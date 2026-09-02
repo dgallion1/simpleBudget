@@ -1,0 +1,84 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: ND3
+ATTEMPT: 2
+---
+Scope: attempt 2 addresses exactly the two surfaces flagged by attempt-1
+checkers (my own checker-second FAIL: stale "3 days" in
+internal/services/mcpsvc/admin/duplicates.go's list_duplicates MCP
+description; primary checker's FAIL: .swarm/NEXT.md ND3 bullet conflating
+"recorded" (30) with "bound" (24)). `git diff origin/master --stat` in the
+shared (read-only) worktree shows only: near_duplicates.go,
+near_duplicates_test.go, .swarm/ledger.tsv (all attempt-1, unchanged since —
+confirmed byte-identical to attempt-1 evidence), plus duplicates.go (+1/-1)
+and .swarm/NEXT.md (+9/-3) for attempt 2. No other file touched; no
+build/cmd/ main run.
+
+1. My attempt-1 finding — FIXED. `internal/services/mcpsvc/admin/duplicates.go`
+   line 83 changed from `"...rewritten description within " + "3 days --..."`
+   to `"...rewritten description within " + "5 days --..."`. Confirmed via
+   whitespace-squashed grep across the concatenated Go string literal
+   (`tr -s ' \t\n"+' ' ' | grep -o "within [0-9]* days"` → "within 7 days"
+   (x2, the two check-shape clauses, unchanged/correct) and "within 5 days"
+   (the pending→posted clause, fixed). No occurrence of "3 days" remains
+   anywhere in the file.
+
+2. Full-repo sweep for the stale fact (Go strings squashed across lines per
+   instructions): grepped internal/, .swarm/ (excluding historical
+   manifests), docs/, and all *.go/*.md/*.html/*.js for "3 day"/"three
+   day"/"3-day" and for pendingPostedWindowDays-adjacent phrasing. Found:
+   - internal/services/dataloader/near_duplicates.go: both doc comments
+     (const block + isSameDayReimportPair) now say "5 days" — attempt-1
+     work, unchanged.
+   - .swarm/manifests/*.md and .swarm/ND-RUN-SPEC.md: historical run
+     records describing prior states; not live/consumer-facing surfaces,
+     out of scope.
+   - .swarm/DP-RUN-SPEC.md line 33 still literally states
+     `pendingPostedWindowDays = 3` — this is a DP-run (earlier, unrelated
+     task) planning doc, predates the ND run entirely, was never touched
+     by either ND3 attempt, and is not named by either checker's attempt-1
+     finding. Flagging as a BACKLOG OBSERVATION only, not FAIL grounds:
+     this worker could not have "fixed" a pre-existing planning doc from a
+     different task family without exceeding ND3's scope, and it was
+     already stale before ND3 ran (describes the DP-run's own historical
+     window value, not a claim ND3 broke).
+   - docs/superpowers/... hits are unrelated "2-3 days of TDD" effort
+     estimates, not window-fact claims.
+   No live/consumer-facing surface (MCP tool descriptions, code comments,
+   templates, JS, README) states "3 days" for this shape.
+
+3. Oracle validity — verified in a private `cp -a` copy
+   (/tmp/claude-1000/nd3-check2, deleted after use; shared tree untouched).
+   Ran `.swarm/tier3/ND3/accept.sh` unmodified: ends `ORACLE PASS`, matching
+   the committed `oracle.2.log`. Then mutated ONLY the private copy —
+   reverted duplicates.go's "5 days" back to "3 days" via a single-line
+   perl substitution — and reran: checks D (C3) both assert lines correctly
+   fired (`does not say 'within 5 days'` AND `stale 'within 3 days' still
+   present`), final line `ORACLE FAIL`. This confirms the oracle actually
+   gates the fact it claims to, not just a proxy. Copy deleted afterward.
+
+4. NEXT.md bullet (primary checker's attempt-1 catch) — spot-checked
+   correctness even though not my own finding: now reads "all 24
+   loader-bound decisions still bind identically... 6 of the 30 recorded
+   entries were already unbound at the old window... and are unchanged" —
+   no longer conflates recorded (30) with bound (24), matches oracle check
+   F's assertions (rejects the old conflated phrase, requires the new
+   clarifying phrase).
+
+5. Core detector claim (identity-level decision rebinding, junk admission,
+   mutation-adequacy, full suite) — UNCHANGED since attempt 1, confirmed via
+   `git diff` showing near_duplicates.go/near_duplicates_test.go byte-
+   identical to attempt-1's diff; not re-litigated (already independently
+   verified with an original diagnostic probe at attempt 1 — see
+   ND3.1.checker-second.verdict items 1-4). `go test -count=1
+   ./internal/services/dataloader/ ./internal/services/mcpsvc/...` — all
+   packages ok (run in the private copy before mutation).
+
+Net: the FAIL I raised at attempt 1 is fully and precisely fixed, the
+oracle mechanically enforces it (mutation-tested both directions), the
+primary checker's companion fix (NEXT.md) is also correct, no new
+surfaces regressed, and the one remaining "3 days" hit in the repo
+(.swarm/DP-RUN-SPEC.md) is a different task's historical record, outside
+ND3's scope per the constitution's scope test (could this worker have
+fixed it without exceeding the task block? — no, it belongs to DP, not ND).

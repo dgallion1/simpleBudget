@@ -116,4 +116,33 @@ repo suite.
 
 ## Rulings
 
-(none yet)
+### ND3 (2026-09-01) — window bump 3→5, catch attribution (lean-verification experiment)
+Task ND3 (pendingPostedWindowDays 3→5, resurrecting the sole unsuperseded
+piece of abandoned DP3 commit 9c5b120) was lead-implemented at a
+misassigned Tier 2 and finished gate-accepted at Tier 3, attempt 2.
+Catches this task, with the MECHANISM that made each:
+
+1. **checker-second (adversarial lane), attempt 1 — FAIL, conceded.**
+   The list_duplicates MCP tool description
+   (internal/services/mcpsvc/admin/duplicates.go:83) still said the
+   pending→posted shape matches "within 3 days" — a third surface
+   stating the window fact, missed by the lead, invisible to a naive
+   grep because Go string concatenation splits "within " and "3 days"
+   across lines. Split-source documentation variant of the
+   split-classification defect class. Lead conceded without a panel.
+2. **gate escalate-scan — critical-glob tier bump.** The lead assigned
+   Tier 2; near_duplicates.go sits under the
+   internal/services/dataloader/** critical glob, so the scan flagged
+   ND3 → Tier 3. Lead tier-assignment error caught mechanically; the
+   task re-verified oracle-first at Tier 3.
+3. **checker-tests (primary lane), attempt 1 — non-blocking finding.**
+   The NEXT.md record claimed "all 24 recorded decisions still bind"
+   while data/duplicate_decisions.json holds 30 records, of which the
+   loader binds 24; 6 were already unbound at the old window (likely
+   orphaned by the accounts-file StableID reassignment — see backlog).
+   Wording fixed in attempt 2; oracle check F now pins the distinction.
+
+Redundant-generation caught nothing (there was none); every catch came
+from a checker lane or the mechanical gate — consistent with the
+2026-08-26 retro that motivated the lean experiment, but note BOTH
+lanes contributed distinct catches on this money-adjacent surface.

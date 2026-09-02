@@ -1,0 +1,170 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: ND3
+ATTEMPT: 1
+---
+Base: HEAD == origin/master == 42e7224 (branch fix/nd3-pending-posted-window);
+worker output is UNCOMMITTED, so all diffs below are working-tree diffs
+(`git log --oneline origin/master..HEAD` is empty, as expected).
+
+CONCURRENCY NOTE: a second checker shared this worktree. All mutating steps
+(constant mutation, baseline regeneration) were run in a private
+`cp -a` copy at /tmp/claude-1000/nd3-check-tests, since deleted. The one
+mutating step I ran in the shared tree — the sanctioned probe staging in
+criterion 3 — completed and was removed; the tree was verified restored:
+  $ git status --porcelain --untracked-files=all
+   M .swarm/NEXT.md
+   M .swarm/ledger.tsv
+   M internal/services/dataloader/near_duplicates.go
+   M internal/services/dataloader/near_duplicates_test.go
+  ?? .swarm/manifests/ND3.1.files
+  ?? .swarm/manifests/ND3.1.manifest.md
+  $ ls internal/services/dataloader/ | grep -i probe   -> no match (exit 1)
+No probe file, no stray edit remains.
+
+--------------------------------------------------------------------
+CRITERION 1 — constant = 5, rationale doc comment, no stale "3 days"  : PASS
+
+  $ grep -rn 'pendingPostedWindowDays' internal/
+  internal/services/dataloader/near_duplicates.go:28:	pendingPostedWindowDays = 5
+  internal/services/dataloader/near_duplicates.go:220:// window is 5 days (pendingPostedWindowDays, wider than the 1-day reimport
+  internal/services/dataloader/near_duplicates.go:233:	if dayDiff(a.Date, b.Date) > pendingPostedWindowDays {
+  internal/services/dataloader/near_duplicates_test.go:282:	// pendingPostedWindowDays.
+
+  $ grep -n '3 days' internal/services/dataloader/near_duplicates.go
+  0 matches (exit 1) — no stale window text anywhere in the file.
+
+  Repo-wide sweep for any other stale reference to this window:
+  $ grep -rn -- '3 days\|3-day' --include='*.go' --include='*.md' internal/ docs/ | grep -i 'pendingposted\|pending'
+  -> no match (exit 1).
+
+  Doc comment (near_duplicates.go:20-28) gives the live-data calibration
+  rationale verbatim:
+    "...bank settlement lag over a weekend or holiday stretches to 4
+     days on live data (Amazon Mktplace -30.81, Nov 2025), so 5 days
+     catches real settlements with a day of margin while the
+     status-split, same-account, and description-affinity guards keep
+     unrelated same-amount charges out."
+  isPendingPostedPair's own comment (line 220) reads "window is 5 days".
+
+--------------------------------------------------------------------
+CRITERION 2 — three tests pin the window at EXACTLY 5; package green  : PASS
+
+  $ go test -count=1 ./internal/services/dataloader/
+  ok  	budget2/internal/services/dataloader	1.373s
+
+  I READ the three tests (near_duplicates_test.go:269-306) and they assert
+  what their names claim:
+   - TestDetect_PendingPosted_FourDayLag_AmazonVerbatim: pending 2025-11-16
+     / posted 2025-11-20, -30.81, usaa-credit, asserts len(pairs)==1.
+   - TestDetect_PendingPosted_WindowBoundaryFiveDays: 2026-05-01 -> 2026-05-06
+     (5 days), asserts len==1.
+   - TestDetect_PendingPosted_WindowExceeded (modified from 4 to 6 days):
+     2026-05-01 -> 2026-05-07, asserts len==0.
+
+  The "Verbatim" claim is itself verified against the live CSVs — every
+  fixture field is byte-identical to the real rows:
+    CSV usaa-credit_2025-02-04_to_2025-11-18.csv:
+      ['2025-11-16','AMAZON MKTPLACE PMTS','AMAZON MKTPLACE PMTS','Category Pending','30.81','Pending']
+    CSV usaa-credit_2025-11-02_to_2026-03-18.csv:
+      ['2025-11-20','Amazon','AMAZON MKTPL*B02UM4581   Amzn.com/billWA','Shopping','30.81','Posted']
+    Python byte-compare of the posted OriginalDescription literal vs the CSV
+    value (3-space run preserved):  MATCH: True
+
+  MUTATION ADEQUACY (private copy, `-run TestDetect_PendingPosted`) — the
+  tests are proven to guard the constant, not merely to mention it:
+    window=4 -> --- FAIL: TestDetect_PendingPosted_WindowBoundaryFiveDays
+                    "expected 1 pair at the 5-day boundary, got 0"
+    window=6 -> --- FAIL: TestDetect_PendingPosted_WindowExceeded
+                    "expected 0 pairs (window exceeded), got 1"
+    window=3 (master's value) ->
+                --- FAIL: TestDetect_PendingPosted_WindowBoundaryFiveDays
+                --- FAIL: TestDetect_PendingPosted_FourDayLag_AmazonVerbatim
+                    "expected 1 pair (4-day settlement lag), got 0"
+  i.e. reverting the fix kills the new Amazon test. The constant is pinned
+  at exactly 5 from both sides. Scratch restored to 5 and verified
+  byte-identical to the worktree file (`cmp` -> no output); shared tree was
+  never mutated for this step.
+
+--------------------------------------------------------------------
+CRITERION 3 — live-data probe binds; exactly one new pair, zero junk   : PASS
+
+  $ cp .swarm/work/ND3/zz_probe_nd3_test.go internal/services/dataloader/ \
+    && go test -count=1 -run TestProbeND3 -v ./internal/services/dataloader/ \
+    && rm internal/services/dataloader/zz_probe_nd3_test.go
+      zz_probe_nd3_test.go:73: unresolved queue (1): [2025-11-16|30.81]
+      zz_probe_nd3_test.go:74: kept_winner=23 kept_both=1
+      --- PASS: TestProbeND3_RealData (0.02s)
+      ok  	budget2/internal/services/dataloader	0.023s     (exit 0)
+  Queue is EXACTLY [2025-11-16|30.81]; kept_winner=23, kept_both=1.
+
+  I did NOT take the worker's probe.baseline.log on trust — I regenerated
+  the baseline myself in the private copy by setting the constant back to 3:
+    window=3: "unresolved queue (0): []" / "kept_winner=23 kept_both=1"
+              --- FAIL (probe's own assertion, correctly: the pair is missing)
+    window=5: "unresolved queue (1): [2025-11-16|30.81]" / "kept_winner=23 kept_both=1"
+              --- PASS
+  This reproduces .swarm/work/ND3/probe.baseline.log exactly (empty queue,
+  23/1) and proves the delta: the widened window admits exactly ONE new
+  pair (the genuine Amazon settlement) and ZERO junk, with the bound
+  decision counts unchanged (23 kept_winner + 1 kept_both at both widths),
+  i.e. every decision that bound before still binds.
+
+  16+7=23 consistency (stale-figure note): the ND-era figure was 16
+  kept_winner + 1 kept_both; the on-disk decision file now holds 18
+  decisions stamped 2026-08-31 among 30 total, and the measured baseline at
+  the OLD window=3 is already 23/1. The growth therefore predates this
+  change and is attributable to the user's seven ND resolutions, not to
+  ND3: 16+7=23. Consistent — not a failure.
+
+  Live-data sensitivity (informational, private copy): the queue and
+  decision counts are identical at window=6 and window=7
+  ("unresolved queue (1): [2025-11-16|30.81]", 23/1), so 5 sits inside a
+  wide junk-free plateau on this dataset — the choice is conservative.
+
+--------------------------------------------------------------------
+CRITERION 4 — full repo suite green                                    : PASS
+
+  $ go test -count=1 ./...
+  FULLSUITE_EXIT=0
+  All 41 packages report "ok" (incl. budget2/internal/services/dataloader
+  1.903s, storage 75.235s, retirement 35.247s, handlers/whatif 17.696s).
+  $ go test -count=1 ./... | grep -cE '^(FAIL|---[[:space:]]FAIL)'  -> 0
+  No binary/cmd was built or run at any point; `go test` only.
+
+--------------------------------------------------------------------
+CRITERION 5 — scope                                                    : PASS
+
+  $ git diff origin/master --stat
+   .swarm/NEXT.md                                     | 10 +++++--
+   .swarm/ledger.tsv                                  |  1 +
+   internal/services/dataloader/near_duplicates.go    | 12 ++++----
+   .../services/dataloader/near_duplicates_test.go    | 33 +++++++++++++++++++++-
+   4 files changed, 47 insertions(+), 9 deletions(-)
+
+  $ git status --porcelain --untracked-files=all
+   (the four modified files above) + ?? .swarm/manifests/ND3.1.files
+                                    + ?? .swarm/manifests/ND3.1.manifest.md
+  $ git check-ignore -v .swarm/work/ND3/zz_probe_nd3_test.go
+   .gitignore:41:.swarm/work/   -> work/ND3/* is gitignored, hence invisible
+   to the diff and in-scope as a swarm record.
+
+  Source diff is confined to the constant (3->5), its doc comment, and the
+  isPendingPostedPair comment (7 insertions / 5 deletions, no logic change);
+  test diff adds the two new tests and moves WindowExceeded 4->6 days.
+  Reconciles with .swarm/manifests/ND3.1.files (near_duplicates.go,
+  near_duplicates_test.go, .swarm/NEXT.md) plus the ledger row and manifest,
+  all permitted by criterion 5. Nothing outside the authorized set.
+
+--------------------------------------------------------------------
+OBSERVATION (not a criterion failure, for the lead's backlog)
+
+.swarm/NEXT.md's new bullet says "all 24 recorded decisions still bind".
+The probe measures 24 BOUND decisions (23+1), but
+data/duplicate_decisions.json holds 30 records
+(`Counter({'kept_winner': 28, 'kept_both': 2})`), so six recorded decisions
+do not bind at either window width. The unbound six are identical before
+and after the change, so the criterion ("every recorded duplicate decision
+still binding") is met in the only sense the change can affect; the NEXT.md
+wording is merely imprecise about "recorded" vs "bound".

@@ -525,6 +525,12 @@ per user decision 2026-08-30).
   two generic merchant tokens ("Discover Card Payment" scheduled vs
   "Discover Card Minimum Payment" posted). v1 constants are hardcoded by
   spec §9 pending real false-positive data; kept_both exists for these.
-- Amazon pending→posted at 4 days (2025-11 $30.81) stays outside the
-  3-day window by design; revisit window width only with false-positive
-  data.
+- RESOLVED (ND3, 2026-09-01): Amazon pending→posted at 4 days (2025-11
+  $30.81) — pendingPostedWindowDays widened 3→5, resurrecting the one
+  piece of the abandoned DP3 commit (9c5b120) not superseded by ad63180.
+  Live-data probe (.swarm/work/ND3): the widened window surfaces exactly
+  this pair, zero junk pairs, all 24 loader-bound decisions still bind
+  identically (23 kept_winner + 1 kept_both — the ND-era 16+1 plus the
+  seven ND pairs since resolved); 6 of the 30 recorded entries were
+  already unbound at the old window (pre-existing, likely orphaned by
+  the accounts-file StableID reassignment) and are unchanged.

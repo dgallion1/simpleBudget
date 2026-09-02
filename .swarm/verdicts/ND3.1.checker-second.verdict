@@ -1,0 +1,80 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: ND3
+ATTEMPT: 1
+---
+All work performed in a private `cp -a` copy at /tmp/claude-1000/nd3-check-second
+(deleted after use); the shared worktree was never mutated (verified via
+`git status --short` before and after — identical, matching the author's
+4-file diff throughout).
+
+1. Junk-pair admission (REFUTED — no junk found). Wrote an independent
+   diagnostic test (zz_diag_test.go, not the author's probe) that dumps
+   every Resolved/KeptBoth/Unresolved pair's Left/Right date|description|
+   amount|Key to a file, run once at window=3 and once at window=5 against
+   a fresh copy of the live data dir. `diff` of the two dumps: baseline 24
+   lines, after 25 lines, with exactly ONE line added:
+   `UNRESOLVED left=2025-11-16|AMAZON MKTPLACE PMTS|-30.81
+   right=2025-11-20|Amazon|-30.81 key=63b0e9749caf8b59` — the genuine
+   Amazon settlement. Every other line is byte-identical between the two
+   runs. This independently corroborates the author's probe.baseline.log /
+   probe.after.log (23 kept_winner + 1 kept_both, queue empty → exactly
+   the Amazon pair).
+
+2. Decision binding (REFUTED — no rebind). The identity-level diff above is
+   the direct test for this: a rebind would show as one existing
+   RESOLVED/KEPTBOTH line disappearing and a different UNRESOLVED line
+   appearing at the SAME aggregate counts (23/1) the author's probe checks
+   only by count. Because the diff shows zero removed/modified lines and
+   exactly one addition, no decision silently rebound to a different
+   partner. Read loader.go's applyDuplicateDetection (lines 1053-1101):
+   `decisions[pair.Key]` lookup means a rebind would in fact demote the
+   old decision to `unresolved` and could not net to the same counts by
+   coincidence given the full-identity match confirmed above.
+
+3. Mutation adequacy (CONFIRMED). Ran the three committed window tests
+   with the constant forced to 4 and to 6 in the private copy:
+   - window=4: TestDetect_PendingPosted_WindowBoundaryFiveDays FAILS
+     (expects 1 pair at day 5, gets 0) — correctly kills the 4-mutant.
+   - window=6: TestDetect_PendingPosted_WindowExceeded FAILS (expects 0
+     pairs at day 6, gets 1) — correctly kills the 6-mutant.
+   Restored constant to 5 afterward; `git diff --stat` in the copy matched
+   the original 4-file/47-line diff exactly before deletion.
+
+4. Full suite: `go build ./...` clean; `go test ./...` → 49/49 packages ok,
+   zero FAIL lines — matches the author's fullsuite.log claim.
+
+5. Stale-wording sweep (CONFIRMED DEFECT — grounds for FAIL).
+   `internal/services/mcpsvc/admin/duplicates.go` line 83, the
+   `list_duplicates` MCP tool's user/agent-facing description, still
+   reads: "...a Pending charge that re-appears Posted with a rewritten
+   description within 3 days...". This is a plain string literal (not
+   derived from `pendingPostedWindowDays`), describing exactly the shape
+   ND3 widened, and it is now false: the window is 5 days, not 3. `git
+   log -p --follow` on the file confirms it already said "3 days" before
+   ND3 (so it was accurate pre-change) and ND3 did not touch this file
+   (`git diff origin/master --stat` lists only near_duplicates.go,
+   near_duplicates_test.go, .swarm/NEXT.md, .swarm/ledger.tsv). The
+   author's own manifest describes rewriting "two doc comments" in
+   near_duplicates.go for this exact fact but the sweep instructions for
+   this checker explicitly called out "MCP admin tools' descriptions of
+   the duplicate shapes ... for stale '3 day' wording shown to users" as
+   an attack surface for this task, precisely because it is the same
+   fact duplicated across a third surface that the diff did not update.
+   No test asserts this string (grep confirms no test file references it).
+   This is not a pre-existing/out-of-scope defect: it was accurate before
+   this change and became false as a direct, in-scope consequence of it —
+   the same "one fact must live in one place, updated everywhere it's
+   rendered" failure mode the constitution names for split-classification
+   and dual-formatter defects, applied here to a doc string instead of a
+   number. An LLM agent calling this tool (or a user reading its output
+   via an agent) will be told an incorrect detection window for the
+   feature this task just changed.
+
+Net: the core numeric/behavioral claims (genuine settlement detected, zero
+junk admitted, zero decisions broken, mutation-pinned constant, full suite
+green) all independently verify. The FAIL is narrow and specific to item 5:
+a stale "3 days" claim shipped to MCP tool consumers, made false by this
+task's own change, in the same file-class (doc-comment-describing-the-
+window) the author already edited twice elsewhere but missed here.

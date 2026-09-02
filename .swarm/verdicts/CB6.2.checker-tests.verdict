@@ -1,0 +1,124 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: CB6
+ATTEMPT: 2
+---
+Delta re-verification of attempt 2 against my own attempt-1 audit. All
+work done in cp -a copies (scratchpad/vt/a2 = current tree; scratchpad/vt/main
+= my byte-frozen attempt-1 snapshot). Only real-tree write is this verdict.
+The standing criteria 1-4 and 6 evidence is carried from
+.swarm/verdicts/CB6.1.checker-tests.verdict and is re-anchored below by
+byte-identity, not by assertion.
+
+D1 — THE DELTA IS EXACTLY THE ONE CLASS TOKEN AT THE TWO ROW SITES
+  CMD: python3 difflib over the six tracked files, attempt-1 snapshot vs
+       current tree (rtk falsifies plain diff, so difflib was used):
+    IDENTICAL  internal/services/insights/trends_test.go            sha256=3c8fcd94ba73
+    IDENTICAL  web/templates/components/kpi-month-detail.html       sha256=418ef41b175f
+    IDENTICAL  internal/templates/render_kpi_month_detail_test.go   sha256=58fdab6ca2b1
+    IDENTICAL  internal/handlers/dashboard/handlers.go              sha256=1ef54fd8270e
+    CHANGED    web/static/js/charts.js
+    CHANGED    .swarm/ledger.tsv  (attempt 1 -> 2, reason
+               attempt1-a11y-FAIL-dark-focus-ring-conceded)
+  => ZERO Go changes, ZERO template changes, ZERO test changes. Criteria
+     1-4 and 6 of CB6.1.checker-tests.verdict rest on those four files
+     and stand unchanged by byte-identity (sha256 match), not by
+     inspection.
+  CMD: diff -rq --exclude=.git vt/main vt/a2 -> the ONLY entries are
+       charts.js, .swarm/ledger.tsv, and the new .swarm bookkeeping files
+       (CB6.2.files, CB6.2.manifest.md, CB6.1.*.verdict). No other file
+       in the whole tree differs -- in particular
+       web/static/css/tailwind.css is byte-identical.
+  The charts.js hunk, both sites (breakdown ~line 238, credits ~line 308):
+    -  ... hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none ...
+    +  ... hover:bg-gray-50 dark:hover:bg-gray-900 focus:outline-none ...
+  plus an identical 8-line explanatory comment above each className
+  assignment (comments only, no executable delta). Both sites changed,
+  not one: `grep -c 'dark:hover:bg-gray-700' web/static/js/charts.js` -> 0;
+  `grep -c 'dark:hover:bg-gray-900'` -> 4 (2 class strings + 2 comments).
+  NOTE (fact, not a defect): the coordinator's brief described the delta as
+  "one class token at the two sites"; the actual delta is that token plus
+  the two comment blocks. Behavior-neutral, and the CB6.2 manifest's scope
+  note discloses it ("plus an explanatory comment at each site").
+
+D2 — GREEN AT ATTEMPT 2
+  CMD: go test -count=1 ./...  (uncached) -> exit 0; piped through
+       `grep -v "^ok"` it produced ZERO lines, i.e. every package in the
+       module reported `ok`.
+  CMD: make check -> exit 0, final line "✓ all checks passed"
+       (vet static vuln css-verify test, Makefile:84).
+  CMD: git status --porcelain web/static/css/ after make check -> empty,
+       so the recompiled tailwind.css is unchanged => the new class
+       introduces no new compiled utility. Corroborated independently:
+       `dark:hover:bg-gray-900` already exists in the tree at
+       web/templates/components/whatif/quick-adjust.html:10, and the
+       compiled rule `hover\:bg-gray-900:hover` is already present in
+       web/static/css/tailwind.css (grep -c -> 1).
+
+D3 — ROWS STILL RENDER AND STILL CLICK (executed, not assumed)
+  CMD: node (v24.12.0) + jsdom, evaluating the attempt-2
+       web/static/js/charts.js and calling both renderers:
+    chart-major-expense-breakdown header: "Other categories"
+    chart-major-expense-credits  header: "Net credits (refunds met or exceeded spending)"
+    each list: button count 2, every row tag=BUTTON type=button
+    class on every row: flex justify-between gap-4 py-0.5 w-full text-left
+      rounded hover:bg-gray-50 dark:hover:bg-gray-900 focus:outline-none
+      focus-visible:ring-2 focus-visible:ring-indigo-500
+      (the -900 token present at BOTH sites, confirming the edit landed in
+       the rendered DOM, not just the source)
+    clicking all four rows -> drilldown calls:
+      ["Vet <b>bills</b>","Pharmacy","Unmatched","Refunded Co"]
+    innerHTML contains raw "<b>bills</b>": false (textContent escaping intact)
+    click with openMajorExpenseDrilldown deleted threw: null (typeof guard holds)
+  Identical to the attempt-1 probe output except the class token.
+  HARNESS GAPS DISCLOSED: jsdom applies no CSS, so the focus-visible ring
+  and the hover background are verified only as class tokens, never as
+  computed styles; matchMedia / dark-mode is not evaluated. The 3:1
+  contrast arithmetic behind gray-700 -> gray-900 is checker-a11y's lane,
+  and I neither re-derived nor endorse those ratios.
+
+D4 — MANIFEST COVERS EXACTLY THIS DELTA
+  .swarm/manifests/CB6.2.files lists the same five paths as CB6.1.files
+  (trends_test.go, charts.js, kpi-month-detail.html,
+  render_kpi_month_detail_test.go, handlers.go) -- correct as the
+  cumulative attempt-2 file set, and consistent with D1: four of the five
+  are byte-identical to attempt 1.
+  .swarm/manifests/CB6.2.manifest.md states the content change is confined
+  to the two dark:hover:bg-gray-700 -> -900 edits in charts.js plus an
+  explanatory comment at each site, and that no other file was touched.
+  Both claims are confirmed by D1's difflib + full-tree diff.
+  Ledger row (cat -A): CB6<TAB>2<TAB>tests,a11y<TAB>assigned<TAB>2<TAB>worker-coder<TAB>attempt1-a11y-FAIL-dark-focus-ring-conceded
+  -- tier 2, checks tests,a11y, attempt bumped to 2.
+
+STANDING CRITERIA (carried from CB6.1.checker-tests.verdict, re-anchored
+by the sha256 identity in D1 and re-confirmed green by D2)
+  1. build / vet / full test / make check / css-verify -- re-run at
+     attempt 2, see D2. MET.
+  2. CB6-1 band-test non-vacuity (killed the +-0 mutant AND the +-10
+     mutant; fixtures proven bit-exactly on +-5 via a >= / <= mutant) --
+     trends_test.go and trends.go untouched since. MET.
+  3. CB6-4 render tests + template mutation + verbatim class pairs --
+     kpi-month-detail.html and render_kpi_month_detail_test.go
+     byte-identical since. MET.
+  4. CB6-5 sums before the sort, difflib-proven zero arithmetic change
+     (62 vs 62 code lines, multiset equal, one line moved) --
+     handlers.go byte-identical since (sha256=1ef54fd8270e). MET.
+  5. CB6-2/3 code-level containment -- re-verified in full at attempt 2,
+     see D1 and D3. MET.
+  6. Scope / no test removals (go test -list: master 3730 vs branch 3734,
+     zero removals, exactly 4 additions) / ledger row -- the three files
+     that determine the test list are byte-identical since; ledger row
+     re-read in D4. MET.
+
+OBSERVATIONS (unchanged from attempt 1, still open, none blocking)
+  O1. Buttons' accessible name is the full row text ("Pharmacy$40.00  1.1%",
+      "Unmatched-$12.34"), not the group name alone. checker-a11y's call.
+  O2. TestRenderKPIMonthDetail_ExpensesPositiveTotalIsRed and
+      _SavingsPositiveTotalIsGreen also pass against the un-fixed master
+      template; the CB6-4 behavior change is guarded solely by
+      _ExpensesNegativeTotalIsGreen, which does kill the mutation.
+  O3. CB6-5 ships no regression test (the spec's permitted option); the
+      summation order is guarded by comment and code position only.
+  O4. Pre-existing and unrelated to CB6: .swarm/flags/ND3.flag and
+      .swarm/flags/Z5.flag remain unresolved in the run directory.

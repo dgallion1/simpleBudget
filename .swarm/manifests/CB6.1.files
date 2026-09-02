@@ -1,0 +1,5 @@
+internal/services/insights/trends_test.go
+web/static/js/charts.js
+web/templates/components/kpi-month-detail.html
+internal/templates/render_kpi_month_detail_test.go
+internal/handlers/dashboard/handlers.go

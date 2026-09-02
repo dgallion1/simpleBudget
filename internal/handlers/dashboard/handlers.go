@@ -382,8 +382,17 @@ func handleMajorExpenseDrilldown(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sort.Slice(txns, func(i, j int) bool { return txns[i].Date.After(txns[j].Date) })
-
+	// Total/count/avg are computed BEFORE the display sort below (CB6-5):
+	// float64 addition is not associative, so summing the same signed
+	// amounts in a different order can differ in the last bit or two
+	// (observed divergence ~7e-15 on a many-transaction bucket). For the
+	// "default" (named-bucket) case, txns here IS bucketMajorExpenses'
+	// b.txns — still in match.Groups' match order, the exact order its
+	// bucket.total was summed in — so summing here first, before
+	// sort.Slice reorders the slice in place for date display, pins this
+	// Total to be bit-identical to that list-row figure. Summing after
+	// the sort would silently drift the modal's Total from the list row
+	// it's supposed to agree with.
 	var total float64
 	for _, t := range txns {
 		// Signed net (CB3-A): Total = -(sum of signed amounts), matching
@@ -398,6 +407,9 @@ func handleMajorExpenseDrilldown(w http.ResponseWriter, r *http.Request) {
 	if count > 0 {
 		avgAmount = total / float64(count)
 	}
+
+	// Display order only, applied AFTER the totals above are pinned.
+	sort.Slice(txns, func(i, j int) bool { return txns[i].Date.After(txns[j].Date) })
 
 	partialData := map[string]interface{}{
 		"Name":         name,

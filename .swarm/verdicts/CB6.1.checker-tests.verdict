@@ -1,0 +1,223 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: CB6
+ATTEMPT: 1
+---
+Verified in a cp -a copy of the worker tree
+(scratchpad/vt/main, from scratchpad/cb6-run, branch
+chore/cb6-cosmetic-closeout @ 0a697b1 + uncommitted work). Mutations were
+run in further throwaway copies with .git removed (vt/mut0, vt/mut10,
+vt/mutge, vt/muttpl, vt/probe, vt/masterbase). Only write to the real tree
+is this verdict file.
+
+CRITERION 1 — build / vet / full test / make check / css-verify
+  CMD: go build ./...                -> BUILD_EXIT=0, no output
+  CMD: go vet ./...                  -> VET_EXIT=0, no output
+  CMD: go test -count=1 ./...        -> TEST_EXIT=0; a second run piped
+       through `grep -v "^ok"` produced ZERO lines, i.e. every package in
+       the module reported `ok` (no FAIL, no "no test files").
+  CMD: make check                    -> CHECK_EXIT=0, final line
+       "✓ all checks passed" (target = vet static vuln css-verify test,
+       Makefile:84).
+  CMD: make css-verify               -> CSS_EXIT=0, final line
+       "tailwind.css is up to date"; `git status --porcelain` after the
+       run shows web/static/css/tailwind.css UNCHANGED, so the recompiled
+       stylesheet is byte-identical => zero new utility classes.
+  Independent corroboration of "no new utilities": every class token added
+  to charts.js already appears in other tree files
+  (grep -rl per token, excluding charts.js): w-full 34, text-left 22,
+  rounded 56, hover:bg-gray-50 12, dark:hover:bg-gray-700 11,
+  focus:outline-none 10, focus-visible:ring-2 2,
+  focus-visible:ring-indigo-500 2.
+  RESULT: MET.
+
+CRITERION 2 — CB6-1 band test non-vacuity (both edges, both directions)
+  Target: internal/services/insights/trends.go:99-107 (MajorExpenseTrends'
+  classifier; the second +-5 site at :171-173 belongs to CategoryTrends and
+  was correctly left alone).
+  a) Unmutated: `go test -count=1 ./internal/services/insights/ -run
+     TestAnalyzeMajorExpenseTrends_DirectionBandEdges -v` -> PASS, all 4
+     subtests PASS.
+  b) Mutant ±5 -> ±0 (`case changePercent > 0:` / `< -0:`), same command:
+     FAIL, exit 1.
+       "exactly +5 is stable, not up": Direction = "up"
+        (changePercent=5.0000000000), want "stable"  -- FAIL
+       "exactly -5 is stable, not down": Direction = "down"
+        (changePercent=-5.0000000000), want "stable" -- FAIL
+     => the test kills the ±0 mutation the spec named.
+  c) Mutant ±5 -> ±10 (`> 10:` / `< -10:`), same command: FAIL, exit 1.
+       "just past +5 is up": Direction = "stable"
+        (changePercent=5.0100000000), want "up"      -- FAIL
+       "just past -5 is down": Direction = "stable"
+        (changePercent=-5.0100000000), want "down"   -- FAIL
+     => the OUTER side of the band is pinned too; band pinned in both
+     directions, not just one.
+  d) Fixtures land EXACTLY on the edge (not merely inside it). Proof by a
+     third mutant `case changePercent >= 5:` / `<= -5:`: the two "exactly"
+     subtests FLIP to up/down and FAIL. Combined with (a) passing under the
+     strict `> 5` / `< -5`, that brackets changePercent to be neither >5
+     nor <5 -- i.e. bit-exactly +5.0 (and -5.0). Fixtures read from the
+     test source: prev=100 / cur=105 -> +5 stable; cur=105.01 -> up;
+     cur=95 -> -5 stable; cur=94.99 -> down, with the Jan-15 txn landing in
+     the derived previous window (prevStart Jan 4 .. prevEnd Jan 31).
+  e) No production-code change: `git diff 0a697b1 --stat` lists
+     trends_test.go only; trends.go is not in the diff.
+  RESULT: MET.
+
+CRITERION 3 — CB6-4 render tests + template mutation + class reuse
+  a) `go test -count=1 ./internal/templates/ -run
+     'TestRenderKPIMonthDetail_(ExpensesNegativeTotalIsGreen|ExpensesPositiveTotalIsRed|SavingsPositiveTotalIsGreen)' -v`
+     on the branch -> all 3 PASS (also green inside the full-suite run).
+  b) MUTATION: in vt/muttpl the tile expression at
+     web/templates/components/kpi-month-detail.html:49 was reverted
+     verbatim to master's unconditional
+     `{{if eq .Type "income"}}green...{{else}}red...{{end}}`.
+     Same test command -> FAIL:
+       --- FAIL: TestRenderKPIMonthDetail_ExpensesNegativeTotalIsGreen
+         "expected a negative expenses Total (net refund) to render green"
+     => the new test kills the reverted-to-red mutation. (The other two
+     subtests pass on master too -- they are characterization tests for the
+     unchanged positive/savings paths; noted as an observation, not a
+     defect: the spec's behavior change only concerns Total <= 0.)
+  c) Assertions are on the RENDERED string. A throwaway probe test
+     (vt/probe/internal/templates/zz_probe_test.go, discarded) rendering the
+     real embedded template printed the actual Total-tile <p>:
+       expenses -42.50 -> <p class="text-xl font-bold text-green-700 dark:text-green-400">-$42.50</p>
+       expenses  42.50 -> <p class="text-xl font-bold text-red-600 dark:text-red-400">$42.50</p>
+       expenses   0.00 -> <p class="... text-green-700 dark:text-green-400">$0.00</p>   (<=0 green)
+       living   -1.00  -> green;  healthcare 3.00 -> red;  income -9.00 -> green
+       savings 100.00 (IsSavings) -> green via the untouched line-30 tile
+     matching the spec's polarity contract for every kind.
+  d) Kind enumeration is exhaustive, not guessed: kpiTitles
+     (handlers.go:433-440) has exactly income, expenses, savings,
+     savings-rate, living, healthcare; handleKPIMonthDetail sets
+     isSavings = (savings || savings-rate) (handlers.go:751), so the
+     line-49 else-branch is reached only by income/expenses/living/
+     healthcare. No kind exists outside the spec's list.
+  e) Class pairs are verbatim the file's existing ones -- the rendered
+     output uses only `text-green-700 dark:text-green-400` and
+     `text-red-600 dark:text-red-400`, the same pairs already at lines 30
+     and 38; the diff is a 1-line change (+1/-1). No new utilities
+     (see criterion 1's css-verify evidence).
+  f) No fixture collision: kpiMonthDetailFixture's transactions are
+     -136.75 and 65, so the `class">$-amount` anchors (-$42.50 / $42.50 /
+     $100.00) can only match the Total tile.
+  RESULT: MET.
+
+CRITERION 4 — CB6-5 order pinned before sort, no arithmetic change
+  a) Reading internal/handlers/dashboard/handlers.go:377-421: the
+     total/count/avgAmount block now precedes `sort.Slice(txns, ...)`,
+     with a comment naming the rationale (float64 non-associativity,
+     ~7e-15 observed, txns IS bucketMajorExpenses' b.txns in match.Groups'
+     match order, so the modal Total is bit-identical to the list-row
+     figure) plus "Display order only, applied AFTER the totals above are
+     pinned." on the moved sort.
+  b) NO arithmetic change, proven mechanically (rtk falsifies plain diff,
+     so python3 difflib was used): both function bodies were extracted,
+     comments and blank lines stripped, and compared --
+       master code lines: 62   branch code lines: 62
+       multiset equal (same statements, order aside): True
+       unified diff: exactly ONE line moved --
+         - sort.Slice(txns, func(i, j int) bool { return txns[i].Date.After(txns[j].Date) })   (before `var total float64`)
+         + sort.Slice(txns, func(i, j int) bool { return txns[i].Date.After(txns[j].Date) })   (after the avgAmount block)
+     The `total -= t.Amount` loop body, `count := len(txns)` and
+     `avgAmount = total / float64(count)` are byte-identical.
+  c) Existing drilldown tests green:
+     `go test -count=1 ./internal/handlers/dashboard/ -run
+     'MajorExpenseDrilldown' -v` -> ok, 10/10 PASS, including
+     RefundInNormalGroupSignedNet, RefundDominantGroupSignedNet and
+     NetNegativeGroupResolvesSignedTotal.
+  d) The manifest's "comment + existing tests, no new regression test"
+     choice is the option CB6-5 explicitly permits, and it is stated.
+  RESULT: MET.
+
+CRITERION 5 — CB6-2/3 code-level containment (a11y is checker-a11y's lane)
+  a) `git diff 0a697b1 -- web/static/js/charts.js` (+35/-7) touches ONLY:
+     the new triggerMajorExpenseDrilldown helper, the two renderers'
+     JSDoc blocks, the two `row = document.createElement(...)` blocks, and
+     the credits header string. Nothing else in the file.
+  b) The donut wedge click path is UNCHANGED: charts.js:178-179 (the
+     inline `typeof openMajorExpenseDrilldown === 'function'` wedge guard)
+     appears only as unchanged context in the diff.
+  c) No other JS/HTML/Go consumer broke:
+     `grep -rn "renderMajorExpenseBreakdown|renderMajorExpenseCredits|
+      triggerMajorExpenseDrilldown|openMajorExpenseDrilldown"` and
+     `grep -rn "chart-major-expense-breakdown|chart-major-expense-credits"`
+     across *.js/*.html/*.go find only charts.js itself, dashboard.js:4
+     (the definition of openMajorExpenseDrilldown) and the two empty
+     container <div>s in web/templates/pages/dashboard.html:150-151. No
+     consumer selects on the rows being <div>.
+  d) EXECUTED, not traced. charts.js was evaluated in jsdom (node v24.12.0,
+     jsdom from /home/darrell/work/gantt/node_modules) and both renderers
+     were called with fixtures:
+       chart-major-expense-breakdown header: "Other categories"
+       chart-major-expense-credits  header: "Net credits (refunds met or exceeded spending)"   <= CB6-2 exact string
+       each list: button count 2, every row tag=BUTTON type=button
+       classes: flex justify-between gap-4 py-0.5 w-full text-left rounded
+                hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none
+                focus-visible:ring-2 focus-visible:ring-indigo-500
+       clicking all four rows -> drilldown calls:
+         ["Vet <b>bills</b>","Pharmacy","Unmatched","Refunded Co"]
+         (CB6-3: rolled-up rows AND credits rows drill, "Unmatched"
+          included, keyed by the row's own name)
+       innerHTML contains raw "<b>bills</b>": false (textContent
+         escaping preserved -- no innerHTML regression)
+       with openMajorExpenseDrilldown deleted, a click threw: null
+         (the typeof guard holds)
+     HARNESS GAPS DISCLOSED: jsdom applies no CSS, so the focus-visible
+     ring is verified only as a class token, not as a rendered focus
+     indicator; matchMedia / dark-mode is not evaluated; Tailwind classes
+     are not resolved to computed styles. Contrast, focus-visibility and
+     accessible-name adequacy are checker-a11y's call, not mine.
+  RESULT: MET (code-level).
+
+CRITERION 6 — scope, no test removals, ledger row
+  a) `git diff --stat 0a697b1 -- .` lists exactly 6 tracked files:
+     .swarm/ledger.tsv (+1), internal/handlers/dashboard/handlers.go,
+     internal/services/insights/trends_test.go,
+     internal/templates/render_kpi_month_detail_test.go,
+     web/static/js/charts.js,
+     web/templates/components/kpi-month-detail.html.
+     `git status --porcelain` adds only 3 untracked .swarm bookkeeping
+     files: .swarm/CB6-RUN-SPEC.md, .swarm/manifests/CB6.1.files,
+     .swarm/manifests/CB6.1.manifest.md. The 5 non-.swarm files are
+     exactly the 5 lines of .swarm/manifests/CB6.1.files.
+  b) No critical-glob touched: none of the 5 files matches any line of
+     .swarm/critical.globs (storage/**, dataloader/**,
+     retirement/engine/**, transfers/**, accounts/accounts.go,
+     mcpsvc/confirm/**).
+  c) `go test -list '.*' ./...` on a reconstructed master tree
+     (vt/masterbase: branch tree with all 5 tracked files replaced by
+     `git show 0a697b1:<file>`) vs the branch:
+       master=3730  branch=3734
+       REMOVED (comm -23): (none)
+       ADDED   (comm -13): TestAnalyzeMajorExpenseTrends_DirectionBandEdges,
+         TestRenderKPIMonthDetail_ExpensesNegativeTotalIsGreen,
+         TestRenderKPIMonthDetail_ExpensesPositiveTotalIsRed,
+         TestRenderKPIMonthDetail_SavingsPositiveTotalIsGreen
+     => zero test removals; exactly the 4 tests the manifest claims.
+  d) Ledger row (cat -A, .swarm/ledger.tsv:112):
+       CB6<TAB>2<TAB>tests,a11y<TAB>assigned<TAB>1<TAB>worker-coder<TAB>cosmetic-closeout-band-pin-wording-drillable-tile-sumorder
+     tier 2, checks tests,a11y, attempt 1 -- as specified.
+  RESULT: MET.
+
+OBSERVATIONS (not failures; for the lead's backlog / checker-a11y)
+  O1. The drill buttons' accessible name is the row's FULL visible text
+      ("Pharmacy$40.00  1.1%", "Unmatched-$12.34"), not the group name
+      alone. CB6-3 says "accessible name = the group name (visible text
+      suffices)", and the whole row is visible text, so this is within the
+      letter of the spec -- but it is checker-a11y's call whether the
+      concatenated amount is acceptable as the name.
+  O2. TestRenderKPIMonthDetail_ExpensesPositiveTotalIsRed and
+      TestRenderKPIMonthDetail_SavingsPositiveTotalIsGreen also pass
+      against the un-fixed master template (proven in vt/muttpl); they are
+      characterization tests. The behavior change is guarded solely by
+      ExpensesNegativeTotalIsGreen, which does kill the mutation.
+  O3. CB6-5 ships no regression test (the spec's permitted option). The
+      order-pinning is therefore guarded by a comment and by code position
+      only: a future edit moving the sort back above the loop would be
+      caught by no test.
+  O4. Pre-existing, unrelated to CB6: .swarm/flags/ND3.flag and
+      .swarm/flags/Z5.flag are present and unresolved in the run
+      directory. Reported for the lead; outside this task.

@@ -1,0 +1,171 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: CB6
+ATTEMPT: 1
+---
+SCOPE: audited against repo ACCESSIBILITY.md + WCAG 2.2 AA, per
+.swarm/CB6-RUN-SPEC.md items CB6-2/3/4, in the throwaway worktree at
+/tmp/claude-1000/-home-darrell-work-agents2--claude-worktrees-exciting-liskov-ffcb38/97442e67-c24e-4946-b613-f4d36f8d82cf/scratchpad/cb6-run
+(branch chore/cb6-cosmetic-closeout, base 0a697b1).
+
+METHOD
+1. `git diff 0a697b1 --stat` + `python3 difflib` per-file confirmed the ONLY
+   UI-bearing changes are web/static/js/charts.js (42 changed lines) and
+   web/templates/components/kpi-month-detail.html (exactly 1 changed line,
+   the Total-tile class expression). internal/handlers/dashboard/handlers.go
+   (CB6-5, sort-order-only, no rendered output difference) and
+   internal/services/insights/trends_test.go (CB6-1, test-only) are non-UI.
+2. `make css-verify` confirmed web/static/css/tailwind.css (the real,
+   committed, served build) is NOT stale against the new charts.js classes
+   (content scanner covers web/static/js/**/*.js).
+3. Ran `go test ./internal/templates/... -run TestRenderKPIMonthDetail -v`:
+   all 6 tests PASS, including the two new CB6-4 tests
+   (ExpensesNegativeTotalIsGreen / ExpensesPositiveTotalIsRed).
+4. Built a throwaway dump harness (internal/templates/dump_cb6_a11y_test.go,
+   deleted after use) calling the package's own renderKPIMonthDetail/
+   NewFromFS harness to render REAL bytes for every {kind × sign} the diff
+   touches (expenses ±, living ±, healthcare +, income, savings ±).
+   Confirmed via `grep -o 'text-xl font-bold...'` on the output that the
+   rendered class/text pairs match CB6-4's contract exactly for every kind
+   (see enumeration below) and that `.IsSavings` correctly routes
+   savings/savings-rate to the pre-existing, untouched branch — the new
+   `else if gt .Total 0.0` branch only ever fires for
+   income/expenses/living/healthcare, matching handleKPIMonthDetail's
+   switch (handlers.go:768-799, only cases: income, expenses, living,
+   healthcare, default→IsSavings). No kind exists outside this enumeration.
+5. Wrapped every rendered dump (plus a hand-traced fragment of the new
+   charts.js buttons, since executing page JS is the tests lane's job —
+   traced from the diff, not executed) in light and `class="dark"` pages
+   loading the real served web/static/css/tailwind.css, with proper
+   h1→h2→h3 nesting matching the real dashboard.html hierarchy (h1
+   "Dashboard" → h2 card headings → h3 modal title, base.html:170,
+   dashboard.html:3/144). Ran `npx @axe-core/cli` (4.13.0) on all 18 pages:
+   0 violations on all 18 after the harness's own placeholder h1/footer
+   were given real app-matching classes (the first pass's 2
+   color-contrast + 1 heading-order hits were my own unstyled scaffold
+   elements, not the audited fragment — confirmed by axe's reported
+   target selectors being exactly `h1`/`footer`/harness `h3` nesting, and
+   eliminated by fixing the harness, re-run confirmed clean).
+6. Computed WCAG relative-luminance contrast by hand (script inline) using
+   the exact hex values pulled from the served tailwind.css
+   (`grep -o '\.text-red-600{...}'` etc.) for every color pair the diff
+   touches, in both themes, including compound pseudo-states (:hover +
+   :focus-visible together) that axe's static DOM color-contrast rule does
+   not evaluate.
+
+FINDINGS
+
+1. FAIL — ACCESSIBILITY.md #7 ("UI component boundaries ... ≥ 3:1 against
+   background") and #12 ("all contrast requirements (7) hold in both
+   themes"); WCAG 2.2 SC 1.4.11 Non-text Contrast / 2.4.11 Focus Appearance.
+   web/static/js/charts.js:238,308 (both renderMajorExpenseBreakdown and
+   renderMajorExpenseCredits rows) give the new `<button>` rows
+   `hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none
+   focus-visible:ring-2 focus-visible:ring-indigo-500`. This is a NEW
+   idiom combination, not the pre-existing one: every other focusable
+   element in the app (e.g. this same file's sort-header buttons,
+   kpi-month-detail.html:69/77/85/93) pairs the ring with a hover TEXT
+   color change only (`hover:text-gray-900 dark:hover:text-gray-100`),
+   never a hover BACKGROUND change — `grep -rn
+   "dark:hover:bg-gray-700.*focus-visible:ring-indigo-500"` finds no
+   pre-existing occurrence anywhere else in web/templates or
+   web/static/js; the combination is unique to this diff.
+   Computed contrast (indigo-500 ring `rgb(99 102 241)`, confirmed via
+   `grep -o '\.focus-visible\\:ring-indigo-500...'
+   web/static/css/tailwind.css`, against the served hex values for
+   gray-700/`rgb(55 65 81)` confirmed the same way):
+     - ring vs card bg white (light, no hover):      4.47:1  PASS
+     - ring vs hover bg gray-50 (light + hover):      4.27:1  PASS
+     - ring vs card bg gray-800 (dark, no hover):      3.29:1  PASS (thin margin)
+     - ring vs hover bg gray-700 (dark + hover):       2.31:1  FAIL (< 3:1)
+   A keyboard user who tabs to a row while the mouse cursor is already
+   resting on it (a real, not merely theoretical, combined state — e.g.
+   shift-tab cycling back onto a row under the pointer) sees the focus
+   ring at 2.31:1 against its own hover background in dark mode, below
+   the constitution's unconditional 3:1 floor. The light-theme and
+   dark-theme no-hover states pass; only the dark hover+focus compound
+   state fails, so this is not a "control invisible in one theme" fail,
+   but it is a real, in-scope, newly-introduced contrast deficiency
+   attributable to this diff (not present in master — confirmed absent
+   from `git diff master` baseline classes).
+
+CONFIRMED PASSING (no failure)
+
+2. CB6-3 keyboard/semantics: rows are real `<button type="button">`
+   (charts.js:236,306), added via `document.createElement('button')` +
+   `.type = 'button'`, not div-onclick — satisfies ACCESSIBILITY.md #3.
+   `triggerMajorExpenseDrilldown` (charts.js:195-199) contains no keydown
+   handling and no `preventDefault`/`stopPropagation` — native button
+   Enter/Space activation is untouched, so keyboard operability
+   (ACCESSIBILITY.md #9) holds without a separate keydown handler. The
+   guard exactly mirrors the pre-existing donut wedge handler's
+   `typeof openMajorExpenseDrilldown === 'function'` check
+   (charts.js:178, unchanged) — same idiom, not a new failure mode.
+   No nested interactive elements: row buttons contain only `<span>`
+   phrasing content, valid per the HTML5 button content model.
+
+3. CB6-3 accessible name: the button's accessible name is computed from
+   ALL its text-content descendants (name span + amount text node [+
+   percent span for the breakdown rows]), e.g. "Streaming $42.50  3.2%,
+   button" — the visible group name is a strict subset of the accessible
+   name (WCAG 2.5.3 Label in Name is satisfied a fortiori). Including the
+   amount is not itself a violation; it is arguably more informative for
+   screen-reader users than name-only. No color-only signaling is
+   introduced by these rows (no color conveys the drilldown affordance).
+
+4. CB6-4 sign-aware Total tile: enumerated handleKPIMonthDetail's switch
+   (handlers.go:768-799) — only income / expenses / living / healthcare /
+   default(savings, savings-rate, via IsSavings) exist; no kind falls
+   outside the spec's enumeration, so nothing was guessed. Rendered-byte
+   verification (dump harness, see METHOD #4) confirms:
+     expenses  Total=+42.50 → text-red-600 dark:text-red-400,  "$42.50"
+     expenses  Total=-42.50 → text-green-700 dark:text-green-400, "-$42.50"
+     living    Total=+71.75 → red;  living Total=0.00 → green, "$0.00"
+     healthcare Total=+210.00 → red
+     income    Total=+3000.00 → green (unchanged)
+     savings   Total=+100.00 → green (untouched IsSavings branch, ~line 30)
+     savings   Total=-100.00 → red   (untouched IsSavings branch)
+   All match the CB6-4 contract exactly; the class pairs (red-600/red-400,
+   green-700/green-400) are the file's pre-existing, unmodified pairs
+   (row-level convention at ~line 107, IsSavings Net tile at ~line 30).
+   Contrast (hand-computed from served tailwind.css hex values, against
+   the Total tile's actual container background bg-gray-50/dark:bg-gray-900):
+     red-600 vs gray-50:    4.62:1  PASS (large text needs 3:1; text-xl
+     green-700 vs gray-50:  4.80:1  PASS  font-bold = 20px bold = "large")
+     red-400 vs gray-900:   6.41:1  PASS
+     green-400 vs gray-900: 10.18:1 PASS
+   axe-core found 0 color-contrast violations across all 8 rendered
+   kind/sign combinations in both themes (METHOD #5).
+
+5. CB6-4 color-only signaling: `formatMoney` (internal/templates/render.go:
+   425-453) prepends a literal "-" for negative values ("-$42.50"), so the
+   sign is textually present in every case the color differs, independent
+   of color — satisfies ACCESSIBILITY.md #8. (At exactly Total=$0.00 there
+   is no sign glyph, but zero is neither a debit nor a credit and carries
+   no color-alone ambiguity to resolve.)
+
+6. CB6-2 header wording: plain textContent change
+   ("Net credits (refunds met or exceeded spending)"), same node, no
+   markup/ARIA implications, no accessibility impact.
+
+7. Confirmed no other markup changed: `git diff 0a697b1 --stat` plus a
+   `python3 difflib` byte-diff of both touched files individually — the
+   handlers.go and trends_test.go changes are non-UI (sort-order-only
+   arithmetic path and a Go table test, respectively).
+
+OBSERVATIONS (non-blocking, per instructions not to FAIL on backlog items)
+
+- The KPI-month-detail modal's pre-existing issues (outer div `onclick`
+  backdrop-close, `id="kpi-modal"` with no `role="dialog"`, no focus trap,
+  no return-focus-on-close) are UNCHANGED by this diff
+  (`git diff 0a697b1` shows the modal wrapper untouched) — explicitly
+  called out as backlog/out-of-scope in the task and not counted here.
+- The major-expense-drilldown modal reached by the new buttons was not
+  itself part of this diff and was not re-audited beyond confirming
+  `openMajorExpenseDrilldown` (web/static/js/dashboard.js:4) is the same
+  pre-existing entry point the donut wedge already used.
+- Finding 1's severity is narrow (one compound pseudo-state, one theme);
+  the fix is mechanical (swap the new idiom's hover-background for the
+  existing hover-text-color idiom already used elsewhere in this same
+  file, or choose a hover background that keeps ≥3:1 with indigo-500).

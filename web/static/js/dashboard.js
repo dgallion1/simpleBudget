@@ -48,6 +48,99 @@ function closeKPIModal(event) {
     document.getElementById('kpi-detail-container').innerHTML = '';
 }
 
+// Column sorting for the KPI month-detail transaction table. Client-side and
+// typed: every row carries data-date (ISO), data-description, data-category
+// and data-amount (signed, 2dp), so the comparators never parse the rendered
+// strings. The modal markup is swapped in by htmx, so the click handler is
+// delegated off document and the sort state resets whenever a different table
+// node appears (re-open, or a drill into another month).
+(function () {
+    var state = { table: null, column: null, direction: 'asc' };
+
+    function cmp(a, b, column) {
+        var av = a.getAttribute('data-' + column) || '';
+        var bv = b.getAttribute('data-' + column) || '';
+        var dir = state.direction === 'asc' ? 1 : -1;
+        var r;
+        if (column === 'amount') {
+            // Signed: ascending puts the largest outflow first, which is what
+            // an expense list wants; descending puts the largest inflow first.
+            r = (parseFloat(av) || 0) - (parseFloat(bv) || 0);
+            if (r !== 0) r = r < 0 ? -1 : 1;
+        } else if (column === 'date') {
+            // ISO YYYY-MM-DD compares correctly as a string.
+            r = av === bv ? 0 : (av < bv ? -1 : 1);
+        } else {
+            r = av.localeCompare(bv, undefined, { sensitivity: 'base', numeric: true });
+        }
+        return r * dir;
+    }
+
+    function renderIndicators(table) {
+        table.querySelectorAll('th[data-sort]').forEach(function (th) {
+            var col = th.getAttribute('data-sort');
+            var arrow = th.querySelector('[data-sort-arrow]');
+            var btn = th.querySelector('[data-sort-btn]');
+            // Clear the arrow first so the label read below is the column
+            // name alone, not the name plus a stale glyph.
+            if (arrow) {
+                arrow.classList.add('hidden');
+                arrow.textContent = '';
+            }
+            var label = th.textContent.trim();
+            if (col === state.column) {
+                th.setAttribute('aria-sort', state.direction === 'asc' ? 'ascending' : 'descending');
+                if (btn) btn.setAttribute('aria-label', label + ', sorted ' +
+                    (state.direction === 'asc' ? 'ascending' : 'descending'));
+                if (arrow) {
+                    arrow.classList.remove('hidden');
+                    arrow.textContent = state.direction === 'asc' ? '\u25B2' : '\u25BC';
+                }
+            } else {
+                th.removeAttribute('aria-sort');
+                if (btn) btn.removeAttribute('aria-label');
+            }
+        });
+    }
+
+    function applySort(table) {
+        var tbody = table.querySelector('tbody');
+        if (!tbody) return;
+        var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-date]'));
+        if (rows.length === 0) return;
+        // Array.prototype.sort is stable in every evergreen browser, so the
+        // server's |amount|-descending order survives as the tiebreaker.
+        rows.sort(function (a, b) { return cmp(a, b, state.column); });
+        var frag = document.createDocumentFragment();
+        rows.forEach(function (r) { frag.appendChild(r); });
+        tbody.appendChild(frag);
+        renderIndicators(table);
+    }
+
+    // Capture phase: the modal's content div stops click propagation (so a
+    // click inside it never closes the overlay), which would starve a normal
+    // bubbling listener on document.
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest ? e.target.closest('[data-sort-btn]') : null;
+        if (!btn) return;
+        var table = btn.closest('#kpi-month-txn-table');
+        if (!table) return;
+        if (state.table !== table) {
+            state.table = table;
+            state.column = null;
+            state.direction = 'asc';
+        }
+        var column = btn.getAttribute('data-sort-btn');
+        if (state.column === column) {
+            state.direction = state.direction === 'asc' ? 'desc' : 'asc';
+        } else {
+            state.column = column;
+            state.direction = 'asc';
+        }
+        applySort(table);
+    }, true);
+})();
+
 function exportKPIToCSV(kpiType) {
     const form = document.getElementById('date-filter-form');
     const start = form.querySelector('input[name="start"]').value;

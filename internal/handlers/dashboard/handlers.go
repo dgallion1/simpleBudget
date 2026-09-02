@@ -519,9 +519,17 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 			incAmt = inc.SumAmount()
 		}
 
+		// CB2 fix: expAmt is the SIGNED negated net of the month's outflow
+		// bucket, matching the classifiedMonthlyTotals kinds below (ruling
+		// KD-2026-08-30d). An ordinary month nets outflow-negative, so
+		// -SumAmount() is positive expense, same as the old math.Abs. A
+		// REFUND-DOMINANT month -- one whose outflow-typed rows net
+		// POSITIVE -- shows as a NEGATIVE expense (a credit); math.Abs
+		// flipped this sign. DERIVED savings/rate below need no change:
+		// they derive correctly once expAmt is signed.
 		expAmt := 0.0
 		if exp, ok := monthlyOutflows[m]; ok {
-			expAmt = math.Abs(exp.SumAmount())
+			expAmt = -exp.SumAmount()
 		}
 
 		savings := incAmt - expAmt
@@ -722,12 +730,14 @@ func handleKPIMonthDetail(w http.ResponseWriter, r *http.Request) {
 	monthIncome := transactionsInMonth(filtered.FilterByType(models.Income), month)
 	monthOutflow := transactionsInMonth(filtered.FilterByType(models.Outflow), month)
 
-	// The tiles must reproduce the month row's figure exactly, so they are
-	// summed the way handleKPIDetail sums them: signed, then made absolute.
-	// A refund rides in the ledger as a positive-amount outflow, and netting
-	// it out here is what keeps the two screens agreeing.
+	// CB2 fix (amendment CB2-c, site 8): expenseTotal is the SIGNED negated
+	// net of the month's outflow rows, matching the KD-signed living/
+	// healthcare kinds in this SAME handler (ruling KD-2026-08-30d, "Living
+	// Spent"/"Healthcare Spent" below) and handleKPIDetail's now-signed
+	// expAmt. A refund-dominant month renders negative (a credit), keeping
+	// this tile and the parent modal row agreeing exactly.
 	incomeTotal := sumSigned(monthIncome)
-	expenseTotal := math.Abs(sumSigned(monthOutflow))
+	expenseTotal := -sumSigned(monthOutflow)
 
 	var txns []models.Transaction
 	var total float64
@@ -888,9 +898,14 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 			incAmt = inc.SumAmount()
 		}
 
+		// CB2 fix: expAmt is the SIGNED negated net of the month's outflow
+		// bucket, matching monthlyLivingTotals/monthlyHealthcareTotals below
+		// (ruling KD-2026-08-30d). A REFUND-DOMINANT month shows as a
+		// NEGATIVE expense (a credit) in the CSV; math.Abs flipped this
+		// sign. DERIVED savings/rate below need no change.
 		expAmt := 0.0
 		if exp, ok := monthlyOutflows[m]; ok {
-			expAmt = math.Abs(exp.SumAmount())
+			expAmt = -exp.SumAmount()
 		}
 
 		savings := incAmt - expAmt
@@ -1048,18 +1063,25 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 
 	var running float64
 	for _, m := range months {
+		// CB2 fix: hcAmt is the SIGNED negated net of the month's
+		// healthcare bucket, not math.Abs. An ordinary month nets
+		// outflow-negative, so -SumAmount() is positive spend, same as the
+		// old math.Abs. A REFUND-DOMINANT month -- one whose outflow-typed
+		// rows net POSITIVE -- shows as a NEGATIVE bar (a credit); math.Abs
+		// flipped this sign.
 		hcAmt := 0.0
 		if hc, ok := monthlyHealthcare[m]; ok {
-			hcAmt = math.Abs(hc.SumAmount())
+			hcAmt = -hc.SumAmount()
 		}
-		// Set exclusion (ruling SY-2026-08-30d): math.Abs runs directly on
-		// livingOutflows' month bucket (HI and flagged rows already
-		// removed), never an arithmetic subtraction from the month's raw
-		// outflow total -- that shape breaks whenever the REMAINDER itself
-		// nets a refund, independent of the flagged group's own sign.
+		// Set exclusion (ruling SY-2026-08-30d; signed per CB2): the
+		// signed negated net runs directly on livingOutflows' month bucket
+		// (HI and flagged rows already removed), never an arithmetic
+		// subtraction from the month's raw outflow total -- that shape
+		// breaks whenever the REMAINDER itself nets a refund, independent
+		// of the flagged group's own sign.
 		livingMonth := 0.0
 		if lo, ok := monthlyLiving[m]; ok {
-			livingMonth = math.Abs(lo.SumAmount())
+			livingMonth = -lo.SumAmount()
 		}
 
 		livingValues = append(livingValues, livingMonth)
@@ -1377,16 +1399,24 @@ func buildSpendingTrendChartData(ts *models.TransactionSet) map[string]interface
 	outflows := ts.FilterByType(models.Outflow)
 	monthlyOutflowSets := outflows.GroupByMonth()
 
-	// Build sorted month list and per-month absolute totals
+	// Build sorted month list and per-month signed negated totals
 	var months []string
 	for m := range monthlyOutflowSets {
 		months = append(months, m)
 	}
 	sort.Strings(months)
 
+	// CB2 fix (amendment CB2-c, site 9): the SIGNED negated net of each
+	// month's outflow bucket, not math.Abs. A refund-dominant month is
+	// negative (a credit), so the %-change below can swing PAST zero into
+	// negative territory instead of being clamped to a smaller positive
+	// decrease. The `prev > 0` guard just below is UNCHANGED: a
+	// refund-dominant month used as the BASE (prev <= 0) still renders 0%
+	// -- an honest degradation, since "percent change off a credit" has no
+	// sensible sign convention, not a defect this fix addresses.
 	monthlyTotals := make(map[string]float64, len(months))
 	for _, m := range months {
-		monthlyTotals[m] = math.Abs(monthlyOutflowSets[m].SumAmount())
+		monthlyTotals[m] = -monthlyOutflowSets[m].SumAmount()
 	}
 
 	// Need at least 2 months to show change

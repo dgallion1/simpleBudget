@@ -1,0 +1,144 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: CB2
+ATTEMPT: 1
+---
+Scope confirmed: nine sites in internal/services/metrics/metrics.go (3) and
+internal/handlers/dashboard/handlers.go (6), math.Abs(<month bucket>) ->
+-<month bucket> (signed negated net), per CB2-RUN-SPEC.md + amendments
+CB2-2026-09-02a and CB2-c. `git diff 6b7c840` (base) confirms exactly the
+nine sites changed, matching the manifest line-for-line; no stray edits.
+
+1. REAL-DATA DIFFERENTIAL (core check). Built master 6b7c840
+   (`git archive 6b7c840`) and the fixed tree (cp -a, .git stripped) side
+   by side. Injected an IDENTICAL probe test
+   (zz_cb2_realdata_probe_test.go, not part of either tree's tracked
+   diff) into both, pointed at two independent `cp -a` copies of
+   /home/darrell/bin/ai/budget2/data (read-only source; copies discarded
+   after the run, source never touched). Probe drove, through the real
+   HTTP handlers and the real chart builders, ALL six affected surfaces
+   across the FULL real date range (2025-02 .. 2026-08):
+     - metrics.Calculate's five trend arrays (income/expenses/savings/
+       living/healthcare) for every month,
+     - buildBudgetVsActualChartData's Living/Healthcare bar traces,
+     - handleKPIDetail's monthly stats for all six kpiTypes,
+     - handleKPIExport's CSV body for all six kpiTypes,
+     - handleKPIMonthDetail's tile Total for expenses/living/healthcare,
+       every month in range,
+     - buildSpendingTrendChartData's MoM %-change series.
+   `diff` of the two sorted, tag-filtered outputs (298 lines each) is
+   BYTE-IDENTICAL (exit 0). This is not assumed: I independently checked
+   every TREND/BARTRACE/KPI-MONTH/MONTHDETAIL line in the fixed output
+   for a negative expenses/living/healthcare figure and found NONE (only
+   the already-signed SavingsTrend field and the always-signed MoM
+   %-change series are negative anywhere) -- confirming zero
+   refund-dominant months exist in ANY of the nine sites' bucket
+   definitions on the real ledger, not just the combined bucket CB1
+   checked. The zero-diff is therefore proven, not assumed, per the
+   spec's acceptance requirement.
+
+2. SURFACE ENUMERATION. Grepped math.Abs across
+   internal/services/metrics/metrics.go and
+   internal/handlers/dashboard/handlers.go (non-comment lines only).
+   Exactly 9 occurrences remain, and all 9 are the manifest's documented
+   classified-out set: metrics.go:378/406/436 (range-level totals,
+   spec's own precondition exclusion), metrics.go:729 (PercentChange's
+   |previous| denominator, listed CB3 candidate), handlers.go:383 (modal
+   per-txn abs), handlers.go:783 (sort comparator, not a rendered
+   value), handlers.go:1492 (merchantTotals per-txn abs),
+   handlers.go:1564/1566 (cash-flow day walk per-txn abs). No unlisted
+   month-bucket abs site found in either file -- the nine-site
+   enumeration is complete for the two in-scope packages. Also checked
+   web/static/js/charts.js for Math.abs / clamping / floor-at-zero /
+   log-scale on the trend or bar values: none found; renderSparkline's
+   non-balance, non-target branch (used for expenses/living/healthcare
+   sparklines) plots `y: values` directly with no transform, consistent
+   with the manifest's claim.
+   FINDING (out of CB2's written scope, reported for the backlog, not a
+   FAIL): internal/services/insights/trends.go has three math.Abs sites
+   (lines ~287, ~295, ~305) computing a spending-projection dailyAvg/
+   spentSoFar from math.Abs(outflows.SumAmount()) over a period bucket --
+   a refund-dominant period would inflate the projected spend, the same
+   defect shape as CB1/CB2's class. This is a different package/feature
+   (Insights recommendations) that neither CB1 nor CB2's Phase-0
+   enumeration covered ("ALL math.Abs in both packages" = metrics +
+   dashboard handlers only), so it is outside this task's written scope.
+
+3. EDGE ATTACKS.
+   - Zero-outflow month: all nine sites correctly default to 0.0 via
+     `if ok` map-lookup guards (metrics.go, handlers.go sites 1-4, 6-7)
+     or unconditional -sumSigned() of an empty slice (sites 8-9, and the
+     pre-existing living/healthcare kinds in handleKPIMonthDetail). The
+     unconditional-negation sites produce IEEE754 negative zero
+     (observed as "-0.0000" in the real-data probe for healthcare months
+     with zero healthcare transactions) -- but this is IDENTICAL in
+     master and the fixed tree (confirmed via the real-data diff, which
+     is byte-for-byte zero), i.e. it is a pre-existing, unrelated
+     cosmetic artifact of the ALREADY-SHIPPED KD-signed living/
+     healthcare code path (unchanged by CB2), not a CB2 regression.
+     Checked formatMoney (templates/render.go): `negative := v < 0` is
+     false for -0.0 (IEEE754 -0.0 < 0.0 is false), so the template layer
+     already neutralizes this to "$0.00", not "-$0.00" -- no user-visible
+     defect.
+   - %-change chart, refund month as BASE: hand-verified both ends by
+     temporarily reverting site 9 to math.Abs in a throwaway copy (not
+     the real tree) -- at the abs end,
+     TestBuildSpendingTrendChartData_CB2_RefundDominantBaseStaysZeroGuard
+     fails (157.14% instead of the required 0%), proving the guard test
+     is a real discriminator, not vacuous, and that the `prev > 0` guard
+     is correctly left untouched by the fix. Reverted the throwaway edit
+     immediately after (file diffed identical to original, confirmed).
+   - CSV sign formatting: handleKPIExport writes raw
+     `fmt.Sprintf("%.2f", expAmt)` with NO "$" prefix in the CSV body at
+     all, so a negative value renders as plain "-730.00" -- no "$-"
+     artifact is possible in this surface (formatMoney's "-$" prefix
+     path is template-only, not used by CSV export).
+   - Sparkline/bar negative rendering: charts.js's renderSparkline
+     (non-balance/non-target path used for expenses/living/healthcare)
+     and the Plotly bar traces apply no clamp/floor/log-scale; axes are
+     invisible and auto-scaled either way (per manifest, unverified
+     visually but no code path contradicts it).
+
+4. CONSISTENCY. Wrote and ran a standalone probe against the real HTTP
+   surface with the existing cb2KPIHTTPRows() refund-dominant fixture
+   (Feb net +730): GET /dashboard/kpi/expenses/month/2025-02 returns
+   Total=-730.0000, and -1*(sum of the returned Transactions[].amount
+   values) = -730.0000 exactly -- the tile equals the negated sum of its
+   own modal rows, extending the KD "Total = sum of rows" contract to
+   the newly-signed expenses kind. Verified computationally, not by
+   inspection.
+   Observation (not a FAIL, pre-existing/unchanged behavior extended
+   uniformly, not "keyed to" a trend threshold in the sense the spec's
+   out-of-scope note means): web/templates/components/kpi-month-detail.html
+   line 49 colors the non-income Total tile unconditionally red
+   regardless of sign (unlike the Net tile at line 30, which is
+   sign-aware). This means a refund-dominant "Total Spent" would render
+   a negative dollar figure in red rather than green. This coloring is
+   IDENTICAL to the already-shipped living/healthcare behavior under the
+   KD ruling (predates CB2; CB2 site 8 merely extends the same contract
+   to "expenses"), and is currently inert since zero refund-dominant
+   months exist in the real ledger (confirmed above). Reported for the
+   backlog, not grounds for FAIL.
+
+Verification commands run:
+- `git diff 6b7c840 --stat` / `git diff 6b7c840 -- <files>` (scope match)
+- `bash .swarm/tier3/CB2/accept.sh` -> ORACLE PASS
+- `go build ./...`, `go vet ./...` -> clean
+- `go test -count=1 ./...` -> all packages ok (full suite, cp -a copy)
+- Real-data differential: `go test -count=1 -run TestCB2RealDataProbe -v
+  ./internal/handlers/dashboard/` on master 6b7c840 (git archive) and the
+  fixed tree, each against its own `cp -a` copy of
+  /home/darrell/bin/ai/budget2/data; `diff` of sorted, tag-filtered
+  output -> exit 0 (byte-identical, 298/298 lines).
+- Consistency probe: `go test -count=1 -run
+  TestCB2Adversarial_TileEqualsSumOfRowsNegated -v
+  ./internal/handlers/dashboard/` -> PASS, Total=-730.0000 == -sum(rows).
+- Both-ends check on site 9's guard test: reverted to math.Abs in a
+  throwaway copy, `go test -run TestBuildSpendingTrendChartData_CB2 -v`
+  -> both new tests fail as predicted; reverted, confirmed diff-clean.
+
+No unexplained diff found anywhere. No in-scope defect found. Two
+observations recorded for the backlog (insights/trends.go's same-class
+math.Abs sites; kpi-month-detail.html's sign-blind red coloring for
+non-income tiles) -- both outside CB2's written scope per rule 5.

@@ -1,0 +1,277 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: CB2
+ATTEMPT: 1
+---
+Verification method: every command below was run in a `cp -a` copy of the worker
+tree, never in the worker tree itself. Copies:
+  .../scratchpad/chk/verify     — .git pointer intact, read-only go/make/oracle runs
+  .../scratchpad/chk/mut        — .git REMOVED, per-site mutation probes
+  .../scratchpad/chk/masterfull — the 5 changed files restored from origin/master
+                                  and the 4 new test files deleted (test-list baseline)
+  .../scratchpad/chk/master/    — `git show origin/master:<f>` extracts of the 5 files
+Read-only `git diff` / `git status` / `git show` were run in the worker tree.
+All mutation copies restored + discarded. No budget2 binary was ever executed.
+The ONLY write to the worker tree is this verdict file.
+Base: origin/master = 6b7c840753d92934485e9e0096d7b69bc27a9a69, branch
+fix/cb2-sibling-abs (worker output is UNCOMMITTED; all diffs are working-tree
+diffs against origin/master).
+NOTE on tooling: the shell's `git diff` and `diff` output is rewritten by an
+`rtk` hook and reported "Files are identical" for a tree that demonstrably
+differs. Every diff cited below was therefore produced with python3
+difflib/direct file reads, not with `diff`/`git diff`. Anyone re-running these
+checks with plain `diff` will get a misleading answer.
+
+============================================================================
+CRITERION 1 — build / vet / package tests / full suite / make check
+============================================================================
+PASS.
+  $ (chk/verify) go build ./...            -> no output, exit 0
+  $ (chk/verify) go vet ./...              -> no output, exit 0
+  $ (chk/verify) go test -count=1 ./internal/services/metrics/ ./internal/handlers/dashboard/
+      ok  budget2/internal/services/metrics    0.004s
+      ok  budget2/internal/handlers/dashboard  0.698s      exit 0
+  $ (chk/verify) go test -count=1 ./...     -> every package `ok`; a second run
+      piped through `grep -v '^ok'` printed ZERO lines (no skip/fail/no-test
+      lines hidden by the tail). exit 0.
+  $ (chk/verify) make check                 -> final lines:
+      "/home/darrell/go-sdk/go/bin/go test -count=1 ./internal/handlers/accounts
+       ok  budget2/internal/handlers/accounts 0.703s
+       ✓ all checks passed"     MAKE_CHECK_EXIT=0
+    (`check: vet static vuln css-verify test`, Makefile line 84 — the composite
+    target, not build&&test; the `test` recipe already carries -count=1, so the
+    cache is defeated.)
+
+============================================================================
+CRITERION 2 — the Tier-3 oracle
+============================================================================
+PASS, and PROVEN non-vacuous at the fail end.
+  $ ls -l .swarm/tier3/CB2/accept.sh  -> -rwxrwxr-x (executable at authoring time)
+  $ (chk/verify) bash .swarm/tier3/CB2/accept.sh
+      ok  budget2/internal/handlers/dashboard 0.004s
+      ok  budget2/internal/services/metrics   0.003s
+      ok  budget2/internal/handlers/dashboard 0.796s
+      ORACLE PASS                                  ORACLE_EXIT=0
+    Final line is exactly `ORACLE PASS`. The committed
+    .swarm/tier3/CB2/oracle.1.log exists at THIS attempt (1) and its final line
+    is byte-identical to my own run's.
+  Probe really executes (a 0.004s package line invites the "did -run match
+  anything?" doubt), so I installed the probe by hand and ran it verbose:
+  $ (chk/verify) cp .swarm/tier3/CB2/cb2_oracle_test.go internal/handlers/dashboard/zz_probe_test.go
+    && go test -count=1 -run TestCB2Oracle -v ./internal/handlers/dashboard/
+      --- PASS: TestCB2Oracle_TrendSeriesSigned
+      --- PASS: TestCB2Oracle_BarTracesSigned
+      --- PASS: TestCB2Oracle_KPIStatsAndCSVSigned
+      --- PASS: TestCB2Oracle_MonthDetailAndSpendingTrendSigned
+    All four oracle tests (including the CB2-c extension) run; none is filtered
+    out or skipped. Probe removed.
+  FAIL-END re-validation (chk/mut, all nine sites reverted to math.Abs at once):
+  $ bash .swarm/tier3/CB2/accept.sh   -> exit 1, last line "ORACLE FAIL:
+    refund-dominant probe failed", with the failures being the DEFECT, not
+    harness errors:
+      KPI Feb Expenses = 500.00, want -500
+      KPI Feb Savings = 4500.00, want 5500
+      CSV export lacks the signed Feb value -500  (body shows 2025-02,500.00)
+      month-detail Total Spent = 500.00, want -500
+      spending trend Feb %change = -72.2222, want -127.7778
+    No `t.Fatalf("harness error...")` line appeared.
+
+============================================================================
+CRITERION 3 — non-vacuity: EACH of the nine sites is guarded by a COMMITTED test
+============================================================================
+PASS — and stronger than the brief required (all 9 probed individually, not the
+requested 5). Method: in chk/mut (.git removed), restore both source files from
+the worker tree, revert exactly ONE line back to math.Abs, run
+`go test -count=1 -v ./internal/services/metrics/ ./internal/handlers/dashboard/`,
+collect `--- FAIL:` names. The oracle probe is NOT installed in this tree, so
+every failing name below is a COMMITTED test. Exact per-site line reverted and
+resulting failures:
+
+ S1 metrics.go:511  expAmt = -exp.SumAmount()
+    -> FAIL TestCalculateMetrics_CB2_TrendSeriesSignedAndSavingsAddsRefund
+ S2 metrics.go:517  hcAmt = -hc.SumAmount()
+    -> FAIL TestCalculateMetrics_CB2_TrendSeriesSignedAndSavingsAddsRefund
+ S3 metrics.go:526  livingMonth = -lo.SumAmount()
+    -> FAIL TestCalculateMetrics_CB2_TrendSeriesSignedAndSavingsAddsRefund,
+            TestCalculateMetrics_PlanExclusions_RemainderNetsRefundMonthInLivingTrend
+ S4 handlers.go:532 (handleKPIDetail) expAmt = -exp.SumAmount()
+    -> FAIL TestHandleKPIDetail_CB2_ExpensesSignedForRefundDominantMonth
+ S5 handlers.go:740 (handleKPIMonthDetail) expenseTotal := -sumSigned(monthOutflow)
+    -> FAIL TestHandleKPIMonthDetail_CB2_TotalSpentSignedForRefundDominantMonth
+ S6 handlers.go:908 (handleKPIExport) expAmt = -exp.SumAmount()
+    -> FAIL TestHandleKPIExport_CB2_ExpensesSignedForRefundDominantMonth
+ S7 handlers.go:1074 (buildBudgetVsActualChartData) hcAmt = -hc.SumAmount()
+    -> FAIL TestBuildBudgetVsActualChartData_CB2_LivingAndHealthcareSigned
+ S8 handlers.go:1084 (buildBudgetVsActualChartData) livingMonth = -lo.SumAmount()
+    -> FAIL TestBuildBudgetVsActualChartData_CB2_LivingAndHealthcareSigned,
+            TestBuildBudgetVsActualChartData_RemainderNetsRefundLivingEqualsAbsRemainder
+ S9 handlers.go:1419 (buildSpendingTrendChartData) monthlyTotals[m] = -...SumAmount()
+    -> FAIL TestBuildSpendingTrendChartData_CB2_SignedCurrentMonth,
+            TestBuildSpendingTrendChartData_CB2_RefundDominantBaseStaysZeroGuard
+
+Every site has >=1 committed discriminator; no site is covered only by the
+throwaway oracle probe. Note S9's SECOND test (the prev>0 guard test) also
+fails under the mutation, so it is a real discriminator rather than a
+value-free assertion of 0 — the manifest's claim on that point is confirmed.
+Files restored from the worker tree afterwards; chk/mut discarded.
+
+I also read the four new test files and they assert what their names claim
+(not merely "a number"): signed-negative Feb values AND the DERIVED savings
+addition (metrics 5300 = 4000 income + 1300 refund; HTTP 4930 = 4200 + 730),
+the rendered CSV cell compared as the STRING "-730.00" (rendered-string
+assertion, not a float), the bar traces keyed by trace name ("Living",
+"Healthcare") before reading y, and the %change values -138.8889 vs the
+abs-era -61.1111. Each file also carries a Jan "harness validity" assertion
+that is identical under bug and fix, so a broken fixture surfaces as
+"harness error, not the defect" rather than as a false discriminator.
+
+============================================================================
+CRITERION 4 — scope
+============================================================================
+PASS.
+  $ (worker tree) git diff origin/master --stat
+      .swarm/ledger.tsv                                  |  1 +
+      internal/handlers/dashboard/handlers.go            | 62 +++++++------
+      internal/handlers/dashboard/plan_exclusions_chart_test.go | 16 +--
+      internal/models/dashboard.go                       | 19 ++--
+      internal/services/metrics/metrics.go               | 41 ++++++---
+      internal/services/metrics/plan_exclusions_remainder_test.go | 46 +++---
+      6 files changed, 119 insertions(+), 66 deletions(-)
+  $ (worker tree) git status --porcelain -uall  -> the 5 modified source/test
+    files above + .swarm/ledger.tsv, plus untracked: the 4 new cb2_*_test.go
+    files and .swarm/{CB2-RUN-SPEC.md, manifests/CB2.1.*, tier3/CB2/*}.
+    This is EXACTLY .swarm/manifests/CB2.1.files (9 paths) plus the lead's own
+    ledger row and spec/oracle artifacts. Nothing outside. In particular: no
+    web/static/js/charts.js change, no template change, no mcpsvc change.
+  $ (worker tree) ledger diff -> a single added row:
+      CB2  3  tests,second  assigned  1  worker-coder  refund-class-closeout-...
+  $ cat .swarm/critical.globs -> storage/**, dataloader/**, retirement/engine/**,
+    transfers/**, accounts/accounts.go, mcpsvc/confirm/** — NONE touched.
+
+  CODE-LINE diff vs origin/master (python difflib, comment-only lines removed):
+  metrics.go, handlers.go and models/dashboard.go differ from master in EXACTLY
+  the nine executable lines listed under criterion 3 (three in metrics.go, six
+  in handlers.go) plus three field-comment-suffix lines in models/dashboard.go.
+  There is no other executable change anywhere in the three files.
+
+  CB3-candidate sites still contain math.Abs, verified verbatim by line
+  (branch line numbers; master line numbers in parens):
+      handlers.go:383  (383)  total += math.Abs(t.Amount)
+      handlers.go:1492 (1462) merchantTotals[t.Label()] += math.Abs(t.Amount)
+      handlers.go:1564 (1534) dayTotal += math.Abs(t.Amount)
+      handlers.go:1566 (1536) dayTotal -= math.Abs(t.Amount)
+      metrics.go:729   (716)  return ((current - previous) / math.Abs(previous)) * 100
+  Also unchanged and correctly left alone: the range-level totals
+  metrics.go:378/406/436 (math.Abs) and the sort comparator handlers.go:783.
+
+  NO TEST DELETED OR RENAMED:
+  $ go test -count=1 -list '.*' ./internal/services/metrics/ ./internal/handlers/dashboard/
+    run in chk/masterfull (master reconstruction) vs chk/verify (branch), sorted
+    and set-differenced:
+      REMOVED (in master, not branch): []      <- empty
+      ADDED: TestBuildBudgetVsActualChartData_CB2_LivingAndHealthcareSigned,
+             TestBuildSpendingTrendChartData_CB2_RefundDominantBaseStaysZeroGuard,
+             TestBuildSpendingTrendChartData_CB2_SignedCurrentMonth,
+             TestCalculateMetrics_CB2_TrendSeriesSignedAndSavingsAddsRefund,
+             TestHandleKPIDetail_CB2_ExpensesSignedForRefundDominantMonth,
+             TestHandleKPIExport_CB2_ExpensesSignedForRefundDominantMonth,
+             TestHandleKPIMonthDetail_CB2_TotalSpentSignedForRefundDominantMonth
+      master count 249, branch count 256 (249 + 7, no replacement).
+
+============================================================================
+CRITERION 5 — the two calibration tests (ruling CB2-2026-09-02a)
+============================================================================
+PASS. python difflib of each file against `git show origin/master:<f>`:
+  metrics/plan_exclusions_remainder_test.go
+    - if !floatEqual(m.LivingExpensesTrend[0], 3000) {
+    + if !floatEqual(m.LivingExpensesTrend[0], -3000) {
+    with the want-message rewritten to "want -3000 (signed negated net of the
+    remainder; CB2: refund-dominant month is a credit)". Feb's 1500 assertion
+    is untouched. The test is UPDATED, not deleted (see criterion 4's -list
+    diff: name still present).
+    The doc comment no longer says "must show |that month's remainder|"; it now
+    states the signed contract.
+    The stale walk-invariant NOTE was REFRESHED: master's paragraph said the
+    invariant break is "master-native ... Out of scope per ruling SY-2026-08-30d
+    ... No walk-invariant test is added". The branch's replacement says CB1
+    (PR #80) FIXED it via the signed walk and points at
+    TestCalculateMetrics_CombinedCumulativeBalance_RefundDominantMonthEntersAsCredit
+    and TestChartCumulativeWalk_AgreesWithMetricsCombinedCumulativeBalance.
+    No "out of scope per ruling SY-2026-08-30d" claim about THIS class remains;
+    the only surviving out-of-scope statement is about RANGE-level totals,
+    which is correct per the spec.
+  dashboard/plan_exclusions_chart_test.go
+    - if len(livingY) != 2 || !floatEqual(livingY[0], 3000) || ...
+    + if len(livingY) != 2 || !floatEqual(livingY[0], -3000) || ...
+    want-message now "[-3000 1500] (Jan's signed negated net remainder, a
+    credit; Feb unaffected)"; the doc comment keeps the SY-2026-08-30d
+    set-exclusion shape language and adds "signed per CB2".
+  Both are still real discriminators after the update: they are among the tests
+  that FAIL under the S3 and S8 mutations (criterion 3).
+
+============================================================================
+CRITERION 6 — derived figures flow through the operands, not formula edits
+============================================================================
+PASS.
+  The comment-stripped difflib diff (criterion 4) is the proof: metrics.go's
+  only executable changes are lines 511/517/526. The derived formula lines are
+  byte-identical to master, at master:518 / branch:531:
+      savingsTrend = append(savingsTrend, incAmt-expAmt)
+  and master:517 / branch:530  expensesTrend = append(expensesTrend, expAmt).
+  handlers.go's KPI derivations are likewise byte-identical (master:563/564,
+  branch:571/572 `Savings: savings, Rate: rate`); the computation block read at
+  branch handlers.go:535-539 is unchanged from master:
+      savings := incAmt - expAmt
+      rate := 0.0
+      if incAmt > 0 { rate = (savings / incAmt) * 100 }
+  Behavioural confirmation by targeted run (chk/verify, -count=1 -v):
+      --- PASS TestCalculateMetrics_CB2_TrendSeriesSignedAndSavingsAddsRefund
+          (asserts SavingsTrend[Feb] == 5300 == 4000 income + 1300 net refund)
+      --- PASS TestHandleKPIDetail_CB2_ExpensesSignedForRefundDominantMonth
+          (asserts Savings == 4930 == 4200 + 730)
+  The prev>0 %-change guard is verbatim unchanged (branch handlers.go:1442
+  `if prev > 0 {`, identical to master:1412 in the same loop shape) — the only
+  edit in buildSpendingTrendChartData is line 1419.
+  CB1 non-regression, by name (chk/verify, -count=1 -v):
+      --- PASS: TestCalculateMetrics_CombinedCumulativeBalance_RefundDominantMonthEntersAsCredit
+      --- PASS: TestChartCumulativeWalk_AgreesWithMetricsCombinedCumulativeBalance
+
+============================================================================
+CONSUMER RE-ENUMERATION (spec "Consumers"; split-classification defect class)
+============================================================================
+$ grep -rn 'ExpensesTrend|LivingExpensesTrend|HealthcareTrend|SavingsTrend|
+  expenses_trend|living_expenses_trend|healthcare_trend|savings_trend'
+  --include='*.go' --include='*.html' --include='*.js' (non-test, non-.swarm)
+Consumers are exactly the three kpis.html sparklines (lines 53, 95, 126) plus
+the struct assignment in metrics.go. No Go-side threshold is applied to a trend
+array anywhere — the arrays are assigned into DashboardMetrics and read only by
+the template. So there is ONE producer per figure; no split classification.
+charts.js: sparkline-expenses passes no options (plain line, no clamping);
+sparkline-monthly and sparkline-healthcare pass data-target only, taking
+renderSparkline's hasTarget branch, whose classification is `v > target` (red)
+else green — a signed negative month falls below target and fills GREEN, which
+is the semantically correct reading of a refund month, and neither branch
+clamps negatives out of the y series (yaxis is auto-scaled, visible:false).
+data-mode="balance" (the only clamping path, `above/below` with a neutralBand)
+is used ONLY by sparkline-budget over CombinedCumulativeBalance, which is CB1's
+surface and is untouched. No charts.js change was needed and none was made,
+consistent with the spec's "STOP and report" clause never firing.
+
+============================================================================
+OBSERVATIONS (not defects; for the lead's backlog, no criterion fails on them)
+============================================================================
+O1. handlers.go:1464-1469 puts currAmounts/prevAmounts into the spending-trend
+    bar's `customdata` (the hover tooltip). Those are now signed, so a
+    refund-dominant month's tooltip will read a negative "current" amount.
+    That is consistent with the KD signed contract and with the spec's
+    intent, but it is a rendered surface the spec's Consumers list did not
+    name explicitly; the value is correct, so this is a note, not a finding.
+O2. handlers.go:1450 colors the bar green when pctChange <= 0. With a
+    refund-dominant BASE month the guard forces pctChange = 0, so the bar
+    renders green ("spending decreased") for a month where no comparison was
+    made. The spec explicitly accepts this as "honest degradation" and the
+    committed test pins it; recording it only so the CB3 backlog has it.
+O3. The four CB3-candidate sites are unchanged and confirmed verbatim above;
+    handlers.go:1564-1566 in particular still subtracts |amount| for an
+    outflow-typed refund (wrong direction) exactly as the lead classified.

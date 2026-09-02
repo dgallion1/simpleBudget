@@ -105,11 +105,13 @@ func TestBuildBudgetVsActualChartData_NetRefundGroupAddsBackNotSubtracts(t *test
 }
 
 // TestBuildBudgetVsActualChartData_RemainderNetsRefundLivingEqualsAbsRemainder
-// is the required remainder-sign-divergent fixture (ruling SY-2026-08-30d):
-// Jan's REMAINDER (non-flagged, non-HI spend) nets a refund -- a $1000
-// grocery outflow plus a $4000 outflow-typed credit (net +$3000) -- beside
-// an ordinary flagged $500 car payment. The Living bar must show |remainder|
-// = 3000 exactly, not the attempt-2 defect's 2000.
+// is the required remainder-sign-divergent fixture (ruling SY-2026-08-30d,
+// set-exclusion shape unchanged; signed per CB2): Jan's REMAINDER
+// (non-flagged, non-HI spend) nets a refund -- a $1000 grocery outflow plus
+// a $4000 outflow-typed credit (net +$3000) -- beside an ordinary flagged
+// $500 car payment. The Living bar must show the SIGNED negated net of the
+// remainder = -3000 (a credit), not math.Abs'd positive (the attempt-2
+// defect's 2000, or the pre-CB2 defect's 3000).
 func TestBuildBudgetVsActualChartData_RemainderNetsRefundLivingEqualsAbsRemainder(t *testing.T) {
 	jan := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
 	feb := time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)
@@ -129,7 +131,7 @@ func TestBuildBudgetVsActualChartData_RemainderNetsRefundLivingEqualsAbsRemainde
 	data := result["data"].([]map[string]interface{})
 
 	livingY := data[0]["y"].([]float64)
-	if len(livingY) != 2 || !floatEqual(livingY[0], 3000) || !floatEqual(livingY[1], 1500) {
-		t.Errorf("trace[0].y (Living) = %v, want [3000 1500] (Jan's |remainder| exactly, not the attempt-2 defect's 2000)", livingY)
+	if len(livingY) != 2 || !floatEqual(livingY[0], -3000) || !floatEqual(livingY[1], 1500) {
+		t.Errorf("trace[0].y (Living) = %v, want [-3000 1500] (Jan's signed negated net remainder, a credit; Feb unaffected)", livingY)
 	}
 }

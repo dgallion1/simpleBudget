@@ -1,0 +1,107 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: CB5
+ATTEMPT: 1
+---
+Diff reviewed (python3 difflib, master vs fix/cb5-unmatched-credits @ 3c30e20):
+only the credits-list construction in buildMajorExpenseChartData changed;
+the positive-wedge guard (`if unmatchedTotal > 0`) is untouched. New guard:
+`unmatchedCredit := len(unmatchedTxns) > 0 && unmatchedTotal <= 0`, entry
+appended to `credits` after matched creditBuckets.
+
+1. REAL DATA (read-only cp -a of /home/darrell/bin/ai/budget2/data, full
+   history, no date filter — via a throwaway probe test calling
+   bucketMajorExpenses/buildMajorExpenseChartData directly with a real
+   dataloader.New+storage.New pointed at the copy):
+   - unmatchedTxnCount=0, unmatchedTotal=0.000000 on the live ledger — the
+     grouping overhaul has genuinely closed Unmatched to zero, not just
+     "positive". len(unmatchedTxns)==0 makes unmatchedCredit structurally
+     false regardless of sign, so the new path cannot fire.
+   - Built master's handlers.go into a sibling copy and ran the identical
+     probe: PROBE_RESULT JSON (data/labels/values/smaller/credits, all 41
+     matched buckets, "Ignore"/"Travel & vacations" credits) is BYTE-FOR-
+     BYTE IDENTICAL between master and fix. Wedges and credits both
+     confirmed identical — zero behavioral diff proven, not assumed.
+   - Synthetic refund-dominant Unmatched (2 txns, net -30 and net 0)
+     exercises the new path: committed tests
+     TestBuildMajorExpenseChartData_UnmatchedNetRefundGoesToCredits and
+     _UnmatchedZeroWithTxnsGoesToCredits both pass; independently
+     reproduced via a throwaway probe with 5 mixed-order transactions
+     through the real HTTP handlers (/dashboard/charts/data/major-expense)
+     — new path fires, wedge list empty, credits carries Unmatched.
+
+2. RENDERER (web/static/js/charts.js): renderMajorExpenseCredits (CB4) has
+   no per-name special case at all — it iterates `items` generically,
+   building name+amount rows with textContent (no innerHTML), and does
+   NOT wire any click/drilldown handler on credit rows (only the Plotly
+   wedge click handler on the donut itself calls openMajorExpenseDrilldown,
+   keyed by wedge label, unaffected by credits). "Unmatched" appearing in
+   credits for the first time is not special-cased anywhere and cannot
+   collide with the wedge click-handler's own "Unmatched" label handling
+   (they are different payload fields entirely). No template branch exists
+   ("chart-major-expense-credits" div in dashboard.html is a bare
+   JS-rendered target). No drilldown wiring in the credits list to verify
+   "still resolves" — none existed before or after CB5 for matched groups
+   either, so this is unchanged, not regressed.
+
+3. BOUNDARY probes (throwaway, in-copy):
+   - Exactly-zero Unmatched with txns: committed test confirms credits
+     entry, amount 0, not a wedge, not dropped.
+   - unmatchedTotal = -0.004 raw (spend -10.004, refund +10.000): guard
+     uses the raw float, `-0.004 <= 0` → credits (observation only, not a
+     FAIL: this exactly matches CB4's already-established rule that the
+     sign guard is applied to the raw total, not the 2-decimal display
+     value; no sum contract touches this figure since credits are
+     documented as excluded from grandTotal/percent entirely).
+   - buildMajorExpenseChartData(nil): no panic, returns empty pie, no
+     "credits" key (nil ts short-circuits in bucketMajorExpenses to
+     nil,nil, so len(unmatchedTxns)==0 and len(creditBuckets)==0 — same
+     "absent everywhere" behavior as before CB5).
+
+4. CONSISTENCY: drilldown's Total and credits' Unmatched amount use the
+   IDENTICAL formula (`total -= t.Amount` per txn, i.e. same as
+   `unmatchedTotal += -t.Amount`), so the same signed total is produced
+   from the same transaction set. Found a bitwise float discrepancy
+   (diff ~7.1e-15) driven by summation ORDER — bucketMajorExpenses sums
+   over unmatchedTxns in match order, the drilldown sums after sorting by
+   date descending — on a 5-transaction refund-dominant fixture: credits
+   amount -38.86999999999999744205 vs drilldown Total
+   -38.86999999999999033662.
+   - Verified this is NOT a CB5-introduced defect: reproduced the
+     IDENTICAL diff (-7.105427357601002e-15) for a MATCHED group's credit
+     entry (pre-existing CB4 code, untouched by this task) using the same
+     5-transaction fixture pattern. The float summation-order divergence
+     is systemic to the bucketMajorExpenses/drilldown pair since CB3/CB4,
+     not something CB5's guard or credits-append logic introduces.
+   - Verified the remedy point: at DISPLAY precision (2 decimals, both
+     Go %.2f-equivalent and the JS Intl.NumberFormat path) both values
+     round to "-38.87" identically — the rendered strings agree exactly
+     (ruling 2026-08-29b: assert on rendered output, not floats). No
+     user-visible inconsistency exists.
+   FINDING (backlog, OUT OF SCOPE for CB5): bucketMajorExpenses and
+   handleMajorExpenseDrilldown sum a shared transaction list in different
+   orders, producing float64 noise on the order of 1e-15 between a
+   group's/Unmatched's list-row total and its own drilldown total. Never
+   observed to cross a display-rounding boundary in probing, but the two
+   summation orders are not pinned to agree, which is the kind of thing
+   ruling 2026-08-29b/W2 flags as a latent dual-formatter risk. This
+   predates CB5 (reproduced identically on CB4's matched-group credits
+   path) and is not something this task's diff touched or could have
+   fixed within its written scope — recommend a follow-up task to make
+   both call sites sum in the same order (e.g. always in ts-provided
+   order, or both post the same sort) rather than relying on floating
+   point tolerance.
+
+Mutation test: reverted the `unmatchedCredit` guard to `false` — the three
+new committed tests (UnmatchedNetRefundGoesToCredits,
+UnmatchedZeroWithTxnsGoesToCredits, UnmatchedCreditOrderedAfterGroupCredits)
+FAIL as expected; all pre-existing tests still pass. Confirms the guard is
+load-bearing and the tests actually exercise it (not vacuous).
+
+Full suite: `go build ./...`, `go vet ./...` clean; `go test ./...`
+all packages ok (48/48), including internal/handlers/dashboard 1.644s.
+
+No criterion in .swarm/CB5-RUN-SPEC.md's contract is violated. All four
+attack angles produced either confirmed pass or an out-of-scope,
+pre-existing, display-invisible finding. PASS.

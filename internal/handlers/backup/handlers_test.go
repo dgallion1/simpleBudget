@@ -28,6 +28,7 @@ import (
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 	"budget2/internal/testutil"
+	"budget2/internal/version"
 )
 
 // setupTestEnv creates a temp data directory, storage, and initializes the package globals.
@@ -85,6 +86,13 @@ func TestInitialize(t *testing.T) {
 }
 
 func TestHandleHealth(t *testing.T) {
+	// Sentinel-injection: prove the handler's commit field tracks the
+	// version.Commit variable rather than being hard-coded, so this test
+	// holds under any ldflags stamp.
+	origCommit := version.Commit
+	version.Commit = "sentinel-health-commit"
+	t.Cleanup(func() { version.Commit = origCommit })
+
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/health", nil)
 	HandleHealth(w, r)
@@ -101,6 +109,9 @@ func TestHandleHealth(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&body)
 	if body["status"] != "ok" {
 		t.Errorf("expected status ok, got %s", body["status"])
+	}
+	if body["commit"] != version.Commit {
+		t.Errorf("expected commit %q, got %q", version.Commit, body["commit"])
 	}
 }
 

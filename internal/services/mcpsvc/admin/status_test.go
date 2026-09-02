@@ -7,7 +7,35 @@ import (
 	"testing"
 
 	"budget2/internal/services/storage"
+	"budget2/internal/version"
 )
+
+// TestGetStatusReportsVersionAndCommit asserts version/commit track the
+// version package's variables rather than a hard-coded literal -- a
+// sentinel value injected into version.Commit must flow through to the
+// tool's observed output.
+func TestGetStatusReportsVersionAndCommit(t *testing.T) {
+	origVersion := version.Version
+	origCommit := version.Commit
+	version.Version = "sentinel-status-version"
+	version.Commit = "sentinel-status-commit"
+	t.Cleanup(func() {
+		version.Version = origVersion
+		version.Commit = origCommit
+	})
+
+	deps, _ := newDeps(t, nil)
+	cs := connect(t, deps)
+
+	out := decodeToolResult[statusOutput](t, call(t, cs, "get_status", map[string]any{}))
+
+	if out.Version != version.Version {
+		t.Errorf("version = %q, want %q", out.Version, version.Version)
+	}
+	if out.Commit != version.Commit {
+		t.Errorf("commit = %q, want %q", out.Commit, version.Commit)
+	}
+}
 
 func TestGetStatusReportsAnUnencryptedStore(t *testing.T) {
 	deps, dir := newDeps(t, nil)

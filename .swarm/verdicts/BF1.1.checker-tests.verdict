@@ -1,0 +1,240 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: BF1
+ATTEMPT: 1
+---
+All verification ran in isolated `cp -a` copies under
+/tmp/claude-1000/-home-darrell-work-agents2--claude-worktrees-exciting-liskov-ffcb38/97442e67-c24e-4946-b613-f4d36f8d82cf/scratchpad/
+  bf1-check   -- branch copy (its .git link was REMOVED so no git op could touch the shared worktree gitdir)
+  master-tree -- `git archive origin/master | tar -x` baseline
+  mut, mut2   -- throwaway mutation copies
+  bin-check   -- throwaway copy with its OWN fresh `git init` repo, used for the `make build` + strings proof
+The only write to the real worktree is this verdict file. No git-state change was made in
+/…/scratchpad/t13-port. The compiled budget2 binary was NEVER executed (built, `strings`-ed,
+`go version -m`-ed, then deleted).
+
+== Criterion 1 — `go build ./...` clean and `go vet ./...` clean ==
+cmd: cd bf1-check && go build ./... ; echo "GO_BUILD_EXIT=$?" ; go vet ./... ; echo "GO_VET_EXIT=$?"
+out: GO_BUILD_EXIT=0
+     GO_VET_EXIT=0
+
+Repo composite target (vet static vuln css-verify test), cache defeated by `make test`'s own flags:
+cmd: cd bin-check && make check > makecheck.log 2>&1 ; echo "MAKE_CHECK_EXIT=$?"
+out: MAKE_CHECK_EXIT=0
+
+staticcheck and gofmt (brief's hard rules):
+cmd: cd bf1-check && staticcheck ./... ; echo "STATICCHECK_EXIT=$?"
+out: STATICCHECK_EXIT=0   (no diagnostics printed)
+cmd: cd bf1-check && gofmt -l <the 9 touched .go files>
+out: (empty list) GOFMT_EXIT=0
+
+== Criterion 2 — tests of every touched package pass (-count=1, cache defeated) ==
+cmd: cd bf1-check && go test -count=1 ./internal/version/... ./cmd/server/... \
+       ./internal/services/mcpsvc/admin/... ./internal/handlers/backup/... ./internal/handlers/whatif/...
+out: ok budget2/internal/version 0.003s
+     ok budget2/cmd/server 4.875s
+     ok budget2/internal/services/mcpsvc/admin 4.111s
+     ok budget2/internal/handlers/backup 30.952s
+     ok budget2/internal/handlers/whatif 11.524s
+     TEST_EXIT=0
+
+Full suite (brief acceptance criterion 3, "full suite green"):
+cmd: cd bf1-check && go test -count=1 ./... > fullsuite.log 2>&1 ; echo "FULL_TEST_EXIT=$?"
+out: FULL_TEST_EXIT=0 ; grep -c '^ok' = 49 ; grep -c FAIL = 0 ; total lines = 49
+
+Race detector on the packages whose tests mutate the package-level version.Commit global:
+cmd: cd bf1-check && go test -count=1 -race ./internal/version/ ./cmd/server/ ./internal/services/mcpsvc/admin/
+out: ok budget2/internal/version 1.013s ; ok budget2/cmd/server 19.297s ;
+     ok budget2/internal/services/mcpsvc/admin 8.488s ; RACE_EXIT=0
+cmd: grep -rn "t.Parallel()" cmd/server/ internal/version/ internal/handlers/backup/ internal/services/mcpsvc/admin/
+out: (no matches) -- no parallel tests, so the global mutation + t.Cleanup pattern is safe here.
+
+== Criterion 3a — `make -n build` stamps the build cwd's `git describe --always --dirty` ==
+cmd: cd t13-port && git describe --always --dirty
+out: v1.4.0-1036-g2e743fc-dirty
+cmd: cd t13-port && make -n build
+out: go build -ldflags="-s -w -X budget2/internal/version.Version=1.0.0 \
+       -X budget2/internal/version.BuildTime=2026-09-02T12:28:10Z \
+       -X budget2/internal/version.Commit=v1.4.0-1036-g2e743fc-dirty" -o budget2 ./cmd/server
+     -> the Commit ldflag equals the `git describe` output exactly.
+
+PROOF that the value is cwd-derived (not baked, not from Go's buildvcs): the same Makefile in a
+directory that is NOT a git repo falls back to "unknown".
+cmd: cp t13-port/Makefile master-tree/ && cd master-tree && git rev-parse --show-toplevel ; make -n build
+out: fatal: not a git repository (or any of the parent directories): .git
+     go build -ldflags="... -X budget2/internal/version.Commit=unknown" -o budget2 ./cmd/server
+
+LDFLAGS is shared with the dist targets (brief says intended):
+cmd: cd t13-port && for t in build-linux build-windows build-darwin; do make -n $t | grep -o 'version.Commit=[^ "]*'; done
+out: version.Commit=v1.4.0-1036-g2e743fc-dirty  (all three targets)
+
+End-to-end binary proof (brief acceptance criterion 1, "verified via strings on the binary"),
+done in bin-check which has its OWN throwaway `git init` repo so nothing shared was touched:
+cmd: cd bin-check && git init -q . && git add -A && git commit -qm init && echo stray >> README.md
+     DESC=$(git describe --always --dirty) ; echo "$DESC" ; make build ; strings ./budget2 | grep -c -- "$DESC"
+out: DESC = 2c765f9-dirty
+     MAKE_BUILD_EXIT=0
+     strings count = 3        (>= 1 as the brief requires)
+cmd: go version -m ./budget2 | grep -E 'vcs|ldflags'
+out: build -ldflags="... -X budget2/internal/version.Commit=2c765f9-dirty"
+     build vcs.revision=2c765f94d12ae7696338f9dc7a83d9a3e822beb6   <-- Go's own stamp, unused by the fingerprint
+     The binary was deleted immediately and was never executed.
+
+== Criterion 3b — a bare `go test` build has Commit == "unknown", NO fallback to vcs.revision ==
+The branch's own test files do NOT pin this (see FINDING F1). Proven with two throwaway probes
+placed in bf1-check/internal/version/zz_probe_test.go (scratch copy only; discarded):
+cmd: cd bf1-check && go test -count=1 -v -run 'TestProbe_' ./internal/version/
+out: TestProbe_BareBuildCommitUnknown:
+       bare build: Commit="unknown" VCSRevision="" VCSModified=false   --- PASS
+     TestProbe_NoFallbackToVCSRevision (injects readBuildInfo with vcs.revision=deadbeefcafe1234
+       and vcs.modified=true, then calls Get()):
+       no fallback: Commit="unknown" while VCSRevision="deadbeefcafe1234"   --- PASS
+     PROBE_EXIT=0
+Source confirms the contract: internal/version/version.go Get() sets `Commit: Commit` only; the
+vcs.* switch (lines 49-58) writes VCSRevision/VCSTime/VCSModified and never touches info.Commit.
+
+== Criterion 3c — additive-only; no existing consumer behavior changed ==
+Info struct JSON tags, master vs branch:
+cmd: git show origin/master:internal/version/version.go > master_version.go
+     grep -o 'json:"[^"]*"' master_version.go   vs   same on bf1-check/internal/version/version.go
+out: master: version | buildTime | goVersion | vcsRevision,omitempty | vcsTime,omitempty | vcsModified
+     branch: version | commit | buildTime | goVersion | vcsRevision,omitempty | vcsTime,omitempty | vcsModified
+     -> identical set plus exactly one new key, "commit". Nothing renamed, nothing removed.
+
+String() and Check() are byte-identical to master:
+cmd: awk '/^func \(i Info\) String\(\) string \{/,/^\}/' master_version.go > m_string.txt
+     awk '...' bf1-check/internal/version/version.go > b_string.txt ; cmp m_string.txt b_string.txt
+out: String() IDENTICAL (cmp exit 0; 27 lines each)
+cmd: same awk/cmp for `func (i Info) Check() string`
+out: Check() IDENTICAL
+
+RENDERED-output twin dump, master baseline vs branch (probe test in each tree, both discarded):
+cmd: cd master-tree && go test -count=1 -v -run TestProbe_MasterBaseline ./cmd/server/
+out: /api/health  200  X-Budget2-Build=""  body={"status":"ok"}
+     /api/version 200  X-Budget2-Build=""  body={"version":"dev","buildTime":"unknown","goVersion":"go1.26.6","vcsModified":false}
+cmd: cd bf1-check && go test -count=1 -v -run TestProbe_BuildHeaderEverywhereAndVersionJSON ./cmd/server/
+out: /api/version body={"version":"dev","commit":"probe-sentinel-9f9f","buildTime":"unknown","goVersion":"go1.26.6","vcsModified":false}
+     -> every master key present with an identical value; "commit" is the only addition.
+
+Existing /api/health consumers enumerated (not trusted from the diff):
+cmd: grep -rn "api/health" --include=*.go --include=*.js --include=*.html --include=*.md --include=*.sh .
+out: the only assertion-bearing consumer is cmd/validate/main.go:52 --
+       contains: []string{`"status":"ok"`}
+     Because Go marshals map[string]string with sorted keys the body is now
+     {"commit":"unknown","status":"ok"} -- the substring still holds. Proven, not reasoned:
+cmd: cd bf1-check && go test -count=1 -v -run TestProbe_HealthBodyValidateContract ./cmd/server/
+out: /api/health body = {"commit":"unknown","status":"ok"}   --- PASS
+cmd: cd bf1-check && go test -count=1 ./cmd/validate/
+out: ok budget2/cmd/validate 0.007s ; VALIDATE_EXIT=0
+scripts/whatif-verify.sh and .swarm/tier3/P15/accept.sh only curl /api/health to /dev/null (liveness), so unaffected.
+
+MCP tool-registration want-lists untouched and still green (brief forbade editing them):
+cmd: grep -rn "want.*\[\]string{" internal/services/mcpsvc/*_test.go   -> server_test.go:91, :184 (unmodified per the diff)
+cmd: cd bf1-check && go test -count=1 ./internal/services/mcpsvc/...
+out: 8 packages, all ok ; MCPSVC_EXIT=0
+
+Stale comment in handlers_live.go updated, code untouched:
+cmd: git diff origin/master -- internal/handlers/whatif/handlers_live.go
+out: comment-only hunk, +3/-2; `const appIdentity = "budget2"` and all code unchanged.
+     New text: `/api/health returns only {"status":"ok","commit":...}`
+
+== Criterion 3d — X-Budget2-Build middleware and /api/health commit, covered by cmd/server tests ==
+cmd: cd bf1-check && go test -count=1 -v -run 'TestHealthEndpointCommit|TestXBudget2BuildHeader|TestHealthEndpoint$' ./cmd/server/
+out: --- PASS: TestHealthEndpoint (0.02s)        (master's test, unmodified, still asserts `"status":"ok"`)
+     --- PASS: TestHealthEndpointCommit (0.02s)
+     --- PASS: TestXBudget2BuildHeader (0.02s)
+     ok budget2/cmd/server 0.073s ; EXIT=0
+Named tests in the other three packages:
+cmd: go test -count=1 -v -run 'TestGet$|TestGet_CommitJSONMarshaling' ./internal/version/   -> both PASS, V_EXIT=0
+cmd: go test -count=1 -v -run 'TestHandleHealth' ./internal/handlers/backup/               -> PASS, B_EXIT=0
+cmd: go test -count=1 -v -run 'TestGetStatusReportsVersionAndCommit' ./internal/services/mcpsvc/admin/ -> PASS, A_EXIT=0
+
+Middleware ordering -- placed before every route, so /static and /mcp are covered:
+cmd: grep -n "r.Use\|r.Mount\|r.Get(\|r.Route\|r.Handle\|func SetupRouter" cmd/server/main.go
+out: 220 func SetupRouter | 226 r.Use | 236 r.Use(Recoverer) | 237 r.Use(Compress) |
+     242 r.Use(<new X-Budget2-Build middleware>) | first route at 261 r.Get("/static/vendor/plotly.min.js")
+     ... 263 /static/* | 279 /api/version | 289 /mcp | 294 lock-protected group
+Executed, not traced (probe in bf1-check, discarded):
+cmd: cd bf1-check && go test -count=1 -v -run TestProbe_BuildHeaderEverywhereAndVersionJSON ./cmd/server/
+out: path=/api/health            status=200 X-Budget2-Build="probe-sentinel-9f9f"
+     path=/api/version           status=200 X-Budget2-Build="probe-sentinel-9f9f"
+     path=/static/css/output.css status=404 X-Budget2-Build="probe-sentinel-9f9f"
+     path=/dashboard             status=200 X-Budget2-Build="probe-sentinel-9f9f"
+     path=/mcp                   status=400 X-Budget2-Build="probe-sentinel-9f9f"
+     path=/nope-404              status=404 X-Budget2-Build="probe-sentinel-9f9f"
+     --- PASS (header present on every route family, including error responses)
+
+== Discrimination — the new tests were MUTATION-PROVEN, not read and believed ==
+Each mutation was applied to a throwaway copy of the branch with my probe files removed.
+M1  revert HandleHealth to master's body (drop the commit key):
+    go test -run TestHandleHealth ./internal/handlers/backup/
+      -> FAIL handlers_test.go:114: expected commit "sentinel-health-commit", got ""   (EXIT=1)
+    go test -run TestHealthEndpointCommit ./cmd/server/
+      -> FAIL main_test.go:80: Expected body to contain "\"commit\":\"sentinel-health-endpoint-commit\"" ...
+         Body: {"status":"ok"}   (EXIT=1)
+M2  delete the X-Budget2-Build r.Use middleware block from cmd/server/main.go:
+    go test -run TestXBudget2BuildHeader ./cmd/server/
+      -> FAIL main_test.go:96: X-Budget2-Build = "", want "sentinel-build-header-commit"   (EXIT=1)
+M3  delete `Commit: Commit,` from version.Get():
+    go test -run 'TestGet$|TestGet_CommitJSONMarshaling' ./internal/version/
+      -> FAIL version_test.go:34 (expected Info.Commit ... got "") AND
+         FAIL version_test.go:53 (expected "sentinel-commit-xyz", got "")   (EXIT=1)
+M4b replace version.Commit with a hard-coded literal in get_status:
+    go test -run TestGetStatusReportsVersionAndCommit ./internal/services/mcpsvc/admin/
+      -> FAIL status_test.go:36: commit = "hardcoded-literal", want "sentinel-status-commit"   (EXIT=1)
+M4c' perturb the health value (version.Commit -> version.Commit + "X"):
+    -> FAIL handlers_test.go:114: expected "sentinel-health-commit", got "sentinel-health-commitX" (EXIT=1)
+    -> FAIL TestHealthEndpointCommit in cmd/server (EXIT=1)
+M5  remove the Commit ldflag from the Makefile:
+    make -n build -> ldflags no longer contain any `version.Commit=` term.
+The brief's "track the variable, not a literal" requirement is therefore mechanically enforced:
+M4b/M4c' show a hard-coded or perturbed value is caught by the sentinel-injection assertions.
+
+== Criterion 4 — no built budget2 binary was executed ==
+Only `make -n` (dry run), `go test` (httptest, ListenAddr ":0", no fixed port), `strings`, and
+`go version -m` were used. The one binary produced (in the isolated bin-check copy) was deleted
+without being run. `ls -la budget2` in t13-port: "No such file or directory" -- the worker left no
+binary behind either.
+
+== Criterion 5 — scope ==
+cmd: cd t13-port && git status --porcelain
+out: 11 modified files, all present in .swarm/manifests/BF1.1.files, plus
+     " M .swarm/ledger.tsv", "?? .swarm/briefs/BF1-build-fingerprint.md", "?? .swarm/manifests/BF1.1.files"
+     -- i.e. manifest set + .swarm/ only. Nothing else.
+cmd: cd t13-port && git diff origin/master --stat
+out: 12 files changed, 169 insertions(+), 11 deletions(-)  (the 11 manifest files + .swarm/ledger.tsv)
+cmd: cat .swarm/critical.globs
+out: internal/services/storage/**, internal/services/dataloader/**,
+     internal/services/retirement/engine/**, internal/services/transfers/**,
+     internal/services/accounts/accounts.go, internal/services/mcpsvc/confirm/**
+     -- NONE of the 11 touched paths matches any glob (mcpsvc/admin != mcpsvc/confirm).
+cmd: grep -P '^BF1\t' .swarm/ledger.tsv | cat -A
+out: BF1^I1^Itests^Iassigned^I1^Iworker-coder^I... -- Tier 1, checks=tests, attempt 1; consistent.
+Note: worker output is UNCOMMITTED; HEAD is 2e743fc (= origin/master), so `git diff master...HEAD`
+is empty by construction. All scope evidence above is working-tree diff against origin/master.
+
+== Brief acceptance criterion 4 — CLAUDE.md note ==
+cmd: cd t13-port && git diff origin/master -- CLAUDE.md
+out: +12 lines under "Gotchas (this codebase)": a "Live server staleness:" subsection covering the
+     /api/health .commit check, the X-Budget2-Build header, `git describe --always --dirty`,
+     "unknown" = built without make, and the do-not-trust-vcs.revision-in-worktrees warning.
+     Matches the brief's specified text.
+
+== FINDINGS (non-blocking; for the lead's backlog, not FAILs) ==
+F1  No committed test pins the two "no fallback" contracts: (a) the default `Commit == "unknown"`
+    in a bare `go test`/`go build`, and (b) `Get()` must not fall back to vcs.revision.
+    TestGet_WithVCSSettings injects vcs.revision but asserts nothing about info.Commit, so a
+    future fallback would be added silently. The brief's Tests section did not require such a
+    test, so this is not a criterion miss. I proved the behavior with throwaway probes
+    (TestProbe_BareBuildCommitUnknown / TestProbe_NoFallbackToVCSRevision, reproduced verbatim in
+    this verdict). Candidate for a V3-pattern test-only follow-up so the evidence outlives this file.
+F2  Three docs still assert the old health body and were out of the brief's named scope
+    (the brief named only handlers_live.go):
+      docs/superpowers/plans/2026-08-09-whatif-mcp-live-page.md:723, :806, :872
+      docs/superpowers/specs/2026-08-09-whatif-mcp-live-page-design.md:216
+    These are historical plan/spec records, so leaving them is defensible; flagging for the backlog.
+F3  Observation only: /api/health's key order is now {"commit":...,"status":"ok"} (Go sorts
+    map[string]string keys). Any consumer doing exact-string equality on the body rather than a
+    substring/JSON-decode would break. I enumerated the consumers (above) and found none;
+    cmd/validate uses `contains`, and its test passes.

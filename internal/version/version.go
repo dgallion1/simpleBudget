@@ -11,6 +11,7 @@ import (
 var (
 	Version   = "dev"
 	BuildTime = "unknown"
+	Commit    = "unknown"
 )
 
 // readBuildInfo is a package-level function variable for testing.
@@ -18,11 +19,19 @@ var readBuildInfo = debug.ReadBuildInfo
 
 // Info contains version and build information
 type Info struct {
-	Version    string `json:"version"`
-	BuildTime  string `json:"buildTime"`
-	GoVersion  string `json:"goVersion"`
+	Version string `json:"version"`
+	// Commit is stamped by the Makefile's ldflags from `git describe
+	// --always --dirty` run in the build directory, NOT from Go's automatic
+	// buildvcs stamp (vcs.revision below): that stamp is wrong for binaries
+	// built inside .claude/worktrees/* because Go's VCS detection walks up
+	// past the worktree's .git file to the parent checkout's .git
+	// directory. Deliberately no fallback to VCSRevision -- an honest
+	// "unknown" (bare go build/go run/tests) beats a plausible wrong hash.
+	Commit      string `json:"commit"`
+	BuildTime   string `json:"buildTime"`
+	GoVersion   string `json:"goVersion"`
 	VCSRevision string `json:"vcsRevision,omitempty"`
-	VCSTime    string `json:"vcsTime,omitempty"`
+	VCSTime     string `json:"vcsTime,omitempty"`
 	VCSModified bool   `json:"vcsModified"`
 }
 
@@ -30,6 +39,7 @@ type Info struct {
 func Get() Info {
 	info := Info{
 		Version:   Version,
+		Commit:    Commit,
 		BuildTime: BuildTime,
 	}
 

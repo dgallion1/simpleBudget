@@ -102,3 +102,4 @@ KD1	3	tests,a11y,second	accepted	4	worker-coder	gate-ok-tier3-attempt-4-oracle-p
 ND1	3	tests,second	accepted	1	worker-coder	gate-ok-tier3-attempt-1-oracle-pass-dual-lane
 ND2	1	tests	accepted	1	worker-coder	gate-ok-attempt-1-mutation-kills-verified
 ND3	3	tests,second	accepted	2	worker-coder	gate-ok-tier3-attempt-2-after-2nd-lane-catch-and-glob-escalation
+BF1	1	tests	accepted	1	worker-coder	gate-ok-attempt-1-ported-from-stale-T13-worktree

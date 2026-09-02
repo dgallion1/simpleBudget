@@ -236,6 +236,16 @@ func SetupRouter() chi.Router {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
 
+	// X-Budget2-Build lets any client (or a Claude session driving the
+	// browser) see which source build produced a response without a separate
+	// /api/version call -- the one-glance stale-server check.
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("X-Budget2-Build", version.Commit)
+			next.ServeHTTP(w, req)
+		})
+	})
+
 	// Static files
 	var fileServer http.Handler
 	if cfg.Debug {

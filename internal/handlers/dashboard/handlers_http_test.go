@@ -398,6 +398,63 @@ func TestHandleMajorExpenseDrilldown_UnknownName(t *testing.T) {
 	}
 }
 
+// TestHandleMajorExpenseDrilldown_RefundInNormalGroupSignedNet is a CB3-A
+// regression: a refund inside an otherwise outflow-dominant group must
+// reduce the modal Total via signed net, not inflate it via AbsAmount.
+// Groceries -600, a merchandise return +150 (positive amount, no income
+// keyword) -> signed net 450; the old per-txn abs bug would give 750.
+func TestHandleMajorExpenseDrilldown_RefundInNormalGroupSignedNet(t *testing.T) {
+	rows := [][]string{
+		{"2025-03-05", "Groceries", "-600", "Food"},
+		{"2025-03-12", "Store Merchandise Return", "150", "Food"},
+	}
+	router, cleanup := setupTestEnv(t, rows)
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/major-expense?name=Unmatched")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var result map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if cnt, _ := result["Count"].(float64); cnt != 2 {
+		t.Fatalf("Count = %v, want 2", result["Count"])
+	}
+	tot, _ := result["Total"].(float64)
+	if math.Abs(tot-450) > 0.01 {
+		t.Errorf("Total = %.2f, want 450 (signed net); per-txn abs gives 750", tot)
+	}
+}
+
+// TestHandleMajorExpenseDrilldown_RefundDominantGroupSignedNet is a CB3-A
+// regression: a REFUND-DOMINANT group (refunds outweigh purchases) must
+// render a NEGATIVE Total, matching bucketMajorExpenses' list-row contract.
+// Purchase -200, return +700 (positive, no income keyword) -> signed net
+// -(-200+700) = -500.
+func TestHandleMajorExpenseDrilldown_RefundDominantGroupSignedNet(t *testing.T) {
+	rows := [][]string{
+		{"2025-03-05", "Widget Shop", "-200", "Shopping"},
+		{"2025-03-12", "Widget Shop Merchandise Return", "700", "Shopping"},
+	}
+	router, cleanup := setupTestEnv(t, rows)
+	defer cleanup()
+
+	rec := doGet(t, router, "/dashboard/major-expense?name=Unmatched")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var result map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	tot, _ := result["Total"].(float64)
+	if math.Abs(tot-(-500)) > 0.01 {
+		t.Errorf("Total = %.2f, want -500 (refund-dominant group renders negative)", tot)
+	}
+}
+
 func TestHandleMajorExpenseDrilldown_LoadError(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "dashboard-me-err-*")
 	defer os.RemoveAll(tmpDir)

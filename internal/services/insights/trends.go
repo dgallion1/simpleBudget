@@ -34,14 +34,19 @@ func MajorExpenseTrends(ts *models.TransactionSet, defs []models.MajorExpense, p
 		totals := make(map[string]float64)
 		for _, t := range window.FilterByType(models.Outflow).Transactions {
 			// Pin wins. StableID first, legacy content hash second.
+			// Signed net per period (CB3-D): matches CB3-A's drilldown
+			// contract (Total = -(signed sum)) and bucketMajorExpenses'
+			// list-row total. Refunds (positive Outflow amounts per
+			// classifier convention) reduce the period total instead of
+			// inflating it via AbsAmount.
 			if id, _, ok := models.ResolveByIdentity(pins, t); ok {
 				if def, exists := defByID[id]; exists {
-					totals[def.Name] += math.Abs(t.Amount)
+					totals[def.Name] -= t.Amount
 					continue
 				}
 			}
 			if id, ok := majorexpenses.MatchTransaction(t, defs); ok {
-				totals[defByID[id].Name] += math.Abs(t.Amount)
+				totals[defByID[id].Name] -= t.Amount
 			}
 		}
 		return totals
@@ -62,27 +67,43 @@ func MajorExpenseTrends(ts *models.TransactionSet, defs []models.MajorExpense, p
 	for name := range nameSet {
 		current := currentTotals[name]
 		previous := prevTotals[name]
+		change := current - previous
 
+		// CB3-c: MajorExpenseTrends' totals are now SIGNED (CB3-D), so the
+		// old flat "previous==0 -> +100/up" and the signed-previous
+		// denominator both broke: a refund-dominant swing (e.g.
+		// current=0, previous=-628 -> change=+628) used to divide by the
+		// SIGNED previous and land on changePercent=-100/"down", directly
+		// contradicting a positive change. Fixed the same way CB3-E
+		// documents for PercentChange: divide by |previous| so the result's
+		// sign always tracks change's sign, and pick previous==0's
+		// changePercent by the SIGN OF CHANGE (not a hardcoded +100)
+		// so it agrees too. Direction then derives from changePercent
+		// using the EXISTING +-5 stable band, unchanged. CategoryTrends
+		// (a separate function, abs-based, out of CB3 scope) keeps its own
+		// classifier untouched.
 		var changePercent float64
-		var direction string
 		if previous == 0 {
-			if current == 0 {
-				changePercent = 0
-				direction = "stable"
-			} else {
+			switch {
+			case change > 0:
 				changePercent = 100
-				direction = "up"
+			case change < 0:
+				changePercent = -100
+			default:
+				changePercent = 0
 			}
 		} else {
-			changePercent = ((current - previous) / previous) * 100
-			switch {
-			case changePercent > 5:
-				direction = "up"
-			case changePercent < -5:
-				direction = "down"
-			default:
-				direction = "stable"
-			}
+			changePercent = (change / math.Abs(previous)) * 100
+		}
+
+		var direction string
+		switch {
+		case changePercent > 5:
+			direction = "up"
+		case changePercent < -5:
+			direction = "down"
+		default:
+			direction = "stable"
 		}
 
 		trends = append(trends, models.CategoryTrend{
@@ -90,7 +111,7 @@ func MajorExpenseTrends(ts *models.TransactionSet, defs []models.MajorExpense, p
 			CurrentAmount:  current,
 			PreviousAmount: previous,
 			ChangePercent:  changePercent,
-			ChangeAmount:   current - previous,
+			ChangeAmount:   change,
 			Direction:      direction,
 		})
 	}
@@ -284,7 +305,13 @@ func SpendingVelocity(currentPeriod, allData *models.TransactionSet) *models.Spe
 	if currentDays < 1 {
 		currentDays = 1
 	}
-	dailyAvg := math.Abs(currentOutflows.SumAmount()) / currentDays
+	// Signed period net (CB3-D): outflows are negative and refunds
+	// (positive Outflow amounts per classifier convention) are credits,
+	// so -SumAmount() is positive spend, same as the old math.Abs. A
+	// refund-dominant period yields a NEGATIVE daily average -- honest;
+	// see burnRateChange's guard below for how a negative historicalDaily
+	// is handled downstream.
+	dailyAvg := -currentOutflows.SumAmount() / currentDays
 
 	allMin := allData.MinDate()
 	allMax := allData.MaxDate()
@@ -292,7 +319,8 @@ func SpendingVelocity(currentPeriod, allData *models.TransactionSet) *models.Spe
 	if allDays < 1 {
 		allDays = 1
 	}
-	historicalDaily := math.Abs(allOutflows.SumAmount()) / allDays
+	// Signed net over the whole ledger (CB3-D), same contract as dailyAvg.
+	historicalDaily := -allOutflows.SumAmount() / allDays
 
 	now := time.Now()
 	daysInMonth := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, time.Local).Day()
@@ -302,10 +330,20 @@ func SpendingVelocity(currentPeriod, allData *models.TransactionSet) *models.Spe
 	currentMonthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
 	currentMonthData := currentPeriod.FilterByDateRange(currentMonthStart, now)
 	currentMonthOutflows := currentMonthData.FilterByType(models.Outflow)
-	spentSoFar := math.Abs(currentMonthOutflows.SumAmount())
+	// Signed net for the current calendar month (CB3-D), same contract as
+	// dailyAvg; monthProjection below inherits the sign (a refund-dominant
+	// month-to-date projects a negative total -- honest, not a division).
+	spentSoFar := -currentMonthOutflows.SumAmount()
 
 	monthProjection := spentSoFar + (dailyAvg * float64(daysRemaining))
 
+	// CB3-D downstream trace: historicalDaily can now be negative (a
+	// refund-dominant full ledger). The `> 0` guard already here (needed
+	// even before CB3-D, for a zero-outflow ledger) also covers that case:
+	// burnRateChange is left at its zero value rather than dividing by a
+	// negative baseline. This is a pre-existing guarded degradation, not
+	// new misbehavior -- no crash, no NaN, no sign inversion, just an
+	// unreported change stat when the baseline itself was net-refund.
 	var burnRateChange float64
 	if historicalDaily > 0 {
 		burnRateChange = ((dailyAvg - historicalDaily) / historicalDaily) * 100

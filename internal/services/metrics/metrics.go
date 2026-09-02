@@ -719,6 +719,18 @@ func Comparison(data *models.TransactionSet, start, end time.Time, compType stri
 	}
 }
 
+// PercentChange returns the percent change from previous to current.
+//
+// CB3-E (no code change): the |previous| denominator is the deliberate
+// signed-base convention, not an abs-per-transaction bug of the kind CB1-CB3
+// fixed elsewhere. Dividing by the signed previous would flip the sign of
+// the result whenever previous is negative, inverting "improved" and
+// "worsened"; dividing by |previous| preserves the natural direction of
+// change regardless of which side of zero previous sits on. Pinned by
+// TestPercentChange_NegativeBase: PercentChange(-500, -1000) == 50 (current
+// is less negative -- an improvement, reported as +50%) and
+// PercentChange(-1500, -1000) == -50 (current is more negative -- worse,
+// reported as -50%).
 func PercentChange(current, previous float64) float64 {
 	if previous == 0 {
 		if current == 0 {

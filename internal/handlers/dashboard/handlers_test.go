@@ -276,6 +276,49 @@ func TestBuildMerchantsChartData_TopTen(t *testing.T) {
 	}
 }
 
+// TestBuildMerchantsChartData_RefundNetsAgainstMerchant is a CB3-B
+// regression: a refund at a merchant must net against that merchant's
+// total (signed), not inflate it via AbsAmount. Also covers the
+// net-refund case: a merchant whose refunds outweigh its purchases must
+// render a NEGATIVE bar.
+func TestBuildMerchantsChartData_RefundNetsAgainstMerchant(t *testing.T) {
+	ts := makeTransactionSet(
+		// Mixed, still net-positive: 700 spend - 150 refund = 550.
+		makeTransaction("Gadget Depot", -700, time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC), models.Outflow, "Shopping"),
+		makeTransaction("Gadget Depot", 150, time.Date(2025, 2, 8, 0, 0, 0, 0, time.UTC), models.Outflow, "Shopping"),
+		// Net-refund merchant: 100 spend - 900 refund = -800 (negative bar).
+		makeTransaction("Outlet Mall", -100, time.Date(2025, 2, 2, 0, 0, 0, 0, time.UTC), models.Outflow, "Shopping"),
+		makeTransaction("Outlet Mall", 900, time.Date(2025, 2, 9, 0, 0, 0, 0, time.UTC), models.Outflow, "Shopping"),
+	)
+
+	chart := buildMerchantsChartData(ts)
+	data := chart["data"].([]map[string]interface{})
+	trace := data[0]
+	labels := trace["y"].([]string)
+	values := trace["x"].([]float64)
+
+	found := map[string]float64{}
+	for i, label := range labels {
+		found[label] = values[i]
+	}
+
+	gadget, ok := found["Gadget Depot"]
+	if !ok {
+		t.Fatalf("Gadget Depot not in chart: %v", found)
+	}
+	if !floatEqual(gadget, 550) {
+		t.Errorf("Gadget Depot total = %.2f, want 550 (signed net); abs gives 850", gadget)
+	}
+
+	outlet, ok := found["Outlet Mall"]
+	if !ok {
+		t.Fatalf("Outlet Mall not in chart: %v", found)
+	}
+	if !floatEqual(outlet, -800) {
+		t.Errorf("Outlet Mall total = %.2f, want -800 (net-refund merchant renders negative)", outlet)
+	}
+}
+
 // --- buildCumulativeChartData ---
 
 func TestBuildCumulativeChartData_PositiveBalance(t *testing.T) {
@@ -322,9 +365,21 @@ func TestBuildCumulativeChartData_PositiveBalance(t *testing.T) {
 	}
 }
 
+// TestBuildCumulativeChartData_PositiveAmountOutflows (ruling
+// CB3-2026-09-02a): this test used to pin "positive-amount outflows
+// subtract (unsigned bank exports; use type not sign)". That premise
+// CONFLICTS with the classifier's documented pipeline contract
+// (classifier.go ClassifyTransactions): after classification, negative
+// amounts are normalized for purchases and positive non-income amounts are
+// DELIBERATELY kept positive as credits/refunds. An unsigned bank export
+// can never reach this chart un-normalized through the real loader; the old
+// fixture bypassed the classifier by constructing Outflow-typed rows with
+// positive amounts directly. Superseded: the chart (and every CB3 surface)
+// follows the pipeline contract -- a positive, Outflow-typed amount IS a
+// refund and ADDS to cash flow, same fixture, new expectations. If
+// unsigned-export support is ever needed, it belongs in the LOADER (which
+// would normalize the sign before classification), not in per-chart abs.
 func TestBuildCumulativeChartData_PositiveAmountOutflows(t *testing.T) {
-	// Some bank CSVs export outflows as positive amounts; the chart must
-	// use TransactionType (not sign) to determine direction.
 	ts := makeTransactionSet(
 		makeTransaction("Salary", 5000, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
 		makeTransaction("Rent", 1500, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
@@ -336,15 +391,17 @@ func TestBuildCumulativeChartData_PositiveAmountOutflows(t *testing.T) {
 	trace := data[0]
 	cumulative := trace["y"].([]float64)
 
-	// Day 1: +5000, Day 5: 5000-1500=3500, Day 10: 3500-500=3000
+	// Day 1: +5000 (income). Day 5: a positive-amount Outflow-typed row is
+	// a refund per the classifier's pipeline contract, so it ADDS:
+	// 5000+1500=6500. Day 10: same, 6500+500=7000.
 	if !floatEqual(cumulative[0], 5000) {
 		t.Errorf("cumulative[0] = %v, want 5000", cumulative[0])
 	}
-	if !floatEqual(cumulative[1], 3500) {
-		t.Errorf("cumulative[1] = %v, want 3500", cumulative[1])
+	if !floatEqual(cumulative[1], 6500) {
+		t.Errorf("cumulative[1] = %v, want 6500", cumulative[1])
 	}
-	if !floatEqual(cumulative[2], 3000) {
-		t.Errorf("cumulative[2] = %v, want 3000", cumulative[2])
+	if !floatEqual(cumulative[2], 7000) {
+		t.Errorf("cumulative[2] = %v, want 7000", cumulative[2])
 	}
 }
 
@@ -415,6 +472,35 @@ func TestBuildCumulativeChartData_NegativeBalance(t *testing.T) {
 	fillColor := trace["fillcolor"].(string)
 	if fillColor != "rgba(239, 68, 68, 0.1)" {
 		t.Errorf("fill color = %v, want rgba(239, 68, 68, 0.1)", fillColor)
+	}
+}
+
+// TestBuildCumulativeChartData_RefundDayIncreasesRunningTotal is a CB3-C
+// regression for the wrong-direction bug: a refund day (an Outflow-typed
+// row with a positive amount, per the classifier's pipeline contract) must
+// INCREASE the running cash-flow total, not decrease it.
+func TestBuildCumulativeChartData_RefundDayIncreasesRunningTotal(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 2000, time.Date(2025, 4, 1, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+		makeTransaction("Groceries", -800, time.Date(2025, 4, 2, 0, 0, 0, 0, time.UTC), models.Outflow, "Food"),
+		makeTransaction("Appliance Return", 300, time.Date(2025, 4, 3, 0, 0, 0, 0, time.UTC), models.Outflow, "Shopping"),
+	)
+
+	result := buildCumulativeChartData(ts)
+	data := result["data"].([]map[string]interface{})
+	cumulative := data[0]["y"].([]float64)
+
+	// Day 1: 2000. Day 2: 2000-800=1200. Day 3 (refund day): the running
+	// total must INCREASE to 1500; the wrong-direction bug would instead
+	// subtract, giving 900.
+	if !floatEqual(cumulative[0], 2000) {
+		t.Errorf("cumulative[0] = %v, want 2000", cumulative[0])
+	}
+	if !floatEqual(cumulative[1], 1200) {
+		t.Errorf("cumulative[1] = %v, want 1200", cumulative[1])
+	}
+	if !floatEqual(cumulative[2], 1500) {
+		t.Errorf("cumulative[2] (refund day) = %v, want 1500 (refund ADDS cash); wrong-direction bug gives 900", cumulative[2])
 	}
 }
 

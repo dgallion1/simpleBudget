@@ -1,0 +1,273 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: CB3
+ATTEMPT: 1
+---
+Verification tree: cp -a of the worker worktree (branch fix/cb3-per-txn-abs,
+base 50a5e06) with the .git link removed, at
+scratchpad/verify/work; pristine master export (git archive 50a5e06) at
+scratchpad/verify/master; mutation sandbox at scratchpad/verify/mut.
+Nothing was written to the worker tree except this verdict file.
+All diffs cited were produced with python3 difflib or go/ast, never plain
+`diff` (rtk hook falsifies plain diff output).
+
+SUMMARY: the arithmetic change itself is correct, complete at all 8
+executable sites, in scope, and the whole repo is green (make check exit 0,
+oracle ORACLE PASS). It FAILS on criterion 3 only: 2 of the 8 changed
+executable sites have NO committed regression test that fails when the site
+is individually reverted to its master abs form -- and the oracle does not
+catch them either.
+
+--------------------------------------------------------------------
+CRITERION 1 -- build / vet / package suites / full suite / make check: PASS
+--------------------------------------------------------------------
+cd scratchpad/verify/work
+  $ go build ./...                                   -> BUILD_EXIT=0
+  $ go vet ./...                                     -> VET_EXIT=0
+  $ go test -count=1 ./internal/handlers/dashboard/ ./internal/services/insights/ \
+        ./internal/services/metrics/ ./internal/services/mcpsvc/spend/
+      PKG_EXIT=0
+      ok budget2/internal/handlers/dashboard   0.805s
+      ok budget2/internal/services/insights    0.004s
+      ok budget2/internal/services/metrics     0.004s
+      ok budget2/internal/services/mcpsvc/spend 0.681s
+  $ go test -count=1 ./...                           -> FULL_EXIT=0
+      49 "ok" lines, 0 lines containing FAIL
+  $ make check                                       -> CHECK_EXIT=0
+      target is `check: vet static vuln css-verify test`; final line
+      "checks passed"
+
+--------------------------------------------------------------------
+CRITERION 2 -- oracle: PASS (and independently re-validated at the fail end)
+--------------------------------------------------------------------
+  $ bash .swarm/tier3/CB3/accept.sh   (in scratchpad/verify/work)
+      ORACLE_EXIT=0 ; final line exactly "ORACLE PASS"
+      probe file internal/handlers/dashboard/zz_cb3_oracle_test.go removed
+      by the script (ls | grep zz_cb3 -> none)
+  All five probes confirmed to actually execute (not skipped):
+  $ go test -count=1 -v -run TestCB3Oracle ./internal/handlers/dashboard/
+      --- PASS: TestCB3Oracle_DrilldownTotalSigned
+      --- PASS: TestCB3Oracle_MerchantTotalsSigned
+      --- PASS: TestCB3Oracle_CashFlowRefundDirection
+      --- PASS: TestCB3Oracle_InsightsSigned
+      --- PASS: TestCB3Oracle_PercentChangeSignedBasePinned
+  Fail-end re-validated by me on the pristine master export:
+  $ bash .swarm/tier3/CB3/accept.sh   (in scratchpad/verify/master)
+      MASTER_ORACLE_EXIT=1, final line "ORACLE FAIL: CB3 contract probes failed"
+      drilldown Total = 400.00, want 200
+      Store A total = 400.00, want 200
+      cash flow after refund day = 600.00, want 800  (DIRECTION)
+      DailyAverage = 71.43 / MonthProjection = 2000.00 (want negative)
+      Cruise period total = 400.00, want 200
+      TestCB3Oracle_PercentChangeSignedBasePinned did NOT fail on master,
+      independently confirming CB3-E needs no code change.
+  Gate artifacts in the real tree: .swarm/tier3/CB3/accept.sh is
+  -rwxrwxr-x; .swarm/tier3/CB3/oracle.1.log exists and its last line is
+  exactly "ORACLE PASS"; the dir contains no report.md (only accept.sh,
+  cb3_oracle_test.go, oracle.1.log).
+
+--------------------------------------------------------------------
+CRITERION 3 -- per-site non-vacuity: **FAIL** (6 of 8 sites guarded, 2 not)
+--------------------------------------------------------------------
+Method: scratchpad/verify/mut (cp -a of work, no .git). For each of the 8
+changed executable sites, that ONE site was string-replaced back to its
+master abs form (each replacement asserted to match exactly 1 occurrence),
+then `go test -count=1 -v <pkg>` was run with NO oracle probe installed, so
+only COMMITTED tests could fail. File restored from the work copy between
+mutations. Script: /tmp/claude-1000/mutate.py.
+
+  CB3-A  handlers.go:388  total -= t.Amount           -> exit=1
+      FAIL: TestHandleMajorExpenseDrilldown_RefundInNormalGroupSignedNet
+      FAIL: TestHandleMajorExpenseDrilldown_RefundDominantGroupSignedNet
+  CB3-B  handlers.go:1500 merchantTotals[..] -= t.Amount -> exit=1
+      FAIL: TestBuildMerchantsChartData_RefundNetsAgainstMerchant
+  CB3-C  handlers.go:1580 dayTotal += t.Amount        -> exit=1
+      (reverted to the full master if/else: Income += math.Abs, else -= math.Abs)
+      FAIL: TestBuildCumulativeChartData_PositiveAmountOutflows
+      FAIL: TestBuildCumulativeChartData_RefundDayIncreasesRunningTotal
+  CB3-D  trends.go:44  totals[def.Name] -= t.Amount   -> exit=0
+      *** NO COMMITTED TEST FAILED -- SITE UNGUARDED ***
+  CB3-D  trends.go:49  totals[defByID[id].Name] -= t.Amount -> exit=1
+      FAIL: TestAnalyzeMajorExpenseTrends_RefundInNormalPeriodSignedNet
+      FAIL: TestAnalyzeMajorExpenseTrends_RefundDominantPeriodSignedNet
+  CB3-D  trends.go:298 dailyAvg := -currentOutflows.SumAmount()/currentDays -> exit=1
+      FAIL: TestCalculateSpendingVelocity_RefundDominantPeriodIsNegative
+  CB3-D  trends.go:307 historicalDaily := -allOutflows.SumAmount()/allDays -> exit=1
+      FAIL: TestCalculateSpendingVelocity_RefundDominantPeriodIsNegative
+  CB3-D  trends.go:320 spentSoFar := -currentMonthOutflows.SumAmount() -> exit=0
+      *** NO COMMITTED TEST FAILED -- SITE UNGUARDED ***
+
+The two unguarded sites are not covered by the oracle either:
+  $ (mutate one site, then) bash .swarm/tier3/CB3/accept.sh
+      pin-match branch reverted to abs  -> exit=0, last line "ORACLE PASS"
+      spentSoFar reverted to abs        -> exit=0, last line "ORACLE PASS"
+
+Why each is unguarded (root cause, so the fix is unambiguous):
+
+3a. trends.go:44 -- the sumByExpense PIN-MATCH branch. Every committed test
+    that reaches MajorExpenseTrends with a refund passes pins = nil:
+      $ grep -rn "MajorExpenseTrends(" --include=*_test.go
+        trends_test.go:542 MajorExpenseTrends(ts, defs, nil, ...)
+        trends_test.go:592 MajorExpenseTrends(ts, defs, pins, ...)   <- only pin test
+        trends_test.go:614 MajorExpenseTrends(ts, nil, nil, ...)
+        trends_test.go:636 MajorExpenseTrends(ts, defs, nil, ...)
+        trends_test.go:666 MajorExpenseTrends(ts, defs, nil, ...)
+        .swarm/tier3/CB3/cb3_oracle_test.go:139  (pins = nil)
+    The one pin test, TestAnalyzeMajorExpenseTrends_PinOverridesKeyword
+    (trends_test.go:573-608), uses a single Amount: -150 row, so signed net
+    and abs both give 150 -- it cannot distinguish the two forms. The
+    manifest's claim that regressions cover "sumByExpense's two sites" is
+    therefore only true for the keyword-match branch.
+    This is a LIVE production path, not dead code: mcpsvc/spend/trends.go:184
+    calls insights.MajorExpenseTrends(ts, defs, pins, start, end) with real
+    pins for the get_trends major_expense_trends surface.
+
+3b. trends.go:320 -- SpendingVelocity spentSoFar. models.SpendingVelocity
+    (internal/models/insights.go:41-47) has no SpentSoFar field, so the only
+    observable is MonthProjection = spentSoFar + dailyAvg*daysRemaining, and
+    TestCalculateSpendingVelocity_RefundDominantPeriodIsNegative asserts only
+    `MonthProjection >= 0 -> error`. Measured with a throwaway probe on the
+    test's own fixture (today 2026-09-02, DaysRemaining=28):
+        unmutated  MonthProjection = -15950.00
+        mutated    MonthProjection = -14850.00
+    Both negative -> the assertion passes either way. The dailyAvg term
+    (-550*28) swamps the +/-550 spentSoFar term. Note this guard is also
+    date-fragile: at month end (daysRemaining ~ 0) the mutated value would be
+    +550 and the test would fail, so the coverage such as it is depends on the
+    calendar. A direct assertion is needed -- e.g. pin MonthProjection to its
+    exact expected value, or exercise a fixture where the spentSoFar sign
+    determines the outcome.
+
+CRITERION 3 VERDICT: FAIL. The spec requires "Committed regression tests per
+site" and the task requires at least one committed test to fail per reverted
+site; 2 of 8 sites have none. Behavior is correct today; the guard is absent.
+
+--------------------------------------------------------------------
+CRITERION 4 -- PercentChange body unchanged + pin test is real: PASS
+--------------------------------------------------------------------
+  Byte-level: PercentChange extracted from both trees and compared:
+    $ cmp pc_master.txt pc_work.txt  -> BYTE-IDENTICAL
+    $ python3 difflib on the two    -> [difflib] identical
+    sha256(master body) = sha256(work body)
+      = 8e25dde75ac4a03fac0b0f73acd8225dca3364c9c5b4669c8bbcf73b0c1193d5
+  AST-level cross-check (go/ast FuncDecl.Pos()..End() sha256 per top-level
+  func, comments excluded by construction): metrics.go has ZERO changed,
+  added or removed functions. The entire metrics.go diff is the doc comment
+  above PercentChange (single difflib hunk, 27 diff lines).
+  Mutation of the denominator (math.Abs(previous) -> previous) in the
+  sandbox:
+    $ go test -count=1 -v ./internal/services/metrics/   -> exit=1
+      metrics_test.go:340: PercentChange(-500, -1000) = -50, want 50
+      metrics_test.go:347: PercentChange(-1500, -1000) = 50, want -50
+      --- FAIL: TestPercentChange_NegativeBase
+      (also --- FAIL: TestPercentChange_NegativePrevious, pre-existing)
+  The new pin test is non-vacuous.
+
+--------------------------------------------------------------------
+CRITERION 5 -- ruling CB3-a (test rewritten, not deleted): PASS
+--------------------------------------------------------------------
+  difflib on internal/handlers/dashboard/handlers_test.go shows
+  TestBuildCumulativeChartData_PositiveAmountOutflows retained under the same
+  name, same fixture (Salary 5000 Income; Rent 1500 Outflow positive; Gas 500
+  Outflow positive), expectations changed 5000/3500/3000 -> 5000/6500/7000,
+  with a 13-line comment naming ruling CB3-2026-09-02a and explaining the
+  classifier-pipeline supersession (ClassifyTransactions normalizes purchases
+  negative and deliberately keeps positive non-income amounts as credits; an
+  unsigned export cannot reach the chart un-normalized; unsigned-export
+  support belongs in the LOADER).
+  Test-name inventory across the four packages:
+    $ go test -list '.*' ./internal/handlers/dashboard/ ./internal/services/insights/ \
+          ./internal/services/metrics/ ./internal/services/mcpsvc/spend/
+      master: 383 names, work: 391 names
+      comm -23 (removed): EMPTY  -- no test removed or renamed
+      comm -13 (added): 8 --
+        TestAnalyzeMajorExpenseTrends_RefundDominantPeriodSignedNet
+        TestAnalyzeMajorExpenseTrends_RefundInNormalPeriodSignedNet
+        TestBuildCumulativeChartData_RefundDayIncreasesRunningTotal
+        TestBuildMerchantsChartData_RefundNetsAgainstMerchant
+        TestCalculateSpendingVelocity_RefundDominantPeriodIsNegative
+        TestHandleMajorExpenseDrilldown_RefundDominantGroupSignedNet
+        TestHandleMajorExpenseDrilldown_RefundInNormalGroupSignedNet
+        TestPercentChange_NegativeBase
+
+--------------------------------------------------------------------
+CRITERION 6 -- scope / docstring is text-only / category_trends untouched: PASS
+--------------------------------------------------------------------
+  $ git diff origin/master --stat   (origin/master == master == 50a5e06)
+      9 files changed, 331 insertions(+), 25 deletions(-):
+      .swarm/ledger.tsv (+1, the CB3 row) and the exact 8 paths listed in
+      .swarm/manifests/CB3.1.files -- no more, no less.
+      Untracked additions are process artifacts only: .swarm/CB3-RUN-SPEC.md,
+      .swarm/manifests/CB3.1.{files,manifest.md}, .swarm/tier3/CB3/.
+  .swarm/critical.globs (storage, dataloader, retirement/engine, transfers,
+  accounts/accounts.go, mcpsvc/confirm): none of the 8 paths matches any glob.
+  AST func-hash comparison master vs work, exactly six functions changed and
+  none added or removed:
+      insights/trends.go        : MajorExpenseTrends, SpendingVelocity
+      dashboard/handlers.go     : handleMajorExpenseDrilldown,
+                                  buildMerchantsChartData, buildCumulativeChartData
+      metrics/metrics.go        : (none)
+      mcpsvc/spend/trends.go    : registerTrends
+      insights.CategoryTrends is NOT in the changed set -> byte-identical
+      (independently cmp'd: BYTE-IDENTICAL).
+  Docstring change is text-only, proven with a go/scanner token-stream diff
+  (comments dropped by scanner mode 0, STRING/CHAR literal VALUES elided):
+      raw token streams: 1312 (master) vs 1316 (work); the only difference is
+      two extra `+ STRING` continuations inside the same Description
+      concatenation (difflib hunk @@ -857,4 +857,8 @@ shows exactly
+      "+ / STRING" x2 added and nothing else).
+      After folding adjacent STRING + STRING concatenations into one token:
+      1226 vs 1226 tokens, `cmp` -> IDENTICAL. No code token changed anywhere
+      in the file.
+  category_trends computation untouched and the new wording is factually
+  correct: mcpsvc/spend/trends.go:298 CategoryTrends: categoryTrendRows(
+  insights.CategoryTrends(...)) -> insights.CategoryTrends ->
+  models.CategoryTotals(), which is `result[cat] += math.Abs(t.Amount)`
+  (internal/models/transaction.go:458, file not in the diff) -> still
+  POSITIVE. Line 299 MajorExpenseTrends: deps.majorExpenseTrendRows -> line
+  184 insights.MajorExpenseTrends -> now signed. categoryTrendRows and
+  velocityRowFrom are unchanged per the AST hash.
+
+--------------------------------------------------------------------
+SAFETY
+--------------------------------------------------------------------
+No built budget2 binary was executed. `go build ./...` and `go test` were run
+only inside scratchpad copies; the two Go helper programs I ran (go/scanner
+token dump, go/ast func hasher) are my own stdlib-only programs in
+/tmp/claude-1000, not repo binaries. All mutations were applied in
+scratchpad/verify/mut and reverted immediately; the copies are discarded.
+The only write to the worker tree is this verdict file.
+
+--------------------------------------------------------------------
+WHAT IS MISSING (for the worker)
+--------------------------------------------------------------------
+1. A committed regression test that exercises sumByExpense's PIN-MATCH
+   branch (internal/services/insights/trends.go:44) with a refund fixture --
+   i.e. MajorExpenseTrends(ts, defs, pins, ...) where a pinned positive-amount
+   Outflow row makes signed net differ from the abs sum -- and that fails when
+   line 44 is reverted to `totals[def.Name] += math.Abs(t.Amount)`.
+2. A committed assertion that pins SpendingVelocity's spentSoFar term
+   (internal/services/insights/trends.go:320) independently of the calendar --
+   the current `MonthProjection >= 0` check passes with either form today
+   (-15950 vs -14850). Assert MonthProjection's exact expected value, or
+   construct a fixture where the spentSoFar sign alone decides the result.
+3. The oracle .swarm/tier3/CB3/accept.sh passes with either of those two
+   sites reverted; if the oracle is meant to cover CB3-D per its own stated
+   assertion "SpendingVelocity signed aggregates on a refund-dominant period",
+   it needs a pins fixture and an exact MonthProjection assertion too. Any
+   extension re-validates at both ends before the next attempt.
+
+--------------------------------------------------------------------
+OBSERVATION (not attributed to the worker, not part of the FAIL)
+--------------------------------------------------------------------
+A stray untracked file appeared in the worker tree DURING my verification:
+  internal/handlers/dashboard/zz_cb3_probe_test.go
+  mtime 2026-09-02 11:43:51, 4989 bytes, contains func TestCB3RealDataProbe
+It was absent from `git status --short` when I started and I did not create
+it (all my probes ran in scratchpad copies and were removed). It is
+consistent with checker-second's real-data differential probe running
+concurrently in the same tree. It is NOT in .swarm/manifests/CB3.1.files and
+must not be committed. Flagging so the lead can ensure it is removed before
+any commit; my criterion-1/2 results are unaffected because my copies were
+taken before 11:43.

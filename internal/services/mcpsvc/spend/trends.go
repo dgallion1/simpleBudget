@@ -194,11 +194,13 @@ func registerTrends(s *mcp.Server, deps Deps) {
 			"category_trends and major_expense_trends compare the selected window's spending against the " +
 			"IMMEDIATELY PRECEDING window of equal length (echoed back as previous_start/previous_end) -- " +
 			"NOT a long-run average -- so a category can show as \"up\" or \"down\" relative to just the one " +
-			"prior period, which may itself have been unusual. Within each row, current_amount and " +
-			"previous_amount are POSITIVE dollar figures, but change_amount (current_amount - previous_amount) " +
-			"and change_percent are SIGNED -- negative means spending FELL versus the prior window, positive " +
-			"means it rose; do not read either as a magnitude. category_trends, major_expense_trends, and " +
-			"income_patterns are each SILENTLY CAPPED and will not list every category/expense/income source " +
+			"prior period, which may itself have been unusual. Within each row, category_trends' current_amount " +
+			"and previous_amount are POSITIVE dollar figures; major_expense_trends' current_amount and " +
+			"previous_amount are SIGNED instead -- a refund-dominant major-expense period (refunds outweigh " +
+			"purchases) nets NEGATIVE, meaning a credit, not a debt. change_amount (current_amount - " +
+			"previous_amount) and change_percent are SIGNED for both -- negative means spending FELL versus " +
+			"the prior window, positive means it rose; do not read either as a magnitude. category_trends, " +
+			"major_expense_trends, and income_patterns are each SILENTLY CAPPED and will not list every category/expense/income source " +
 			"when the household has more than the cap: category_trends and major_expense_trends each keep only " +
 			"the 10 rows with the largest |change_amount| (biggest movers, not biggest spenders -- a large, " +
 			"stable category can be dropped in favor of a small one that moved a lot), and income_patterns " +

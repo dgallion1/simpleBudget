@@ -52,6 +52,32 @@ func TestRunWithOverrides_HigherExpensesLowerFinalBalance(t *testing.T) {
 	}
 }
 
+// TestRunWithOverrides_ExpenseOverrideKeepsProjectionYears pins the horizon
+// against a field-drop regression along the whole run_scenario path (Apply →
+// prepare.From → RunFull → ShapeAnalysis): overriding monthly_living_expenses
+// alone must leave projection_years — and every other unset field — at the
+// scenario's saved value, including when spending phases are enabled (the
+// suspected interaction in the 2026-08-28 field report, which turned out to be
+// a stale read of the saved file rather than a drop).
+func TestRunWithOverrides_ExpenseOverrideKeepsProjectionYears(t *testing.T) {
+	base := baseSettings()
+	base.ProjectionYears = 7
+	base.SpendingPhaseConfig = &models.SpendingPhaseConfig{
+		Enabled: true,
+		Phases:  models.DefaultSpendingPhases(),
+	}
+	v, err := RunWithOverrides(base, Overrides{MonthlyLivingExpenses: ptr(8_125.0)})
+	if err != nil {
+		t.Fatalf("RunWithOverrides: %v", err)
+	}
+	if v.Headline.ProjectionYears != 7 {
+		t.Errorf("Headline.ProjectionYears = %d, want the scenario's saved 7", v.Headline.ProjectionYears)
+	}
+	if len(v.Years) != 7 {
+		t.Errorf("len(Years) = %d, want 7", len(v.Years))
+	}
+}
+
 func TestRunWithOverrides_OmitsMonteCarlo(t *testing.T) {
 	v, err := RunWithOverrides(baseSettings(), Overrides{})
 	if err != nil {

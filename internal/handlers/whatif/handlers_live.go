@@ -12,8 +12,9 @@ import (
 )
 
 // appIdentity is the literal reported by GET /whatif/state. A client compares
-// it before writing: /api/health returns only {"status":"ok"} and cannot
-// distinguish this server from anything else listening on the same port.
+// it before writing: /api/health returns only {"status":"ok","commit":...}
+// and cannot distinguish this server from anything else listening on the
+// same port.
 const appIdentity = "budget2"
 
 type stateResponse struct {

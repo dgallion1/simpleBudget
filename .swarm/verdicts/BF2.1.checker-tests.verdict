@@ -1,0 +1,119 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: BF2
+ATTEMPT: 1
+---
+All verification ran in `cp -a` copies under
+/tmp/claude-1000/-home-darrell-work-agents2--claude-worktrees-exciting-liskov-ffcb38/97442e67-c24e-4946-b613-f4d36f8d82cf/scratchpad/
+  bf2-check                    -- branch copy (its .git link was REMOVED so no git op could reach the shared gitdir)
+  bf2-mut / bf2-mutB / bf2-mutC -- throwaway mutation copies, all deleted after use
+The only write to the real worktree is this verdict file. No git-state change in t13-port.
+No budget2 binary was built or executed for BF2.
+
+DISCLOSURE (fresh-eyes caveat): BF2 is the V3 promotion of a probe I authored in a throwaway
+copy during BF1 verification, so I am not fully independent of the test's DESIGN. The committed
+test was written by the lead, not by me. I mitigated by killing it with two mutations BEYOND my
+original probe's shape (MutB truncated short-hash fallback, MutC harness-integrity), not just
+the full-hash fallback my probe used. The lead should weigh this when adjudicating.
+
+== Criterion 1 — the test passes as written ==
+cmd: cd bf2-check && go test -count=1 -v -run 'TestGet_CommitNeverFallsBackToVCSRevision' ./internal/version/
+out: === RUN   TestGet_CommitNeverFallsBackToVCSRevision
+     --- PASS: TestGet_CommitNeverFallsBackToVCSRevision (0.00s)
+     ok  budget2/internal/version  0.002s ; NAMED_EXIT=0
+The cache is defeated by -count=1; the test exists under that exact name (Read of
+bf2-check/internal/version/version_test.go lines 260-292), and it asserts what its name claims:
+  Commit = "unknown"                       // the unstamped default
+  readBuildInfo -> vcs.revision "deadbeefcafe1234", vcs.modified "true"
+  info := Get()
+  line 286-288: info.Commit must still be "unknown"    <- the no-fallback contract
+  line 289-291: info.VCSRevision must be "deadbeefcafe1234" <- harness-integrity guard
+Both the Commit var and readBuildInfo are restored in a single t.Cleanup (lines 266-271).
+
+== Criterion 2 — NOT vacuous: the F1 fallback mutation kills it ==
+MutA -- the exact F1 defect: a VCSRevision -> Commit fallback added to Get(), inserted inside the
+`if buildInfo, ok := readBuildInfo(); ok {` block after the vcs.* switch:
+        if info.Commit == "unknown" && info.VCSRevision != "" {
+                info.Commit = info.VCSRevision
+        }
+cmd: cd bf2-mut && gofmt -l internal/version/version.go ; go build ./internal/version/
+out: (gofmt clean) MUTANT_BUILD_EXIT=0   -- the mutant is a legitimate compiling change, not a harness error
+cmd: cd bf2-mut && go test -count=1 -v -run 'TestGet_CommitNeverFallsBackToVCSRevision' ./internal/version/
+out: version_test.go:287: Commit must stay "unknown" when unstamped, got "deadbeefcafe1234"
+       — a vcs.revision fallback has been introduced
+     --- FAIL: TestGet_CommitNeverFallsBackToVCSRevision (0.00s) ; MUTA_NAMED_EXIT=1
+     -> killed at line 287, the no-fallback assertion. RIGHT failure for the RIGHT reason.
+
+The BF2 test is the SOLE guard in the whole repo -- which is precisely the F1 gap it closes:
+cmd: cd bf2-mut && go test -count=1 -v ./internal/version/ 2>&1 | grep -E '^--- FAIL'
+out: --- FAIL: TestGet_CommitNeverFallsBackToVCSRevision (0.00s)     (the only FAIL in the package)
+cmd: cd bf2-mut && go test -count=1 ./... 2>&1 | grep -v '^ok'
+out: --- FAIL: TestGet_CommitNeverFallsBackToVCSRevision ... / FAIL budget2/internal/version
+     MUTA_FULL_EXIT=1
+     -> across all 49 packages, nothing else pins this behavior. Before BF2 the fallback would
+        have shipped silently; after BF2 it cannot.
+
+MutB -- the plausible "helpful" variant my BF1 probe did NOT cover (truncated short hash):
+        if info.Commit == "unknown" && len(info.VCSRevision) >= 8 { info.Commit = info.VCSRevision[:8] }
+cmd: cd bf2-mutB && go test -count=1 -run 'TestGet_CommitNeverFallsBackToVCSRevision' ./internal/version/
+out: version_test.go:287: Commit must stay "unknown" when unstamped, got "deadbeef" — a vcs.revision
+       fallback has been introduced
+     --- FAIL ; MUTB_EXIT=1
+     -> the test is sensitive to the BEHAVIOR (any leak of the stamp), not to one literal form.
+
+MutC -- guard-of-the-guard: delete `case "vcs.revision": info.VCSRevision = setting.Value` from Get(),
+so the injected stamp would stop surfacing and MutA/MutB could pass vacuously:
+cmd: cd bf2-mutC && go test -count=1 -run 'TestGet_CommitNeverFallsBackToVCSRevision' ./internal/version/
+out: version_test.go:290: VCSRevision should still surface informationally, got ""
+     --- FAIL ; MUTC_EXIT=1
+     -> the second assertion is live: the test cannot pass on a dead harness.
+
+All three mutation copies were deleted (`rm -rf bf2-mut bf2-mutB bf2-mutC`) and the real worktree
+was never mutated.
+
+== Criterion 3 — the BF2 diff touches only version_test.go beyond .swarm bookkeeping ==
+cmd: cd t13-port && git log --oneline -1
+out: aada39a feat(build): stamp a build fingerprint so a stale running server is detectable (BF1)
+cmd: cd t13-port && git status --porcelain
+out:  M .swarm/ledger.tsv
+      M internal/version/version_test.go
+     ?? .swarm/manifests/BF2.1.files
+     (and this verdict file, written after the above was captured)
+cmd: cd t13-port && git diff HEAD --stat
+out: .swarm/ledger.tsv | 1 + ; internal/version/version_test.go | 34 ++++++ ; 2 files changed, 35 insertions(+)
+     -> +35/-0: purely additive, one test function; NO production file changed since the BF1 commit.
+cmd: cat .swarm/manifests/BF2.1.files
+out: internal/version/version_test.go       (matches the single non-.swarm change exactly)
+cmd: cd t13-port && git diff HEAD -- .swarm/ledger.tsv
+out: +BF2	1	tests	assigned	1	lead	V3-promotion-of-checker-F1-no-fallback-probe
+     (and BF1's row now reads: BF1 1 tests accepted 1 worker-coder gate-ok-attempt-1-ported-from-stale-T13-worktree)
+cmd: cat .swarm/critical.globs
+out: internal/services/storage/**, internal/services/dataloader/**, internal/services/retirement/engine/**,
+     internal/services/transfers/**, internal/services/accounts/accounts.go, internal/services/mcpsvc/confirm/**
+     -> internal/version/version_test.go matches NONE of them. Tier 1 scope respected.
+Note: BF2's `worker` column is `lead` (CLAUDE.md lean exception for a small, well-specified Tier 1
+task). The non-author-verification contract is satisfied: I did not write the committed file.
+
+== Criterion 4 — package tests still all pass ==
+cmd: cd bf2-check && go test -count=1 ./internal/version/
+out: ok budget2/internal/version 0.002s ; PKG_EXIT=0
+cmd: cd bf2-check && grep -c '^func Test' internal/version/version_test.go
+out: 17   (16 pre-existing + the new one; nothing was removed or renamed)
+State-leak / order-dependence check -- the new test mutates two package globals:
+cmd: cd bf2-check && go test -count=1 -shuffle=on -race ./internal/version/
+out: ok budget2/internal/version 1.010s ; SHUFFLE_EXIT=0
+     -> the t.Cleanup restore holds under randomized order and the race detector.
+Whole repo, cache defeated:
+cmd: cd bf2-check && go test -count=1 ./... > bf2-full.log 2>&1 ; echo "FULL_EXIT=$?"
+out: FULL_EXIT=0 ; ok=49 FAIL=0 lines=49
+Static checks (a _test.go file still compiles into the build):
+cmd: cd bf2-check && go build ./... ; go vet ./... ; staticcheck ./internal/version/ ; gofmt -l internal/version/version_test.go
+out: BUILD_EXIT=0 ; VET_EXIT=0 ; STATICCHECK_EXIT=0 ; gofmt list empty
+
+== FINDINGS ==
+None blocking. BF1's finding F1 is now CLOSED: the no-fallback contract is pinned by a committed
+test that a real, compiling reintroduction of the defect makes fail, and that no other test in the
+repo covers. BF1 findings F2 (three stale /api/health references in docs/superpowers/*) and F3
+(health-body key order is now commit-first) remain open for the lead's backlog and are untouched
+by BF2.

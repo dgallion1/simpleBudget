@@ -117,6 +117,18 @@ Retirement math:
   small Roth is drained past basis under 59½ during the conversion window; with
   no such earnings it converges in one engine run (behavior unchanged).
 
+Live server staleness:
+- Before comparing the running app on :8080 (screenshots, browser-driving,
+  MCP answers) against repo code, check the build fingerprint:
+  `curl -s localhost:8080/api/health` → `.commit`, or the `X-Budget2-Build`
+  response header, vs `git describe --always --dirty` in your checkout.
+  A mismatch means the server predates (or postdates) the code you are
+  reading — say so instead of debugging phantom differences.
+- `commit` is stamped by `make build` ldflags. "unknown" = built without
+  make. Do NOT trust `go version -m <binary>`'s vcs.revision for binaries
+  built under `.claude/worktrees/*` — Go stamps the PARENT checkout's HEAD
+  there.
+
 ## Architecture pointers
 
 - `internal/services/retirement/engine` — projection simulation loop (Monte

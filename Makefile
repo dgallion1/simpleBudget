@@ -10,9 +10,16 @@ FUZZTIME ?= 30s
 VERSION := 1.0.0
 BUILD_TIME := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 
+# git describe runs in the build cwd, so a worktree build stamps the
+# worktree's own HEAD. Do NOT rely on Go's buildvcs stamp instead: for
+# builds under .claude/worktrees/* it records the PARENT checkout's HEAD
+# and dirty flag (Go walks up past the worktree's .git file), which is
+# exactly the staleness confusion this fingerprint exists to remove.
+COMMIT := $(shell git describe --always --dirty 2>/dev/null || echo unknown)
+
 # Ldflags: -s strips symbol table, -w strips DWARF debug info
-# Also inject version and build time
-LDFLAGS := -ldflags="-s -w -X budget2/internal/version.Version=$(VERSION) -X budget2/internal/version.BuildTime=$(BUILD_TIME)"
+# Also inject version, build time, and commit fingerprint
+LDFLAGS := -ldflags="-s -w -X budget2/internal/version.Version=$(VERSION) -X budget2/internal/version.BuildTime=$(BUILD_TIME) -X budget2/internal/version.Commit=$(COMMIT)"
 
 # Detect OS and architecture for platform-specific commands
 ifeq ($(OS),Windows_NT)

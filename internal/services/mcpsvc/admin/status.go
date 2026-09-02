@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"budget2/internal/version"
 )
 
 type statusInput struct{}
@@ -26,6 +28,11 @@ type planStatus struct {
 }
 
 type statusOutput struct {
+	// Version/Commit identify the exact source build of the running server.
+	// Commit is "unknown" for a bare `go build` without the Makefile's ldflags.
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+
 	DataDir    string `json:"data_dir"`
 	Encrypted  bool   `json:"encrypted"`
 	Unlocked   bool   `json:"unlocked"`
@@ -57,11 +64,17 @@ func registerStatus(s *mcp.Server, deps Deps) {
 			"changes to the retirement plan and is the same counter apply_changes reports. backup.last_backup_ts " +
 			"is the most recent SUCCESSFUL backup (format YYYYMMDD_HHMMSS, UTC); backup.last_attempt_ts and " +
 			"backup.last_error describe the most recent ATTEMPT, so a non-empty last_error with an older " +
-			"last_backup_ts means backups are currently failing. This tool reads only -- it changes nothing.",
+			"last_backup_ts means backups are currently failing. version/commit identify the exact source build of " +
+			"this running server -- compare commit against `git rev-parse --short HEAD` (or `git describe " +
+			"--always --dirty`) in the repo you are reading to detect that the running server predates or " +
+			"postdates that code. This tool reads only -- it changes nothing.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ statusInput) (res *mcp.CallToolResult, out statusOutput, err error) {
 		defer recoverToError("get_status", &err)
 
-		out = statusOutput{}
+		out = statusOutput{
+			Version: version.Version,
+			Commit:  version.Commit,
+		}
 		if deps.Store != nil {
 			out.DataDir = deps.Store.BaseDir()
 			out.Encrypted = deps.Store.IsEncrypted()

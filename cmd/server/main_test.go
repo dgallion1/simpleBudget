@@ -63,6 +63,40 @@ func TestHealthEndpoint(t *testing.T) {
 		Contains(`"status":"ok"`)
 }
 
+// TestHealthEndpointCommit tests that /api/health reports the commit field,
+// tracking the version.Commit variable rather than a hard-coded literal.
+func TestHealthEndpointCommit(t *testing.T) {
+	origCommit := version.Commit
+	version.Commit = "sentinel-health-endpoint-commit"
+	t.Cleanup(func() { version.Commit = origCommit })
+
+	ts := setupTestServer(t)
+	defer ts.Close()
+
+	resp := ts.GET("/api/health")
+	testutil.AssertResponse(t, resp).
+		StatusOK().
+		ContentTypeJSON().
+		Contains(`"commit":"` + version.Commit + `"`)
+}
+
+// TestXBudget2BuildHeader tests that every served response carries the
+// X-Budget2-Build header equal to version.Commit, using a sentinel value so
+// the assertion holds under any ldflags stamp.
+func TestXBudget2BuildHeader(t *testing.T) {
+	origCommit := version.Commit
+	version.Commit = "sentinel-build-header-commit"
+	t.Cleanup(func() { version.Commit = origCommit })
+
+	ts := setupTestServer(t)
+	defer ts.Close()
+
+	resp := ts.GET("/api/health")
+	if got := resp.Header.Get("X-Budget2-Build"); got != version.Commit {
+		t.Errorf("X-Budget2-Build = %q, want %q", got, version.Commit)
+	}
+}
+
 // TestRootRedirect tests that / redirects to /dashboard
 func TestRootRedirect(t *testing.T) {
 	ts := setupTestServer(t)

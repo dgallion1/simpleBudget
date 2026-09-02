@@ -26,6 +26,7 @@ import (
 	"budget2/internal/services/restore"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
+	"budget2/internal/version"
 	"budget2/testdata"
 )
 
@@ -216,7 +217,7 @@ func HandleOpenBackupDir(w http.ResponseWriter, r *http.Request) {
 
 func HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "commit": version.Commit})
 }
 
 // exitFunc is a package-level variable for testing.

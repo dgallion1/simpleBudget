@@ -1,0 +1,11 @@
+Makefile
+CLAUDE.md
+internal/version/version.go
+internal/version/version_test.go
+internal/handlers/backup/handlers.go
+internal/handlers/backup/handlers_test.go
+internal/handlers/whatif/handlers_live.go
+cmd/server/main.go
+cmd/server/main_test.go
+internal/services/mcpsvc/admin/status.go
+internal/services/mcpsvc/admin/status_test.go

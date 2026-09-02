@@ -1,6 +1,7 @@
 package version
 
 import (
+	"encoding/json"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -10,13 +11,16 @@ func TestGet(t *testing.T) {
 	// Save originals and restore after test
 	origVersion := Version
 	origBuildTime := BuildTime
+	origCommit := Commit
 	t.Cleanup(func() {
 		Version = origVersion
 		BuildTime = origBuildTime
+		Commit = origCommit
 	})
 
 	Version = "v1.2.3"
 	BuildTime = "2026-01-01T00:00:00Z"
+	Commit = "abc1234"
 
 	info := Get()
 
@@ -26,9 +30,35 @@ func TestGet(t *testing.T) {
 	if info.BuildTime != "2026-01-01T00:00:00Z" {
 		t.Errorf("expected BuildTime 2026-01-01T00:00:00Z, got %s", info.BuildTime)
 	}
+	if info.Commit != Commit {
+		t.Errorf("expected Info.Commit to equal the package Commit var (%s), got %s", Commit, info.Commit)
+	}
 	// GoVersion should be populated from debug.ReadBuildInfo in test binary
 	if info.GoVersion == "" {
 		t.Error("expected GoVersion to be populated")
+	}
+}
+
+// TestGet_CommitJSONMarshaling asserts the Info.Commit field round-trips
+// through JSON as "commit" and tracks the package Commit var (not a
+// hard-coded literal), so this holds under any ldflags stamp.
+func TestGet_CommitJSONMarshaling(t *testing.T) {
+	origCommit := Commit
+	t.Cleanup(func() { Commit = origCommit })
+
+	Commit = "sentinel-commit-xyz"
+
+	info := Get()
+	if info.Commit != Commit {
+		t.Fatalf("expected Info.Commit %q, got %q", Commit, info.Commit)
+	}
+
+	b, err := json.Marshal(info)
+	if err != nil {
+		t.Fatalf("json.Marshal(info) failed: %v", err)
+	}
+	if !strings.Contains(string(b), `"commit":"sentinel-commit-xyz"`) {
+		t.Errorf("expected marshaled Info JSON to contain the commit field, got %s", string(b))
 	}
 }
 
@@ -224,6 +254,40 @@ func TestGet_WithVCSSettings(t *testing.T) {
 	}
 	if !info.VCSModified {
 		t.Error("expected VCSModified to be true")
+	}
+}
+
+// TestGet_CommitNeverFallsBackToVCSRevision pins the no-fallback contract:
+// an unstamped build reports Commit "unknown" even when the buildvcs stamp
+// carries a revision, because that stamp records the PARENT checkout's HEAD
+// for binaries built under .claude/worktrees/* and must never leak into the
+// fingerprint. If someone adds a "helpful" VCSRevision fallback, this fails.
+func TestGet_CommitNeverFallsBackToVCSRevision(t *testing.T) {
+	origCommit := Commit
+	orig := readBuildInfo
+	t.Cleanup(func() {
+		Commit = origCommit
+		readBuildInfo = orig
+	})
+
+	Commit = "unknown" // the unstamped default (bare go build / go run / tests)
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{
+			GoVersion: "go1.23.0",
+			Settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: "deadbeefcafe1234"},
+				{Key: "vcs.modified", Value: "true"},
+			},
+		}, true
+	}
+
+	info := Get()
+
+	if info.Commit != "unknown" {
+		t.Errorf("Commit must stay %q when unstamped, got %q — a vcs.revision fallback has been introduced", "unknown", info.Commit)
+	}
+	if info.VCSRevision != "deadbeefcafe1234" {
+		t.Errorf("VCSRevision should still surface informationally, got %q", info.VCSRevision)
 	}
 }
 

@@ -20,10 +20,12 @@ const (
 	// pendingPostedWindowDays bounds the third candidate shape (see
 	// isPendingPostedPair): the pending side and the posted side of the
 	// same settlement are usually captured on the same day or the next,
-	// but bank settlement lag occasionally pushes it out a couple more
-	// days, so 3 days balances catching real settlements against pairing
-	// unrelated same-amount charges.
-	pendingPostedWindowDays = 3
+	// but bank settlement lag over a weekend or holiday stretches to 4
+	// days on live data (Amazon Mktplace -30.81, Nov 2025), so 5 days
+	// catches real settlements with a day of margin while the
+	// status-split, same-account, and description-affinity guards keep
+	// unrelated same-amount charges out.
+	pendingPostedWindowDays = 5
 
 	// pendingPostedPrefixMinLen is the minimum shared byte-wise prefix
 	// length (after normalization) required for the pending→posted
@@ -215,7 +217,7 @@ func isSameDayReimportPair(a, b models.Transaction) bool {
 // fire). The only remaining signals are the status transition itself, the
 // account, and whatever fragment of the merchant name survives the
 // rewrite -- so this shape is deliberately narrower than the other two: the
-// window is 3 days (pendingPostedWindowDays, wider than the 1-day reimport
+// window is 5 days (pendingPostedWindowDays, wider than the 1-day reimport
 // window because bank settlement lag varies more than a same-day
 // re-export), the status split must be exact (one side "pending", the
 // other a postedStatusKeywords match, neither side's Status empty -- an

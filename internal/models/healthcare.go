@@ -38,6 +38,11 @@ type HealthcarePerson struct {
 	// Employer coverage transition fields
 	EmployerCoverageYears int     `json:"employer_coverage_years"` // Years of remaining employer coverage (0 = indefinite until Medicare)
 	ACACostAfterEmployer  float64 `json:"aca_cost_after_employer"` // Monthly ACA cost when employer coverage ends
+
+	// Late-life care fields. Optional: care is not modeled unless both are
+	// set. See CareCostAt.
+	CareStartAge    int     `json:"care_start_age,omitempty"`    // 0 = care not modeled
+	CareMonthlyCost float64 `json:"care_monthly_cost,omitempty"` // today's dollars
 }
 
 func (hp HealthcarePerson) IsLinked() bool {
@@ -94,28 +99,10 @@ func (hp *HealthcarePerson) YearsUntilMedicare() int {
 //
 // F-067: when BirthMonth ("YYYY-MM") and startDate ("YYYY-MM") are both set,
 // use month-precise arithmetic so that mid-year birthdays don't round to the
-// wrong year (up to 11-month error with the year-based fallback).
+// wrong year (up to 11-month error with the year-based fallback). Delegates
+// to monthsUntilAge, the general form of the same rule (CC1 fix O4).
 func (hp *HealthcarePerson) monthsUntilMedicareEligible(startDate string) int {
-	if hp.BirthMonth != "" && startDate != "" {
-		birth, err := time.Parse("2006-01", hp.BirthMonth)
-		if err == nil {
-			start, err2 := time.Parse("2006-01", startDate)
-			if err2 == nil {
-				eligibleDate := birth.AddDate(hp.MedicareEligibleAge, 0, 0)
-				months := (eligibleDate.Year()-start.Year())*12 + int(eligibleDate.Month()) - int(start.Month())
-				if months < 0 {
-					return 0
-				}
-				return months
-			}
-		}
-	}
-	// Legacy year-based fallback.
-	yearsUntil := hp.MedicareEligibleAge - hp.CurrentAge
-	if yearsUntil < 0 {
-		return 0
-	}
-	return yearsUntil * 12
+	return hp.monthsUntilAge(hp.MedicareEligibleAge, startDate)
 }
 
 // MedicareStartMonth returns the projection month in which this person
@@ -227,6 +214,55 @@ func (hp *HealthcarePerson) CoverageAt(month int, startDate string) CoverageType
 		return CoverageMedicare
 	}
 	return hp.CurrentCoverage
+}
+
+// monthsUntilAge returns the number of months from projection month 0 until
+// this person reaches the given age. Mirrors monthsUntilMedicareEligible
+// (F-067) generalized to an arbitrary age: month-precise via BirthMonth when
+// BirthMonth and startDate are both set, otherwise the year-based CurrentAge
+// fallback.
+func (hp *HealthcarePerson) monthsUntilAge(age int, startDate string) int {
+	if hp.BirthMonth != "" && startDate != "" {
+		birth, err := time.Parse("2006-01", hp.BirthMonth)
+		if err == nil {
+			start, err2 := time.Parse("2006-01", startDate)
+			if err2 == nil {
+				targetDate := birth.AddDate(age, 0, 0)
+				months := (targetDate.Year()-start.Year())*12 + int(targetDate.Month()) - int(start.Month())
+				if months < 0 {
+					return 0
+				}
+				return months
+			}
+		}
+	}
+	// Legacy year-based fallback.
+	yearsUntil := age - hp.CurrentAge
+	if yearsUntil < 0 {
+		return 0
+	}
+	return yearsUntil * 12
+}
+
+// CareCostAt returns this person's monthly late-life care cost at the given
+// projection month, or 0 when care is not modeled (CareStartAge == 0 or
+// CareMonthlyCost <= 0).
+//
+// Care starts at the projection month this person reaches CareStartAge,
+// computed with the same month-precision rules as Medicare eligibility
+// (monthsUntilAge). CareMonthlyCost is entered in today's dollars and
+// compounds from month 0 — not from care start — at the person's
+// PostMedicareInflation (no separate care-inflation knob), then runs
+// unmodified to the end of the projection: no duration, no mortality.
+func (hp *HealthcarePerson) CareCostAt(month int, startDate string) float64 {
+	if hp.CareStartAge == 0 || hp.CareMonthlyCost <= 0 {
+		return 0
+	}
+	careStartMonth := hp.monthsUntilAge(hp.CareStartAge, startDate)
+	if month < careStartMonth {
+		return 0
+	}
+	return hp.CareMonthlyCost * math.Pow(1+hp.PostMedicareInflation/100, float64(month)/12.0)
 }
 
 // GetMonthlyCostWithVariation returns healthcare cost with Monte Carlo variation

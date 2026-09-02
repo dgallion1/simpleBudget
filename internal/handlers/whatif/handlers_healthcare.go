@@ -269,6 +269,40 @@ func handleWhatIfUpdateHealthcare(w http.ResponseWriter, r *http.Request) {
 		}
 		updates["aca_cost_after_employer"] = f
 	}
+	if formHasKey(r, "care_start_age") {
+		v := strings.TrimSpace(r.FormValue("care_start_age"))
+		if v == "" {
+			updates["care_start_age"] = 0
+		} else {
+			i, err := strconv.Atoi(v)
+			if err != nil {
+				renderError(w, "Invalid care start age: must be an integer", http.StatusBadRequest)
+				return
+			}
+			if i != 0 && (i < 60 || i > 100) {
+				renderError(w, "Care start age must be 0 (off) or between 60 and 100", http.StatusBadRequest)
+				return
+			}
+			updates["care_start_age"] = i
+		}
+	}
+	if formHasKey(r, "care_monthly_cost") {
+		v := strings.TrimSpace(r.FormValue("care_monthly_cost"))
+		if v == "" {
+			updates["care_monthly_cost"] = 0.0
+		} else {
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				renderError(w, "Invalid care monthly cost: must be a number", http.StatusBadRequest)
+				return
+			}
+			if f < 0 {
+				renderError(w, "Care monthly cost cannot be negative", http.StatusBadRequest)
+				return
+			}
+			updates["care_monthly_cost"] = f
+		}
+	}
 
 	recalcAndRender(w, r, "Failed to update healthcare person", func() (*models.WhatIfSettings, int, error) {
 		settings, err := retirementMgr.UpdateHealthcarePerson(id, updates)

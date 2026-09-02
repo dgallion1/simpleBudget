@@ -60,6 +60,7 @@ func SensitivityWithBaseline(eng *engine.Engine, in engine.Input, baseProjection
 					modifiedSettings.HealthcarePersons[j].CurrentMonthlyCost *= 1.5
 					modifiedSettings.HealthcarePersons[j].MedicareMonthlyCost *= 1.5
 					modifiedSettings.HealthcarePersons[j].ACACostAfterEmployer *= 1.5
+					modifiedSettings.HealthcarePersons[j].CareMonthlyCost *= 1.5
 				}
 			} else {
 				modifiedSettings.MonthlyHealthcare = scenario.ParamValue

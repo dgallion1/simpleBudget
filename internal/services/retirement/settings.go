@@ -1625,6 +1625,12 @@ func applyHealthcareUpdates(person *models.HealthcarePerson, updates map[string]
 	if v, ok := updates["aca_cost_after_employer"].(float64); ok {
 		person.ACACostAfterEmployer = v
 	}
+	if v, ok := updates["care_start_age"].(int); ok {
+		person.CareStartAge = v
+	}
+	if v, ok := updates["care_monthly_cost"].(float64); ok {
+		person.CareMonthlyCost = v
+	}
 }
 
 // RemoveHealthcarePerson removes a healthcare person by ID atomically

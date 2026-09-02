@@ -257,6 +257,40 @@ func TestGet_WithVCSSettings(t *testing.T) {
 	}
 }
 
+// TestGet_CommitNeverFallsBackToVCSRevision pins the no-fallback contract:
+// an unstamped build reports Commit "unknown" even when the buildvcs stamp
+// carries a revision, because that stamp records the PARENT checkout's HEAD
+// for binaries built under .claude/worktrees/* and must never leak into the
+// fingerprint. If someone adds a "helpful" VCSRevision fallback, this fails.
+func TestGet_CommitNeverFallsBackToVCSRevision(t *testing.T) {
+	origCommit := Commit
+	orig := readBuildInfo
+	t.Cleanup(func() {
+		Commit = origCommit
+		readBuildInfo = orig
+	})
+
+	Commit = "unknown" // the unstamped default (bare go build / go run / tests)
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{
+			GoVersion: "go1.23.0",
+			Settings: []debug.BuildSetting{
+				{Key: "vcs.revision", Value: "deadbeefcafe1234"},
+				{Key: "vcs.modified", Value: "true"},
+			},
+		}, true
+	}
+
+	info := Get()
+
+	if info.Commit != "unknown" {
+		t.Errorf("Commit must stay %q when unstamped, got %q — a vcs.revision fallback has been introduced", "unknown", info.Commit)
+	}
+	if info.VCSRevision != "deadbeefcafe1234" {
+		t.Errorf("VCSRevision should still surface informationally, got %q", info.VCSRevision)
+	}
+}
+
 func TestGet_VCSModifiedFalse(t *testing.T) {
 	orig := readBuildInfo
 	t.Cleanup(func() { readBuildInfo = orig })

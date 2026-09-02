@@ -61,7 +61,8 @@ func TestCalculateMetrics_PlanExclusions_RemainderNetsRefundLivingEqualsAbsRemai
 // TestCalculateMetrics_PlanExclusions_RemainderNetsRefundMonthInLivingTrend
 // guards the per-month LivingExpensesTrend array against the same class of
 // defect: a month whose REMAINDER (non-flagged, non-HI spend) nets a
-// refund must show |that month's remainder| exactly.
+// refund must show the SIGNED negated net of that month's remainder (CB2:
+// a refund-dominant month is negative, a credit), not its absolute value.
 func TestCalculateMetrics_PlanExclusions_RemainderNetsRefundMonthInLivingTrend(t *testing.T) {
 	jan := time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
 	feb := time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)
@@ -83,34 +84,33 @@ func TestCalculateMetrics_PlanExclusions_RemainderNetsRefundMonthInLivingTrend(t
 	if len(m.LivingExpensesTrend) != 2 {
 		t.Fatalf("LivingExpensesTrend has %d entries, want 2: %v", len(m.LivingExpensesTrend), m.LivingExpensesTrend)
 	}
-	if !floatEqual(m.LivingExpensesTrend[0], 3000) {
-		t.Errorf("LivingExpensesTrend[Jan] = %v, want 3000 (|remainder| exactly)", m.LivingExpensesTrend[0])
+	if !floatEqual(m.LivingExpensesTrend[0], -3000) {
+		t.Errorf("LivingExpensesTrend[Jan] = %v, want -3000 (signed negated net of the remainder; CB2: refund-dominant month is a credit)", m.LivingExpensesTrend[0])
 	}
 	if !floatEqual(m.LivingExpensesTrend[1], 1500) {
 		t.Errorf("LivingExpensesTrend[Feb] = %v, want 1500 (unaffected)", m.LivingExpensesTrend[1])
 	}
 }
 
-// NOTE on CombinedCumulativeBalance: a remainder-refund fixture large enough
-// to net positive (per the ruling's probe, a +4000 outflow-typed credit)
-// necessarily also flips that CALENDAR MONTH's raw combined (living+
-// healthcare+flagged) sign positive, which breaks the walk's own
-// pre-existing, undocumented-but-relied-upon precondition that "per-month
-// |sum| partitions range-level |sum|" -- a precondition abs-of-parts only
-// satisfies when every part shares one sign. Verified BOTH-ENDS that this
-// is master-native and NOT an SY4 regression: the identical fixture with
-// planExclusions=nil trips the SAME invariant break
-// (TestProbeInvariantWithoutFlag, run by hand during this attempt: "last
-// CombinedCumulativeBalance point = -995.48, want -CombinedCumulativeDelta
-// = 1204.52" -- fails identically with or without any plan exclusion).
-// Out of scope per ruling SY-2026-08-30d ("the pre-existing HI-abs quirk
-// ... is master-native and out of scope") -- this is the same defect
-// class (abs-of-monthly-parts vs abs-of-whole), just triggered by a
-// non-HI outflow-typed credit instead of an HI one. No walk-invariant test
-// is added for the remainder fixture; the flagged-sign-divergent walk
-// invariant test in plan_exclusions_signed_net_test.go (whose fixture
-// never flips a month's raw sign) still covers the walk's OWN plan-
-// exclusion arithmetic.
+// NOTE on CombinedCumulativeBalance (UPDATED, CB2): a remainder-refund
+// fixture large enough to net positive (per the ruling's probe, a +4000
+// outflow-typed credit) used to break the walk's undocumented, relied-upon
+// precondition that "per-month |sum| partitions range-level |sum|" -- a
+// precondition abs-of-parts only satisfies when every part shares one sign.
+// CB1 (PR #80) fixed this: the walk's per-month spend is now the SIGNED
+// negated net of the month bucket (-bucket.SumAmount()), not math.Abs, so a
+// CALENDAR MONTH whose combined (living+healthcare+flagged) sign flips
+// positive enters the walk as a credit instead of breaking the partition
+// invariant. See TestCalculateMetrics_CombinedCumulativeBalance_
+// RefundDominantMonthEntersAsCredit and TestChartCumulativeWalk_
+// AgreesWithMetricsCombinedCumulativeBalance for the walk's own regression
+// coverage of exactly this fixture shape. This does not touch the
+// RANGE-level totals (LivingExpensesTotal, TotalExpenses, etc.), which
+// still use math.Abs and still only partition into signed per-month parts
+// while the RANGE as a whole nets outflow-negative (unchanged, out of
+// scope). The flagged-sign-divergent walk invariant test in
+// plan_exclusions_signed_net_test.go (whose fixture never flips a month's
+// raw sign) covers the walk's OWN plan-exclusion arithmetic separately.
 
 // TestComparison_PlanExclusions_RemainderNetsRefundAppliedToBothWindows
 // extends Comparison coverage with the remainder-sign-divergent fixture on

@@ -12,11 +12,18 @@ type DashboardMetrics struct {
 	StartDate        time.Time `json:"start_date"`
 	EndDate          time.Time `json:"end_date"`
 
-	// Trends (for sparklines) - monthly values
+	// Trends (for sparklines) - monthly values. ExpensesTrend is SIGNED
+	// (CB2): an ordinary month is positive (net spend); a REFUND-DOMINANT
+	// month -- one whose outflow-typed rows net positive -- is NEGATIVE (a
+	// credit), not math.Abs'd positive. SavingsTrend derives as
+	// IncomeTrend-ExpensesTrend with no extra handling: for a
+	// refund-dominant month this correctly ADDS the net refund to income
+	// (savings that month = income + refund), since ExpensesTrend is
+	// already negative there.
 	IncomeTrend   []float64 `json:"income_trend"`
-	ExpensesTrend []float64 `json:"expenses_trend"`
-	SavingsTrend  []float64 `json:"savings_trend"`
-	TrendLabels   []string  `json:"trend_labels"` // Month labels
+	ExpensesTrend []float64 `json:"expenses_trend"` // signed net; refund-dominant month is negative (a credit)
+	SavingsTrend  []float64 `json:"savings_trend"`  // IncomeTrend-ExpensesTrend; refund-dominant month = income + refund
+	TrendLabels   []string  `json:"trend_labels"`   // Month labels
 
 	// Budget tracking (compares living-expense outflows to the active
 	// what-if MonthlyLivingExpenses target). "Living" excludes the
@@ -33,7 +40,7 @@ type DashboardMetrics struct {
 	PerMonthDelta       float64   `json:"per_month_delta"`       // ActualMonthly - BudgetTarget; positive = over
 	CumulativeDelta     float64   `json:"cumulative_delta"`      // LivingExpensesTotal - BudgetTarget*MonthsInRange; positive = over
 	HasBudgetTarget     bool      `json:"has_budget_target"`     // BudgetTarget > 0
-	LivingExpensesTrend []float64 `json:"living_expenses_trend"` // monthly living (non-healthcare) outflows aligned with TrendLabels
+	LivingExpensesTrend []float64 `json:"living_expenses_trend"` // signed net monthly living (non-healthcare) outflows aligned with TrendLabels; refund-dominant month is negative (a credit)
 
 	// Healthcare tracking (compares "Health Insurance" category outflows
 	// to the active what-if HealthcarePersons premium total at month 0).
@@ -51,7 +58,7 @@ type DashboardMetrics struct {
 	HealthcarePerMonthDelta   float64   `json:"healthcare_per_month_delta"`  // HealthcareActual - HealthcareTarget; positive = over
 	HealthcareCumulativeDelta float64   `json:"healthcare_cumulative_delta"` // HealthcareTotal - HealthcareTarget*coverageMonths; positive = over
 	HasHealthcareTarget       bool      `json:"has_healthcare_target"`       // HealthcareTarget > 0 AND coverageMonths > 0
-	HealthcareTrend           []float64 `json:"healthcare_trend"`            // monthly "Health Insurance" actuals (last 6 months, aligned with TrendLabels)
+	HealthcareTrend           []float64 `json:"healthcare_trend"`            // signed net monthly "Health Insurance" actuals (last 6 months, aligned with TrendLabels); refund-dominant month is negative (a credit)
 
 	// HealthcareCoverageStart/HealthcareHasCoverage are the coverageStart/
 	// hasCoverage Calculate received (from metrics.HealthcareCoverageStart

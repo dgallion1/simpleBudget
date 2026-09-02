@@ -296,18 +296,21 @@ func PlanExcludedOutflows(outflows *models.TransactionSet, planExclusions map[st
 // claims (a flagged plan-sync exclusion, with the same HI-first precedence --
 // an HI+flagged overlap row is removed once, as HI, matching D-SY-e).
 //
-// Ordinary |sum| living arithmetic (math.Abs(LivingOutflows(...).SumAmount()))
-// then runs DIRECTLY on this set at every granularity Calculate needs (range
-// total, per-month trend) and in the dashboard's budget-vs-actual chart --
-// this function is the ONLY place any row is ever excluded. Ruling
-// SY-2026-08-30d (attempt 3, rewriting SY-2026-08-30c's contract): SET
-// EXCLUSION, never an arithmetic subtraction of a separately-computed total
-// from an already-Abs'd figure. That subtraction shape breaks whenever the
+// This set is consumed DIRECTLY, at every granularity Calculate needs, with
+// no arithmetic subtraction of a separately-computed total from an
+// already-summed figure -- this function is the ONLY place any row is ever
+// excluded (ruling SY-2026-08-30d, attempt 3, rewriting SY-2026-08-30c's
+// contract: SET EXCLUSION, never subtraction). The range total still runs
+// math.Abs(LivingOutflows(...).SumAmount()) directly on this set. The
+// per-month trend and the dashboard's budget-vs-actual chart instead use the
+// SIGNED negated net, -LivingOutflows(...).SumAmount(), per CB2: a
+// refund-dominant month must show as a negative (a credit), which Abs would
+// flip positive. Either way, that subtraction shape breaks whenever the
 // REMAINDER itself nets a refund (e.g. an outflow-typed credit misclassified
 // into Outflow, per the "type is inferred, not bank-supplied" ledger
 // convention), independent of the flagged group's own sign -- Abs(S+F)-F
 // (or any signed variant of it) is not equal to Abs(S) in general; only
-// computing Abs directly on the remaining transactions is.
+// computing directly on the remaining transactions is.
 //
 // Nil-safe: nil outflows or nil/empty planExclusions still applies the HI
 // filter, so `math.Abs(LivingOutflows(outflows, nil).SumAmount())` reproduces
@@ -495,22 +498,32 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 			incAmt = inc.SumAmount()
 		}
 
+		// CB2 fix: expAmt is the SIGNED negated net of the month's outflow
+		// bucket, not math.Abs. An ordinary month nets outflow-negative, so
+		// -SumAmount() is positive expense, same as the old math.Abs. A
+		// REFUND-DOMINANT month -- one whose outflow-typed rows net
+		// POSITIVE -- must show as a NEGATIVE expense (a credit); math.Abs
+		// flipped this sign. savingsTrend (incAmt-expAmt below) needs no
+		// change: it derives correctly once expAmt is signed, and ADDS the
+		// refund instead of subtracting it.
 		expAmt := 0.0
 		if exp, ok := monthlyOutflows[m]; ok {
-			expAmt = math.Abs(exp.SumAmount())
+			expAmt = -exp.SumAmount()
 		}
 
+		// CB2 fix: same signed-negated-net contract as expAmt above.
 		hcAmt := 0.0
 		if hc, ok := monthlyHealthcare[m]; ok {
-			hcAmt = math.Abs(hc.SumAmount())
+			hcAmt = -hc.SumAmount()
 		}
 
-		// Set exclusion (ruling SY-2026-08-30d) -- math.Abs runs directly on
-		// livingOutflows' month bucket, never an arithmetic subtraction from
-		// expAmt (which breaks whenever the REMAINDER itself nets a refund).
+		// Set exclusion (ruling SY-2026-08-30d; signed per CB2): the
+		// signed negated net runs directly on livingOutflows' month
+		// bucket, never an arithmetic subtraction from expAmt (which
+		// breaks whenever the REMAINDER itself nets a refund).
 		livingMonth := 0.0
 		if lo, ok := monthlyLiving[m]; ok {
-			livingMonth = math.Abs(lo.SumAmount())
+			livingMonth = -lo.SumAmount()
 		}
 
 		incomeTrend = append(incomeTrend, incAmt)

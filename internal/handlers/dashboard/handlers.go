@@ -1446,12 +1446,26 @@ func buildMajorExpenseChartData(ts *models.TransactionSet) map[string]interface{
 		out["smaller"] = smaller
 	}
 
-	if len(creditBuckets) > 0 {
-		credits := make([]map[string]interface{}, 0, len(creditBuckets))
+	// Unmatched follows the same completeness contract as matched groups
+	// (CB5, extending CB4-2026-09-02a): a positive total is a wedge
+	// (appended above); a net-refund or zero total WITH transactions must
+	// not vanish — it joins the credits list, after the matched credit
+	// buckets. The pre-CB4 `> 0` wedge guard used to be Unmatched's only
+	// path into the payload, silently dropping a refund-dominant window.
+	unmatchedCredit := len(unmatchedTxns) > 0 && unmatchedTotal <= 0
+
+	if len(creditBuckets) > 0 || unmatchedCredit {
+		credits := make([]map[string]interface{}, 0, len(creditBuckets)+1)
 		for _, b := range creditBuckets {
 			credits = append(credits, map[string]interface{}{
 				"name":   b.name,
 				"amount": b.total,
+			})
+		}
+		if unmatchedCredit {
+			credits = append(credits, map[string]interface{}{
+				"name":   "Unmatched",
+				"amount": unmatchedTotal,
 			})
 		}
 		out["credits"] = credits

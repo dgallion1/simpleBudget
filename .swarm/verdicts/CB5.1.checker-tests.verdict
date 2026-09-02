@@ -1,0 +1,151 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: CB5
+ATTEMPT: 1
+---
+All verification ran in `cp -a` copies (.git pointer removed) of
+scratchpad/cb5-run, plus a `git archive 3c30e20` extraction of master.
+Every result was re-confirmed with the raw Go binary
+(/home/darrell/go-sdk/go/bin/go) because the rtk hook rewrites tool
+output; `git diff` was read via `rtk proxy`. No budget2 binary was
+executed. Copies discarded. The only write to the real tree is this file.
+
+CRITERIA (from .swarm/CB5-RUN-SPEC.md "Contract" + the CB5.1 brief)
+
+C1. Build / vet / tests green, cache defeated.
+  cmd: (scratch copy) go build ./...            -> BUILD_EXIT=0
+  cmd: go vet ./...                             -> VET_EXIT=0, no output
+  cmd: go test -count=1 ./internal/handlers/dashboard/
+       -> "ok  budget2/internal/handlers/dashboard  0.829s" (raw go binary)
+  cmd: go test -count=1 ./...                   -> EXIT=0; `| grep -v '^ok'`
+       printed ZERO lines (no FAIL, no build-failed, no untested package).
+  cmd: go test -count=1 -shuffle=on ./internal/handlers/dashboard/  x3
+       -> ok, ok, ok (new tests are not order-dependent on the package-level
+       `loader` var, which tests 1 and 2 leave nil).
+  COMPOSITE: `make check` (target = vet static vuln css-verify test)
+       -> final lines "✓ all checks passed", MAKE_CHECK_EXIT=0.
+  MET.
+
+C2. Non-vacuity — revert the credits block to master's form.
+  mutA = branch copy with the CB5 credits block replaced by master's
+  (`if len(creditBuckets) > 0 { ... }`, no unmatchedCredit). Verified
+  equivalent to master by python3 difflib against
+  `git show 3c30e20:internal/handlers/dashboard/handlers.go`: the ONLY
+  residue is the new doc comment plus an inert `_ = unmatchedTxns`.
+  cmd: (mutA) go test -count=1 -run '..._Unmatched(NetRefund...|Zero...|CreditOrdered...)' -v
+    --- FAIL: ..._UnmatchedNetRefundGoesToCredits
+        handlers_http_test.go:890: expected exactly one credits entry, got <nil>
+    --- FAIL: ..._UnmatchedZeroWithTxnsGoesToCredits
+        handlers_http_test.go:909: credits = <nil>, want [{Unmatched 0}]
+    --- FAIL: ..._UnmatchedCreditOrderedAfterGroupCredits
+        handlers_http_test.go:925: expected two credits entries, got
+          [map[amount:-60 name:Trips]]
+  All three new tests die on the reverted code. MET.
+
+C3. Non-vacuity — boundary mutation `<= 0` -> `< 0`.
+  cmd: (mutB) go test -count=1 -run TestBuildMajorExpenseChartData ./internal/handlers/dashboard/
+    --- FAIL: ..._UnmatchedZeroWithTxnsGoesToCredits
+        handlers_http_test.go:909: credits = <nil>, want [{Unmatched 0}]
+    (exactly one failure; the other 15 chart tests still pass, so the test
+    is specific to the boundary it names). Re-run with the raw go binary:
+    same single failure, RAWGO_EXIT=1. MET.
+
+C3b. Extra mutations I ran beyond the brief (ordering + the has-txns guard):
+  mutC (Unmatched appended BEFORE the matched credit loop):
+    --- FAIL: ..._UnmatchedCreditOrderedAfterGroupCredits
+        credits[0] = map[amount:-40 name:Unmatched], want {Trips -60} first
+        credits[1] = map[amount:-60 name:Trips], want {Unmatched -40} last
+    -> the ordering test genuinely pins order, not just membership.
+  mutD (guard reduced to `unmatchedTotal <= 0`, dropping len(unmatchedTxns)>0):
+    6 pre-existing CB4 tests fail, incl.
+        ..._PositiveOnlyUnchanged: expected no 'credits' field for an
+        all-positive fixture, got [map[amount:0 name:Unmatched]]
+    -> the contract's third state ("no unmatched transactions: absent
+    everywhere") is mechanically pinned by the existing suite.
+
+C4. Parity: positive-Unmatched and no-Unmatched produce byte-identical maps.
+  Probe TestProbeParityDump (throwaway, installed identically in a branch
+  copy and in the `git archive 3c30e20` master tree, then deleted) marshals
+  buildMajorExpenseChartData's map with encoding/json (map keys sorted,
+  slice order preserved) over 14 fixtures tagged positive / none / changed.
+  Fixtures include: unmatched-only positive; unmatched positive after
+  partial refund; positive unmatched + positive group; positive unmatched
+  + net-refund group; the >limit rollup path with positive unmatched (with
+  and without a trailing negative group); groups-only with no unmatched
+  txns (positive / credit / zero-total); empty set; Income-only set.
+  cmd: python3 difflib per tag ->
+      "=== kind=positive: master=6 branch=6 ===  BYTE-IDENTICAL"
+      "=== kind=none: master=5 branch=5 ===      BYTE-IDENTICAL"
+  cmd: cmp master/branch dumps restricted to those tags ->
+      "cmp: IDENTICAL (11 fixtures)"
+  The only divergence is the 3 "changed" fixtures, and it is exactly the
+  contracted one, e.g.
+      master: {"data":[{...,"labels":[],...,"values":[]}]}
+      branch: {"credits":[{"amount":-30,"name":"Unmatched"}],"data":[...]}
+      master: {"credits":[{"amount":-50,"name":"Beta"}], ...}
+      branch: {"credits":[{"amount":-50,"name":"Beta"},
+                          {"amount":-40,"name":"Unmatched"}], ...}
+  i.e. the pre-CB5 total disappearance is reproduced on master, and the
+  branch appends Unmatched AFTER the matched credit bucket. MET.
+
+C5. The tests assert what their names claim (read line by line, then proved).
+  - _UnmatchedNetRefundGoesToCredits: asserts labels is empty (no wedge),
+    credits has exactly 1 entry via t.Fatalf, name=="Unmatched",
+    amount.(float64)==-30. -30 is the correct net for (-50 spend, +80
+    refund) under `unmatchedTotal += -t.Amount`, and the parity probe
+    independently produced {"amount":-30,"name":"Unmatched"}. Non-vacuous
+    (C2).
+  - _UnmatchedZeroWithTxnsGoesToCredits: asserts labels empty and, in one
+    short-circuiting condition (ok / len / name / amount==0), the single
+    {Unmatched, 0} entry. Non-vacuous and boundary-specific (C3).
+  - _UnmatchedCreditOrderedAfterGroupCredits: the matched group is GENUINELY
+    matched, not accidentally unmatched — proof: on mutA (master behavior)
+    the same fixture yields credits == [map[amount:-60 name:Trips]], i.e.
+    the keyword "cruiseline" matched "Cruiseline charge"/"Cruiseline
+    reversal" into bucket "Trips" with total -60. Had it fallen through to
+    Unmatched, the total would have been -100 and the len!=2 Fatalf would
+    fire. The test then pins credits[0]=={Trips,-60} and
+    credits[1]=={Unmatched,-40}; mutC (prepend) kills it. No vacuous
+    assertion found. MET.
+  - Contract clause "Drilldown needs nothing": handleMajorExpenseDrilldown's
+    `case "Unmatched": txns = unmatched` is sign-agnostic and is NOT in the
+    diff (git diff 3c30e20 touches only the credits block in handlers.go),
+    so the claim holds by construction.
+
+C6. Scope.
+  cmd: rtk proxy git --no-pager diff --stat 3c30e20 -- .
+      .swarm/ledger.tsv                                 |  1 +
+      internal/handlers/dashboard/handlers.go           | 18 ++++++-
+      internal/handlers/dashboard/handlers_http_test.go | 59 +++++++++++++
+  cmd: rtk proxy git status --porcelain -> untracked adds are only
+      .swarm/CB5-RUN-SPEC.md, .swarm/manifests/CB5.1.files,
+      .swarm/manifests/CB5.1.manifest.md (+ the checker-second verdict,
+      written by the other lane).
+  The two code files are exactly .swarm/manifests/CB5.1.files. Nothing in
+  .swarm/critical.globs (storage, dataloader, retirement/engine, transfers,
+  accounts.go, mcpsvc/confirm) is touched.
+  cmd: go test -list '.*' ./internal/handlers/dashboard/ on master tree vs
+      branch tree, set-diffed in python3 ->
+      "REMOVED (master-only): NONE"
+      "ADDED (branch-only): [..._UnmatchedCreditOrderedAfterGroupCredits,
+       ..._UnmatchedNetRefundGoesToCredits,
+       ..._UnmatchedZeroWithTxnsGoesToCredits]"
+      "master count 175 branch count 178"
+  No test deleted or renamed; the 3 additions match the manifest names.
+  cmd: grep '^CB5' .swarm/ledger.tsv | cat -A ->
+      CB5^I2^Itests,second^Iassigned^I1^Ilead^Iunmatched-joins-credits-contract
+      (tier 2, checks tests,second, attempt 1, worker=lead). MET.
+
+OBSERVATIONS (not FAILs; for the lead's backlog, all pre-existing on
+master and outside the CB5 manifest)
+  O1. web/static/js/charts.js renderMajorExpenseCredits prints the fixed
+      header "Net credits (refunds exceeded spending)". For an exactly-zero
+      entry refunds MATCHED spending rather than exceeded it. This wording
+      already applied to zero-total MATCHED groups from CB4 (see the
+      committed ..._ZeroTotalGoesToCredits fixture), so CB5 only widens an
+      existing inaccuracy; charts.js is untouched by this task.
+  O2. Credits-list rows are plain text with no drilldown affordance, so the
+      new "Unmatched" credit entry is not clickable even though
+      handleMajorExpenseDrilldown?name=Unmatched would serve it. Consistent
+      with the matched credit entries; a UI gap, not a CB5 regression.

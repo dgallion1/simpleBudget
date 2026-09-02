@@ -873,6 +873,65 @@ func TestBuildMajorExpenseChartData_AllUnmatched(t *testing.T) {
 	}
 }
 
+// CB5: Unmatched follows the CB4 completeness contract — a net-refund or
+// zero total WITH transactions lands in "credits" instead of vanishing.
+func TestBuildMajorExpenseChartData_UnmatchedNetRefundGoesToCredits(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Gas", -50, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Auto"),
+		makeTransaction("Gas station credit", 80, time.Date(2025, 1, 8, 0, 0, 0, 0, time.UTC), models.Outflow, "Auto"),
+	)
+	result := buildMajorExpenseChartData(ts)
+	labels := result["data"].([]map[string]interface{})[0]["labels"].([]string)
+	if len(labels) != 0 {
+		t.Errorf("net-refund Unmatched must not be a wedge, got labels %v", labels)
+	}
+	credits, ok := result["credits"].([]map[string]interface{})
+	if !ok || len(credits) != 1 {
+		t.Fatalf("expected exactly one credits entry, got %v", result["credits"])
+	}
+	if credits[0]["name"] != "Unmatched" || credits[0]["amount"].(float64) != -30 {
+		t.Errorf("credits = %v, want [{Unmatched -30}] (pre-CB5 this vanished entirely)", credits)
+	}
+}
+
+func TestBuildMajorExpenseChartData_UnmatchedZeroWithTxnsGoesToCredits(t *testing.T) {
+	ts := makeTransactionSet(
+		makeTransaction("Purchase", -75, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Misc"),
+		makeTransaction("Full return", 75, time.Date(2025, 1, 9, 0, 0, 0, 0, time.UTC), models.Outflow, "Misc"),
+	)
+	result := buildMajorExpenseChartData(ts)
+	labels := result["data"].([]map[string]interface{})[0]["labels"].([]string)
+	if len(labels) != 0 {
+		t.Errorf("zero-total Unmatched must not be a wedge, got labels %v", labels)
+	}
+	credits, ok := result["credits"].([]map[string]interface{})
+	if !ok || len(credits) != 1 || credits[0]["name"] != "Unmatched" || credits[0]["amount"].(float64) != 0 {
+		t.Errorf("credits = %v, want [{Unmatched 0}] (zero-with-transactions rule)", result["credits"])
+	}
+}
+
+func TestBuildMajorExpenseChartData_UnmatchedCreditOrderedAfterGroupCredits(t *testing.T) {
+	withMajorExpenses(t, []models.MajorExpense{{ID: "trav", Name: "Trips", Keywords: []string{"cruiseline"}}})
+	ts := makeTransactionSet(
+		// Matched group nets a refund → group credit entry.
+		makeTransaction("Cruiseline charge", -100, time.Date(2025, 1, 4, 0, 0, 0, 0, time.UTC), models.Outflow, "Travel"),
+		makeTransaction("Cruiseline reversal", 160, time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Travel"),
+		// Unmatched also nets a refund.
+		makeTransaction("Store return", 40, time.Date(2025, 1, 7, 0, 0, 0, 0, time.UTC), models.Outflow, "Misc"),
+	)
+	result := buildMajorExpenseChartData(ts)
+	credits, ok := result["credits"].([]map[string]interface{})
+	if !ok || len(credits) != 2 {
+		t.Fatalf("expected two credits entries, got %v", result["credits"])
+	}
+	if credits[0]["name"] != "Trips" || credits[0]["amount"].(float64) != -60 {
+		t.Errorf("credits[0] = %v, want matched group {Trips -60} first", credits[0])
+	}
+	if credits[1]["name"] != "Unmatched" || credits[1]["amount"].(float64) != -40 {
+		t.Errorf("credits[1] = %v, want {Unmatched -40} appended last", credits[1])
+	}
+}
+
 // withMajorExpenses installs a loader populated with the given major
 // expenses for the duration of the test. The loader is a package-level
 // var; restored on cleanup.

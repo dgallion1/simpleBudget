@@ -108,3 +108,4 @@ CB1	3	tests,second	accepted	1	worker-coder	gate-ok-tier3-attempt-1-oracle-pass-d
 CB2	3	tests,second	accepted	1	worker-coder	gate-ok-tier3-attempt-1-nine-sites-oracle-pass-dual-lane
 CB3	3	tests,second	accepted	2	worker-coder	gate-ok-tier3-attempt-2-after-dual-lane-attempt1-fail
 CB4	2	tests,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane
+CB5	2	tests,second	accepted	1	lead	gate-ok-tier2-attempt-1-dual-lane-lead-authored

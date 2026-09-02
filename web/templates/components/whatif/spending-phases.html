@@ -38,7 +38,7 @@
                 <div class="flex items-center justify-between mb-1">
                     <span class="font-medium text-gray-700 dark:text-gray-200">{{$phase.Name}}</span>
                     <div class="flex items-center gap-2">
-                        <span class="text-xs text-gray-600 dark:text-gray-400">
+                        <span class="text-xs text-gray-600 dark:text-gray-300">
                             {{if eq $i 0}}Retirement start{{else}}{{if gt $.Settings.SpouseAge 0}}{{if eq $.Settings.PhaseAgeReference "younger"}}Younger{{else if eq $.Settings.PhaseAgeReference "older"}}Older{{else if eq $.Settings.PhaseAgeReference "spouse"}}Spouse{{else}}Your{{end}} age {{$phase.StartAge}}+{{else}}Age {{$phase.StartAge}}+{{end}}{{end}}
                         </span>
                         {{if gt $i 0}}
@@ -55,7 +55,7 @@
                         {{end}}
                     </div>
                 </div>
-                <p class="text-xs text-gray-600 dark:text-gray-400 mb-2">{{$phase.Description}}</p>
+                <p class="text-xs text-gray-600 dark:text-gray-300 mb-2">{{$phase.Description}}</p>
                 <input type="hidden" name="phase_{{$i}}_name" value="{{$phase.Name}}">
                 <input type="hidden" name="phase_{{$i}}_description" value="{{$phase.Description}}">
                 <div class="flex items-center gap-3">
@@ -76,7 +76,7 @@
                             class="flex-1 h-2 bg-gray-200 dark:bg-gray-500 rounded-lg appearance-none cursor-pointer"
                             oninput="updatePhaseSliderLabel(this)">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-200 w-10 text-right" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-percent">{{printf "%.0f" (mul $phase.Multiplier 100)}}%</span>
-                        <span class="text-xs text-gray-600 dark:text-gray-400 w-20 text-right phase-dollar-label" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">{{formatDollars (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo</span>
+                        <span class="text-xs text-gray-600 dark:text-gray-300 w-20 text-right phase-dollar-label" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">{{formatDollars (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo</span>
                     </div>
                 </div>
             </div>

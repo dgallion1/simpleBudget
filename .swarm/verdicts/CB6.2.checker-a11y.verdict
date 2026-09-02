@@ -1,0 +1,100 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: CB6
+ATTEMPT: 2
+---
+SCOPE: re-audit of the attempt-1 FAIL remediation, in the same worktree
+(/tmp/claude-1000/-home-darrell-work-agents2--claude-worktrees-exciting-liskov-ffcb38/97442e67-c24e-4946-b613-f4d36f8d82cf/scratchpad/cb6-run,
+branch chore/cb6-cosmetic-closeout, base 0a697b1). Coordinator states the
+FAIL was conceded; this verdict verifies the remediation independently,
+not by re-transcribing the worker's numbers.
+
+DELTA CONFIRMED
+`git diff 0a697b1 -- web/static/js/charts.js` (full diff re-read) shows the
+ONLY substantive change vs. attempt-1's audited state is
+`dark:hover:bg-gray-700` → `dark:hover:bg-gray-900` at both row sites
+(charts.js:246 and :324, the `renderMajorExpenseBreakdown` and
+`renderMajorExpenseCredits` row `row.className` assignments), plus a new
+explanatory code comment above each. `grep -n "dark:hover:bg-gray-900"`
+finds exactly 2 hits, both with byte-identical class strings; `grep -n
+"dark:hover:bg-gray-700"` finds 0 remaining occurrences. Light theme's
+`hover:bg-gray-50` token is untouched at both sites.
+
+`git diff 0a697b1 --stat` for the other four changed files shows IDENTICAL
+insertion/deletion counts to attempt 1 (handlers.go 16+/2-,
+trends_test.go 47+, render_kpi_month_detail_test.go 44+,
+kpi-month-detail.html 1 line changed, `.swarm/ledger.tsv` +1) — confirming
+nothing else moved. `git diff 0a697b1 -- web/templates/components/
+kpi-month-detail.html` reproduces the exact single-line CB6-4 diff audited
+in CB6.1 verbatim. No new files, no other markup delta.
+
+VENDORED CSS
+`make css-verify` → "tailwind.css is up to date" (exit clean, rebuilds to
+`tmp/tailwind.check.css` and diffs equal). `grep -o` against the served
+web/static/css/tailwind.css confirms the new utility is actually compiled
+in, not merely referenced:
+  `.dark\:hover\:bg-gray-900:hover:is(.dark *){--tw-bg-opacity:1;
+   background-color:rgb(17 24 39/var(--tw-bg-opacity,1))}`
+(selector-order is `:hover:is(.dark *)`, the same pattern Tailwind used for
+the old `:hover:is(.dark *)` gray-700 rule at attempt 1 — cosmetic ordering
+only, same cascade behavior.)
+
+CONTRAST — recomputed independently from the served CSS's own hex values
+(not the worker's arithmetic), same WCAG relative-luminance formula used
+in the CB6.1 audit:
+  indigo-500 rgb(99,102,241) [confirmed via `.focus-visible\:ring-
+    indigo-500:focus-visible{...rgb(99 102 241...}`, unchanged from
+    attempt 1] vs gray-900 rgb(17,24,39) [confirmed via `.bg-gray-900{...
+    rgb(17 24 39...}`] = 3.9714:1 → rounds to 3.97:1, matching the
+    worker's claimed figure exactly, independently verified.
+  This clears ACCESSIBILITY.md #7's ≥3:1 floor (WCAG 1.4.11 Non-text
+  Contrast / 2.4.11 Focus Appearance) with a ~0.97:1 margin — not a
+  hairline pass.
+  Resting (non-hover) states, unchanged from attempt 1 and reconfirmed:
+    ring vs dark card bg gray-800 (no hover):  3.29:1  PASS
+    ring vs light card bg white (no hover):    4.47:1  PASS
+    ring vs light hover bg gray-50 (unchanged): 4.27:1  PASS
+  All four ring states (2 themes × hover/no-hover) now clear 3:1; the
+  attempt-1 failure (ring vs dark hover gray-700 = 2.31:1) no longer
+  exists as a reachable state — `dark:hover:bg-gray-700` is gone from the
+  file entirely.
+  Row text contrast in the new dark hover state (darker bg helps light
+  text, re-verified not just assumed):
+    name text gray-300 vs hover gray-900: 12.04:1  PASS (was 7.0 vs -700)
+    pct text gray-400 vs hover gray-900:   6.99:1  PASS (was 4.06 vs -700)
+
+HOVER-AFFORDANCE SANITY CHECK (worker's own flag, verified)
+gray-900 (17,24,39) vs the resting card background gray-800 (31,41,55)
+computes to 1.21:1 luminance contrast — a real but subtle darkening, in
+the same ballpark as attempt 1's gray-700-vs-gray-800 lightening (1.42:1)
+that was never itself in dispute. Hover-state visual distinctness has no
+numbered ACCESSIBILITY.md point or numeric WCAG SC of its own (unlike the
+focus indicator, which #7/#9 do cover, and which is unaffected by this
+choice and passes independently); the row remains identifiable as
+interactive via cursor:pointer (native `<button>`) and, for keyboard
+users, via the now-compliant focus ring regardless of hover. OBSERVATION,
+not a finding: the hover cue is mild in both the old and new color, so
+this is not a regression in perceptibility, merely a different (and now
+compliant) trade-off point on the same subtle scale.
+
+AUTOMATED CHECK
+Re-ran the traced fragment (attempt-1's hand-traced
+`renderMajorExpenseBreakdown`/`renderMajorExpenseCredits` button markup,
+updated to the new class string) through `npx @axe-core/cli` in light and
+`class="dark"` wrapper pages loading the real served tailwind.css:
+0 violations in both themes.
+
+EVERYTHING ELSE FROM CB6.1 STANDS UNCHANGED (not re-litigated, since the
+delta didn't touch it): native `<button type="button">` semantics, the
+`typeof openMajorExpenseDrilldown` guard mirroring the pre-existing wedge
+handler, accessible name = visible text superset, no nested-interactive
+markup, CB6-4's Total-tile sign-aware polarity (enumerated against
+handleKPIMonthDetail's switch and verified by the CB6.1 render-harness
+dump), color-redundant signed `formatMoney` text, and the CB6-2 header
+wording's non-impact. The CB6.1 OBSERVATIONS (pre-existing modal
+div-onclick/no-dialog-role/no-focus-trap, out of scope per the task) still
+stand as backlog, not failures.
+
+VERDICT: PASS — the CB6.1 finding is fully remediated; no new defect
+introduced by the one-token delta.

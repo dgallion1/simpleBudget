@@ -46,7 +46,7 @@
             <div class="grid grid-cols-3 gap-4 text-center">
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">{{.TotalLabel}}</p>
-                    <p class="text-xl font-bold {{if eq .Type "income"}}text-green-700 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">{{formatMoney .Total}}</p>
+                    <p class="text-xl font-bold {{if eq .Type "income"}}text-green-700 dark:text-green-400{{else if gt .Total 0.0}}text-red-600 dark:text-red-400{{else}}text-green-700 dark:text-green-400{{end}}">{{formatMoney .Total}}</p>
                 </div>
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Transactions</p>

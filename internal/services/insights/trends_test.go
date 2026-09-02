@@ -849,6 +849,53 @@ func TestCalculateSpendingVelocity_RefundDominantPeriodIsNegative(t *testing.T) 
 	}
 }
 
+// TestAnalyzeMajorExpenseTrends_DirectionBandEdges pins the +-5 direction
+// band exactly at its edges (V3 promotion): nothing today asserts that
+// changePercent==+-5 lands on "stable" rather than "up"/"down", so a
+// mutant collapsing the band to +-0 survives unnoticed. Fixtures are
+// constructed so changePercent lands exactly on (or just past) each edge:
+// prev=100, cur=105 -> changePercent=+5 (stable); cur=105.01 -> >5 (up);
+// cur=95 -> changePercent=-5 (stable); cur=94.99 -> <-5 (down).
+func TestAnalyzeMajorExpenseTrends_DirectionBandEdges(t *testing.T) {
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+	defs := []models.MajorExpense{{ID: "widget", Name: "Widget Co", Keywords: []string{"widget co"}}}
+
+	cases := []struct {
+		name          string
+		prevAmt       float64
+		curAmt        float64
+		wantDirection string
+	}{
+		{"exactly +5 is stable, not up", 100, 105, "stable"},
+		{"just past +5 is up", 100, 105.01, "up"},
+		{"exactly -5 is stable, not down", 100, 95, "stable"},
+		{"just past -5 is down", 100, 94.99, "down"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := &models.TransactionSet{Transactions: []models.Transaction{
+				catTxn("Widget Co Purchase", "misc", tc.prevAmt, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)),
+				catTxn("Widget Co Purchase", "misc", tc.curAmt, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)),
+			}}
+
+			trends := MajorExpenseTrends(ts, defs, nil, currentStart, currentEnd)
+			got := make(map[string]models.CategoryTrend, len(trends))
+			for _, tr := range trends {
+				got[tr.Category] = tr
+			}
+			widget, ok := got["Widget Co"]
+			if !ok {
+				t.Fatalf("expected trend for 'Widget Co', got categories: %v", keysOf(got))
+			}
+			if widget.Direction != tc.wantDirection {
+				t.Errorf("Direction = %q (changePercent=%.10f), want %q", widget.Direction, widget.ChangePercent, tc.wantDirection)
+			}
+		})
+	}
+}
+
 func keysOf(m map[string]models.CategoryTrend) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

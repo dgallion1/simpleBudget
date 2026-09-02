@@ -186,10 +186,26 @@ function renderChart(containerId, chartData) {
 }
 
 /**
+ * Invoke openMajorExpenseDrilldown for a group name, mirroring the donut
+ * wedge click handler's typeof guard above: openMajorExpenseDrilldown is
+ * defined in the dashboard page's inline script, not this file, so it may
+ * not be in scope (or loaded yet) everywhere this helper is called from.
+ * @param {string} name
+ */
+function triggerMajorExpenseDrilldown(name) {
+    if (name && typeof openMajorExpenseDrilldown === 'function') {
+        openMajorExpenseDrilldown(name);
+    }
+}
+
+/**
  * Render the text breakdown of rolled-up "Other" major-expense items
  * into the breakdown sibling div. Clears the div when no items.
  * Built with DOM APIs and textContent — never innerHTML — so any HTML
- * inside a major-expense name renders as plain text.
+ * inside a major-expense name renders as plain text. Each row is a real
+ * button (not a div-onclick) that drills into the same major-expense
+ * detail view as the donut wedge, keyed by the row's name; the group
+ * name is the button's visible (and therefore accessible) text.
  * @param {Array<{name: string, amount: number, percent: number}>} items
  */
 function renderMajorExpenseBreakdown(items) {
@@ -217,8 +233,20 @@ function renderMajorExpenseBreakdown(items) {
     target.appendChild(header);
 
     items.forEach(function(it) {
-        const row = document.createElement('div');
-        row.className = 'flex justify-between gap-4 py-0.5';
+        const row = document.createElement('button');
+        row.type = 'button';
+        // dark:hover:bg-gray-900 (not -700, ACCESSIBILITY.md #7 / WCAG
+        // 1.4.11): the card these rows sit in is dark:bg-gray-800, so a
+        // -700 hover LIGHTENS the background under the focus-visible ring,
+        // dropping ring-indigo-500 vs -700 to 2.31:1. -900 both darkens
+        // (keeping a visible hover affordance distinct from the card's own
+        // -800) and clears the 3:1 floor: indigo-500 #6366f1 vs gray-900
+        // #111827 = 3.97:1. Light theme (hover:bg-gray-50, unchanged) stays
+        // at 4.27:1 hover / 4.47:1 non-hover against white.
+        row.className = 'flex justify-between gap-4 py-0.5 w-full text-left rounded hover:bg-gray-50 dark:hover:bg-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500';
+        row.addEventListener('click', function() {
+            triggerMajorExpenseDrilldown(it.name);
+        });
 
         const nameEl = document.createElement('span');
         nameEl.className = 'truncate';
@@ -251,7 +279,11 @@ function renderMajorExpenseBreakdown(items) {
  * renders nothing when the list is empty or missing (old server
  * response with no "credits" field renders nothing, same as no items).
  * Built with DOM APIs and textContent — never innerHTML — so any HTML
- * inside a major-expense name renders as plain text.
+ * inside a major-expense name renders as plain text. Each row is a real
+ * button (not a div-onclick) that drills into the same major-expense
+ * detail view as the donut wedge, keyed by the row's name (including
+ * "Unmatched", whose drilldown path already exists server-side); the
+ * group name is the button's visible (and therefore accessible) text.
  * @param {Array<{name: string, amount: number}>} items
  */
 function renderMajorExpenseCredits(items) {
@@ -275,12 +307,24 @@ function renderMajorExpenseCredits(items) {
 
     const header = document.createElement('div');
     header.className = 'font-medium text-gray-700 dark:text-gray-200 mb-1';
-    header.textContent = 'Net credits (refunds exceeded spending)';
+    header.textContent = 'Net credits (refunds met or exceeded spending)';
     target.appendChild(header);
 
     items.forEach(function(it) {
-        const row = document.createElement('div');
-        row.className = 'flex justify-between gap-4 py-0.5';
+        const row = document.createElement('button');
+        row.type = 'button';
+        // dark:hover:bg-gray-900 (not -700, ACCESSIBILITY.md #7 / WCAG
+        // 1.4.11): the card these rows sit in is dark:bg-gray-800, so a
+        // -700 hover LIGHTENS the background under the focus-visible ring,
+        // dropping ring-indigo-500 vs -700 to 2.31:1. -900 both darkens
+        // (keeping a visible hover affordance distinct from the card's own
+        // -800) and clears the 3:1 floor: indigo-500 #6366f1 vs gray-900
+        // #111827 = 3.97:1. Light theme (hover:bg-gray-50, unchanged) stays
+        // at 4.27:1 hover / 4.47:1 non-hover against white.
+        row.className = 'flex justify-between gap-4 py-0.5 w-full text-left rounded hover:bg-gray-50 dark:hover:bg-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500';
+        row.addEventListener('click', function() {
+            triggerMajorExpenseDrilldown(it.name);
+        });
 
         const nameEl = document.createElement('span');
         nameEl.className = 'truncate';

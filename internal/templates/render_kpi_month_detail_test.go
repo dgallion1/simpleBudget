@@ -92,6 +92,50 @@ func TestRenderKPIMonthDetail_RowsCarrySortKeys(t *testing.T) {
 	}
 }
 
+// CB6-4: the Total tile's color must track the kind's polarity, not paint
+// every non-income kind red. Expense-like kinds (expenses/living/healthcare)
+// are money OUT when positive (red) and a net refund/credit when <= 0
+// (green) — the else-branch used to hardcode red for every one of them.
+func TestRenderKPIMonthDetail_ExpensesNegativeTotalIsGreen(t *testing.T) {
+	data := kpiMonthDetailFixture()
+	data["Type"] = "expenses"
+	data["Total"] = -42.50
+	html := renderKPIMonthDetail(t, data)
+
+	if !strings.Contains(html, `text-green-700 dark:text-green-400">`+formatMoney(-42.50)) {
+		t.Errorf("expected a negative expenses Total (net refund) to render green, got: %s", html)
+	}
+	if strings.Contains(html, `text-red-600 dark:text-red-400">`+formatMoney(-42.50)) {
+		t.Errorf("negative expenses Total must not render red, got: %s", html)
+	}
+}
+
+func TestRenderKPIMonthDetail_ExpensesPositiveTotalIsRed(t *testing.T) {
+	data := kpiMonthDetailFixture()
+	data["Type"] = "expenses"
+	data["Total"] = 42.50
+	html := renderKPIMonthDetail(t, data)
+
+	if !strings.Contains(html, `text-red-600 dark:text-red-400">`+formatMoney(42.50)) {
+		t.Errorf("expected a positive expenses Total (money out) to render red, got: %s", html)
+	}
+	if strings.Contains(html, `text-green-700 dark:text-green-400">`+formatMoney(42.50)) {
+		t.Errorf("positive expenses Total must not render green, got: %s", html)
+	}
+}
+
+func TestRenderKPIMonthDetail_SavingsPositiveTotalIsGreen(t *testing.T) {
+	data := kpiMonthDetailFixture()
+	data["Type"] = "savings"
+	data["IsSavings"] = true
+	data["Total"] = 100.0
+	html := renderKPIMonthDetail(t, data)
+
+	if !strings.Contains(html, `text-green-700 dark:text-green-400">`+formatMoney(100.0)) {
+		t.Errorf("expected a positive savings Total to render green, got: %s", html)
+	}
+}
+
 // An empty month renders the no-transactions message, not an empty sortable
 // table with headers that do nothing.
 func TestRenderKPIMonthDetail_EmptyMonthHasNoTable(t *testing.T) {

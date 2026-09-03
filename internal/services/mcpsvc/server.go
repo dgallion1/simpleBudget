@@ -135,8 +135,11 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	" Five LEDGER tools report the account and transfer state the spending tools exclude by type. " +
 	"get_accounts lists the configured accounts with their current balance (rolled forward from the " +
 	"latest BalanceAnchor), freshness, and whether each is below its low-balance threshold; an account " +
-	"with no anchor reports available=false (UNAVAILABLE, not $0). get_balance_projection is the 35-day " +
-	"funding forecast for one account: crossing date, minimum projected balance, suggested top-up, and a " +
+	"with no anchor reports available=false (UNAVAILABLE, not $0). The threshold applies only to the " +
+	"checking and savings kinds -- credit, brokerage, and other accounts always report low_balance=false " +
+	"and threshold=0 (a credit balance is money owed, not a cash shortfall). get_balance_projection is the 35-day " +
+	"funding forecast for one CASH account (checking/savings; other kinds get an error naming the kind): " +
+	"crossing date, minimum projected balance, suggested top-up, and a " +
 	"reference amount (the median of confirmed inbound paired transfers); it reports available=false when " +
 	"there is no anchor to project from. get_transfers reports the Transfer flows -- paired (both legs " +
 	"loaded, linked by a shared pair key) and external (counterparty CSV not loaded) -- filterable by date " +

@@ -17,6 +17,19 @@ const DefaultLowBalanceThreshold = 500.0
 // fixes it at 35 days.
 const projectionHorizonDays = 35
 
+// LowBalanceApplies reports whether the low-balance threshold is meaningful
+// for accounts of this kind: only checking and savings
+// (models.Account.LowBalanceThreshold, design doc §4). A credit card's
+// balance is negative by nature (money owed) and a brokerage balance is not
+// spendable cash, so comparing either to a cash floor would flag it
+// permanently. Every surface that reports a low-balance flag or a funding
+// projection — the dashboard accounts card and the MCP get_accounts /
+// get_balance_projection tools — must gate on this before comparing a
+// balance to the threshold.
+func LowBalanceApplies(kind models.AccountKind) bool {
+	return kind == models.AccountKindChecking || kind == models.AccountKindSavings
+}
+
 // ProjectionResult is the advisory funding forecast for one account. It is
 // distinct from BalanceResult (a balance-at-a-date) so a reader can tell at a
 // glance which kind of answer a value holds.

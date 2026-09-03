@@ -13,7 +13,7 @@ GLOSSARY.md ("Account", "BalanceAnchor", "Transfer", "TransferClass").
 Lists the configured accounts with current balance, freshness (latest
 transaction date), and whether each is below its low-balance threshold.
 
-The two rules that prevent wrong answers:
+The three rules that prevent wrong answers:
 
 - An account with **no anchor reports `available=false` and `balance=0`.
   That is UNAVAILABLE, not a zero balance — never present it as $0.** The
@@ -21,6 +21,10 @@ The two rules that prevent wrong answers:
   balances."
 - `low_balance` is true only when the balance is available and strictly
   below the threshold. An unavailable balance is not "low".
+- The threshold applies only to **checking and savings**. Credit,
+  brokerage, and other kinds always report `low_balance=false` and
+  `threshold=0` — a credit card's negative balance is money owed, not a
+  cash shortfall; never describe such an account as "below its threshold".
 
 Freshness exists so a stale CSV masquerading as a healthy balance is
 visible — mention it when the latest transaction is old.
@@ -31,7 +35,9 @@ The 35-day funding projection for one account: the first date the projected
 balance crosses the low-balance threshold, the minimum projected balance, a
 suggested top-up rounded up to the nearest $100, and the median of confirmed
 inbound paired-transfer amounts as a reference ("you usually move $X").
-Advisory only — nothing is written.
+Advisory only — nothing is written. Cash kinds only: for credit,
+brokerage, or other accounts the tool returns an error naming the kind
+instead of a projection — relay that, don't retry.
 
 Params: `account_id` (from `get_accounts`), `as_of` (YYYY-MM-DD, default
 today).

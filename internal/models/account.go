@@ -6,10 +6,16 @@ import "time"
 // anything outside these five values is a data error, not an extension
 // point. See GLOSSARY.md ("Account kind").
 //
-// One behavioral consequence, and only one: AccountKindCredit forces the
-// credit-card sign convention for every CSV file that belongs to the
-// account, overriding the >=70%-positive heuristic in the dataloader. Every
-// other kind leaves that heuristic exactly as it is.
+// Two behavioral consequences (LB1 added the second):
+//  1. AccountKindCredit forces the credit-card sign convention for every
+//     CSV file that belongs to the account, overriding the >=70%-positive
+//     heuristic in the dataloader. Every other kind leaves that heuristic
+//     exactly as it is.
+//  2. Only checking and savings compare against LowBalanceThreshold —
+//     accounts.LowBalanceApplies gates the low-balance flag and the
+//     funding projection on every surface (a credit balance is negative
+//     by nature, a brokerage balance is not spendable cash; comparing
+//     either to a cash floor would flag it permanently).
 type AccountKind string
 
 const (

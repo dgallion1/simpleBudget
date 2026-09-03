@@ -110,3 +110,4 @@ CB3	3	tests,second	accepted	2	worker-coder	gate-ok-tier3-attempt-2-after-dual-la
 CB4	2	tests,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane
 CB5	2	tests,second	accepted	1	lead	gate-ok-tier2-attempt-1-dual-lane-lead-authored
 CB6	2	tests,a11y	accepted	2	worker-coder	gate-ok-tier2-attempt-2-after-a11y-ring-catch
+LB1	2	tests,second	accepted	3	worker-coder	gate-ok-tier2-attempt-3-after-T18-contract-rewrite

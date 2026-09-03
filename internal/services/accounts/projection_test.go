@@ -1004,3 +1004,25 @@ func TestProject_StartingBalanceCutoffIsUTCAsOf(t *testing.T) {
 		t.Errorf("Minimum = %.2f, want 700.00 (the 05:00 UTC transaction, on asOf's own UTC calendar day, must be counted in the starting balance)", got.Minimum)
 	}
 }
+
+// LowBalanceApplies is the single source of truth for which kinds track a
+// low-balance threshold; every surface that reports a low flag or a funding
+// projection gates on it. Pin the full closed enum so adding a kind forces a
+// deliberate decision here.
+func TestLowBalanceApplies(t *testing.T) {
+	cases := []struct {
+		kind models.AccountKind
+		want bool
+	}{
+		{models.AccountKindChecking, true},
+		{models.AccountKindSavings, true},
+		{models.AccountKindBrokerage, false},
+		{models.AccountKindCredit, false},
+		{models.AccountKindOther, false},
+	}
+	for _, c := range cases {
+		if got := LowBalanceApplies(c.kind); got != c.want {
+			t.Errorf("LowBalanceApplies(%q) = %v, want %v", c.kind, got, c.want)
+		}
+	}
+}

@@ -218,6 +218,39 @@ func TestAccountsCard_Low(t *testing.T) {
 	}
 }
 
+// TestAccountsCard_CreditNeverLow renders a credit account whose balance is
+// deeply negative (money owed — the normal state of a card) and asserts the
+// low-balance flag does NOT appear: the threshold is only meaningful for the
+// checking and savings kinds (models.Account.LowBalanceThreshold), so
+// comparing a card's balance to it would flag every card permanently.
+func TestAccountsCard_CreditNeverLow(t *testing.T) {
+	acct := models.Account{
+		ID:           "usaa-credit-card",
+		Name:         "USAA Credit Card",
+		Institution:  "USAA",
+		Kind:         models.AccountKindCredit,
+		FilePatterns: []string{"test.csv"},
+		Anchors:      []models.BalanceAnchor{{Date: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), Amount: -11371.20}},
+	}
+	rows := [][]string{
+		{"2026-08-10", "Groceries", "-10", "Food"},
+	}
+	router, _, cleanup := setupAccountsTestEnv(t, rows, []models.Account{acct}, time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC))
+	defer cleanup()
+
+	rec := doGetDash(t, router, "/dashboard")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "USAA Credit Card") {
+		t.Errorf("body missing account name; got:\n%s", body)
+	}
+	if strings.Contains(body, "low-balance threshold") {
+		t.Errorf("credit account must never show the low-balance flag (a card balance is negative by nature); got:\n%s", extractAccountsCardSection(body))
+	}
+}
+
 // TestAccountsCard_Stale renders an account whose latest transaction is
 // older than the staleness window and asserts the stale flag appears WITH
 // text, so a stale CSV cannot masquerade as a healthy balance.

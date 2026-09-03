@@ -1,0 +1,84 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: LB1
+ATTEMPT: 2
+---
+1. DELTA SCOPE (python3 difflib, not `git diff` — rtk rewrites git-diff
+   output on this host; old side = attempt-1 baseline: for
+   internal/models/account.go, GLOSSARY.md, README.md and the skill doc
+   this is master's untouched content, confirmed identical to what I read
+   in the attempt-1 audit):
+   - internal/models/account.go: 10 insertions/4 deletions, entirely inside
+     the `//` comment block above `type AccountKind string` (confirmed by
+     reading the hunk: no code line changed). `go build ./...` and
+     `go vet ./...` exit clean; `go test ./internal/...` is all-`ok` with
+     zero non-ok lines — zero executable change confirmed.
+   - GLOSSARY.md, README.md, .claude/skills/budget2-mcp/references/
+     accounts-transfers.md: prose-only diffs (verified via diff hunks).
+   Delta is exactly the four named files, doc/comment text only. (`.swarm/
+   ledger.tsv` also changed — lead bookkeeping, expected, not part of the
+   "doc-only" claim being verified.)
+
+2. FACTUAL ACCURACY of the new text against the attempt-1 real-data probe
+   (usaa-credit-card, live production ledger, cp -a read-only copy):
+   - GLOSSARY.md / account.go: "Two behavioral consequences... Only
+     checking and savings compare against LowBalanceThreshold —
+     accounts.LowBalanceApplies gates the low-balance flag and the funding
+     projection on every surface" — matches the confirmed probe
+     (low_balance=false, threshold=0 for the credit-kind account). Accurate.
+   - README.md: "credit, brokerage, and other accounts always report
+     low_balance=false, threshold=0" — matches probe. "it refuses non-cash
+     kinds (credit/brokerage/other) with an error naming the kind rather
+     than projecting nonsense for them" — matches the actual error text
+     captured in attempt 1: `account "usaa-credit-card" has kind "credit";
+     the funding projection and low-balance threshold apply only to
+     checking and savings accounts` — the kind IS named. Accurate, no
+     overclaim.
+   - Skill doc: "The threshold applies only to checking and savings...
+     always report low_balance=false and threshold=0" and "for credit,
+     brokerage, or other accounts the tool returns an error naming the
+     kind instead of a projection — relay that, don't retry" — both match
+     the actual code/error text. Accurate.
+   No overclaiming wording found in any of the four files.
+
+3. REMAINING-DEFECT GREP — found a live one, upheld as FAIL:
+   internal/services/mcpsvc/server.go:58-61 (`serverInstructions`) is,
+   per its OWN doc comment, "the closest thing this design has to a
+   system prompt for the model consuming these tools" — literally
+   returned to every MCP client on `initialize` (line ~206:
+   `&mcp.ServerOptions{Instructions: serverInstructions}`). Its LEDGER
+   section (lines ~135-141) still says, unchanged since attempt 1:
+     "get_accounts lists the configured accounts with their current
+     balance..., freshness, and whether each is below its low-balance
+     threshold... get_balance_projection is the 35-day funding forecast
+     for one account: crossing date, minimum projected balance, suggested
+     top-up..."
+   with NO mention that the threshold/flag applies only to checking and
+   savings, and NO mention that get_balance_projection now REFUSES
+   credit/brokerage/other with an error. This is the same "ungated
+   threshold description" class the task asked me to re-hunt, describes
+   the exact two tools (get_accounts, get_balance_projection) LB1's
+   contract names, lives in the same mcpsvc package family whose
+   subpackage (mcpsvc/ledger) tool docstrings were correctly updated in
+   attempt 1 — and is MORE consequential than the README/skill-doc text
+   that WAS fixed this attempt, since it is programmatically injected
+   into the live model context on every session rather than read
+   opportunistically. An agent relying on this text alone (which its own
+   comment invites: "so it names the grounding rule directly rather than
+   leaving it to be inferred from individual tool descriptions") would
+   still expect get_balance_projection to work uniformly across kinds.
+   No other remaining "one behavioral consequence"/ungated-threshold
+   claims found (`grep -rn "and only one\|only one behavioral\|One
+   behavioral consequence"` over .go/.md returns only .swarm/LB1-RUN-
+   SPEC.md's own historical description of the ORIGINAL bug, which is
+   correct as a description of the past defect, not a live claim).
+
+VERDICT: FAIL — the four remediated files are doc-only, zero executable
+change, and factually accurate; no notes taken against them. But
+internal/services/mcpsvc/server.go's serverInstructions (the literal
+system-prompt text served to every MCP client) still describes get_accounts
+and get_balance_projection without the kind-gate exception this task
+introduced, for the same reason and at the same severity as the
+account.go/GLOSSARY.md defect this attempt fixed. Same ND3 stale-doc class,
+same tools named in LB1's contract, not addressed by this attempt.

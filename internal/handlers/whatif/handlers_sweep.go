@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"budget2/internal/models"
+	"budget2/internal/services/retirement"
 	"budget2/internal/services/retirement/analysis"
 	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/retirement/prepare"
@@ -229,6 +230,13 @@ func buildConversionSweepRows(settings *models.WhatIfSettings) ([]ConversionSwee
 	if err != nil {
 		return nil, err
 	}
+	// buildEngineInput leaves Hooks zero-valued; retirement.RunFull would
+	// auto-fill DefaultHooks, but the sweep calls engine.Run directly, and
+	// a zero Hooks silently drops Social Security optimizer income (and
+	// chain transitions) from every row — so the table depleted decades
+	// earlier than the plan it claimed to sweep. Match the
+	// compare-without-guardrails path: inject DefaultHooks explicitly.
+	baseIn.Hooks = retirement.DefaultHooks()
 
 	amounts := conversionSweepAmounts(settings)
 	current := conversionSweepCurrentAmount(settings)

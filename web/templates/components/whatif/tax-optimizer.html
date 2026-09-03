@@ -1,10 +1,17 @@
 {{/* Tax Optimizer Results Panel */}}
 {{define "whatif-tax-optimizer-results"}}
-<div id="tax-optimizer-panel">
+{{/* The after-swap focus handler lives on the swap TARGET, not on the Run
+     button: the button sits inside this panel and is detached by the
+     innerHTML swap before htmx:afterSwap fires, so a listener on it never
+     runs. The target persists and the event reaches it. */}}
+<div id="tax-optimizer-panel" hx-on::after-swap="this.querySelector('h2')?.focus()">
 {{if .Analysis.TaxOptimizer}}
 {{$to := .Analysis.TaxOptimizer}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Tax Optimizer</h2>
+    {{/* Focusable (tabindex="-1") so the Run button's after-swap handler
+         can move focus here once the ~10 s request lands; visible focus
+         ring matches the Conversion Sweep heading. */}}
+    <h2 tabindex="-1" class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4 rounded focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-indigo-500 dark:focus:outline-indigo-400">Tax Optimizer</h2>
 
     {{if not $to.Eligible}}
     <p class="text-sm text-gray-600 dark:text-gray-400">{{$to.IneligibleReason}}</p>
@@ -189,11 +196,25 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 tax-optimizer-card">
     <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Tax Optimizer</h2>
     <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Click below to find the Social Security claim pair + Roth conversion strategy that maximizes your Monte Carlo median ending portfolio (the metric most robust to bad market sequences).</p>
+    {{/* The optimizer runs ~10 s on real data (MC ranking over every
+         SS-claim × Roth-strategy candidate). Mirror the Conversion Sweep
+         button: spinner via hx-indicator, button disabled while in flight
+         so a second click cannot queue a second run. Focus moves to the
+         results heading via the hx-on::after-swap on #tax-optimizer-panel
+         above (see the note there for why it is not on this button). */}}
     <button hx-post="/whatif/tax-optimize"
             hx-target="#tax-optimizer-panel"
             hx-swap="innerHTML"
-            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md transition-colors">
+            hx-indicator="#tax-optimizer-loading"
+            hx-disabled-elt="this"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-wait text-white text-sm font-medium rounded-md transition-colors">
         Run Tax Optimizer
+        <span id="tax-optimizer-loading" class="htmx-indicator" aria-hidden="true">
+            <svg class="animate-spin motion-reduce:animate-none h-4 w-4" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+        </span>
     </button>
 </div>
 {{end}}

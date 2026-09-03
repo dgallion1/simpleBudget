@@ -8907,6 +8907,41 @@ func TestTaxOptimizerPanel_NotYetRunShowsButton(t *testing.T) {
 	}
 }
 
+// TestTaxOptimizerPanel_ButtonShowsRunFeedback pins the in-flight feedback
+// contract for the Run Tax Optimizer button. The request takes ~10 s on real
+// data; without an hx-indicator spinner and a disabled state the click
+// appears to do nothing and a second click queues a second run.
+func TestTaxOptimizerPanel_ButtonShowsRunFeedback(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	analysis := &models.WhatIfAnalysis{
+		Settings:     models.DefaultWhatIfSettings(),
+		TaxOptimizer: nil,
+	}
+
+	out, err := renderer.RenderToString("whatif-tax-optimizer-results", map[string]interface{}{
+		"Analysis": analysis,
+		"Settings": analysis.Settings,
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+
+	for _, want := range []string{
+		`hx-indicator="#tax-optimizer-loading"`,
+		`id="tax-optimizer-loading" class="htmx-indicator"`,
+		`hx-disabled-elt="this"`,
+		// Focus handler must be on the persistent swap target, not the
+		// button (which is detached by the innerHTML swap before the event).
+		`<div id="tax-optimizer-panel" hx-on::after-swap="this.querySelector('h2')?.focus()">`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Run Tax Optimizer button missing %s; got: %s", want, out[:min(len(out), 600)])
+		}
+	}
+}
+
 func TestHandleWhatIfTaxOptimize_EligibleReturnsResult(t *testing.T) {
 	rm, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
@@ -8943,6 +8978,12 @@ func TestHandleWhatIfTaxOptimize_EligibleReturnsResult(t *testing.T) {
 	// The eligible scenario should render the strategy table, not the ineligible message.
 	if strings.Contains(body, "Run Tax Optimizer") {
 		t.Errorf("should not show button after running; body snippet: %s", body[:min(len(body), 400)])
+	}
+	// The results heading must be focusable so the button's after-swap
+	// handler can land focus on it (screen-reader users otherwise get no
+	// announcement that the ~10 s run finished).
+	if !strings.Contains(body, `<h2 tabindex="-1"`) {
+		t.Errorf("results heading should carry tabindex=\"-1\"; body snippet: %s", body[:min(len(body), 400)])
 	}
 }
 

@@ -35,12 +35,16 @@ type accountRow struct {
 
 	// LowBalance is true when the balance is available and strictly below
 	// the account's low-balance threshold. False when unavailable -- an
-	// unknown balance is not "low".
+	// unknown balance is not "low" -- and always false for kinds other than
+	// checking/savings (accounts.LowBalanceApplies): a credit card's balance
+	// is negative by nature, so comparing it to a cash floor would flag it
+	// permanently.
 	LowBalance bool `json:"low_balance"`
 
 	// Threshold is the low-balance threshold used: the account's own
 	// LowBalanceThreshold, or the default when that is zero. Reported so the
-	// model can label the flag.
+	// model can label the flag. Zero for kinds other than checking/savings,
+	// where no threshold applies and LowBalance is always false.
 	Threshold float64 `json:"threshold"`
 
 	// Freshness is the latest transaction date for this account,
@@ -64,7 +68,9 @@ func registerGetAccounts(s *mcp.Server, deps Deps) {
 			"amounts after it (GLOSSARY.md \"BalanceAnchor\"). An account with NO anchor reports " +
 			"available=false and balance=0: that is UNAVAILABLE, not a zero balance -- do not present it as $0. " +
 			"low_balance is true only when the balance is available and strictly below the threshold; an " +
-			"unavailable balance is not \"low\". freshness is the latest transaction date for the account, so " +
+			"unavailable balance is not \"low\". The threshold only applies to the checking and savings kinds: " +
+			"other kinds (a credit card's balance is negative by nature -- money owed) always report " +
+			"low_balance=false and threshold=0. freshness is the latest transaction date for the account, so " +
 			"a stale CSV masquerading as a healthy balance is visible. No aggregation or projection logic is " +
 			"computed here; the figures come from the accounts service's BalanceAt and Freshness.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (res *mcp.CallToolResult, out getAccountsOutput, err error) {
@@ -95,7 +101,6 @@ func registerGetAccounts(s *mcp.Server, deps Deps) {
 				return nil, getAccountsOutput{}, fmt.Errorf("cannot compute balance for %s: %w", a.ID, bErr)
 			}
 			fresh, _ := accounts.Freshness(a, txns)
-			threshold := thresholdFor(a)
 			row := accountRow{
 				ID:          a.ID,
 				Name:        a.Name,
@@ -103,11 +108,15 @@ func registerGetAccounts(s *mcp.Server, deps Deps) {
 				Kind:        string(a.Kind),
 				Balance:     round2(bal.Amount),
 				Available:   bal.Available,
-				Threshold:   threshold,
+			}
+			if accounts.LowBalanceApplies(a.Kind) {
+				row.Threshold = thresholdFor(a)
+				if bal.Available {
+					row.LowBalance = bal.Amount < row.Threshold
+				}
 			}
 			if bal.Available {
 				row.AnchorDate = bal.AnchorDate.Format("2006-01-02")
-				row.LowBalance = bal.Amount < threshold
 			}
 			if fresh.IsZero() {
 				row.Freshness = ""
@@ -189,7 +198,9 @@ func registerGetBalanceProjection(s *mcp.Server, deps Deps) {
 		Description: "The 35-day funding projection for one account: the first date the projected balance crosses " +
 			"below the account's low-balance threshold, the minimum projected balance, a suggested top-up rounded " +
 			"up to the nearest $100, and the median of confirmed inbound paired-transfer amounts as a reference " +
-			"(\"you usually move $X\"). Advisory only -- nothing is written. The projection rolls the account's " +
+			"(\"you usually move $X\"). Advisory only -- nothing is written. Only checking and savings accounts " +
+			"can be projected: the low-balance threshold is meaningless for other kinds (a credit card's balance " +
+			"is negative by nature), so requesting one is an error. The projection rolls the account's " +
 			"current balance (from its latest BalanceAnchor plus transactions after it) forward one day at a " +
 			"time, applying expected recurring items for THIS ACCOUNT ONLY. Report \"cannot project\" when " +
 			"available is false: that means there is no anchor at or before the as-of date, and an unknown " +
@@ -226,6 +237,14 @@ func registerGetBalanceProjection(s *mcp.Server, deps Deps) {
 		acct, ok := findAccount(accts, id)
 		if !ok {
 			return nil, balanceProjectionOutput{}, fmt.Errorf("no account with id %q; call get_accounts for the current IDs", id)
+		}
+		if !accounts.LowBalanceApplies(acct.Kind) {
+			// The projection rolls a cash balance toward the low-balance
+			// threshold, which only checking/savings track. Projecting a
+			// credit card (balance negative by nature) would report an
+			// immediate crossing and a nonsense top-up.
+			return nil, balanceProjectionOutput{}, fmt.Errorf(
+				"account %q has kind %q; the funding projection and low-balance threshold apply only to checking and savings accounts", id, acct.Kind)
 		}
 
 		ts, err := deps.load()

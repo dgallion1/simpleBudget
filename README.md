@@ -382,10 +382,16 @@ configured accounts with each one's balance, freshness (the account's latest
 transaction date), and whether it is below its low-balance threshold; a
 balance is rolled forward from the account's latest BalanceAnchor plus the
 transactions after it, so an account with no anchor reports
-`available=false` — an unavailable balance, not $0. `get_balance_projection`
+`available=false` — an unavailable balance, not $0. The low-balance
+threshold applies only to checking and savings kinds: credit, brokerage,
+and other accounts always report `low_balance=false`, `threshold=0`
+(LB1 — a credit balance is negative by nature, a brokerage balance is not
+spendable cash). `get_balance_projection`
 rolls one account forward 35 days and reports the first date it crosses the
 low-balance threshold, the projected minimum, and a suggested top-up;
-advisory only, nothing is written. `get_transfers` returns the
+advisory only, nothing is written — and it refuses non-cash kinds
+(credit/brokerage/other) with an error naming the kind rather than
+projecting nonsense for them. `get_transfers` returns the
 Transfer-typed flows the ledger recorded — `paired` when both legs are
 loaded and share a pair key, `external` when the counterparty's CSV is not —
 with amounts signed in bank convention; filtering by `account_id` shows that

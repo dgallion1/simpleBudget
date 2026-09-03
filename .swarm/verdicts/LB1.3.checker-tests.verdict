@@ -1,0 +1,150 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: LB1
+ATTEMPT: 3
+---
+Re-issue of the attempt-1 PASS at the current attempt. Attempt-1 criteria 1-5
+(build/vet/tests, non-vacuity at every surface, single classifier, docstring
+accuracy under a CONFIGURED threshold, scope) were verified in
+LB1.1.checker-tests.verdict and stand BY BYTE IDENTITY of the code; what
+follows is the identity proof, the re-run pipeline, and the doc-delta audit.
+Snapshots: work-main (attempt-1 cp -a), work-a3 (attempt-3 cp -a),
+ck-master (git archive d3309d9), mut-a3 (mutation copy, .git removed).
+
+A. THE SIX ORIGINAL CODE FILES ARE UNCHANGED SINCE ATTEMPT 1 -- MET
+  $ cmp work-main/<f> work-a3/<f>  for each of:
+      internal/handlers/dashboard/accounts_card.go        IDENTICAL
+      internal/handlers/dashboard/accounts_card_test.go   IDENTICAL
+      internal/services/accounts/projection.go            IDENTICAL
+      internal/services/accounts/projection_test.go       IDENTICAL
+      internal/services/mcpsvc/ledger/accounts.go         IDENTICAL
+      internal/services/mcpsvc/ledger/accounts_test.go    IDENTICAL
+  sha256 (unchanged across all three attempts), e.g.
+    54ecbe7b...9d68  internal/services/accounts/projection.go
+    4fa7b67e...e63f  internal/services/mcpsvc/ledger/accounts.go
+  $ go test -list '.*' ./... | sort -u  -> IDENTICAL to attempt 1, 3730 names
+    (no test added, removed or renamed since attempt 1).
+
+B. CUMULATIVE DELTA SINCE ATTEMPT 1 IS EXACTLY THE FIVE DOC-BEARING FILES -- MET
+  $ diff -rq --exclude=.git work-main work-a3
+      .claude/skills/budget2-mcp/references/accounts-transfers.md
+      GLOSSARY.md
+      README.md
+      internal/models/account.go
+      internal/services/mcpsvc/server.go
+      + .swarm bookkeeping only: .swarm/LB1-RUN-SPEC.md, .swarm/ledger.tsv,
+        and the LB1.*.verdict files
+      (work-main/tmp is my own `make check` tailwind artifact, not repo state)
+  The two .go files in that set carry NO logic change, proved mechanically
+  rather than by reading:
+   - internal/models/account.go: parsed with go/parser WITHOUT ParseComments
+     and re-printed; attempt-1 vs attempt-3 output is
+       "CODE-IDENTICAL (comment-only delta)"
+     i.e. the AST with comments stripped is byte-identical -- the delta is
+     purely the AccountKind doc comment (one behavioral consequence -> two).
+   - internal/services/mcpsvc/server.go: top-level declarations printed and
+     compared individually, vs BOTH the attempt-1 snapshot and master
+     d3309d9:
+       "DECLS TOTAL=4  CHANGED=[const serverInstructions]"
+     Exactly one of the file's four declarations differs, and it is the
+     string constant returned to MCP clients on initialize. No function,
+     type or other value changed.
+  $ gofmt -l internal/models/account.go internal/services/mcpsvc/server.go
+    -> empty.
+
+C. PIPELINE GREEN ON THE ATTEMPT-3 TREE -- MET (all re-run, not inherited)
+  $ go build ./...                    -> BUILD_EXIT=0, no output
+  $ go vet ./...                      -> VET_EXIT=0, no output
+  $ go test -count=1 ./...            -> FULLTEST_EXIT=0, zero non-"ok" lines
+  $ go test -count=1 ./internal/services/accounts/ ./internal/handlers/dashboard/ \
+      ./internal/services/mcpsvc/ledger/
+      ok budget2/internal/services/accounts 0.017s
+      ok budget2/internal/handlers/dashboard 0.865s
+      ok budget2/internal/services/mcpsvc/ledger 0.307s   TARGET_EXIT=0
+  $ make check                        -> "OK all checks passed", MAKE_EXIT=0
+  serverInstructions guard specifically (the file whose const changed):
+  $ go test -count=1 -v -run TestServerInstructions ./internal/services/mcpsvc/
+      === RUN   TestServerInstructionsCarryLoadBearingClaims
+      --- PASS: TestServerInstructionsCarryLoadBearingClaims (0.00s)
+      ok  budget2/internal/services/mcpsvc 0.003s
+  $ go test -count=1 ./internal/services/mcpsvc/   -> ok, MCPSVC_EXIT=0
+
+D. NON-VACUITY RE-CONFIRMED ON THE ATTEMPT-3 TREE -- MET
+  mut-a3 = attempt-3 tree with LowBalanceApplies mutated to `return true`:
+    --- FAIL: TestLowBalanceApplies                       (gate)
+    --- FAIL: TestAccountsCard_CreditNeverLow             (dashboard card)
+    --- FAIL: TestGetAccountsCreditKindNeverFlaggedLow    (MCP get_accounts)
+    --- FAIL: TestGetAccountsReportsBalanceFreshnessAndLowFlag
+    --- FAIL: TestGetBalanceProjectionRejectsNonCashKinds (MCP projection)
+    EXIT=1 -- every contract surface still dies on the credit-kind case.
+  (Attempt-1 evidence, which stands by identity: the same three behavioral
+  tests, extracted verbatim into a pristine `git archive d3309d9` tree, FAIL
+  there -- so they pin a real change against real master, not a mutant.)
+
+E. LEDGER -- MET
+  $ grep '^LB1' .swarm/ledger.tsv
+    LB1	2	tests,second	assigned	3	worker-coder	attempt2-second-lane-FAIL-serverInstructions-T18-contract-rewrite
+    attempt column = 3, tier 2, checks tests,second.
+
+F. DOC DELTA vs BEHAVIOR I ACTUALLY PROBED AT ATTEMPT 1 -- consistent
+  Every new claim in the five files restates behavior I measured, not
+  behavior I inferred:
+   - "credit, brokerage, and other accounts always report low_balance=false,
+     threshold=0" (README, GLOSSARY, skill ref, serverInstructions) --
+     attempt-1 probe with EXPLICIT thresholds 2000/90000/1000 returned
+     low_balance=false threshold=0.00 for all three; the checking control
+     returned low_balance=true threshold=2000.00.
+   - "other kinds get an error naming the kind" (README, skill ref,
+     serverInstructions) -- attempt-1 probe: refusals naming "credit",
+     "brokerage", "other"; savings control projected normally.
+   - account.go / GLOSSARY "gates ... on every surface" -- attempt-1 grep
+     enumeration (one definition, four production call sites, one template
+     branch driven by Go state, no JS) plus the rendered-string dashboard
+     probe.
+
+FINDINGS (facts for the lead; NOT failures of my assigned criteria)
+ F5 [attempt-3 sweep, formally the second lane's criterion]. I re-ran the
+   spec's completeness grep (Ruling LB1-2026-09-02a) over *.go/*.md with
+   tests and .swarm excluded. Of the LIVING surfaces it returns, two are
+   NOT in the remediation delta:
+   - .claude/skills/budget2-mcp/SKILL.md -- its only hit is a bare tool-name
+     bullet ("`get_accounts`, `get_balance_projection`, ..."). It makes no
+     claim about threshold/flag/projection behavior, so under the ruling's
+     own rule ("wherever they describe ... behavior") there is nothing for
+     it to state. CLEAN.
+   - internal/handlers/accounts/handlers.go:84-88 -- the doc on that
+     package's own `DefaultLowBalanceThreshold` const still ends
+     "zero in the record means 'use the default' everywhere." After LB1 that
+     completeness claim is false for three of the five kinds: for
+     credit/brokerage/other a zero (or any) threshold means NO threshold
+     applies, and get_accounts reports threshold=0 rather than the default
+     500. This is a LIVING code comment describing threshold behavior and it
+     was not touched. Flagging for the sweep's adjudication.
+ F6 [pre-existing on master, not a regression]. TestServerInstructionsCarry-
+   LoadBearingClaims says it "pins the presence of every claim
+   serverInstructions makes about tool behavior", but its wants-list
+   contains no ledger-tool claim at all (the only match for
+   get_accounts/get_balance_projection/UNAVAILABLE/low_balance in that file
+   is the tool-name inventory at line 97, a different test). server_test.go
+   is unchanged vs d3309d9. So the new kind-gate claim added to
+   serverInstructions at attempt 3 lands in a region the guard test has
+   never covered -- it passes, but it does not protect the new text. A
+   one-line wants-list addition would close it; candidate V3-pattern
+   follow-up.
+ F1-F4 from LB1.1.checker-tests.verdict: F1 (README stale) is now RESOLVED
+   by this remediation. F2 (handlers/accounts declares its own
+   DefaultLowBalanceThreshold = 500.0, and accounts.thresholdFor tests
+   `> floatTolerance` while the dashboard/ledger copies test `> 0`), F3
+   (/accounts page offers the threshold input for every kind) and F4 (no
+   .swarm/manifests/LB1*) stand as written; all are pre-existing on master
+   or bookkeeping.
+
+PROCESS NOTE (disclosure). The run tree was edited WHILE I was verifying
+attempt 2: internal/services/mcpsvc/server.go was identical to master when I
+snapshotted and diffed, then changed minutes later, so my first attempt-2
+build/test run did not include it. I re-baselined (work-a3) and re-ran the
+entire pipeline above against the current tree. A final
+`diff -rq --exclude=.git work-a3 lb1-run` shows the tree did not move again
+during this verification (only the second lane's LB1.3 verdict file
+appeared), so every command cited here ran against the state now on disk.

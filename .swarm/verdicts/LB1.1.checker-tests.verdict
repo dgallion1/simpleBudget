@@ -1,0 +1,160 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: LB1
+ATTEMPT: 1
+---
+Working copies used (never the shared tree): scratchpad/work-main (cp -a of
+lb1-run, .git kept), scratchpad/mut-a, scratchpad/mut-b, scratchpad/ck-probe
+(.git removed), scratchpad/ck-master (git archive d3309d9). Only write to the
+run tree is this verdict file.
+
+C1. BUILD / VET / TARGETED TESTS / FULL SUITE / make check -- MET
+  $ cd work-main && go build ./...            -> BUILD_EXIT=0, no output
+  $ cd work-main && go vet ./...              -> VET_EXIT=0, no output
+  $ go test -count=1 ./internal/services/accounts/ ./internal/handlers/dashboard/ \
+      ./internal/services/mcpsvc/ledger/
+      ok budget2/internal/services/accounts 0.016s
+      ok budget2/internal/handlers/dashboard 0.750s
+      ok budget2/internal/services/mcpsvc/ledger 0.301s   EXIT=0
+  $ go test -count=1 ./...                    -> EXIT=0, zero non-"ok" lines
+  $ make check                                -> "OK all checks passed", MAKE_EXIT=0
+    (check = vet static vuln css-verify test; note Makefile:195 runs
+     `go test ./...` WITHOUT -count=1, so make check alone can ride the test
+     cache -- the uncached evidence is the standalone -count=1 ./... run above.)
+  $ gofmt -l <the six changed files>          -> empty (all six gofmt-clean)
+
+C2. NON-VACUITY -- MET, and stronger than required
+ (a) mutation "return true" in accounts.LowBalanceApplies (mut-a):
+     go test -count=1 on the three packages -> EXIT=1, failures per surface:
+     - gate itself (internal/services/accounts):
+         --- FAIL: TestLowBalanceApplies
+           projection_test.go:1025: LowBalanceApplies("credit") = true, want false
+           (also "brokerage", "other")
+     - dashboard accounts card (internal/handlers/dashboard):
+         --- FAIL: TestAccountsCard_CreditNeverLow
+           accounts_card_test.go:250: credit account must never show the
+           low-balance flag ...
+     - MCP get_accounts (mcpsvc/ledger):
+         --- FAIL: TestGetAccountsCreditKindNeverFlaggedLow
+           accounts_test.go:181: low_balance = true for a credit account ...
+           accounts_test.go:184: threshold = 500.00, want 0
+         --- FAIL: TestGetAccountsReportsBalanceFreshnessAndLowFlag
+           accounts_test.go:113: brokerage threshold = 500.00, want 0
+     - MCP get_balance_projection (mcpsvc/ledger):
+         --- FAIL: TestGetBalanceProjectionRejectsNonCashKinds
+           accounts_test.go:313: expected an error result, got:
+           map[... crossing:2026-09-04 minimum:-11371.2 suggested_top_up:11900
+           threshold:500]
+     Every surface named in the contract has at least one credit-kind test that
+     dies under the mutation. No unpinned surface.
+ (b) inverted gate `return !(checking || savings)` (mut-b): EXIT=1;
+     accounts FAIL(TestLowBalanceApplies); dashboard FAILs incl.
+     TestAccountsCard_Low, TestAccountsCard_CreditNeverLow,
+     TestProjectionLine_Crossing/NoCrossing/Unavailable,
+     TestAccountsCard_ProjectionCrossing_ExactNumbers; ledger FAILs incl.
+     TestGetBalanceProjectionReportsCrossingAndTopUp,
+     TestDashboardAndMCPProjectionAgree, plus the three credit tests.
+ (c) EXTRA: the three new behavioral tests were extracted verbatim into a
+     pristine master tree (git archive d3309d9 -> ck-master) and run there:
+       --- FAIL: TestAccountsCard_CreditNeverLow (dashboard)
+       --- FAIL: TestGetAccountsCreditKindNeverFlaggedLow
+       --- FAIL: TestGetBalanceProjectionRejectsNonCashKinds
+     i.e. the new tests fail on real pre-fix master, not merely on a mutant.
+
+C3. ONE CLASSIFIER, NO BYPASS -- MET
+  $ grep -rn "LowBalanceApplies" --include=*.go .   (excl .swarm)
+    -> exactly one definition (services/accounts/projection.go:29) and three
+       production call sites: dashboard/accounts_card.go:182 (state switch),
+       :192 (projection gate), mcpsvc/ledger/accounts.go:112 (get_accounts),
+       :241 (get_balance_projection refusal).
+  $ grep -rn "AccountKindChecking\|AccountKindSavings" --include=*.go . | grep -v _test
+    -> only models/account.go (enum decl), projection.go:30 (the gate itself),
+       and handlers/accounts/handlers.go:77-78,452 -- which is the <select>
+       option list and form-value validation for the /accounts config page,
+       not a low-balance classification.
+  $ grep -rn "accountStateLow" / "LowBalance" (non-threshold) --include=*.go
+    -> one assignment site each: dashboard/accounts_card.go:183 and
+       mcpsvc/ledger/accounts.go:115, both inside a LowBalanceApplies gate.
+  $ grep -rn "accounts.Project(" --include=*.go . | grep -v _test
+    -> two callers, dashboard/accounts_card.go:193 and ledger/accounts.go:260,
+       both behind LowBalanceApplies.
+  Template/JS surface: grep of web/ for low-balance rendering finds exactly
+  components/accounts_card.html:66 `{{if eq $state "low"}}` (with $state :=
+  .State, set only in Go) and :71 the flag text, plus the projection line at
+  :92 `{{if .Projection}}`. No JS references threshold/low_balance/lowBalance
+  (grep of web/static/js returns nothing). pages/accounts.html renders only a
+  threshold <input> and help text -- no low state. No second classifier.
+
+C4. DOCSTRING ACCURACY (with a CONFIGURED threshold) -- MET
+  Probe zz_ck_probe_test.go in ck-probe, credit/brokerage/other each seeded
+  with an explicit LowBalanceThreshold (2000 / 90000 / 1000):
+    PROBE row: id=a-credit    kind=credit    available=true balance=-11371.20 low_balance=false threshold=0.00
+    PROBE row: id=b-brokerage kind=brokerage available=true balance=50000.00  low_balance=false threshold=0.00
+    PROBE row: id=c-other     kind=other     available=true balance=10.00     low_balance=false threshold=0.00
+    PROBE row: id=d-checking  kind=checking  available=true balance=1500.00   low_balance=true  threshold=2000.00
+  -> matches the Description's "other kinds ... always report low_balance=false
+     and threshold=0" verbatim, and the checking positive control still honours
+     its configured threshold.
+  get_balance_projection Description ("Only checking and savings accounts can
+  be projected ... requesting one is an error"):
+    PROBE kind=credit    refusal="account \"x\" has kind \"credit\"; the funding projection and low-balance threshold apply only to checking and savings accounts"
+    PROBE kind=brokerage refusal=... "kind \"brokerage\"" ...
+    PROBE kind=other     refusal=... "kind \"other\"" ...
+    PROBE savings positive control: IsError=false
+  Dashboard RENDERED-STRING probe, same configured-threshold fixture
+  (balance 100 vs threshold 2000), asserting on the rendered card section:
+    PROBE kind=credit    status=200 lowFlagRendered=false projectionLineRendered=false renderedFlag=""
+    PROBE kind=brokerage status=200 lowFlagRendered=false projectionLineRendered=false renderedFlag=""
+    PROBE kind=other     status=200 lowFlagRendered=false projectionLineRendered=false renderedFlag=""
+    PROBE kind=checking  status=200 lowFlagRendered=true  projectionLineRendered=true  renderedFlag="<span>Below the $2000 low-balance threshold</span>"
+  Probes were run only in the throwaway ck-probe copy and are not part of the
+  delivered diff.
+
+C5. SCOPE -- MET
+  $ git diff d3309d9 --name-status
+    M .swarm/ledger.tsv
+    M internal/handlers/dashboard/accounts_card.go
+    M internal/handlers/dashboard/accounts_card_test.go
+    M internal/services/accounts/projection.go
+    M internal/services/accounts/projection_test.go
+    M internal/services/mcpsvc/ledger/accounts.go
+    M internal/services/mcpsvc/ledger/accounts_test.go
+    (internal/ only: 169 insertions, 13 deletions -- matches the brief)
+  $ git ls-files --others --exclude-standard
+    .swarm/LB1-RUN-SPEC.md
+    .swarm/verdicts/LB1.1.checker-second.verdict   (sibling lane's file)
+  $ git diff d3309d9 -- .swarm/ledger.tsv  -> single added line:
+    LB1	2	tests,second	assigned	1	worker-coder	low-balance-kind-gate-ported-from-sleepy-kilby
+    (tier 2, checks tests,second -- as specified)
+  $ cat .swarm/critical.globs -> the accounts entry is
+    internal/services/accounts/accounts.go; the task touched projection.go
+    only, so no critical glob is touched.
+  $ go test -list '.*' ./...  master(d3309d9) vs branch, sorted/uniq:
+    master 3726 names, branch 3730; REMOVED: (none);
+    ADDED: TestAccountsCard_CreditNeverLow, TestGetAccountsCreditKindNeverFlaggedLow,
+           TestGetBalanceProjectionRejectsNonCashKinds, TestLowBalanceApplies
+  $ git diff d3309d9 --stat -- internal/handlers/accounts web/templates -> empty
+
+FINDINGS (backlog, not FAILs -- outside the brief's written contract)
+ F1. README.md:385-388 still describes get_balance_projection as simply
+     "rolls one account forward 35 days"; it does not mention the new hard
+     refusal for credit/brokerage/other. Stale-doc (ND3) class. The spec's
+     Contract names only the get_accounts docstring, so this is out of scope
+     for LB1's criteria.
+ F2. Pre-existing on master (empty diff for the path): a THIRD threshold
+     resolver exists -- internal/handlers/accounts/handlers.go:88 declares its
+     own `DefaultLowBalanceThreshold = 500.0` rather than using
+     accounts.DefaultLowBalanceThreshold, alongside accounts.thresholdFor
+     (uses `> floatTolerance`) and ledger/dashboard thresholdFor* (use `> 0`).
+     None of them classifies by kind, so LB1's single-gate claim holds, but
+     the default VALUE is duplicated in a fourth place.
+ F3. The /accounts config page (web/templates/pages/accounts.html:494-504,
+     570-579) still offers a "Low-balance threshold" input and the
+     "default of $500" help text for every kind, including credit/brokerage/
+     other where the value is now inert. Cosmetic/UX, pre-existing markup,
+     unchanged by LB1.
+ F4. No .swarm/manifests/LB1* exists (the run spec records that the port
+     carried no manifest), so there was no manifest to reconcile the diff
+     against; scope was reconciled against the run spec and the git diff
+     instead.

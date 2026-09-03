@@ -37,7 +37,7 @@ func twoAccounts() []models.Account {
 			Institution:         "Schwab",
 			Kind:                models.AccountKindBrokerage,
 			FilePatterns:        []string{"schwab"},
-			LowBalanceThreshold: 0, // uses default 500
+			LowBalanceThreshold: 0, // no threshold applies: brokerage is not a cash kind
 			Anchors: []models.BalanceAnchor{{
 				Date:   time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC),
 				Amount: 50000,
@@ -109,8 +109,8 @@ func TestGetAccountsReportsBalanceFreshnessAndLowFlag(t *testing.T) {
 	if broker.Balance != 50500 {
 		t.Errorf("brokerage balance = %.2f, want 50500", broker.Balance)
 	}
-	if broker.Threshold != 500 {
-		t.Errorf("brokerage threshold = %.2f, want default 500", broker.Threshold)
+	if broker.Threshold != 0 {
+		t.Errorf("brokerage threshold = %.2f, want 0 (the low-balance threshold only applies to checking/savings)", broker.Threshold)
 	}
 }
 
@@ -144,6 +144,44 @@ func TestGetAccountsReportsUnavailableNotZeroForNoAnchor(t *testing.T) {
 	}
 	if a.AnchorDate != "" {
 		t.Errorf("anchor_date = %q, want empty for unavailable", a.AnchorDate)
+	}
+}
+
+// The credit-card trap: a credit account's balance is negative by nature
+// (money owed), so comparing it to the cash low-balance threshold would flag
+// it permanently. The threshold is only meaningful for checking and savings
+// (models.Account.LowBalanceThreshold's doc); get_accounts must never flag
+// other kinds, and reports threshold 0 for them so the model does not reason
+// about a floor that does not apply.
+func TestGetAccountsCreditKindNeverFlaggedLow(t *testing.T) {
+	deps, _ := newDeps(t)
+	seedAccounts(t, deps, []models.Account{{
+		ID:   "usaa-credit-card",
+		Name: "USAA Credit Card",
+		Kind: models.AccountKindCredit,
+		Anchors: []models.BalanceAnchor{{
+			Date:   time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC),
+			Amount: -11371.20,
+		}},
+	}})
+	cs := connect(t, deps)
+
+	out := decodeToolResult[getAccountsOutput](t, call(t, cs, "get_accounts", map[string]any{}))
+	if out.Count != 1 {
+		t.Fatalf("count = %d, want 1", out.Count)
+	}
+	a := out.Accounts[0]
+	if !a.Available {
+		t.Fatal("available = false; an anchor exists")
+	}
+	if a.Balance != -11371.20 {
+		t.Errorf("balance = %.2f, want -11371.20", a.Balance)
+	}
+	if a.LowBalance {
+		t.Error("low_balance = true for a credit account; a card balance is negative by nature and the threshold only applies to checking/savings")
+	}
+	if a.Threshold != 0 {
+		t.Errorf("threshold = %.2f, want 0 (no low-balance threshold applies to a credit account)", a.Threshold)
 	}
 }
 
@@ -252,6 +290,34 @@ func TestGetBalanceProjectionRejectsBadDate(t *testing.T) {
 	}))
 	if !strings.Contains(msg, "not a valid date") {
 		t.Errorf("error = %q, want it to name the bad date", msg)
+	}
+}
+
+// The funding projection rolls a cash balance toward the low-balance
+// threshold, which only applies to checking and savings. Projecting a credit
+// account would report an immediate "crossing" and an ~$11.9k "top-up" for a
+// card whose balance is negative by nature, so the tool must refuse instead.
+func TestGetBalanceProjectionRejectsNonCashKinds(t *testing.T) {
+	deps, _ := newDeps(t)
+	seedAccounts(t, deps, []models.Account{{
+		ID:   "usaa-credit-card",
+		Name: "USAA Credit Card",
+		Kind: models.AccountKindCredit,
+		Anchors: []models.BalanceAnchor{{
+			Date:   time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC),
+			Amount: -11371.20,
+		}},
+	}})
+	cs := connect(t, deps)
+
+	msg := toolErrorText(t, call(t, cs, "get_balance_projection", map[string]any{
+		"account_id": "usaa-credit-card",
+	}))
+	if !strings.Contains(msg, "checking and savings") {
+		t.Errorf("error = %q, want it to say the projection applies only to checking and savings accounts", msg)
+	}
+	if !strings.Contains(msg, "credit") {
+		t.Errorf("error = %q, want it to name the account's kind", msg)
 	}
 }
 

@@ -1,0 +1,112 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: LB1
+ATTEMPT: 1
+---
+1. REAL DATA (read-only cp -a of /home/darrell/bin/ai/budget2/data, probe via
+   in-memory MCP client/server pointed at storage.New/dataloader.New exactly
+   as accounts_test.go's newDepsCapturingLoader does — no budget2 binary
+   executed):
+   - usaa-credit-card (kind "credit", anchor -11371.20, no
+     low_balance_threshold configured in accounts.json -> falls back to
+     DefaultLowBalanceThreshold=500 in thresholdFor):
+     MASTER get_accounts: low_balance=true, threshold=500 (LIVE BUG — a
+     -$11,371 card balance permanently flagged low).
+     MASTER get_balance_projection: available=true, crossing="2026-09-04",
+     minimum=-14921.22, suggested_top_up=15500 (nonsense top-up on a card).
+     FIX get_accounts: low_balance=false, threshold=0 (matches contract).
+     FIX get_balance_projection: TOOL-ERROR "account \"usaa-credit-card\" has
+     kind \"credit\"; the funding projection and low-balance threshold apply
+     only to checking and savings accounts" (matches contract).
+   - usaa-checking / usaa-health-checking (kind "checking"): byte-identical
+     across both trees (low_balance=false, threshold=500, balance/minimum
+     unchanged) — the fix is protective-only for real checking data, no
+     regression.
+   CONCLUSION: real-data probe proves the fix is a genuine, verified bugfix
+   on the live ledger, not a no-op.
+
+2. SURFACE ENUMERATION: grepped LowBalance/low_balance/threshold across all
+   .go/.md/.html/.js. Enumerated consumers: dashboard accounts_card.go (2
+   sites: state switch + projection eligibility, both gated), MCP
+   accounts.go get_accounts + get_balance_projection (both gated),
+   internal/services/accounts/balance.go (no threshold logic — clean),
+   internal/handlers/accounts/handlers.go (/accounts settings page — only
+   edits the LowBalanceThreshold VALUE, never computes/renders a low_balance
+   comparison, so it is not a "surface reporting a flag" and needs no gate).
+   Templates accounts.html and accounts_card.html only render values the
+   gated Go code already computed — no independent comparison in template
+   logic. No unlisted comparison surface found. Full package test suite
+   (accounts, dashboard, mcpsvc/ledger) green in the fix tree.
+
+3. EDGE ATTACKS:
+   - Unknown/empty kind: LowBalanceApplies("") and LowBalanceApplies(any
+     non-enum string) both return false (fails safe — non-applicable, never
+     over-flagged). handlers.go already defaults an omitted/unknown kind to
+     "other" at write time, so this is consistent and documented behavior,
+     confirmed by TestLowBalanceApplies pinning the closed enum
+     (checking=true, savings=true, brokerage/credit/other=false).
+   - Savings: same OR-condition as checking in LowBalanceApplies, no
+     separate code path exists that could special-case it — no
+     over-suppression risk found.
+   - threshold=0 on checking: thresholdFor's `> 0` check (unchanged by this
+     diff, present on master too) means 0 still means "use default 500",
+     not "no threshold" — pre-existing ambiguity, NOT introduced by LB1,
+     out of scope for this task.
+   - available=false interaction: dashboard routes to accountStateNoAnchor
+     BEFORE the LowBalanceApplies switch case runs (confirmed by reading
+     the code — the `if !balance.Available {...} else { switch {...} }`
+     structure), and MCP get_accounts only sets LowBalance when
+     `bal.Available` (unchanged logic, now additionally kind-gated). The
+     gate does not re-enable flagging for unavailable balances on either
+     surface.
+
+4. STALE-DOC HUNT (ND3 class) — FAIL basis:
+   internal/models/account.go:9-12 (UNTOUCHED by this diff — confirmed via
+   `git diff --cached --name-only`, the file is not listed) states:
+     "One behavioral consequence, and only one: AccountKindCredit forces
+     the credit-card sign convention for every CSV file that belongs to
+     the account... Every other kind leaves that heuristic exactly as it
+     is."
+   GLOSSARY.md:87 makes the same claim ("One behavioral consequence: `Kind:
+   credit` **forces** the credit-card sign convention... Other kinds leave
+   the heuristic alone.").
+   Both are now FALSE: this diff gives AccountKind a SECOND behavioral
+   consequence — LowBalanceApplies(kind) now gates the low-balance flag and
+   funding projection on every enumerated surface, per the new function's
+   own doc comment in projection.go ("Every surface that reports a
+   low-balance flag or a funding projection... must gate on this"). The
+   account.go comment's explicit "and only one" claim, sitting directly on
+   the AccountKind type this task's central function switches on, is
+   falsified by the worker's own change and was not updated. (Contrast:
+   the adjacent Account.LowBalanceThreshold field comment at account.go:62
+   already said "only meaningful for the checking and savings kinds" before
+   this diff — that one predicted the fix and is fine; the AccountKind
+   type-level "and only one" comment is the one this diff breaks.)
+   This sits inside the same package/type the task's contract is built on
+   (accounts.LowBalanceApplies(kind), internal/models.AccountKind) — not an
+   unrelated pre-existing doc drift — and is a direct, mechanical
+   consequence of leaving this task incomplete, analogous to the CB3-b
+   precedent (SPEC.md rulings) where an adjacent tool-docstring surface
+   falsified by the same diff was treated as in-scope, not backlog.
+   Secondary (weaker, reported as backlog observations, not part of the
+   FAIL basis since farther from the diff): README.md:381-382 and
+   .claude/skills/budget2-mcp/references/accounts-transfers.md:14/22-23/31
+   still describe get_accounts/get_balance_projection's threshold behavior
+   without the kind-gate exception; an MCP-client-facing skill doc that
+   still implies get_balance_projection is callable uniformly is a real
+   doc/behavior mismatch this change created, but is not named as a scope
+   item in LB1-RUN-SPEC.md's contract (which explicitly scopes docstring
+   updates to accounts.go only) — flagged for the backlog, not fatal to
+   this verdict on its own.
+
+VERDICT: FAIL — internal/models/account.go's AccountKind doc comment (and
+GLOSSARY.md's mirror of it) make an explicit "and only one" /
+"one behavioral consequence" claim about AccountKind that this diff's own
+new LowBalanceApplies function falsifies. This is the ND3 stale-doc class
+the task was explicitly dispatched to hunt, sits inside the same type the
+task's contract is built on, and was not touched by the diff. Real-data
+probe (section 1) otherwise confirms the functional fix is correct and a
+genuine bugfix (live low_balance=true/suggested_top_up=15500 on
+usaa-credit-card on master, corrected on the fix branch) — this FAIL is
+about the doc-comment omission, not the runtime behavior.

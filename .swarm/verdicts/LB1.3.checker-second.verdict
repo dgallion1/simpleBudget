@@ -1,0 +1,113 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: LB1
+ATTEMPT: 3
+---
+1. DELTA SINCE ATTEMPT-2 AUDIT (python3 difflib, master baseline for the
+   pre-existing text; rtk rewrites `git diff` output on this host so
+   difflib is used per the dispatch instruction):
+   Only internal/services/mcpsvc/server.go changed (confirmed via
+   `git status --porcelain`: it is the sole newly-touched file beyond the
+   four from attempt 2, which are byte-identical to their attempt-2 state).
+   Full diff (16 lines) is entirely inside the `serverInstructions` string
+   literal's concatenation -- two sentences inserted, one existing sentence
+   reworded ("funding forecast for one account" -> "funding forecast for
+   one CASH account (checking/savings; other kinds get an error naming the
+   kind)"), no line outside the string touched, no code logic moved: it is
+   a `const string`, so "logic" cannot move within it by construction, and
+   `go build ./...` / `go vet ./...` exit clean with zero output.
+
+2. FACTUAL ACCURACY against the attempt-1 real-data probe (live ledger,
+   read-only cp -a):
+   - "The threshold applies only to the checking and savings kinds --
+     credit, brokerage, and other accounts always report low_balance=false
+     and threshold=0" -- matches the probed usaa-credit-card row exactly
+     (low_balance=false, threshold=0).
+   - "get_balance_projection is the 35-day funding forecast for one CASH
+     account (checking/savings; other kinds get an error naming the
+     kind)" -- matches the probed error text verbatim in substance:
+     `account "usaa-credit-card" has kind "credit"; the funding projection
+     and low-balance threshold apply only to checking and savings
+     accounts` -- the kind ("credit") IS named. No overclaim.
+
+3. RULING GREP, RUN AND CLASSIFIED (`grep -rlE` over *.go/*.md, tests and
+   .swarm excluded -- `-l` needs `-E` for the `|` alternation to work as
+   alternation rather than a literal pipe character):
+   LIVING (must state the kind gate wherever threshold/flag/projection
+   behavior is described) -- 8 files, all checked, ZERO STALE:
+     - internal/services/accounts/projection.go -- defines
+       LowBalanceApplies with the full rationale (attempt 1). Accurate.
+     - internal/services/mcpsvc/ledger/accounts.go -- get_accounts/
+       get_balance_projection docstrings + field comments state the gate
+       and the refusal (attempt 1). Accurate.
+     - internal/handlers/dashboard/accounts_card.go -- code comment states
+       the gate; code enforces it (attempt 1). Accurate.
+     - internal/models/account.go -- AccountKind doc now states "Two
+       behavioral consequences" including the gate (attempt 2, this
+       checker's attempt-1 FAIL basis). Accurate.
+     - GLOSSARY.md "Account kind" entry -- states the gate (attempt 2).
+       Accurate.
+     - README.md get_accounts/get_balance_projection paragraphs -- state
+       the gate and the refusal (attempt 2, folded checker-tests F1).
+       Accurate.
+     - .claude/skills/budget2-mcp/references/accounts-transfers.md --
+       third "rule that prevents wrong answers" + cash-kinds-only
+       projection note (attempt 2). Accurate.
+     - internal/services/mcpsvc/server.go serverInstructions -- THIS
+       attempt's remediation (this checker's attempt-2 FAIL basis).
+       Accurate per (2) above.
+   LIVING, matched by the grep but carrying NO threshold/flag/projection
+   BEHAVIORAL CLAIM to falsify (nothing to state, not stale):
+     - .claude/skills/budget2-mcp/SKILL.md -- the one hit is a tool-name
+       listing ("get_accounts, get_balance_projection, ...") in a table of
+       contents, no claim about which kinds are flagged or projected.
+     - internal/handlers/accounts/handlers.go -- comments describe the
+       /accounts settings page's CRUD/form mechanics for the
+       LowBalanceThreshold VALUE (label text, default-fallback doc,
+       form-field parsing); none claims which account kinds the dashboard
+       or MCP surfaces flag or project, so the kind gate has nothing to
+       attach to here. (Backlog item from attempt 1 -- the settings page
+       still offers the threshold input for inert kinds -- is a UX
+       question, not a doc-accuracy one, and was already filed as
+       checker-tests backlog, not part of this contract.)
+   HISTORICAL (dated build-spec records, ruling says they stay) -- 4
+   files, spot-checked and confirmed genuinely dated diagnostic/task-table
+   text, not live current-behavior claims:
+     - ACCOUNTS_TRANSFERS_SPEC.md (dated 2026-08-16)
+     - REVIEW_FIXES_SPEC.md (dated 2026-08-19)
+     - REVIEW_AUG20_SPEC.md (dated 2026-08-20)
+     - docs/superpowers/specs/2026-08-16-accounts-transfers-design.md
+       (dated 2026-08-16)
+   NON-CLAIM (ruling names ACCESSIBILITY.md's color example explicitly) --
+   1 file, confirmed:
+     - ACCESSIBILITY.md point 8's "status flags (low balance, stale data,
+       FAIL/PASS) pair color with an icon or text" is the accessibility
+       rule's illustrative example, not a claim about which account kinds
+       get flagged.
+   Total: 15 files matched the grep; 8 LIVING-with-claim (all accurate),
+   2 LIVING-without-claim (nothing to state), 4 HISTORICAL (stay), 1
+   NON-CLAIM (stays). Zero stale LIVING surfaces remain.
+
+4. MCPSVC TESTS: `go test ./...` is all-`ok` (no non-ok lines);
+   `go build ./...` and `go vet ./...` exit clean. server_test.go's
+   TestServerInstructionsCarryLoadBearingClaims (the wants-list pin
+   mentioned in the dispatch) asserts `strings.Contains(serverInstructions,
+   want)` for a fixed list of substrings; this attempt's edit only ADDED
+   sentences and reworded one clause without removing any pinned
+   substring, so the test still passes (confirmed by the green run, and
+   by inspection: grep for the new claim's language in server_test.go
+   finds no pre-existing pin naming it, so nothing could have broken).
+   Note for the backlog, not a FAIL: no NEW pin was added to
+   server_test.go for this specific claim, so a future edit to
+   LowBalanceApplies would not be caught by this test the way the
+   ruling's own comment on that test says it should be ("nothing else
+   catches it drifting out of sync") -- worth a follow-up but outside
+   this attempt's contract, which asked only for the grep-classification
+   sweep to close.
+
+VERDICT: PASS. Delta is exactly serverInstructions, a data string with
+zero executable/logic change; the new text is factually accurate against
+the attempt-1 real-data probe (low_balance=false/threshold=0, and the
+error naming the kind); the ruling's grep re-run and classified in full
+finds zero stale LIVING surfaces; build/vet/full test suite green.

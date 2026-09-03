@@ -167,7 +167,10 @@ func buildAccountCardView(a models.Account, txs []models.Transaction, asOf time.
 	// stale (a stale CSV must not masquerade as healthy), then low, then
 	// healthy. A stale account whose balance is also low is shown as stale;
 	// staleness is the more important signal because the balance itself may
-	// be wrong.
+	// be wrong. The low state only exists for kinds that track a threshold
+	// (checking/savings, accounts.LowBalanceApplies): a credit card's balance
+	// is negative by nature, so comparing it to the cash floor would flag
+	// every card permanently.
 	if !balance.Available {
 		view.State = accountStateNoAnchor
 	} else {
@@ -176,7 +179,7 @@ func buildAccountCardView(a models.Account, txs []models.Transaction, asOf time.
 		switch {
 		case stale:
 			view.State = accountStateStale
-		case balance.Amount < threshold:
+		case accounts.LowBalanceApplies(a.Kind) && balance.Amount < threshold:
 			view.State = accountStateLow
 		default:
 			view.State = accountStateHealthy
@@ -186,7 +189,7 @@ func buildAccountCardView(a models.Account, txs []models.Transaction, asOf time.
 	// Projection only for checking/savings kinds (design doc §4). Even when
 	// the balance is unavailable, we still attach a ProjectionResult with
 	// Available=false so the template can render the "unknown" line.
-	if a.Kind == models.AccountKindChecking || a.Kind == models.AccountKindSavings {
+	if accounts.LowBalanceApplies(a.Kind) {
 		proj, err := accounts.Project(a, txs, asOf, recurring)
 		if err != nil {
 			log.Printf("dashboard: projection for %s: %v", a.ID, err)

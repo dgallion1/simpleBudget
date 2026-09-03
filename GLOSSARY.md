@@ -84,10 +84,13 @@ is surfaced when two accounts' `FilePatterns` overlap an existing file (first
 match still wins by ID sort).
 
 **Account kind** — the `AccountKind` enum: `checking`, `savings`, `brokerage`,
-`credit`, `other`. One behavioral consequence: `Kind: credit` **forces** the
+`credit`, `other`. Two behavioral consequences: `Kind: credit` **forces** the
 credit-card sign convention for that file, overriding the ≥70%-positive
-heuristic in `usesCreditCardSignConvention`. Other kinds leave the heuristic
-alone.
+heuristic in `usesCreditCardSignConvention` (other kinds leave the heuristic
+alone); and only `checking`/`savings` compare against the low-balance
+threshold — `accounts.LowBalanceApplies` gates the `low_balance` flag and
+the funding projection on every surface, so credit/brokerage/other report
+`low_balance=false`, `threshold=0` regardless of any configured value.
 
 **Transfer** — the third `TransactionType`, alongside `Income` and `Outflow`.
 A transfer is neither income nor expense and is excluded from both, but unlike

@@ -73,3 +73,13 @@ page a task touches; the final pass runs it site-wide.
     verdict` were real defects that no numbered point covered, so the FAIL
     rested on an "implicit companion requirement" and was overruled. This
     point makes that defect class citable.
+
+17. Modal overlays are dialogs. Any layer that blocks the page carries
+    `role="dialog"` (or `alertdialog`), `aria-modal="true"`, an accessible
+    name (`aria-labelledby` or `aria-label`), moves focus into itself on
+    open and back to the invoking control on close, traps Tab inside, and
+    closes on Esc.
+
+    Added 2026-09-03 (user decision, U-run Phase 0 sign-off): the 2026-09-03
+    UI audit found four overlays with none of this markup, and no numbered
+    point made the defect citable (the point-16 precedent).

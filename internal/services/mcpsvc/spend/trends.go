@@ -199,7 +199,24 @@ func registerTrends(s *mcp.Server, deps Deps) {
 			"previous_amount are SIGNED instead -- a refund-dominant major-expense period (refunds outweigh " +
 			"purchases) nets NEGATIVE, meaning a credit, not a debt. change_amount (current_amount - " +
 			"previous_amount) and change_percent are SIGNED for both -- negative means spending FELL versus " +
-			"the prior window, positive means it rose; do not read either as a magnitude. category_trends, " +
+			"the prior window, positive means it rose; do not read either as a magnitude. change_percent, " +
+			"change_amount, and direction all derive from the SAME rounded (current_amount, previous_amount) " +
+			"pair -- change_percent uses a zero-baseline convention when previous_amount is 0: +100 when " +
+			"current_amount is positive, -100 when current_amount is negative, 0 when current_amount is also " +
+			"0 (a true percent against a zero baseline is undefined). The web UI never shows that raw " +
+			"change_percent figure directly; instead it shows one of four things, and change_amount is the " +
+			"EXACT SAME dollar figure the UI's own dollar delta shows (both are the rounded current_amount " +
+			"minus the rounded previous_amount) whenever the UI is showing a dollar figure at all: \"new\" " +
+			"when previous_amount is 0 and current_amount is positive (no prior baseline to compare against); " +
+			"\"—\" (\"no change\") when previous_amount and current_amount are both 0 (true zero activity in " +
+			"both windows, not float noise -- a category whose signed transactions cancel out, e.g. " +
+			"0.10+0.20-0.30, rounds to exactly $0.00 before this decision is made); a signed dollar delta " +
+			"(change_amount itself) when previous_amount is 0 and current_amount is negative (a lone refund " +
+			"with no prior baseline) OR whenever the absolute value of previous_amount is under $100 (a " +
+			"percent off a tiny baseline is technically correct but misleading, e.g. $30 -> $6,931 would read " +
+			"as \"+23004.0%\"); and a percent (change_percent, one decimal) in every other case. direction " +
+			"(\"up\"/\"down\"/\"stable\", the same value behind the web UI's arrow/color) follows change_percent " +
+			"with the same +-5 band as before; a \"no change\" (\"—\") row is always stable. category_trends, " +
 			"major_expense_trends, and income_patterns are each SILENTLY CAPPED and will not list every category/expense/income source " +
 			"when the household has more than the cap: category_trends and major_expense_trends each keep only " +
 			"the 10 rows with the largest |change_amount| (biggest movers, not biggest spenders -- a large, " +

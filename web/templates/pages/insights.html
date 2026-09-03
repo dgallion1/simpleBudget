@@ -316,9 +316,6 @@
                             <th class="text-center p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('frequency')" data-sort="frequency">
                                 <span class="flex items-center justify-center gap-1">Freq <span class="sort-icon" data-col="frequency"></span></span>
                             </th>
-                            <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('monthly')" data-sort="monthly">
-                                <span class="flex items-center justify-end gap-1">Monthly <span class="sort-icon" data-col="monthly"></span></span>
-                            </th>
                             <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none" onclick="sortRecurringTable('annual')" data-sort="annual">
                                 <span class="flex items-center justify-end gap-1">Annual <span class="sort-icon" data-col="annual"></span></span>
                             </th>
@@ -348,8 +345,10 @@
                                     {{if eq .Frequency "ongoing"}}{{.Occurrences}}x{{else}}{{.Frequency}}{{end}}
                                 </span>
                             </td>
-                            <td class="p-3 text-sm text-right font-medium text-purple-700 dark:text-purple-300">{{formatMoney (div .AnnualCost 12.0)}}</td>
-                            <td class="p-3 text-sm text-right font-medium text-purple-600 dark:text-purple-400">{{formatMoney .AnnualCost}}</td>
+                            <td class="p-3 text-sm text-right font-medium text-purple-600 dark:text-purple-400">
+                                <div>{{formatMoney .AnnualCost}}</div>
+                                <div class="text-xs font-normal text-gray-500 dark:text-gray-400">{{formatMoney (div .AnnualCost 12.0)}}/mo</div>
+                            </td>
                         </tr>
                         {{end}}
                     </tbody>
@@ -495,7 +494,7 @@
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
                                     </svg>
                                     {{end}}
-                                    <span class="num">{{if gt .ChangePercent 0.0}}+{{end}}{{printf "%.1f" .ChangePercent}}%</span>
+                                    <span class="num">{{if eq .Change.Kind "new"}}new{{else if eq .Change.Kind "none"}}—<span class="sr-only"> no change</span>{{else if eq .Change.Kind "dollar"}}{{if gt .Change.Amount 0.0}}+{{end}}{{formatMoney .Change.Amount}}{{else}}{{if gt .Change.Percent 0.0}}+{{end}}{{printf "%.1f" .Change.Percent}}%{{end}}</span>
                                 </span>
                             </td>
                         </tr>
@@ -834,7 +833,6 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
                 <th class="text-left p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Description</th>
                 <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Amount</th>
                 <th class="text-center p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Freq</th>
-                <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Monthly</th>
                 <th class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Annual</th>
             </tr>
         </thead>
@@ -859,8 +857,10 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
                         {{.Frequency}}
                     </span>
                 </td>
-                <td class="p-3 text-sm text-right font-medium text-purple-700 dark:text-purple-300">{{formatMoney (div .AnnualCost 12.0)}}</td>
-                <td class="p-3 text-sm text-right font-medium text-purple-600 dark:text-purple-400">{{formatMoney .AnnualCost}}</td>
+                <td class="p-3 text-sm text-right font-medium text-purple-600 dark:text-purple-400">
+                    <div>{{formatMoney .AnnualCost}}</div>
+                    <div class="text-xs font-normal text-gray-500 dark:text-gray-400">{{formatMoney (div .AnnualCost 12.0)}}/mo</div>
+                </td>
             </tr>
             {{end}}
         </tbody>
@@ -898,7 +898,7 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
             <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .CurrentAmount}}</td>
             <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">{{formatMoney .PreviousAmount}}</td>
             <td class="p-3 text-sm text-right {{if eq .Direction "up"}}text-rose-600 dark:text-rose-400{{else if eq .Direction "down"}}text-emerald-600 dark:text-emerald-400{{else}}text-gray-600 dark:text-gray-400{{end}}">
-                {{if gt .ChangePercent 0.0}}+{{end}}{{printf "%.1f" .ChangePercent}}%
+                {{if eq .Change.Kind "new"}}new{{else if eq .Change.Kind "none"}}—<span class="sr-only"> no change</span>{{else if eq .Change.Kind "dollar"}}{{if gt .Change.Amount 0.0}}+{{end}}{{formatMoney .Change.Amount}}{{else}}{{if gt .Change.Percent 0.0}}+{{end}}{{printf "%.1f" .Change.Percent}}%{{end}}
             </td>
         </tr>
         {{end}}

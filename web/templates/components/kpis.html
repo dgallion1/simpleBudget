@@ -2,7 +2,7 @@
 {{/* Budget verdict band — health for the selected period */}}
 {{template "dashboard-verdict-bar" .}}
 
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mt-4">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-4">
     <!-- Total Income -->
     <div class="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('income')">
         <div class="flex items-center justify-between">
@@ -135,7 +135,7 @@
          against 0, and no separate numeric threshold literal here. */}}
     {{$budgetOver := and .BudgetVerdict.HasTarget .BudgetVerdict.IsOver}}
     {{$budgetHealthy := and .BudgetVerdict.HasTarget .BudgetVerdict.IsUnder}}
-    <div class="rounded-xl border p-4 cursor-pointer hover:shadow-lg transition-shadow
+    <div class="rounded-xl border p-4 cursor-pointer hover:shadow-lg transition-shadow xl:col-span-2
         {{if $budgetOver}}border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20
         {{else if $budgetHealthy}}border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20
         {{else}}border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800{{end}}" onclick="openKPIDetail('expenses')">

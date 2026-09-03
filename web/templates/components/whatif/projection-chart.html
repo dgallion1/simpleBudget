@@ -6,19 +6,19 @@
     data-chart-base-url="/whatif/chart/projection"
     data-final-balance-nominal="{{printf "%.2f" .Analysis.Projection.FinalBalance}}"
     data-final-balance-real="{{if .Analysis.ProjectionExplainability}}{{printf "%.2f" .Analysis.ProjectionExplainability.FinalBalanceReal}}{{else}}0{{end}}">
-    <div class="flex items-start justify-between gap-3 mb-4">
+    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
         <div>
             <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Portfolio Longevity</h2>
             <p class="text-xs text-gray-600 dark:text-gray-300">After-tax projection. Toggle between future dollars and today's dollars.</p>
         </div>
-        <div class="flex items-center gap-2">
-            <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-gray-600 overflow-hidden" role="group" aria-label="Display dollars mode">
+        <div class="flex flex-wrap items-center gap-2">
+            <div class="inline-flex flex-wrap rounded-md shadow-sm border border-gray-200 dark:border-gray-600" role="group" aria-label="Display dollars mode">
                 <button type="button" data-display-dollars="nominal" aria-pressed="true"
-                    class="projection-display-toggle px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white">
+                    class="projection-display-toggle whitespace-nowrap px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-l-md">
                     Nominal
                 </button>
                 <button type="button" data-display-dollars="real" aria-pressed="false"
-                    class="projection-display-toggle px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200">
+                    class="projection-display-toggle whitespace-nowrap px-3 py-1.5 text-xs font-medium bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 rounded-r-md">
                     Today's Dollars
                 </button>
             </div>
@@ -26,7 +26,7 @@
             <button type="button"
                 data-projection-compare-toggle
                 aria-pressed="false"
-                class="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600">
+                class="whitespace-nowrap px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600">
                 + Compare without guardrails
             </button>
             {{end}}

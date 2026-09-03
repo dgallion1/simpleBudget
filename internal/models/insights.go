@@ -18,13 +18,53 @@ type RecurringPayment struct {
 
 // CategoryTrend represents month-over-month spending changes in a category
 type CategoryTrend struct {
-	Category       string  `json:"category"`
-	CurrentAmount  float64 `json:"current_amount"`
-	PreviousAmount float64 `json:"previous_amount"`
-	ChangePercent  float64 `json:"change_percent"`
-	ChangeAmount   float64 `json:"change_amount"`
-	Direction      string  `json:"direction"` // "up", "down", "stable"
+	Category       string     `json:"category"`
+	CurrentAmount  float64    `json:"current_amount"`
+	PreviousAmount float64    `json:"previous_amount"`
+	ChangePercent  float64    `json:"change_percent"`
+	ChangeAmount   float64    `json:"change_amount"`
+	Direction      string     `json:"direction"` // "up", "down", "stable"
+	Change         ChangeCell `json:"change"`    // single rendering contract for the Change cell -- see ChangeCell
 }
+
+// ChangeCell is the single rendering contract for a period-over-period
+// Change figure (U5 contract v3, SPEC §2d rule 2). It is the ONE source
+// for ChangePercent/ChangeAmount/Direction above -- CategoryTrend's
+// producer sets ChangeAmount=Change.Amount, ChangePercent=Change.Percent,
+// Direction=Change.Direction FROM this cell (never the reverse), so the
+// MCP tool, the arrow/color, and the Change cell text all agree by
+// construction. Templates branch on Change.Kind only, never re-derive a
+// percent/dollar decision from a raw number. See
+// internal/services/insights.ChangeDisplay for how this is computed.
+type ChangeCell struct {
+	// Kind is one of "new", "none", "dollar", "percent".
+	Kind string `json:"kind"`
+	// Text is the literal cell text for the non-numeric kinds: "new" when
+	// Kind == "new", "—" (em dash, "—") when Kind == "none". Empty for
+	// "dollar"/"percent" -- those render Amount/Percent through formatMoney
+	// / printf in the template, not from this field.
+	Text string `json:"text,omitempty"`
+	// Amount is the signed change (current - previous, both already
+	// rounded to cents) -- ALWAYS populated, regardless of Kind. Rendered
+	// via formatMoney when Kind == "dollar".
+	Amount float64 `json:"amount"`
+	// Percent is the signed percent derived from the rounded pair --
+	// ALWAYS populated, regardless of Kind. Rendered with one decimal when
+	// Kind == "percent".
+	Percent float64 `json:"percent"`
+	// Direction is "up"/"down"/"stable", derived from Percent with the
+	// existing +-5 band ("none" rows are always "stable"). This is the
+	// SAME value the row's own Direction field carries.
+	Direction string `json:"direction"`
+}
+
+// Change kind values for ChangeCell.Kind.
+const (
+	ChangeKindNew     = "new"
+	ChangeKindNone    = "none"
+	ChangeKindDollar  = "dollar"
+	ChangeKindPercent = "percent"
+)
 
 // IncomePattern represents detected income sources and their regularity
 type IncomePattern struct {

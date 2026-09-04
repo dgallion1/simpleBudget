@@ -100,7 +100,9 @@
       container.__wfWired = true;
       container.addEventListener('click', function (e) {
         var tab = e.target.closest('[data-wf-tab]');
-        if (tab) { e.preventDefault(); activateTab(tab.getAttribute('data-wf-tab'), true); }
+        if (tab) { e.preventDefault(); activateTab(tab.getAttribute('data-wf-tab'), true); return; }
+        var goto_ = e.target.closest('[data-wf-goto]');
+        if (goto_) { e.preventDefault(); activateTab(goto_.getAttribute('data-wf-goto'), true); }
       });
     }
     document.querySelectorAll('[data-wf-collapse]').forEach(function (card) {

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"log"
-	"math"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -25,6 +24,7 @@ import (
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/majorexpenses"
+	"budget2/internal/services/metrics"
 	"budget2/internal/services/storage"
 	"budget2/internal/templates"
 )
@@ -185,10 +185,21 @@ func handleExplorer(w http.ResponseWriter, r *http.Request) {
 	// Calculate totals before pagination
 	totalCount := filtered.Len()
 	totalIncome := filtered.FilterByType(models.Income).SumAmount()
-	// Use signed sum so refunds (opposite-signed Outflow rows) reduce the total.
-	// math.Abs makes it positive regardless of CSV convention (purchases stored
-	// as positive vs. negative).
-	totalExpenses := math.Abs(filtered.FilterByType(models.Outflow).SumAmount())
+	// CB7 fix: totalExpenses is the SIGNED negated net of the filtered
+	// outflow set, not math.Abs -- the same signed-negated-net contract
+	// every dashboard range/month figure uses (CB2/CB7). An ordinary filter
+	// nets outflow-negative, so -SumAmount() is positive expense, same as
+	// the old math.Abs. A REFUND-DOMINANT filter -- one whose outflow-typed
+	// rows net POSITIVE overall -- must report NEGATIVE expenses (a net
+	// credit); math.Abs flipped this sign and inflated netAmount's
+	// subtraction into an understatement. netAmount needs no further
+	// change: it derives correctly once totalExpenses is signed, and ADDS
+	// the net refund instead of subtracting an absolute value. Computed via
+	// metrics.SignedNet (ruling CB7-2026-09-03c), not inline
+	// -filtered.FilterByType(models.Outflow).SumAmount(): a zero-Outflow
+	// filter would otherwise sum to IEEE negative zero and render
+	// "$-0.00".
+	totalExpenses := metrics.SignedNet(filtered.FilterByType(models.Outflow))
 	netAmount := totalIncome - totalExpenses
 
 	// Apply sorting
@@ -335,10 +346,21 @@ func handleTransactionsPartial(w http.ResponseWriter, r *http.Request) {
 	// Calculate totals before pagination
 	totalCount := filtered.Len()
 	totalIncome := filtered.FilterByType(models.Income).SumAmount()
-	// Use signed sum so refunds (opposite-signed Outflow rows) reduce the total.
-	// math.Abs makes it positive regardless of CSV convention (purchases stored
-	// as positive vs. negative).
-	totalExpenses := math.Abs(filtered.FilterByType(models.Outflow).SumAmount())
+	// CB7 fix: totalExpenses is the SIGNED negated net of the filtered
+	// outflow set, not math.Abs -- the same signed-negated-net contract
+	// every dashboard range/month figure uses (CB2/CB7). An ordinary filter
+	// nets outflow-negative, so -SumAmount() is positive expense, same as
+	// the old math.Abs. A REFUND-DOMINANT filter -- one whose outflow-typed
+	// rows net POSITIVE overall -- must report NEGATIVE expenses (a net
+	// credit); math.Abs flipped this sign and inflated netAmount's
+	// subtraction into an understatement. netAmount needs no further
+	// change: it derives correctly once totalExpenses is signed, and ADDS
+	// the net refund instead of subtracting an absolute value. Computed via
+	// metrics.SignedNet (ruling CB7-2026-09-03c), not inline
+	// -filtered.FilterByType(models.Outflow).SumAmount(): a zero-Outflow
+	// filter would otherwise sum to IEEE negative zero and render
+	// "$-0.00".
+	totalExpenses := metrics.SignedNet(filtered.FilterByType(models.Outflow))
 	netAmount := totalIncome - totalExpenses
 
 	// Apply sorting

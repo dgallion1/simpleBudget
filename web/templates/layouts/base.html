@@ -32,8 +32,14 @@
     <link href="/static/css/styles.css" rel="stylesheet">
 
     <style>
-        /* Loading indicator for HTMX */
-        .htmx-request .htmx-indicator {
+        /* Loading indicator for HTMX. Two selectors are required: htmx puts
+           the htmx-request class on the TRIGGERING element when no
+           hx-indicator is given (descendant rule), but on the INDICATOR
+           element itself when hx-indicator="#id" names it (same-element
+           rule). Without the second, every hx-indicator spinner stays
+           display:none for the whole request. */
+        .htmx-request .htmx-indicator,
+        .htmx-request.htmx-indicator {
             display: inline-block;
         }
 

@@ -1,0 +1,139 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: CB9
+ATTEMPT: 1
+---
+Method: cp -a scratch copies (cb9_before = HEAD b1f0f36 via git stash/pop,
+cb9_after = CB9 working-tree diff applied), throwaway httptest probes
+against a copy of real ./data (never the live binary/port). Compared with
+python3 (see note on `diff` below).
+
+1. REAL DATA, BYTE-IDENTICAL — PASS.
+   Probe hit all 6 export kinds, month-detail JSON for 2023-01..2026-12,
+   KPI-detail HTML, and the budget-vs-actual chart endpoint on both
+   before/after builds over the full default range (MinDate/MaxDate).
+   154 files compared byte-for-byte (python3, not `diff` — `diff -rq`
+   falsely reported "Files are identical" for files that provably differ,
+   consistent with the known rtk-diff-falsification hazard; all real
+   comparisons here used a raw-bytes python3 script). Result: 102 files
+   differ, ALL with Count==0 (no real transactions), ALL a pure "-0"→"0"
+   token change (confirmed by regex+JSON diff); every export/detail/chart
+   file for a real populated month is byte-identical. Exports and
+   month-detail HTML never hit the empty-month path with default full
+   range (classifiedMonthlyTotals/GroupByMonth skip zero-transaction
+   months entirely), so the CB7.3 claim of a live "-0.00" export cell
+   was NOT actually observed on real data with the default range; it IS
+   reproducible with an explicit out-of-range custom start/end
+   (month-detail JSON for e.g. 2023-01 read -0 before the fix, +0 after —
+   confirmed via `/dashboard/kpi/healthcare/month/2023-01`).
+
+2. REMAINING -0 SOURCES — no in-scope leak, one out-of-scope leak found.
+   `grep -rn '= -[a-zA-Z_]*[.(]\|:= -[a-zA-Z_]*[.(]'` outside
+   metrics.go/dashboard/explorer: all are `total += -t.Amount` /
+   `agg[k] -= t.Amount` accumulator loops (majorexpenses chart bucketing,
+   transfers, whatif/sync, curate/expenses). Verified in Go: an
+   accumulator starting at literal `0.0` can never land on IEEE -0.0
+   under exact cancellation (a + (-a) = +0 in round-to-nearest, always) —
+   confirmed empirically. These are genuinely safe; manifest's exclusion
+   is correct.
+   FOUND (out of CB9's written scope, reported as observation not FAIL):
+   `internal/services/insights/trends.go` dailyAvg/historicalDaily/
+   spentSoFar are direct `-X.SumAmount()/days` divisions (not
+   accumulators) feeding `insights.SpendingVelocity`, which is consumed
+   by BOTH the insights dashboard AND the MCP `get_trends` velocity row
+   via `internal/services/mcpsvc/spend/trends.go:velocityRowFrom` ->
+   `round2()`. Confirmed `round2(math.Copysign(0,-1))` = -0 and
+   `json.Marshal` emits the literal token `-0` (Go). This is a genuine
+   MCP-tool -0 leak reachable whenever a period's outflows sum to exactly
+   zero, but it lives in a different package/file than anything CB9's
+   manifest claims to touch (CB9's mcpsvc/spend/trends.go change is a
+   doc-comment only) and predates CB9 (already present at accepted HEAD
+   b1f0f36). Backlog item, not a CB9 defect.
+
+3. FORMATTERS — formatPercent belt verified correct
+   (math.Copysign(0,-1) -> "v=0" clears the sign bit, confirmed in a
+   throwaway Go program; mutant-killed, see #4). `formatWholeDollars` and
+   `formatAbbreviatedTotal` are immune (route through int64, which has no
+   signed zero). `formatNumber` (%.0f) has the IDENTICAL latent bug
+   (confirmed `%.0f` of -0.0 prints "-0", and formatNumber's `v<0` guard
+   does not catch it) but its only callers are whatif/retirement
+   templates, never fed by a negated transaction sum — out of scope,
+   flagged as observation. JS: `web/static/js/charts.js` only formatter
+   observed is `.toFixed()` (verified safe for -0 in Node) plus
+   `Intl.NumberFormat.format()` (confirmed leaks "-$0.00" for JS -0), but
+   its only callers (`merchantTotals[...] -= t.Amount`,
+   majorExpense-bucket `total += -t.Amount`) are accumulator patterns,
+   proven -0-safe per #2. No live JS leak.
+
+4. TEST STRENGTH — FAIL GROUND.
+   Fixture verified non-vacuous: the Feb "Health Insurance Premium
+   Credit" (+300) and "Store Credit" (+100) rows really classify as
+   Outflow-typed after the real loader/classifier pipeline (confirmed via
+   a probe reading TransactionType off the classified set), so the
+   "cancelling" claim is real, not a `feb[1:]`-empty vacuity.
+   Mutation-tested all 9 named SignedNet/negSumSigned call sites against
+   the SHIPPED `cb9_negzero_http_test.go` only (not my own throwaway
+   tests):
+     - handleKPIDetail expAmt (line 555)        -> killed (detail test)
+     - negSumSigned body (line 690)             -> killed (month-detail test)
+     - classifiedMonthlyTotals (line 714)       -> killed (export + detail)
+     - handleKPIExport expAmt (line 943)        -> killed (export test)
+     - chart-walk hcAmt (line 1109)             -> SURVIVES (no test fails)
+     - chart-walk livingMonth (line 1119)       -> SURVIVES
+     - chart-walk spend (line 1160)             -> SURVIVES
+   3 of 9 explicitly-named fix sites (the budget-vs-actual chart walk)
+   have ZERO regression coverage in the shipped diff. The manifest's own
+   "Lead mutation sanity" section documents mutation checks for the other
+   6 sites but never mentions these 3.
+   These survivors are NOT "provably unobservable" (the standard CB9's
+   own acceptance bar in .swarm/CB7-RUN-SPEC.md requires: "every
+   SignedNet site load-bearing by mutation or provably
+   consumer-unobservable"). I built a throwaway probe
+   (`buildBudgetVsActualChartData` called directly with the real
+   classified cb9CancellingRows() fixture, livingTarget=1000,
+   healthTarget=500 to clear the budget-settings gate that blocks the
+   HTTP route in the default test harness) and confirmed BOTH ends:
+     - pre-fix (`-hc.SumAmount()` etc. restored): chart JSON emits
+       `"y":[300,-0]` for Living and Healthcare — a real -0 token in the
+       Plotly chart-data JSON served to the browser.
+     - post-fix (shipped code): `"y":[300,0]` — clean.
+   The code fix is correct and necessary; the gap is that NOTHING in the
+   shipped test suite would catch a future regression at these 3 sites.
+   This is a concrete, reproducible violation of CB9's own written
+   acceptance criterion ("every SignedNet site load-bearing by mutation
+   or provably consumer-unobservable"), on sites the task's own contract
+   names explicitly ("the chart-walk hcAmt/livingMonth/spend ... now
+   route through metrics.SignedNet"). In-scope, not a backlog item.
+
+5. SCOPE/DIFF DISCIPLINE — PASS.
+   `git diff --stat` touches exactly handlers.go, trends.go (mcpsvc),
+   render.go, render_helpers_test.go, plus .swarm/ledger.tsv and
+   .swarm/CB7-RUN-SPEC.md (run bookkeeping, allowed); untracked
+   cb9_negzero_http_test.go matches CB9.1.files exactly. No
+   critical.globs path touched. Full existing suite
+   (dashboard/templates/mcpsvc/metrics packages) green — no behavioral
+   change for non-zero values.
+
+FAIL is grounded in #4 only: 3 of the 9 named fix sites (chart-walk
+hcAmt/livingMonth/spend in buildBudgetVsActualChartData) lack any
+regression test, violate the task's own written mutation-or-provably-
+unobservable acceptance bar, and I demonstrated a live -0 leak into the
+budget-vs-actual chart's JSON at those exact 3 sites pre-fix using the
+real classifier pipeline. Remedy: add an HTTP- or function-level test
+(budget settings configured so the rawCombinedTarget>0 gate is cleared,
+or a direct buildBudgetVsActualChartData call) asserting no "-0" token in
+the chart JSON for a cancelling healthcare/living month, mirroring the
+existing cb9_negzero_http_test.go pattern.
+
+Observations for backlog (NOT FAIL grounds — different files/packages,
+predate CB9, outside CB9's written scope):
+- internal/services/insights/trends.go direct SumAmount() negations feed
+  mcpsvc/spend/trends.go's round2(), which does not normalize -0; a
+  period whose outflows cancel exactly emits literal `-0` in the MCP
+  get_trends velocity JSON (dailyAvg/historicalDaily). round2 has no -0
+  belt anywhere in mcpsvc/spend/insights.go.
+- internal/templates/render.go formatNumber has the same %.0f-honors-
+  sign-bit bug as formatMoney/formatPercent had pre-CB7/CB9, currently
+  unreachable (whatif/retirement callers only) but a latent trap for the
+  next caller that feeds it a signed transaction sum.

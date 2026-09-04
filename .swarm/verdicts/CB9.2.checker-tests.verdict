@@ -1,0 +1,264 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: CB9
+ATTEMPT: 2
+---
+All mutation work done in a fresh `cp -a` copy at
+.../scratchpad/cb9v2 (the attempt-1 copy was discarded). The real tree was
+read-only throughout; handlers.go / trends.go / render.go `cmp` IDENTICAL to
+my pristine snapshots at the end, and HEAD is still b1f0f36. The budget2
+binary was never executed.
+
+=========================================================================
+(a) gofmt / make check / go test -count=1   -- PASS
+=========================================================================
+- `gofmt -l` over all seven manifest files (handlers.go,
+  cb9_negzero_http_test.go, insights/trends.go, insights/trends_test.go,
+  render.go, render_helpers_test.go, mcpsvc/spend/trends.go) -> NO filenames
+  printed, exit 0. Clean.
+- `make -C <scratch> check` (vet, staticcheck, govulncheck, css-verify,
+  test) -> MAKE_CHECK_EXIT=0. Final three lines of the unfiltered log
+  (captured via `rtk proxy`, since rtk truncates piped output):
+      ok  	budget2/internal/handlers/accounts	0.704s
+      ✓ all checks passed
+  and "tailwind.css is up to date" from css-verify. Zero lines containing
+  "FAIL".
+- Cache defeated: `go test -count=1 ./...` -> GOTEST_EXIT=0, and the count
+  of lines NOT matching "^ok" / "no test files" is 0.
+
+=========================================================================
+(b) INDEPENDENT RE-ENUMERATION OF NEGATIONS   -- PASS
+=========================================================================
+Pattern 1 (brief's): `grep -n "= -\|:= -\|return -" internal/handlers/
+dashboard/handlers.go internal/services/insights/trends.go` -> only
+  handlers.go:1340 total += -t.Amount
+  handlers.go:1401 unmatchedTotal += -t.Amount
+  trends.go:92     changePercent = -100     (literal)
+  trends.go:366    burnRateChange = -100    (literal)
+plus two comment lines. The attempt-1 defect (handlers.go:1522
+`monthlyTotals[m] = -monthlyOutflowSets[m].SumAmount()`) is GONE; that line
+now reads `monthlyTotals[m] = metrics.SignedNet(monthlyOutflowSets[m])`.
+
+Pattern 2 (mine, catches `-=` and indexed/receiver forms):
+`grep -nE '(^|[=(,[:space:]])-[a-zA-Z_][a-zA-Z0-9_.\[\]()]*|[-][=]'` over the
+same two files, comments filtered -> handlers.go:403 `total -= t.Amount`,
+1340, 1401, 1598 `merchantTotals[t.Label()] -= t.Amount`; trends.go:45/50
+`totals[...] -= t.Amount`, and two `Add(-duration ...)` time expressions.
+ALL are accumulators; an accumulator that starts at +0 cannot land on -0
+(+0 + -0 = +0; x - x = +0 in round-to-nearest). Re-proved by Go probe:
+`SPEND running after +=(0-(-0)) = 0 signbit=false`.
+
+Pattern 3 (brief's): `grep -rn "SumAmount()" internal | grep -v _test |
+grep -v "//"` -> 11 hits. The ONLY negated one repo-wide is
+`internal/services/metrics/metrics.go:764  v := -ts.SumAmount()`, which is
+the body of `metrics.SignedNet` itself (followed by `if v == 0 { return 0 }`).
+Every other hit is an un-negated income sum.
+
+Pattern 4 (mine, whole repo, python AST-free regex for unary `-ident(`,
+`-ident[`, `-ident.`, over internal/ + cmd/, tests and other worktrees
+excluded): 88 hits, all binary subtractions or accumulators except:
+  - metrics.go:764 (SignedNet's own body, normalized)
+  - dataloader/loader.go:543,662 and classifier.go:100 (per-transaction
+    sign flips, not sums)
+  - models/whatif.go:1436 `return -b.Amount`, engine/thresholds.go:326
+    `return -p.Distance` (single fields, not sums)
+  - mcpsvc/spend/summary.go:91/121/144 `round2(-amt)` / `round2(-totals[m])`
+    / `round2(-total)`  <-- SAME CLASS, see FINDING 2 (out of scope).
+CONCLUSION: every negated computed sum in the CB9 files goes through
+metrics.SignedNet.
+
+=========================================================================
+(c) MUTATION MATRIX   -- 11 of 13 mutants KILLED, 2 survivors analysed
+=========================================================================
+Each site reverted to its pre-CB9 inline form one at a time,
+`go test -count=1 <pkg>`, file restored from a pristine copy between
+mutants (all three files `cmp`-IDENTICAL to pristine at the end):
+
+  M-trend-monthlyTotals  h:1522 -monthlyOutflowSets[m].SumAmount()
+        KILLED by TestHandleChartData_CB9_CancellingMonthHasNoNegativeZero
+  M-hcAmt                h:1109 -hc.SumAmount()
+        KILLED by TestHandleChartData_CB9_CancellingMonthHasNoNegativeZero
+  M-livingMonth          h:1119 -lo.SumAmount()
+        KILLED by TestHandleChartData_CB9_CancellingMonthHasNoNegativeZero
+  M-spend                h:1160 -bucket.SumAmount()          SURVIVES (ok)
+  M-classifiedMonthlyTotals h:714 -set.SumAmount()
+        KILLED by TestHandleKPIDetail_CB9_CancellingMonthRowsHaveNoNegativeZero
+              AND TestHandleKPIExport_CB9_CancellingMonthWritesPositiveZero
+  M-negSumSigned         h:690  -sumSigned(txns)
+        KILLED by TestHandleKPIMonthDetail_CB9_CancellingMonthTotalIsPositiveZero
+  M-expAmt-detail        h:555  -exp.SumAmount()
+        KILLED by TestHandleKPIDetail_CB9_CancellingMonthRowsHaveNoNegativeZero
+  M-expAmt-export        h:943  -exp.SumAmount()
+        KILLED by TestHandleKPIExport_CB9_CancellingMonthWritesPositiveZero
+  M-dailyAvg             t:317  -currentOutflows.SumAmount()/currentDays
+        KILLED by TestCalculateSpendingVelocity_CancellingWindowIsPositiveZero
+  M-historicalDaily      t:326  -allOutflows.SumAmount()/allDays
+        KILLED by TestCalculateSpendingVelocity_CancellingWindowIsPositiveZero
+  M-spentSoFar           t:339  -currentMonthOutflows.SumAmount()  SURVIVES
+        (see FINDING 1 -- proven consumer-unobservable, but UNDISCLOSED)
+  M-formatNumber-belt    render.go, `if v == 0 { v = 0 }` deleted
+        KILLED: render_helpers_test.go:147: formatNumber(-0) = "-0", want "0"
+        (TestFormatNumber)
+  M-formatPercent-belt   render.go, belt deleted
+        KILLED: render_helpers_test.go:166: formatPercent(-0) = "-0.0",
+        want "0.0" (TestFormatPercent)
+
+The four attempt-1 mutants the brief asked me to re-confirm
+(classifiedMonthlyTotals, negSumSigned, expAmt x2) and formatPercent are ALL
+still killed, by the named tests above.
+
+M-spend unobservability RE-CONFIRMED (attempt-1 proof still holds). Go probe
+on the exact downstream expression `running += monthTarget - spend`:
+  SPEND monthTarget=0     mt-(-0)=0 sb=false | mt-(+0)=0 sb=false | identical=true
+  SPEND monthTarget=1200  mt-(-0)=1200       | mt-(+0)=1200       | identical=true
+  SPEND monthTarget=-50   mt-(-0)=-50        | mt-(+0)=-50        | identical=true
+Bit-for-bit identical (math.Float64bits compared) for every monthTarget, so
+the sign never reaches cumulativeValues. Confirmed at the served layer too:
+the budget-vs-actual body's "Cumulative balance" y is
+[844.516129032258, 2344.516129032258] on the CB9 fixture -- no zero element
+at all.
+
+=========================================================================
+(d) THE NEW TESTS ARE NOT VACUOUS   -- PASS
+=========================================================================
+Probe test (in-package, added to the SCRATCH copy only, then deleted)
+dumping the actual response bodies on cb9CancellingRows():
+
+  /dashboard/charts/data/budget-vs-actual?start=2025-01-01&end=2025-02-28
+    trace "Living"              x=[2025-01 2025-02]  y=[220 0]
+    trace "Healthcare"          x=[2025-01 2025-02]  y=[300 0]
+    trace "Cumulative balance"  x=[2025-01 2025-02]  y=[844.51... 2344.51...]
+  => BOTH Living AND Healthcare traces exist AND each carries a February
+     point. The February element is the one the fix changes: mutants
+     M-hcAmt / M-livingMonth each turn it into `-0` and are killed, which
+     is the byte-level proof that the guard sits where the artifact sits.
+
+  /dashboard/charts/data/spending-trend?start=2025-01-01&end=2025-02-28
+    {"data":[{"customdata":[[0,520]], ... "x":["2025-02"],"y":[-100]}]}
+  => the February customdata entry IS present, and its spend slot is now the
+     literal `0` (it was `-0` in my attempt-1 evidence). The test's regexp
+     `-0(\.0+)?[,}\]\s]` matches the pre-fix `[[-0,520]]` form (`-0` + `,`)
+     and the `y":[220,-0]` form (`-0` + `]`); the live `-100` in y does NOT
+     false-positive (it starts `-1`, not `-0`).
+
+Velocity fixture really nets exactly zero (probe on the test's own rows):
+  PROBE outflow rows=2 SumAmount=0 rawNeg=-0 signbit=true exactlyZero=true
+  PROBE velocity JSON = {"daily_average":0,"historical_daily":0,
+                         "month_projection":0,"days_remaining":27,
+                         "burn_rate_change":0}
+  PROBE DailyAverage sb=false HistoricalDaily sb=false MonthProjection
+        sb=false BurnRateChange sb=false
+Both rows are Outflow-typed (rows=2), the pre-fix inline form yields IEEE -0
+(signbit=true), so the fixture is a real cancelling window, not a degenerate
+empty set.
+
+Marshalled-struct check is on the JSON BYTES: the test does
+`raw, err := json.Marshal(v)` then
+`regexp.MustCompile("-0(\\.0+)?[,}\\]]").Match(raw)` -- a byte-level assertion
+on encoding/json's output, not on the float. (Scope note, not a defect: it
+marshals models.SpendingVelocity, not mcpsvc/spend's trendsOutput; the MCP
+row is reached via round2, and round2(-0) = -0, so the source-level Signbit
+assertions that kill M-dailyAvg/M-historicalDaily are what actually protect
+that surface.)
+
+The four KPI/export/detail assertions are on RENDERED artifacts: CSV cells
+parsed with encoding/csv and compared to the literal "0.00" with a "-0"
+prefix check; the raw JSON body; and math.Signbit on the decoded float.
+
+=========================================================================
+(e) EXISTING TEST EXPECTATIONS UNCHANGED   -- PASS
+=========================================================================
+`git diff HEAD --numstat -- '*_test.go'`:
+    32	0	internal/services/insights/trends_test.go
+     3	0	internal/templates/render_helpers_test.go
+ZERO deleted lines in either file. trends_test.go's 32 additions are two
+imports (encoding/json, regexp) plus the whole new
+TestCalculateSpendingVelocity_CancellingWindowIsPositiveZero appended at the
+end. render_helpers_test.go's 3 additions are the `math` import and the two
+new table rows ({Copysign(0,-1),"0"} in TestFormatNumber,
+{Copysign(0,-1),"0.0"} in TestFormatPercent). No existing expectation was
+edited.
+
+=========================================================================
+SCOPE   -- CLEAN
+=========================================================================
+`git diff HEAD --numstat` (whole tree) = exactly:
+  .swarm/CB7-RUN-SPEC.md (49/3), .swarm/ledger.tsv (2/2)   [lead bookkeeping]
+  internal/handlers/dashboard/handlers.go (25/13)
+  internal/services/insights/trends.go (6/3)
+  internal/services/insights/trends_test.go (32/0)
+  internal/services/mcpsvc/spend/trends.go (6/2)
+  internal/templates/render.go (6/0)
+  internal/templates/render_helpers_test.go (3/0)
+plus untracked internal/handlers/dashboard/cb9_negzero_http_test.go.
+Those six tracked code files + the one untracked test file are EXACTLY the
+seven paths in .swarm/manifests/CB9.2.files -- no more, no fewer.
+No path in .swarm/critical.globs (storage/**, dataloader/**,
+retirement/engine/**, transfers/**, accounts.go, mcpsvc/confirm/**) is
+touched. Untracked budget2.old-1345, budget2.old-2103, nohup.out,
+.swarm-local/ are pre-existing artifacts, not CB9 output.
+
+=========================================================================
+FINDINGS (backlog for the lead -- NOT FAIL grounds)
+=========================================================================
+FINDING 1 (criterion c) -- UNDISCLOSED SURVIVOR, code correct.
+`spentSoFar` (insights/trends.go:339) is the SIXTH negated site the brief
+listed, and its mutant SURVIVES. The manifest does not disclose this: it
+lists only `spend` as an expected survivor and states the velocity test
+covers all three velocity sites. The site's code is CORRECT and I PROVE it
+is consumer-unobservable at every PRODUCTION surface, so the spec's
+disjunctive acceptance line ("load-bearing by mutation OR provably
+consumer-unobservable") is satisfied -- but the CB7 precedent is
+"acceptable WHEN STATED", and this one is not stated. Proof, so the lead can
+write it down:
+  1. spentSoFar's ONLY downstream is `monthProjection := spentSoFar +
+     (dailyAvg * float64(daysRemaining))`; it is not a field of
+     models.SpendingVelocity.
+  2. Go probe over the real expression shows the mutant diverges from the
+     fix in EXACTLY ONE of nine cases:
+        PROJ daysRemaining= 0 dailyAvg= -5.0  mutant=-0 sb=true |
+             fixed=0 sb=false  DIVERGES=true
+     i.e. only when daysRemaining==0 (today IS the last day of the month;
+     daysRemaining = daysInMonth - now.Day()) AND dailyAvg < 0 (a
+     refund-dominant selected window) AND the current calendar month's
+     outflows net exactly zero. Every other combination is bit-identical.
+     Today DaysRemaining=27, so no fixture can reach it -- which is why no
+     test can kill this mutant without freezing the clock.
+  3. Even in that corner it cannot reach a user: MonthProjection's only
+     render path is `{{formatMoney ...}}` at insights.html:207/538/913 and
+     insights-verdict-bar.html:35, and formatMoney carries the CB7 -0 belt
+     -- PROVEN by mutation: deleting that belt gives
+     `render_helpers_test.go:43: formatMoney(-0) = "$-0.00", want "$0.00"`
+     (TestFormatMoney fails).
+  4. MCP drops it: velocityRowFrom (mcpsvc/spend/trends.go:141-147) copies
+     only DailyAverage/HistoricalDaily/BurnRateChange.
+  5. The one place raw models.SpendingVelocity is json-encoded
+     (handlers/insights/handlers.go:441 in handleVelocityPartial) is the
+     `renderer == nil` branch only; cmd/server/main.go:112 always passes a
+     non-nil renderer (constructed at main.go:74/78 with an error return),
+     so that branch is test-only.
+Suggested lead action: record the above in SPEC.md's CB9 note (a doc change,
+no code change) so the survivor is "stated" per CB7 precedent.
+
+FINDING 2 (criterion b) -- SAME-CLASS -0 SITES OUTSIDE CB9's SCOPE,
+pre-existing, already documented in the code, NOT touched by CB9
+(`git diff HEAD` does not list the file):
+  internal/services/mcpsvc/spend/summary.go:91  round2(-amt)        byCategoryRows
+  internal/services/mcpsvc/spend/summary.go:121 round2(-totals[m])  byMonthRows
+  internal/services/mcpsvc/spend/summary.go:144 round2(-total)      byMerchantRows
+Consumer: the MCP `summarize_spending` tool's by_category / by_month /
+by_merchant rows. The file's own comment at :73-78 already calls this out
+("when a category's refunds exactly offset its spend, round2(-amt) can
+produce float64 negative zero, which encoding/json renders as the literal
+\"-0\" ... Not fixed here"). round2(-0) = math.Round(-0)/100 = -0, so the
+token does reach that JSON. A one-line `metrics.SignedNet`-style
+normalisation at each of the three sites would close the class repo-wide.
+Out of CB9's manifest and pre-existing -> backlog, not a FAIL.
+
+FINDING 3 (criterion b, informational) -- the brief's own accumulator
+enumeration is still incomplete in the same direction attempt 1 flagged:
+besides handlers.go:1340/1401/403/1598 there are trends.go:45 and :50
+(`totals[...] -= t.Amount` in bucketMajorExpenses). Both are safe by the
+same accumulator argument, proved by probe; noted only so a future
+enumeration starts from a complete list.

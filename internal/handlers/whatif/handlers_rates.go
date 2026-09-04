@@ -484,8 +484,10 @@ func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 
 // handleWhatIfTaxOptimize runs the Tax Optimizer on demand. This is an
 // explicit user-triggered endpoint; it is NOT called during the normal
-// HTMX recalc path because the optimizer's cost (~38 ms) is too high
-// for interactive slider drags.
+// HTMX recalc path because the optimizer's cost (~10 s on real data once
+// Monte Carlo ranking is included; the deterministic pass alone was
+// ~38 ms) is far too high for interactive slider drags. The button that
+// triggers it shows a spinner and disables itself for the duration.
 func handleWhatIfTaxOptimize(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.Load()
 	if err != nil {

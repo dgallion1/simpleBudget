@@ -81,8 +81,9 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"COMPLETE list of all six SPENDING tools, not a sample: signed in search_transactions (expenses " +
 	"negative) and get_anomalies (expenses negative); positive in get_price_creep and get_recurring; and MIXED in " +
 	"get_trends (current_amount/previous_amount are positive; change_amount/change_percent are " +
-	"signed) and summarize_spending (total_expenses is always non-negative, but its by_category/ " +
-	"by_merchant/by_month breakdown rows are normally positive and can go NEGATIVE when refunds " +
+	"signed) and summarize_spending (total_expenses is SIGNED -- positive is net spend, and it goes " +
+	"NEGATIVE when this window's refunds exceed its spending overall; its by_category/by_merchant/" +
+	"by_month breakdown rows are normally positive and can go NEGATIVE the same way when refunds " +
 	"outweigh spending in that row) — read each field's own description rather than assuming a " +
 	"convention. A \"merchant\" " +
 	"in these tools is a fuzzy grouping of similar transaction descriptions, not a verified " +

@@ -193,7 +193,7 @@ func TestServerInstructionsCarryLoadBearingClaims(t *testing.T) {
 		"positive in get_price_creep and get_recurring",
 		"MIXED in",
 		"get_trends (current_amount/previous_amount are positive",
-		"summarize_spending (total_expenses is always non-negative",
+		"summarize_spending (total_expenses is SIGNED",
 		"COMPLETE list of all six SPENDING tools",
 		// Duplicate exclusion.
 		"already resolved as duplicates",

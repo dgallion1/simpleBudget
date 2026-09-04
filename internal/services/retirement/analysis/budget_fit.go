@@ -131,10 +131,43 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 	}
 	healthcareCost := s.GetTotalHealthcareCost(0)
 	if healthcareCost > 0 {
-		breakdown = append(breakdown, models.ExpenseBreakdownItem{
+		healthcareItem := models.ExpenseBreakdownItem{
 			Name:   "Healthcare",
 			Amount: healthcareCost,
-		})
+		}
+		// Per-person sub-rows so the lump Healthcare figure is traceable to
+		// the Healthcare card's individual premiums, not ledger spending.
+		// Same rendered-string identity construction as the Living Expenses
+		// sub-rows above (ruling 2026-08-29b): every sub-row amount is
+		// derived via centsFromDecimalString, and the LAST sub-row absorbs
+		// the integer-cent residual against centsFromDecimalString(healthcareCost),
+		// so the rendered sub-rows sum to the rendered Healthcare row by
+		// construction even at floating-point ties.
+		if len(s.HealthcarePersons) > 0 {
+			healthcareCents := centsFromDecimalString(healthcareCost)
+			subItems := make([]models.ExpenseBreakdownItem, len(s.HealthcarePersons))
+			var runningCents int64
+			for i, person := range s.HealthcarePersons {
+				name := person.Name
+				if name == "" {
+					name = fmt.Sprintf("Person %d", i+1)
+				}
+				coverage := person.CoverageAt(0, s.StartDate)
+				personCost := person.GetMonthlyCostAt(0, s.StartDate) + person.CareCostAt(0, s.StartDate)
+				personCents := centsFromDecimalString(personCost)
+				if i == len(s.HealthcarePersons)-1 {
+					personCents = healthcareCents - runningCents
+				} else {
+					runningCents += personCents
+				}
+				subItems[i] = models.ExpenseBreakdownItem{
+					Name:   fmt.Sprintf("%s (%s)", name, coverage.Label()),
+					Amount: float64(personCents) / 100,
+				}
+			}
+			healthcareItem.SubItems = subItems
+		}
+		breakdown = append(breakdown, healthcareItem)
 	} else if len(s.HealthcarePersons) > 0 {
 		// Show healthcare even when $0 so user knows it's tracked
 		note := "employer covered"

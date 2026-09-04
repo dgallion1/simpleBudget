@@ -16,6 +16,25 @@ const (
 	CoverageEmployer CoverageType = "employer"
 )
 
+// Label returns the display label for a coverage type — the single mapping
+// from CoverageType to user-facing text. Every UI surface that names a
+// coverage type (e.g. the Healthcare row's per-person sub-rows) must call
+// this rather than maintaining a second switch/map.
+func (c CoverageType) Label() string {
+	switch c {
+	case CoverageMedicare:
+		return "Medicare"
+	case CoverageACA:
+		return "ACA"
+	case CoverageEmployer:
+		return "Employer"
+	case CoverageCOBRA:
+		return "COBRA"
+	default:
+		return string(c)
+	}
+}
+
 // HealthcarePerson represents one person's healthcare costs and coverage
 type HealthcarePerson struct {
 	ID                    string       `json:"id"`

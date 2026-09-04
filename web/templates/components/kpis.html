@@ -33,7 +33,7 @@
         <div class="flex items-center justify-between">
             <div>
                 <p class="text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">Total Expenses</p>
-                <p class="num text-2xl font-bold text-rose-600 dark:text-rose-400">{{formatMoney (abs .Metrics.TotalExpenses)}}</p>
+                <p class="num text-2xl font-bold {{if gt .Metrics.TotalExpenses 0.0}}text-rose-600 dark:text-rose-400{{else}}text-emerald-800 dark:text-emerald-300{{end}}">{{formatMoney .Metrics.TotalExpenses}}</p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
                 <p class="num text-sm {{if le .PeriodComparison.ExpensesChange 0.0}}text-emerald-500{{else}}text-rose-500{{end}}">

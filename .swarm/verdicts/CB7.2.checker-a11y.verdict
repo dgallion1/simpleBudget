@@ -1,0 +1,129 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: CB7
+ATTEMPT: 2
+---
+SCOPE CONFIRMATION
+`git diff --stat` (HEAD a09c9cf vs uncommitted tree) shows 18 files changed;
+the only UI-bearing files are exactly the two named:
+  web/templates/components/kpis.html | 2 +-
+  web/templates/pages/explorer.html  | 4 +-
+Full diffs of both (git diff -- <file>) reviewed line-by-line; every other
+changed file is Go (handlers/services/models/tests) or .swarm/* — out of
+this checker's scope, confirmed via `git diff master -- <path>`.
+
+kpis.html (line 36): `{{if gt .Metrics.TotalExpenses 0.0}}text-rose-600
+dark:text-rose-400{{else}}text-emerald-800 dark:text-emerald-300{{end}}`
+around `{{formatMoney .Metrics.TotalExpenses}}` (abs() dropped).
+explorer.html (lines 755/758): chip visibility widened to
+`{{if or (isPositive .TotalExpenses) (isNegative .TotalExpenses)}}`; value
+class same emerald-800/rose-600 sign-aware pattern.
+
+METHOD
+Rendered the REAL templates via a throwaway Go test
+(internal/handlers/dashboard/zz_a11y_dump_test.go), added only in a
+`cp -a` scratch copy of the repo
+(/tmp/.../scratchpad/budget2-cb7-copy — never the real tree, verified
+clean with `git status --short` afterward), using the project's own
+embedded-FS renderer (`newExpenseSummaryTestRenderer`/package `renderer`,
+same pattern as existing `verdict_render_test.go`). Rendered 4 fragments:
+kpis (TotalExpenses = -1234.56 and +1234.56) and explorer summary-stats
+(same two values). Wrapped each in a light and `class="dark"` HTML page
+loading the REAL compiled `web/static/css/tailwind.css` (copied byte-for-
+byte from the working tree, not rebuilt/guessed), with the explorer
+fragment nested in the actual `bg-white dark:bg-gray-800` footer div from
+explorer.html (not just body bg) to get real composited colors. Ran
+`npx @axe-core/cli` (v4.13.0, wcag2a+wcag2aa+wcag22aa tags) against all 8
+pages.
+
+1. CONTRAST (1.4.3) — computed from Tailwind v3 palette hex, both grounds
+   - kpis.html negative value, LIGHT: text-emerald-800 (#065f46) on
+     bg-rose-50 (#fff1f2, opaque) = 6.99:1 (size: text-2xl font-bold/24px
+     bold = "large text", needs 3:1) — PASS, also clears the stricter 4.5:1.
+   - kpis.html negative value, DARK: text-emerald-300 (#6ee7b7) composited
+     over dark:bg-rose-900/20 (#881337 @ 20%) over the page body's real
+     dark bg (web/templates/layouts/base.html:63 `bg-gray-900` #111827,
+     no intervening solid card — kpis sits directly in dashboard.html's
+     body) = composited bg (41,23,42) → 11.02:1 — PASS.
+   - explorer.html chip negative value, LIGHT: same emerald-800/rose-50 =
+     6.99:1; chip's font-bold value inherits ambient `text-sm` (14px, NOT
+     large text, needs 4.5:1) — PASS.
+   - explorer.html chip negative value, DARK: chip lives inside the real
+     footer div `bg-white dark:bg-gray-800` (explorer.html's actual
+     footer container, not body directly) → composited bg over #1f2937 =
+     (52,37,55) → text-emerald-300 = 9.43:1 — PASS.
+   - Unchanged POSITIVE-value rose text (pre-existing, byte-identical to
+     master per `git show master:<file>`): rose-600 on rose-50 (light,
+     large text in kpis) = 4.28:1, ≥3:1 large-text threshold — PASS in
+     kpis. In the explorer chip (small text, 14px, needs 4.5:1) rose-600
+     on rose-50 = 4.28:1 — FAILS the small-text AA threshold, and
+     axe-core's color-contrast rule independently flagged `.text-rose-600`
+     on explorer_positive_light.html. This is PRE-EXISTING: identical
+     class string in master's explorer.html (confirmed via
+     `git show master:web/templates/pages/explorer.html` lines 756-759)
+     — reported as an OBSERVATION, not a CB7 FAIL, per the attribution
+     rule (git diff master governs).
+   - rose-400/dark (positive, unchanged) = 6.24:1 (kpis) / 5.34:1
+     (explorer footer bg) — PASS in dark mode both places.
+
+2. COMPILED CSS — `grep` confirms `text-emerald-800`, `dark:text-emerald-300`,
+   `text-emerald-300` are each present in `web/static/css/tailwind.css`
+   (1 match each). `make css-verify` run (build-tool only, does not start
+   the app binary): output ended "tailwind.css is up to date" — exit 0.
+   No missing/unstyled classes.
+
+3. COLOR-ONLY SIGNALING (1.4.1) — `formatMoney` (internal/templates/render.go:425)
+   prefixes a literal "-" for negative values: confirmed both by reading
+   the source (`negative := v<0 ... return "-$" + result`) and by the
+   actual rendered fragment strings dumped above:
+     kpis:     `<p class="... text-emerald-800 dark:text-emerald-300">-$1,234.56</p>`
+     explorer: `<span class="... text-emerald-800 dark:text-emerald-300 ...">-$1,234.56</span>`
+   A visible minus sign is present in the text content on both surfaces —
+   color is not the only cue. PASS. (Also independently pinned by the
+   worker's own new test,
+   TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative,
+   which I ran: `go test ./internal/handlers/dashboard/... -run
+   TestKPIsTotalExpensesTile...` → PASS.)
+
+4. STRUCTURE — diff is confined to two class-attribute expressions plus
+   widening one `{{if}}` visibility guard; no heading/landmark/tag changes.
+   `onclick="openKPIDetail('expenses')"` on the kpis div is present
+   verbatim in master (`git show master:web/templates/components/kpis.html`
+   line 32) — pre-existing div-onclick, not a CB7 regression (per CB6
+   precedent, recorded as OBSERVATION only).
+
+5. DARK-MODE PARITY — every new/changed class has a dark: counterpart on
+   the same element: text-emerald-800→dark:text-emerald-300,
+   text-rose-600→dark:text-rose-400 (unchanged pair, still paired).
+
+AUTOMATED AXE RESULTS (8 pages: {kpis,explorer} x {negative,positive} x {light,dark})
+  - color-contrast fired only on `.text-emerald-600` (Income tile / chip,
+    unrelated to CB7, unchanged) and `.text-rose-600` (explorer positive
+    Expenses chip, PRE-EXISTING per master diff above) — in LIGHT mode
+    only, on small (14px, explorer) text. Zero occurrences of
+    `.text-emerald-800` or `.text-emerald-300` (the new CB7 classes) in
+    any axe run, confirming the hand-computed ratios above.
+  - html-has-lang fired on all 8 pages — HARNESS ARTIFACT: my throwaway
+    wrapper page omits `lang`; the real `web/templates/layouts/base.html:3`
+    has `<html lang="en" class="light">`. Not a site defect.
+
+VERDICT RATIONALE
+No FAIL attributable to CB7's diff. The one real (pre-existing) contrast
+defect — rose-600 on rose-50 for small chip text — predates CB7 byte-for-
+byte and is out of scope per the attribution rule; recorded as an
+OBSERVATION for the backlog, not a gate FAIL.
+
+OBSERVATIONS (non-blocking, backlog)
+- PRE-EXISTING (not CB7): explorer.html summary-stats chip's positive-value
+  text-rose-600/text-emerald-600 (light mode, 14px small text) measure
+  4.28:1 / (emerald-600 similarly sub-4.5) against their rose-50/emerald-50
+  chip backgrounds — below the 4.5:1 AA threshold for normal text. Present
+  identically in master. Candidate a11y backlog item independent of CB7.
+- PRE-EXISTING: clickable `<div onclick="openKPIDetail(...)">` pattern
+  across all 5 KPI tiles (not a real button/link) — known backlog item
+  per CB6 precedent, unchanged by CB7.
+- Did not re-run a full-page (base.html) structural audit (headings/
+  landmarks/focus order) since CB7's diff touches only two color/visibility
+  expressions with no structural, tag, or attribute-order changes — traced
+  via diff rather than re-audited wholesale, per the scope rule.

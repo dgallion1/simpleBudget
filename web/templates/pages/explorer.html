@@ -247,9 +247,16 @@
     }
 
     // Step the date range forward or backward.
-    // If a month-based preset is active (1/2/3/6/12), shift by N months
-    // preserving day-of-month and keeping the preset highlight. Otherwise,
-    // shift by the current span in days. The "All" preset is a no-op.
+    // Step the date window forward (+1) or backward (-1) by exactly one
+    // calendar month, regardless of window size, preserving day-of-month
+    // (clamped to month end) and the preset highlight. "All" is a no-op.
+    function addMonthsClampedExplorer(d, months) {
+        const day = d.getDate();
+        const r = new Date(d.getFullYear(), d.getMonth() + months, 1);
+        const last = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+        r.setDate(Math.min(day, last));
+        return r;
+    }
     function stepDateRange(direction) {
         const form = document.getElementById('explorer-filter-form');
         const startInput = form.querySelector('input[name="start"]');
@@ -260,25 +267,11 @@
         const currentEnd = parseDateLocal(endInput.value);
         if (!currentStart || !currentEnd) return;
 
-        const monthMap = { 1: 1, 2: 2, 3: 3, 6: 6, 12: 12 };
+        // Arrows always step by exactly one calendar month, regardless of window size.
         const activeMonths = parseInt(form.dataset.activeMonths || '-1', 10);
-        let newStart, newEnd;
-
-        if (monthMap[activeMonths]) {
-            const months = monthMap[activeMonths] * direction;
-            newStart = new Date(currentStart);
-            newStart.setMonth(newStart.getMonth() + months);
-            newEnd = new Date(currentEnd);
-            newEnd.setMonth(newEnd.getMonth() + months);
-        } else if (activeMonths === 0) {
-            return;
-        } else {
-            const dayMs = 86400000;
-            const spanDays = Math.round((currentEnd - currentStart) / dayMs) + 1;
-            const shiftMs = spanDays * direction * dayMs;
-            newStart = new Date(currentStart.getTime() + shiftMs);
-            newEnd = new Date(currentEnd.getTime() + shiftMs);
-        }
+        if (activeMonths === 0) return;
+        let newStart = addMonthsClampedExplorer(currentStart, direction);
+        let newEnd = addMonthsClampedExplorer(currentEnd, direction);
 
         const minDate = parseDateLocal(startInput.getAttribute('min'));
         const maxDate = parseDateLocal(endInput.getAttribute('max'));
@@ -759,10 +752,10 @@
         <span class="num font-bold text-emerald-600 dark:text-emerald-400 ml-1">{{formatMoney .TotalIncome}}</span>
     </div>
     {{end}}
-    {{if isPositive .TotalExpenses}}
+    {{if or (isPositive .TotalExpenses) (isNegative .TotalExpenses)}}
     <div class="rounded-lg border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-3 py-1.5">
         <span class="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300">Expenses</span>
-        <span class="num font-bold text-rose-600 dark:text-rose-400 ml-1">{{formatMoney .TotalExpenses}}</span>
+        <span class="num font-bold {{if gt .TotalExpenses 0.0}}text-rose-600 dark:text-rose-400{{else}}text-emerald-800 dark:text-emerald-300{{end}} ml-1">{{formatMoney .TotalExpenses}}</span>
     </div>
     {{end}}
     <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5">

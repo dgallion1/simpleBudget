@@ -300,21 +300,21 @@ func PlanExcludedOutflows(outflows *models.TransactionSet, planExclusions map[st
 // no arithmetic subtraction of a separately-computed total from an
 // already-summed figure -- this function is the ONLY place any row is ever
 // excluded (ruling SY-2026-08-30d, attempt 3, rewriting SY-2026-08-30c's
-// contract: SET EXCLUSION, never subtraction). The range total still runs
-// math.Abs(LivingOutflows(...).SumAmount()) directly on this set. The
-// per-month trend and the dashboard's budget-vs-actual chart instead use the
-// SIGNED negated net, -LivingOutflows(...).SumAmount(), per CB2: a
-// refund-dominant month must show as a negative (a credit), which Abs would
-// flip positive. Either way, that subtraction shape breaks whenever the
-// REMAINDER itself nets a refund (e.g. an outflow-typed credit misclassified
-// into Outflow, per the "type is inferred, not bank-supplied" ledger
-// convention), independent of the flagged group's own sign -- Abs(S+F)-F
-// (or any signed variant of it) is not equal to Abs(S) in general; only
-// computing directly on the remaining transactions is.
+// contract: SET EXCLUSION, never subtraction). The range total (CB7) and the
+// per-month trend and the dashboard's budget-vs-actual chart (CB2) all use
+// the SAME SIGNED negated net, -LivingOutflows(...).SumAmount(): a
+// refund-dominant range or month must show as a negative (a credit), which
+// math.Abs used to flip positive. That subtraction shape (an arithmetic
+// subtraction of a separately-computed total from an already-summed figure)
+// breaks whenever the REMAINDER itself nets a refund (e.g. an outflow-typed
+// credit misclassified into Outflow, per the "type is inferred, not
+// bank-supplied" ledger convention), independent of the flagged group's own
+// sign -- Abs(S+F)-F (or any signed variant of it) is not equal to Abs(S) in
+// general; only computing directly on the remaining transactions is.
 //
 // Nil-safe: nil outflows or nil/empty planExclusions still applies the HI
-// filter, so `math.Abs(LivingOutflows(outflows, nil).SumAmount())` reproduces
-// pre-SY4 master's `totalExpenses - healthcareTotal` byte-for-byte on
+// filter, so `-LivingOutflows(outflows, nil).SumAmount()` reproduces pre-SY4
+// master's `totalExpenses - healthcareTotal` byte-for-byte on
 // all-outflows-negative data (and is MORE correct than that subtraction
 // shape whenever HI itself nets a refund -- a side effect, not a new
 // healthcareTotal computation; healthcareTotal/healthcareOutflows above are
@@ -359,7 +359,7 @@ func LivingOutflows(outflows *models.TransactionSet, planExclusions map[string]m
 // outflow SET (via LivingOutflows) BEFORE the living-expenses figures below
 // (LivingExpensesTotal, ActualMonthly, PerMonthDelta, CumulativeDelta,
 // LivingExpensesTrend, and the combined cumulative walk's living share) are
-// computed with the ordinary |sum| arithmetic -- never an arithmetic
+// computed with the signed negated-net arithmetic (CB7) -- never an arithmetic
 // subtraction of a separately-computed exclusion amount from an
 // already-Abs'd total (attempts 1-2's shape, both wrong: attempt 1 used
 // Abs on the flagged group's net, attempt 2 signed it but still subtracted
@@ -375,7 +375,24 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 	outflows := ts.FilterByType(models.Outflow)
 
 	totalIncome := income.SumAmount()
-	totalExpenses := math.Abs(outflows.SumAmount())
+	// CB7 fix: totalExpenses is the SIGNED negated net of the range's whole
+	// outflow set, not math.Abs -- the same signed-negated-net contract CB2
+	// already gave every per-month figure fed by this function. An ordinary
+	// range nets outflow-negative, so -SumAmount() is positive spend, same
+	// as the old math.Abs. A REFUND-DOMINANT range -- one whose outflow-typed
+	// rows net POSITIVE across the whole window -- must report NEGATIVE
+	// expenses (a net credit); math.Abs flipped this sign and understated
+	// NetSavings/SavingsRate below and broke the CombinedCumulativeBalance
+	// partition invariant for exactly this case (see LivingOutflows' doc and
+	// models.DashboardMetrics.CombinedCumulativeBalance's doc, both updated
+	// by CB7). netSavings/savingsRate need no further change: they derive
+	// correctly once totalExpenses is signed, and ADD the net refund instead
+	// of subtracting an absolute value. CB7-2026-09-03c: computed via the
+	// SignedNet helper (not inline -outflows.SumAmount()), which also
+	// normalizes IEEE negative zero to +0 -- an exactly-cancelling range
+	// would otherwise render "$-0.00" (encoding/json even serializes -0.0
+	// as "-0").
+	totalExpenses := SignedNet(outflows)
 	netSavings := totalIncome - totalExpenses
 
 	var savingsRate float64
@@ -403,7 +420,10 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 	healthcareCoverageInRange := hasCoverage && !coverageStart.Before(rangeStart) && !coverageStart.After(rangeEnd)
 
 	healthcareOutflows := outflows.FilterByCategory(HealthInsuranceCategory)
-	healthcareTotal := math.Abs(healthcareOutflows.SumAmount())
+	// CB7 fix: same signed-negated-net contract as totalExpenses above --
+	// a refund-dominant healthcare window (premium refunds exceeding
+	// premiums paid) must be negative, not math.Abs'd positive.
+	healthcareTotal := SignedNet(healthcareOutflows)
 	var healthcareActual float64
 	if coverageMonths > 0 {
 		healthcareActual = healthcareTotal / coverageMonths
@@ -423,17 +443,20 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 	// LivingOutflows (see its doc for why arithmetic subtraction from an
 	// already-Abs'd total was wrong).
 	planExcludedSet := PlanExcludedOutflows(outflows, planExclusions)
-	planExcludedTotal := -planExcludedSet.SumAmount()
+	planExcludedTotal := SignedNet(planExcludedSet)
 	planExcludedCount := planExcludedSet.Len()
 
 	// livingOutflows already excludes HealthInsuranceCategory rows (the
 	// same rows healthcareOutflows above tracks) AND flagged rows -- the
-	// ordinary |sum| living arithmetic runs directly on it. This REPLACES
+	// signed negated-net (CB7) living arithmetic runs directly on it. This REPLACES
 	// the pre-SY4 `totalExpenses - healthcareTotal` subtraction shape
 	// entirely; healthcareTotal itself (computed above) is untouched and
 	// used only by the Healthcare KPI fields below.
 	livingOutflows := LivingOutflows(outflows, planExclusions)
-	livingTotal := math.Abs(livingOutflows.SumAmount())
+	// CB7 fix: same signed-negated-net contract as totalExpenses above --
+	// a refund-dominant living-expense window must be negative, not
+	// math.Abs'd positive.
+	livingTotal := SignedNet(livingOutflows)
 	actualMonthly := livingTotal / monthsInRange
 	perMonthDelta := actualMonthly - budgetTarget
 	cumulativeDelta := livingTotal - budgetTarget*monthsInRange
@@ -508,13 +531,13 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 		// refund instead of subtracting it.
 		expAmt := 0.0
 		if exp, ok := monthlyOutflows[m]; ok {
-			expAmt = -exp.SumAmount()
+			expAmt = SignedNet(exp)
 		}
 
 		// CB2 fix: same signed-negated-net contract as expAmt above.
 		hcAmt := 0.0
 		if hc, ok := monthlyHealthcare[m]; ok {
-			hcAmt = -hc.SumAmount()
+			hcAmt = SignedNet(hc)
 		}
 
 		// Set exclusion (ruling SY-2026-08-30d; signed per CB2): the
@@ -523,7 +546,7 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 		// breaks whenever the REMAINDER itself nets a refund).
 		livingMonth := 0.0
 		if lo, ok := monthlyLiving[m]; ok {
-			livingMonth = -lo.SumAmount()
+			livingMonth = SignedNet(lo)
 		}
 
 		incomeTrend = append(incomeTrend, incAmt)
@@ -586,14 +609,17 @@ func Calculate(ts *models.TransactionSet, rangeStart, rangeEnd time.Time, budget
 			// not be charged as spend; -SumAmount() is then negative and
 			// `running += accrual - spend` correctly ADDS the net refund to
 			// the balance. math.Abs flipped this sign (KD ruling: month rows
-			// are signed). This does not touch range-level totalExpenses
-			// (still math.Abs of the whole range's net, line ~375) --
-			// per-month spends still partition that range total exactly
-			// only while the RANGE as a whole nets outflow-negative; a
-			// wholly refund-dominant RANGE is out of scope (unchanged).
+			// are signed). This does not touch range-level totalExpenses'
+			// own arithmetic (now also the signed negated net, CB7, line
+			// ~377) -- per-month spends partition that range total exactly
+			// for EVERY range now, including a wholly refund-dominant one,
+			// since both sides of the partition use the same signed
+			// convention (the "RANGE as a whole nets outflow-negative"
+			// precondition CB1 documented here is removed by CB7; see
+			// models.DashboardMetrics.CombinedCumulativeBalance's doc).
 			spend := 0.0
 			if bucket, ok := monthlyNonExcluded[cur.Format("2006-01")]; ok {
-				spend = -bucket.SumAmount()
+				spend = SignedNet(bucket)
 			}
 
 			running += accrual - spend
@@ -717,6 +743,29 @@ func Comparison(data *models.TransactionSet, start, end time.Time, compType stri
 		ActualMonthlyChange:   currentMetrics.ActualMonthly - compMetrics.ActualMonthly,
 		CumulativeDeltaChange: currentMetrics.CumulativeDelta - compMetrics.CumulativeDelta,
 	}
+}
+
+// SignedNet returns the negated signed sum of a transaction set (positive =
+// net spend, negative = net refund), with IEEE negative zero normalized to
+// +0 so an empty or exactly-cancelling window never renders "-0" / "$-0.00"
+// (ruling CB7-2026-09-03c). This is the ONLY sanctioned way to derive a
+// spend figure from a set; never write -ts.SumAmount() inline.
+//
+// Nil-safe in exactly the same sense SumAmount is, no more and no less:
+// SumAmount ranges over ts.Transactions, so it panics on a literal nil
+// *models.TransactionSet but returns 0 on a non-nil, empty one (the shape
+// every filter/group helper in this package -- FilterByType,
+// FilterByCategory, GroupByMonth's map values, PlanExcludedOutflows,
+// LivingOutflows -- always returns, per their own nil-safety docs).
+// SignedNet adds no additional nil guard beyond that: every call site in
+// this package and in explorer/handlers.go passes one of those non-nil
+// results, never a bare nil TransactionSet.
+func SignedNet(ts *models.TransactionSet) float64 {
+	v := -ts.SumAmount()
+	if v == 0 {
+		return 0
+	}
+	return v
 }
 
 // PercentChange returns the percent change from previous to current.

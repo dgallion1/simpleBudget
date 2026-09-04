@@ -128,12 +128,15 @@ type DashboardMetrics struct {
 	// float64 summation noise (not month-rounding slack) — the per-month
 	// accruals partition the range's days exactly, and the signed per-month
 	// spends (a refund-dominant month contributes a negative spend, i.e. a
-	// credit) partition TotalExpenses exactly under the precondition above
-	// AND the further precondition that the RANGE as a whole still nets
-	// outflow-negative — TotalExpenses is math.Abs of the whole range's net
-	// (unchanged by CB1), so a wholly refund-dominant RANGE (the range's own
-	// outflows net positive) is out of scope: the invariant is not
-	// guaranteed to hold in that case.
+	// credit) partition TotalExpenses exactly under the precondition above.
+	// CB7: TotalExpenses is now ALSO the signed negated net of the whole
+	// range's outflow set (previously math.Abs of it), so this holds for
+	// EVERY range, including one whose outflow-typed rows net POSITIVE
+	// overall (a wholly refund-dominant range) — there is no longer a
+	// "range as a whole nets outflow-negative" precondition to fall outside
+	// of; both sides of the partition (the per-month signed spends and the
+	// range-level signed total) now share the same sign convention
+	// unconditionally.
 	// Populated only when HasCombinedTarget; nil otherwise.
 	CombinedCumulativeBalance []float64 `json:"combined_cumulative_balance"`
 

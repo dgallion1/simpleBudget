@@ -12,17 +12,20 @@ import (
 // defect -- it only fixed the case where the FLAGGED group's sign diverges.
 // The REMAINDER (everything else) can also net a refund (e.g. an
 // outflow-typed credit misclassified by the load-time keyword inference),
-// independent of the flagged group's own sign, and |S+F|+F != |S| in
-// general. These tests are the required remainder-sign-divergent fixture:
-// the checker-second probe verbatim (remainder = -1000 grocery + 4000
-// outflow-typed credit, net +3000; flagged = one ordinary -500 car
-// payment), asserting the living figure equals |remainder| exactly.
-// Kept ALONGSIDE (not replacing) the flagged-sign-divergent fixtures in
-// plan_exclusions_signed_net_test.go.
+// independent of the flagged group's own sign. These tests are the required
+// remainder-sign-divergent fixture: the checker-second probe verbatim
+// (remainder = -1000 grocery + 4000 outflow-typed credit, net +3000;
+// flagged = one ordinary -500 car payment), asserting the living figure
+// equals the SIGNED remainder exactly (ruling CB7-2026-09-03a: CB7 made
+// the range-level living/healthcare/total figures signed, the same
+// contract every per-month figure already had since CB2/CB1, so a
+// refund-dominant remainder must show as a NEGATIVE living figure -- a net
+// credit -- not its absolute value). Kept ALONGSIDE (not replacing) the
+// flagged-sign-divergent fixtures in plan_exclusions_signed_net_test.go.
 
-// TestCalculateMetrics_PlanExclusions_RemainderNetsRefundLivingEqualsAbsRemainder
+// TestCalculateMetrics_PlanExclusions_RemainderNetsRefundLivingEqualsSignedRemainder
 // is the ruling's exact probe run through the real Calculate.
-func TestCalculateMetrics_PlanExclusions_RemainderNetsRefundLivingEqualsAbsRemainder(t *testing.T) {
+func TestCalculateMetrics_PlanExclusions_RemainderNetsRefundLivingEqualsSignedRemainder(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 
@@ -37,15 +40,14 @@ func TestCalculateMetrics_PlanExclusions_RemainderNetsRefundLivingEqualsAbsRemai
 
 	m := Calculate(ts, start, end, 0, 0, fullCoverage, true, planExclusions)
 
-	// remainder S = -1000 + 4000 = +3000; living must equal |S| = 3000
-	// exactly -- NOT |S+F|+F = |3000-500|-(-500) = 2500+500 = 3000... the
-	// discriminating attempt-2 defect value is |S+F|+F computed the OTHER
-	// way attempt 2 actually shipped it: |S+F| + F where F is signed net
-	// spend (-500 here, i.e. planExcludedTotal=+500 in the OLD convention
-	// direction) -- the point is ONLY math.Abs(remainder) is ever correct;
-	// this assertion pins that value directly.
-	if !floatEqual(m.LivingExpensesTotal, 3000) {
-		t.Errorf("LivingExpensesTotal = %v, want 3000 (|remainder| exactly; the flagged group's own presence must never perturb it)", m.LivingExpensesTotal)
+	// remainder S = -1000 + 4000 = +3000 (a net credit -- the outflow-typed
+	// credit outweighs the grocery spend). Ruling CB7-2026-09-03a: living
+	// arithmetic is the SIGNED negated net of the remainder set, -S = -3000,
+	// not |S|. The flagged group's own presence must never perturb this
+	// value (the car payment is excluded from the SET before this sum runs,
+	// never subtracted arithmetically -- see LivingOutflows' doc).
+	if !floatEqual(m.LivingExpensesTotal, -3000) {
+		t.Errorf("LivingExpensesTotal = %v, want -3000 (signed negated net of the remainder; CB7-2026-09-03a)", m.LivingExpensesTotal)
 	}
 	// PlanExcludedTotal is still the SIGNED net (display-only annotation,
 	// attempt-2 convention, unchanged): the car payment is an ordinary net
@@ -92,23 +94,28 @@ func TestCalculateMetrics_PlanExclusions_RemainderNetsRefundMonthInLivingTrend(t
 	}
 }
 
-// NOTE on CombinedCumulativeBalance (UPDATED, CB2): a remainder-refund
-// fixture large enough to net positive (per the ruling's probe, a +4000
-// outflow-typed credit) used to break the walk's undocumented, relied-upon
-// precondition that "per-month |sum| partitions range-level |sum|" -- a
-// precondition abs-of-parts only satisfies when every part shares one sign.
-// CB1 (PR #80) fixed this: the walk's per-month spend is now the SIGNED
-// negated net of the month bucket (-bucket.SumAmount()), not math.Abs, so a
-// CALENDAR MONTH whose combined (living+healthcare+flagged) sign flips
-// positive enters the walk as a credit instead of breaking the partition
-// invariant. See TestCalculateMetrics_CombinedCumulativeBalance_
-// RefundDominantMonthEntersAsCredit and TestChartCumulativeWalk_
-// AgreesWithMetricsCombinedCumulativeBalance for the walk's own regression
-// coverage of exactly this fixture shape. This does not touch the
-// RANGE-level totals (LivingExpensesTotal, TotalExpenses, etc.), which
-// still use math.Abs and still only partition into signed per-month parts
-// while the RANGE as a whole nets outflow-negative (unchanged, out of
-// scope). The flagged-sign-divergent walk invariant test in
+// NOTE on CombinedCumulativeBalance (UPDATED, CB7-2026-09-03a): a
+// remainder-refund fixture large enough to net positive (per the ruling's
+// probe, a +4000 outflow-typed credit) used to break the walk's
+// undocumented, relied-upon precondition that "per-month |sum| partitions
+// range-level |sum|" -- a precondition abs-of-parts only satisfies when
+// every part shares one sign. CB1 (PR #80) first fixed the PER-MONTH half
+// of this: the walk's per-month spend is the SIGNED negated net of the
+// month bucket (-bucket.SumAmount()), not math.Abs, so a CALENDAR MONTH
+// whose combined (living+healthcare+flagged) sign flips positive enters
+// the walk as a credit instead of breaking the partition invariant. CB7
+// (ruling CB7-2026-09-03a) then closed the RANGE half: LivingExpensesTotal,
+// TotalExpenses, and HealthcareTotal are now ALSO the signed negated net of
+// their respective sets, not math.Abs, so the partition invariant holds
+// for EVERY range -- including one whose outflows net POSITIVE overall (a
+// wholly refund-dominant range) -- with no remaining "RANGE as a whole
+// nets outflow-negative" precondition. See
+// TestCalculateMetrics_CombinedCumulativeBalance_RefundDominantMonthEntersAsCredit
+// and TestChartCumulativeWalk_AgreesWithMetricsCombinedCumulativeBalance for
+// the walk's own regression coverage of the per-month shape, and
+// TestCalculateMetrics_RefundDominantRange_SignedTotalsAndCombinedInvariantHolds
+// (metrics_test.go) for CB7's own regression coverage of the range-level
+// shape. The flagged-sign-divergent walk invariant test in
 // plan_exclusions_signed_net_test.go (whose fixture never flips a month's
 // raw sign) covers the walk's OWN plan-exclusion arithmetic separately.
 
@@ -136,10 +143,12 @@ func TestComparison_PlanExclusions_RemainderNetsRefundAppliedToBothWindows(t *te
 	if got == nil || !got.HasData {
 		t.Fatalf("Comparison returned nil/no-data: %+v", got)
 	}
-	if !floatEqual(got.Current.LivingExpensesTotal, 3000) {
-		t.Errorf("Current.LivingExpensesTotal = %v, want 3000 (|remainder| exactly)", got.Current.LivingExpensesTotal)
+	// Ruling CB7-2026-09-03a: both windows' remainder nets +3000 (a credit),
+	// so LivingExpensesTotal is the signed negated net, -3000, in both.
+	if !floatEqual(got.Current.LivingExpensesTotal, -3000) {
+		t.Errorf("Current.LivingExpensesTotal = %v, want -3000 (signed negated net; CB7-2026-09-03a)", got.Current.LivingExpensesTotal)
 	}
-	if !floatEqual(got.Previous.LivingExpensesTotal, 3000) {
-		t.Errorf("Previous.LivingExpensesTotal = %v, want 3000", got.Previous.LivingExpensesTotal)
+	if !floatEqual(got.Previous.LivingExpensesTotal, -3000) {
+		t.Errorf("Previous.LivingExpensesTotal = %v, want -3000 (signed negated net; CB7-2026-09-03a)", got.Previous.LivingExpensesTotal)
 	}
 }

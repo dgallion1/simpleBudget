@@ -1,0 +1,15 @@
+internal/services/metrics/metrics.go
+internal/services/metrics/metrics_test.go
+internal/services/metrics/plan_exclusions_remainder_test.go
+internal/handlers/explorer/handlers.go
+internal/handlers/explorer/handlers_test.go
+internal/models/dashboard.go
+internal/services/mcpsvc/spend/summary.go
+internal/services/mcpsvc/spend/summary_test.go
+internal/services/mcpsvc/spend/plan_exclusions_test.go
+internal/services/mcpsvc/server.go
+internal/services/mcpsvc/server_test.go
+internal/handlers/dashboard/verdict_render_test.go
+web/templates/components/kpis.html
+web/templates/pages/explorer.html
+.swarm/NEXT.md

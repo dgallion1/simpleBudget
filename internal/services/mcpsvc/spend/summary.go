@@ -181,11 +181,10 @@ func registerSummary(s *mcp.Server, deps Deps) {
 			"convention, but do NOT assume summing a breakdown reproduces total_expenses: by_category and " +
 			"by_merchant are each truncated to top_n (see below), so their sums only match total_expenses " +
 			"when this window has top_n or fewer categories/merchants -- with more, the truncated sum is " +
-			"necessarily LESS than total_expenses. by_month is never truncated, so summing it always matches " +
-			"total_expenses in MAGNITUDE, but total_expenses is always non-negative (it is an absolute value) " +
-			"while summing by_month can be negative -- if this window's refunds exceed its spending OVERALL " +
-			"(not just in one category/merchant/month), total_expenses and the sum of by_month are the " +
-			"negation of each other, not equal. (This differs from search_transactions, which returns every amount signed, " +
+			"necessarily LESS than total_expenses. by_month is never truncated, so summing it always EQUALS " +
+			"total_expenses exactly: total_expenses is SIGNED, not an absolute value -- positive means net " +
+			"spend, and it goes NEGATIVE when this window's refunds exceed its spending OVERALL (not just in " +
+			"one category/merchant/month), same as any by_month row would. (This differs from search_transactions, which returns every amount signed, " +
 			"expenses negative -- the opposite sign convention.) Transactions the user has already marked " +
 			"as a resolved duplicate are excluded, matching the dashboard and " +
 			"get_anomalies/get_price_creep/search_transactions. Merchants are grouped by the same fuzzy-" +

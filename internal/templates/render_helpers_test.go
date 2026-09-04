@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"math"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -31,6 +32,10 @@ func TestFormatMoney(t *testing.T) {
 		{999.999, "$1,000.00"},
 		{-0.01, "-$0.01"},
 		{123456789.12, "$123,456,789.12"},
+		// CB7-2026-09-03c: IEEE negative zero must render exactly like
+		// positive zero, never "$-0.00". math.Copysign(0, -1) is the
+		// canonical way to construct a float64 -0.0 literal in Go.
+		{math.Copysign(0, -1), "$0.00"},
 	}
 	for _, tt := range tests {
 		got := formatMoney(tt.in)

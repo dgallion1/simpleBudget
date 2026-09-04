@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
@@ -519,6 +520,70 @@ func TestSummarizeSpendingByMonthReportsANetRefundMonthAsNegative(t *testing.T) 
 	}
 }
 
+// TestSummarizeSpendingRefundDominantWindowNegatesTotalExpensesAndReconciles
+// is CB7's required refund-dominant WINDOW fixture: unlike
+// TestSummarizeSpendingByMonthReportsANetRefundMonthAsNegative (one
+// refund-dominant MONTH inside an otherwise-mixed window),
+// here the WHOLE window (both months combined) nets refund-dominant, so
+// total_expenses itself -- not just one by_month row -- must go negative.
+// Before CB7, metrics.Calculate ran math.Abs on the range-level total, so
+// total_expenses would have reported positive here even though by_month's
+// own sum (never math.Abs'd, per Finding 1) was already negative --
+// breaking the tool description's sum(by_month)==total_expenses contract
+// (the old contract only promised this held "in MAGNITUDE").
+func TestSummarizeSpendingRefundDominantWindowNegatesTotalExpensesAndReconciles(t *testing.T) {
+	day := func(s string) time.Time {
+		d, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			panic(err)
+		}
+		return d
+	}
+	ts := models.NewTransactionSet([]models.Transaction{
+		// Jan: ordinary spend.
+		{Date: day("2026-01-05"), Description: "WIDGET CO", Category: "Shopping", Amount: -50.00, TransactionType: models.Outflow},
+		// Feb: a refund far exceeding the window's whole ordinary spend.
+		{Date: day("2026-02-15"), Description: "WIDGET CO REFUND", Category: "Shopping", Amount: 500.00, TransactionType: models.Outflow},
+	})
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: ts}})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "summarize_spending",
+		Arguments: map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("summarize_spending returned an error: %+v", res.Content)
+	}
+
+	var out summaryOutput
+	if err := json.Unmarshal(mustJSON(t, res.StructuredContent), &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+
+	// Window nets: -50 + 500 = +450 -- refund-dominant OVERALL.
+	// total_expenses is the signed negated net: -450.
+	if out.TotalExpenses != -450 {
+		t.Fatalf("total_expenses = %v, want -450 (refund-dominant window; CB7)", out.TotalExpenses)
+	}
+	if out.TotalExpenses >= 0 {
+		t.Fatalf("total_expenses = %v, want negative (refund-dominant window)", out.TotalExpenses)
+	}
+
+	if len(out.ByMonth) != 2 {
+		t.Fatalf("by_month has %d entries, want 2: %+v", len(out.ByMonth), out.ByMonth)
+	}
+	var monthSum float64
+	for _, m := range out.ByMonth {
+		monthSum += m.Amount
+	}
+	if round2(monthSum) != out.TotalExpenses {
+		t.Errorf("sum(by_month) = %v, want %v (must EQUAL total_expenses exactly now that both are signed, not just agree in magnitude)", round2(monthSum), out.TotalExpenses)
+	}
+}
+
 // TestSummarizeSpendingSuppressesPhantomHealthcareWhenNoCoverage guards
 // ruling 2026-08-30a: a plan can have a healthcare target CONFIGURED while
 // the ledger has NO Health Insurance transactions in the queried window (or
@@ -732,5 +797,70 @@ func TestSummarizeSpendingCoverageStartExcludesSuppressedDuplicates(t *testing.T
 	}
 	if out.Budget.HealthcareDelta != wantHealthcareDelta {
 		t.Errorf("healthcare_monthly_delta = %v, want %v", out.Budget.HealthcareDelta, wantHealthcareDelta)
+	}
+}
+
+// negZeroJSONPattern is the MCP-surface twin of metrics_test.go's helper of
+// the same name: matches a JSON-serialized IEEE negative zero token
+// ("-0", "-0.0", etc.) immediately followed by a JSON delimiter, so it
+// only flags a genuine whole negative-zero value, not a substring of a
+// larger negative number.
+var negZeroJSONPattern = regexp.MustCompile(`-0(\.0+)?[,}\]]`)
+
+// TestSummarizeSpendingHealthcareActualNoNegativeZeroWhenWindowHasNoHIRows
+// is CB7-2026-09-03c's required MCP fixture: a healthcare target is
+// configured AND coverage has started (an earlier Health Insurance bill
+// establishes coverageStart, so HasHealthcareTarget is true), but the
+// QUERIED WINDOW itself has zero Health Insurance transactions -- exactly
+// the shape of the live ledger (every month/year has zero HI rows in most
+// windows). Before the fix, healthcareTotal was IEEE -0.0 for the window's
+// empty HI set, and HealthcareActual (=healthcareTotal/coverageMonths)
+// inherited it, serializing as the literal JSON token "-0" for
+// healthcare_monthly_actual.
+func TestSummarizeSpendingHealthcareActualNoNegativeZeroWhenWindowHasNoHIRows(t *testing.T) {
+	day := func(s string) time.Time {
+		d, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			panic(err)
+		}
+		return d
+	}
+	ts := models.NewTransactionSet([]models.Transaction{
+		// Establishes coverageStart well BEFORE the queried window --
+		// hasCoverage=true for the whole ledger, but this row itself falls
+		// outside the window below.
+		{Date: day("2025-11-01"), Description: "PREMIUM", Category: metrics.HealthInsuranceCategory, Amount: -1000, TransactionType: models.Outflow},
+		// The queried window's only transaction: ordinary living spend, NO
+		// Health Insurance rows at all.
+		{Date: day("2026-01-10"), Description: "RENT", Category: "Housing", Amount: -1200, TransactionType: models.Outflow},
+	})
+	sm := newSummaryTestManager(t, 500, 200) // living target $500/mo, healthcare target $200/mo
+	cs := connect(t, Deps{Transactions: stubTransactions{ts: ts}, Settings: sm})
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "summarize_spending",
+		Arguments: map[string]any{"start_date": "2026-01-01", "end_date": "2026-01-31"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("summarize_spending returned an error: %+v", res.Content)
+	}
+
+	raw := mustJSON(t, res.StructuredContent)
+	if loc := negZeroJSONPattern.FindString(string(raw)); loc != "" {
+		t.Errorf("structured content contains a negative-zero token %q: %s", loc, raw)
+	}
+
+	var out summaryOutput
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("decode structured content: %v", err)
+	}
+	if out.Budget == nil {
+		t.Fatal("budget = nil, want populated")
+	}
+	if out.Budget.HealthcareActual != 0 {
+		t.Errorf("healthcare_monthly_actual = %v, want 0 (zero Health Insurance rows this window)", out.Budget.HealthcareActual)
 	}
 }

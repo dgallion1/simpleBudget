@@ -156,10 +156,16 @@ function meSetDateRange(months) {
     htmx.trigger(form, 'submit');
 }
 
-// Shift the date window forward (+1) or backward (-1).
-// If a month-based preset is active (1/2/3/6/12), shift by N months
-// preserving day-of-month and keeping the preset highlight. Otherwise,
-// shift by the current span in days. The "All" preset is a no-op.
+// Shift the date window forward (+1) or backward (-1) by exactly one
+// calendar month, regardless of window size. Day-of-month is preserved
+// (clamped to month end) and the preset highlight is kept. "All" is a no-op.
+function meAddMonthsClamped(d, months) {
+    const day = d.getDate();
+    const r = new Date(d.getFullYear(), d.getMonth() + months, 1);
+    const last = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+    r.setDate(Math.min(day, last));
+    return r;
+}
 function meStepDateRange(direction) {
     const form = document.getElementById('major-expenses-filter-form');
     if (!form) return;
@@ -169,25 +175,11 @@ function meStepDateRange(direction) {
     const currentEnd = meParseDateLocal(endInput.value);
     if (!currentStart || !currentEnd) return;
 
-    const monthMap = { 1: 1, 2: 2, 3: 3, 6: 6, 12: 12 };
+    // Arrows always step by exactly one calendar month, regardless of window size.
     const activeMonths = parseInt(form.dataset.activeMonths || '-1', 10);
-    let newStart, newEnd;
-
-    if (monthMap[activeMonths]) {
-        const months = monthMap[activeMonths] * direction;
-        newStart = new Date(currentStart);
-        newStart.setMonth(newStart.getMonth() + months);
-        newEnd = new Date(currentEnd);
-        newEnd.setMonth(newEnd.getMonth() + months);
-    } else if (activeMonths === 0) {
-        return;
-    } else {
-        const dayMs = 86400000;
-        const spanDays = Math.round((currentEnd - currentStart) / dayMs) + 1;
-        const shiftMs = spanDays * direction * dayMs;
-        newStart = new Date(currentStart.getTime() + shiftMs);
-        newEnd = new Date(currentEnd.getTime() + shiftMs);
-    }
+    if (activeMonths === 0) return;
+    let newStart = meAddMonthsClamped(currentStart, direction);
+    let newEnd = meAddMonthsClamped(currentEnd, direction);
 
     const minDate = meParseDateLocal(startInput.getAttribute('min'));
     const maxDate = meParseDateLocal(endInput.getAttribute('max'));

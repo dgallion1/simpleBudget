@@ -2,55 +2,55 @@
 {{define "whatif-guardrails"}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Drop/rise guardrails (simple)</h2>
-    <p class="text-xs text-gray-600 dark:text-gray-400 mb-3">Automatically adjust spending based on portfolio performance.</p>
-    <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Cuts withdrawal when portfolio drops from peak; raises withdrawal when portfolio rises above baseline. This is a simplified guardrail — not the four-rule Guyton-Klinger (2006) model.</p>
+    <p class="text-body-sm text-gray-600 dark:text-gray-400 mb-3">Automatically adjust spending based on portfolio performance.</p>
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 mb-3">Cuts withdrawal when portfolio drops from peak; raises withdrawal when portfolio rises above baseline. This is a simplified guardrail — not the four-rule Guyton-Klinger (2006) model.</p>
 
     <form hx-post="/whatif/guardrails" hx-target="#whatif-results" class="space-y-3">
         <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
             <input type="checkbox" name="enabled" {{if and .Settings.Guardrails .Settings.Guardrails.Enabled}}checked{{end}}
-                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 focus:ring-indigo-500"
+                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-accent focus:ring-accent"
                 onchange="this.form.requestSubmit()">
             Enable spending guardrails
         </label>
 
         {{if and .Settings.Guardrails .Settings.Guardrails.Enabled}}
         <div class="space-y-3 pt-2">
-            <div class="bg-red-50 dark:bg-red-900/20 rounded-md p-3">
-                <p class="text-xs font-medium text-red-700 dark:text-red-300 mb-2">Floor (cut spending when portfolio drops)</p>
+            <div class="bg-negative-soft rounded-md p-3">
+                <p class="text-body-sm font-medium text-negative mb-2">Floor (cut spending when portfolio drops)</p>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
                         <label class="block text-xs text-gray-600 dark:text-gray-400">Drop %</label>
                         <input type="number" name="floor_drop_pct" value="{{printf "%.0f" .Settings.Guardrails.FloorDropPct}}"
                             min="1" max="50" step="1"
-                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
-                        <p class="text-[10px] text-gray-600 dark:text-gray-400 mt-0.5">from peak</p>
+                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
+                        <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-0.5">from peak</p>
                     </div>
                     <div>
                         <label class="block text-xs text-gray-600 dark:text-gray-400">Cut %</label>
                         <input type="number" name="floor_cut_pct" value="{{printf "%.0f" .Settings.Guardrails.FloorCutPct}}"
                             min="1" max="50" step="1"
-                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
-                        <p class="text-[10px] text-gray-600 dark:text-gray-400 mt-0.5">spending reduction</p>
+                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
+                        <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-0.5">spending reduction</p>
                     </div>
                 </div>
             </div>
 
-            <div class="bg-green-50 dark:bg-green-900/20 rounded-md p-3">
-                <p class="text-xs font-medium text-green-700 dark:text-green-300 mb-2">Ceiling (raise spending when portfolio rises)</p>
+            <div class="bg-positive-soft rounded-md p-3">
+                <p class="text-body-sm font-medium text-positive mb-2">Ceiling (raise spending when portfolio rises)</p>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
                         <label class="block text-xs text-gray-600 dark:text-gray-400">Rise %</label>
                         <input type="number" name="ceiling_rise_pct" value="{{printf "%.0f" .Settings.Guardrails.CeilingRisePct}}"
                             min="1" max="100" step="1"
-                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
-                        <p class="text-[10px] text-gray-600 dark:text-gray-400 mt-0.5">above baseline</p>
+                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
+                        <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-0.5">above baseline</p>
                     </div>
                     <div>
                         <label class="block text-xs text-gray-600 dark:text-gray-400">Raise %</label>
                         <input type="number" name="ceiling_raise_pct" value="{{printf "%.0f" .Settings.Guardrails.CeilingRaisePct}}"
                             min="1" max="50" step="1"
-                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
-                        <p class="text-[10px] text-gray-600 dark:text-gray-400 mt-0.5">spending increase</p>
+                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
+                        <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-0.5">spending increase</p>
                     </div>
                 </div>
             </div>
@@ -60,19 +60,19 @@
                     <label class="block text-xs text-gray-600 dark:text-gray-400">Min spending %</label>
                     <input type="number" name="min_spending_pct" value="{{printf "%.0f" .Settings.Guardrails.MinSpendingPct}}"
                         min="50" max="100" step="1"
-                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                 </div>
                 <div>
                     <label class="block text-xs text-gray-600 dark:text-gray-400">Max spending %</label>
                     <input type="number" name="max_spending_pct" value="{{printf "%.0f" .Settings.Guardrails.MaxSpendingPct}}"
                         min="100" max="200" step="1"
-                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                 </div>
             </div>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Spending never drops below {{printf "%.0f" .Settings.Guardrails.MinSpendingPct}}% or exceeds {{printf "%.0f" .Settings.Guardrails.MaxSpendingPct}}% of original.</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400">Spending never drops below {{printf "%.0f" .Settings.Guardrails.MinSpendingPct}}% or exceeds {{printf "%.0f" .Settings.Guardrails.MaxSpendingPct}}% of original.</p>
 
             <button type="submit"
-                class="w-full text-xs px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+                class="w-full text-xs px-3 py-1.5 rounded-md bg-accent-strong hover:bg-accent-strong text-white transition-colors">
                 Apply Guardrails
             </button>
         </div>
@@ -86,29 +86,29 @@
 {{if and .Analysis.Projection .Analysis.Projection.GuardrailEvents}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1">Guardrail Events</h2>
-    <p class="text-xs text-gray-600 dark:text-gray-400 mb-3">
+    <p class="text-body-sm text-gray-600 dark:text-gray-400 mb-3">
         Each event shows the single-year change and the running multiplier vs. your original plan.
         Dollar amounts are in that year's nominal dollars; today's-dollar equivalents are in parentheses.
     </p>
     <div class="space-y-1">
         {{range .Analysis.Projection.GuardrailEvents}}
-        <div class="flex flex-wrap items-center justify-between gap-2 text-sm py-1 px-2 rounded {{if eq .Type "cut"}}bg-red-50 dark:bg-red-900/20{{else}}bg-green-50 dark:bg-green-900/20{{end}}">
+        <div class="flex flex-wrap items-center justify-between gap-2 text-sm py-1 px-2 rounded {{if eq .Type "cut"}}bg-negative-soft{{else}}bg-positive-soft{{end}}">
             <span class="text-gray-700 dark:text-gray-300">
                 Year {{.Year}}:
                 {{if eq .Type "cut"}}
-                <span class="text-red-600 dark:text-red-400">
+                <span class="text-negative">
                     {{if gt .PreviousMultiplier 0.0}}Cut by {{printf "%.0f" (mul 100.0 (div (sub .PreviousMultiplier .Multiplier) .PreviousMultiplier))}}%{{else}}Cut{{end}}
-                    <span class="text-xs text-red-500 dark:text-red-300">({{printf "%.0f" (mul .Multiplier 100)}}% of plan)</span>
+                    <span class="text-body-sm text-negative">({{printf "%.0f" (mul .Multiplier 100)}}% of plan)</span>
                 </span>
                 {{else}}
-                <span class="text-green-700 dark:text-green-400">
+                <span class="text-positive">
                     {{if gt .PreviousMultiplier 0.0}}Raise by {{printf "%.0f" (mul 100.0 (div (sub .Multiplier .PreviousMultiplier) .PreviousMultiplier))}}%{{else}}Raise{{end}}
-                    <span class="text-xs text-green-500 dark:text-green-300">({{printf "%.0f" (mul .Multiplier 100)}}% of plan)</span>
+                    <span class="text-body-sm text-positive">({{printf "%.0f" (mul .Multiplier 100)}}% of plan)</span>
                 </span>
                 {{end}}
             </span>
             {{if and (gt .MonthlySpendingBefore 0.0) (gt .MonthlySpendingAfter 0.0)}}
-            <span data-event-spending-delta class="text-xs tabular-nums {{if eq .Type "cut"}}text-red-600 dark:text-red-300{{else}}text-green-700 dark:text-green-300{{end}}">
+            <span data-event-spending-delta class="text-xs tabular-nums {{if eq .Type "cut"}}text-negative{{else}}text-positive{{end}}">
                 {{formatMoney .MonthlySpendingBefore}}/mo → {{formatMoney .MonthlySpendingAfter}}/mo
                 {{if gt .CumulativeInflation 0.0}}
                 <span class="text-gray-600 dark:text-gray-400">
@@ -117,7 +117,7 @@
                 {{end}}
             </span>
             {{end}}
-            <span class="text-xs text-gray-600 dark:text-gray-400">Portfolio: {{formatMoney .Portfolio}}</span>
+            <span class="text-body-sm text-gray-600 dark:text-gray-400">Portfolio: {{formatMoney .Portfolio}}</span>
         </div>
         {{end}}
     </div>

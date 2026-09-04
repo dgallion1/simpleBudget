@@ -6,7 +6,7 @@
     class="verdict-{{$v.Health}} rounded-xl border px-4 py-3 mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 {{verdictBandClass $v.Health}}">
 
     <div class="flex-1 min-w-[14rem]">
-        <div class="text-[10px] font-semibold tracking-widest uppercase {{verdictLabelClass $v.Health}}">Plan Verdict</div>
+        <div class="text-label font-semibold tracking-widest uppercase {{verdictLabelClass $v.Health}}">Plan Verdict</div>
         <div class="text-lg font-bold text-gray-900 dark:text-gray-100">
             {{$v.Headline}}
             <span class="text-sm font-normal text-gray-600 dark:text-gray-400">— {{$v.Detail}}</span>
@@ -15,35 +15,35 @@
 
     <div class="flex flex-wrap items-center gap-x-6 gap-y-2 ml-auto">
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">{{if $v.GapAtSteadyState}}Gap @ Yr {{$v.GapYear}}{{else}}Monthly Gap{{end}}</div>
-            <div class="num text-base font-bold {{if $v.GapIsShortfall}}text-rose-700 dark:text-rose-400{{else}}text-emerald-700 dark:text-emerald-400{{end}}">
+            <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">{{if $v.GapAtSteadyState}}Gap @ Yr {{$v.GapYear}}{{else}}Monthly Gap{{end}}</div>
+            <div class="num text-base font-bold {{if $v.GapIsShortfall}}text-negative{{else}}text-positive{{end}}">
                 {{if $v.GapIsShortfall}}-{{end}}${{formatNumber (abs $v.MonthlyGap)}}<span class="sr-only">{{if $v.GapIsShortfall}} shortfall{{else}} surplus{{end}}</span>
             </div>
         </div>
         {{if $v.HasMonteCarlo}}
         <div class="text-center" title="Monte Carlo success rate">
-            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Monte Carlo</div>
+            <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Monte Carlo</div>
             <div class="num text-base font-bold {{successRateTextClass $v.SuccessRate}}">{{printf "%.1f" $v.SuccessRate}}%</div>
         </div>
         {{end}}
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Req. Rate</div>
+            <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Req. Rate</div>
             <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{printf "%.1f" $v.RequiredRate}}%</div>
         </div>
         {{if $v.HasTaxes}}
         <div class="text-center" title="Lifetime income tax over the plan">
-            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Est. Taxes</div>
-            <div class="num text-base font-bold text-rose-700 dark:text-rose-400">{{formatDollars $v.TotalTaxes}}<span class="sr-only"> lifetime cost</span></div>
+            <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Est. Taxes</div>
+            <div class="num text-base font-bold text-negative">{{formatDollars $v.TotalTaxes}}<span class="sr-only"> lifetime cost</span></div>
         </div>
         {{end}}
         {{if $v.HasEndBalance}}
         <div class="text-center" title="Projected final balance (nominal)">
-            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">End Balance</div>
-            <div class="num text-base font-bold {{if gt $v.EndBalance 0.0}}text-emerald-700 dark:text-emerald-400{{else}}text-gray-600 dark:text-gray-400{{end}}">{{formatDollars $v.EndBalance}}</div>
+            <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">End Balance</div>
+            <div class="num text-base font-bold {{if gt $v.EndBalance 0.0}}text-positive{{else}}text-gray-600 dark:text-gray-400{{end}}">{{formatDollars $v.EndBalance}}</div>
         </div>
         {{end}}
         {{if .AnalysisPending}}
-        <span class="text-[10px] uppercase tracking-wide font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-full px-2 py-1">updating risk metrics…</span>
+        <span class="text-label uppercase tracking-wide font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-full px-2 py-1">updating risk metrics…</span>
         {{end}}
     </div>
 </div>

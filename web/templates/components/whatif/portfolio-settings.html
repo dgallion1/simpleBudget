@@ -5,7 +5,7 @@
     <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Portfolio & Expenses</h2>
         <button hx-post="/whatif/sync" hx-target="#whatif-results" hx-indicator="#sync-loading"
-            class="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1">
+            class="text-sm text-accent hover:text-accent flex items-center gap-1">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
@@ -75,9 +75,9 @@
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                 oninput="onMonthlyLivingExpensesInput(this.value)">
             <span id="monthly_living_expenses_display" class="text-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="monthly_living_expenses" data-quick-adjust-display-format="currency">{{formatDollars .Settings.MonthlyLivingExpenses}}</span>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">In today's dollars. Inflation is applied during projection.</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">In today's dollars. Inflation is applied during projection.</p>
             {{if .LivingExpensesPhaseNote.Show}}
-            <p id="living-expenses-phase-note" class="text-xs text-gray-500 dark:text-gray-400 mt-1" data-phase-multiplier="{{.LivingExpensesPhaseNote.Multiplier}}">Engine spends <span id="living-expenses-phase-amount">{{formatMoney .LivingExpensesPhaseNote.EngineMonth0}}</span>/mo now ({{.LivingExpensesPhaseNote.PhaseName}} ×{{.LivingExpensesPhaseNote.MultiplierText}}){{if .LivingExpensesPhaseNote.NextClause}}; {{.LivingExpensesPhaseNote.NextClause}}{{end}}.</p>
+            <p id="living-expenses-phase-note" class="text-body-sm text-gray-500 dark:text-gray-400 mt-1" data-phase-multiplier="{{.LivingExpensesPhaseNote.Multiplier}}">Engine spends <span id="living-expenses-phase-amount">{{formatMoney .LivingExpensesPhaseNote.EngineMonth0}}</span>/mo now ({{.LivingExpensesPhaseNote.PhaseName}} ×{{.LivingExpensesPhaseNote.MultiplierText}}){{if .LivingExpensesPhaseNote.NextClause}}; {{.LivingExpensesPhaseNote.NextClause}}{{end}}.</p>
             {{end}}
         </div>
 
@@ -87,16 +87,16 @@
                 <input type="number" id="monthly-property-tax-input" name="monthly_property_tax"
                     value="{{printf "%.0f" .Settings.MonthlyPropertyTax}}"
                     min="0" max="50000" step="1"
-                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Annual bill ÷ 12. Leave 0 if you rent or own outright with no tax.</p>
+                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">Annual bill ÷ 12. Leave 0 if you rent or own outright with no tax.</p>
             </div>
             <div>
                 <label for="property-tax-inflation-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Property Tax Inflation %</label>
                 <input type="number" id="property-tax-inflation-input" name="property_tax_inflation"
                     value="{{printf "%.1f" .Settings.PropertyTaxInflation}}"
                     min="0" max="15" step="0.1"
-                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Annual rate (default 4%). Tracks assessment + levy growth.</p>
+                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">Annual rate (default 4%). Tracks assessment + levy growth.</p>
             </div>
         </div>
 

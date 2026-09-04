@@ -13,12 +13,12 @@
             <div>
                 <label for="major-expenses-date-start" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
                 <input type="date" id="major-expenses-date-start" name="start" value="{{.StartDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
-                    class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
             </div>
             <div>
                 <label for="major-expenses-date-end" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
                 <input type="date" id="major-expenses-date-end" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
-                    class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
             </div>
             <div class="flex gap-1 items-center" id="me-date-range-buttons">
                 <button type="button" onclick="meStepDateRange(-1)" title="Step back" aria-label="Step back"
@@ -43,7 +43,7 @@
                 </button>
             </div>
             <span id="me-loading" class="htmx-indicator">
-                <svg class="animate-spin h-5 w-5 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg class="animate-spin h-5 w-5 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
@@ -221,9 +221,9 @@ function meUpdateDateRangeButtons(selectedMonths) {
         const btnMonths = parseInt(btn.getAttribute('data-months'));
         if (btnMonths === selectedMonths) {
             btn.classList.remove('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
-            btn.classList.add('bg-indigo-600', 'dark:bg-indigo-500', 'text-white', 'dark:text-white');
+            btn.classList.add('bg-accent-strong', 'bg-accent-strong', 'text-white', 'dark:text-white');
         } else {
-            btn.classList.remove('bg-indigo-600', 'dark:bg-indigo-500', 'text-white', 'dark:text-white');
+            btn.classList.remove('bg-accent-strong', 'bg-accent-strong', 'text-white', 'dark:text-white');
             btn.classList.add('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
         }
     });
@@ -820,8 +820,8 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             if (!summary) return;
             setRowOpen(tbody, true);
             summary.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            summary.classList.add('ring-2', 'ring-amber-400');
-            setTimeout(function () { summary.classList.remove('ring-2', 'ring-amber-400'); }, 1500);
+            summary.classList.add('ring-2', 'ring-warning');
+            setTimeout(function () { summary.classList.remove('ring-2', 'ring-warning'); }, 1500);
             return;
         }
 
@@ -924,12 +924,12 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             Total: <span class="num">${{printf "%.0f" .TotalDeclared}}</span>
         </span>
         <span class="text-gray-500 dark:text-gray-400">·</span>
-        <span class="text-xs text-gray-600 dark:text-gray-400">{{len .Summaries}} declared</span>
+        <span class="text-body-sm text-gray-600 dark:text-gray-400">{{len .Summaries}} declared</span>
         {{if .UnmatchedCount}}
         <span class="text-gray-500 dark:text-gray-400">·</span>
         <a href="#major-expenses-bucket-unknown-large"
               data-unmatched-total="{{printf "%.2f" .UnmatchedTotal}}"
-              class="text-xs text-amber-600 dark:text-amber-400 hover:underline"
+              class="text-xs text-warning hover:underline"
               title="Click to jump to the Unmatched bucket. Dashboard total = Declared + Unmatched.">
             Unmatched: <span class="num">${{printf "%.0f" .UnmatchedTotal}}</span>
             · {{.UnmatchedCount}} txn{{if ne .UnmatchedCount 1}}s{{end}}
@@ -939,7 +939,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         <button type="button" id="major-expenses-add-toggle"
             aria-label="Add a major expense" aria-expanded="false"
             aria-controls="major-expenses-add-panel"
-            class="p-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            class="p-1.5 rounded-md bg-accent-strong text-white hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -964,9 +964,9 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     <summary class="cursor-pointer px-3 py-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
         <span class="font-medium text-gray-700 dark:text-gray-200">Deleted</span>
         <span class="ml-2 text-xs text-gray-600 dark:text-gray-400">({{len .Deleted}})</span>
-        <span class="ml-2 text-xs italic text-gray-600 dark:text-gray-400">restore brings back the definition and pinned transactions</span>
+        <span class="ml-2 text-body-sm italic text-gray-600 dark:text-gray-400">restore brings back the definition and pinned transactions</span>
     </summary>
-    <table class="w-full text-xs mt-1">
+    <table class="w-full text-body-sm mt-1">
         <thead class="text-gray-600 dark:text-gray-400">
             <tr>
                 <th class="text-left px-2 py-1">Name</th>
@@ -987,7 +987,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                           hx-target="#major-expenses-results" hx-swap="innerHTML"
                           hx-include="#major-expenses-filter-form">
                         <button type="submit"
-                                class="text-xs px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30">
+                                class="text-xs px-2 py-0.5 rounded border border-positive text-positive hover:bg-positive-soft">
                             Restore
                         </button>
                     </form>
@@ -996,7 +996,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                           hx-include="#major-expenses-filter-form"
                           hx-confirm="Permanently discard {{.Expense.Name}}? This cannot be undone.">
                         <button type="submit"
-                                class="text-xs px-2 py-0.5 rounded border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30">
+                                class="text-xs px-2 py-0.5 rounded border border-negative text-negative hover:bg-negative-soft">
                             Discard
                         </button>
                     </form>
@@ -1015,13 +1015,13 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         <tr>
             <th class="w-6"></th>
             <th class="text-left py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="name" data-sort-type="text" aria-sort="ascending">
-                <span class="inline-flex items-center gap-1">Name <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block">▲</span></span>
+                <span class="inline-flex items-center gap-1">Name <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block">▲</span></span>
             </th>
             <th class="text-right py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="matched" data-sort-type="number" aria-sort="none">
-                <span class="inline-flex items-center justify-end gap-1">Matched <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
+                <span class="inline-flex items-center justify-end gap-1">Matched <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block"></span></span>
             </th>
             <th class="text-right py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="total" data-sort-type="number" aria-sort="none">
-                <span class="inline-flex items-center justify-end gap-1">Total <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
+                <span class="inline-flex items-center justify-end gap-1">Total <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block"></span></span>
             </th>
             <th class="w-6"></th>
         </tr>
@@ -1057,14 +1057,14 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         </td>
         <td class="py-1.5 px-1 text-gray-800 dark:text-gray-100 font-medium">{{.Expense.Name}}</td>
         <td class="py-1.5 px-1 text-right text-gray-600 dark:text-gray-300">
-            {{.Count}} matched{{if .PinnedCount}} <span class="text-amber-600 dark:text-amber-400" title="{{.PinnedCount}} manually pinned">· 📌 {{.PinnedCount}}</span>{{end}}
+            {{.Count}} matched{{if .PinnedCount}} <span class="text-warning" title="{{.PinnedCount}} manually pinned">· 📌 {{.PinnedCount}}</span>{{end}}
         </td>
         <td class="py-1.5 px-1 text-right font-mono text-gray-800 dark:text-gray-100">${{printf "%.0f" .Total}}</td>
         <td class="py-1.5 px-1 text-right align-middle">
             <button type="button" hx-delete="/major-expenses/{{.Expense.ID}}"
                 hx-target="#major-expenses-results" hx-swap="innerHTML"
                 hx-include="#major-expenses-filter-form"
-                class="text-red-500 hover:text-red-700"
+                class="text-negative hover:text-negative"
                 aria-label="Delete major expense {{.Expense.Name}}">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -1078,7 +1078,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 hx-put="/major-expenses/{{.Expense.ID}}" hx-target="#major-expenses-results"
                 hx-swap="innerHTML" hx-trigger="change delay:500ms"
                 hx-include="#major-expenses-filter-form"
-                class="grid grid-cols-1 gap-2 text-xs p-2">
+                class="grid grid-cols-1 gap-2 text-body-sm p-2">
                 <label class="block">
                     <span class="text-gray-600 dark:text-gray-300">Name</span>
                     <input type="text" name="name" value="{{.Expense.Name}}" required
@@ -1111,7 +1111,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 <label class="flex items-center gap-2 mt-1">
                     <input type="checkbox" name="is_internal_transfer" value="on"
                         {{if .Expense.IsInternalTransfer}}checked{{end}}
-                        class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+                        class="rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent">
                     <span class="text-gray-600 dark:text-gray-300">
                         Treat as internal transfer
                         <span class="text-gray-500 dark:text-gray-400">— matches are dropped at load time, not counted as spending</span>
@@ -1120,7 +1120,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 <label class="flex items-center gap-2 mt-1">
                     <input type="checkbox" name="exclude_from_plan_sync" value="on"
                         {{if .Expense.ExcludeFromPlanSync}}checked{{end}}
-                        class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+                        class="rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent">
                     <span class="text-gray-600 dark:text-gray-300">
                         Modeled in retirement plan — excluded from the plan's living-expense sync
                         <span class="text-gray-500 dark:text-gray-400">— The retirement plan models this expense separately; keep it out of the synced living-expense figure.</span>
@@ -1128,7 +1128,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 </label>
             </form>
             {{if .Transactions}}
-            <div class="mt-2 text-xs">
+            <div class="mt-2 text-body-sm">
                 <p class="text-gray-600 dark:text-gray-400 px-2 py-0.5">
                     Matched transactions ({{.Count}}{{if .PinnedCount}}, {{.PinnedCount}} pinned{{end}})
                 </p>
@@ -1144,18 +1144,18 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                             data-search="{{$bankText}} ${{printf "%.2f" .AbsAmount}} {{.Date.Format "2006-01-02"}}">
                             <td class="py-0.5 px-2 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
                             <td class="py-0.5 px-2 dark:text-gray-200">
-                                {{if and $pinned (index $pinned .Hash)}}<span class="text-amber-600 dark:text-amber-400" title="Pinned manually">📌</span> {{end}}<a href="/explorer?search={{urlquery $bankText}}&type=Outflow"
-                                    class="text-blue-600 dark:text-blue-400 hover:underline"
+                                {{if and $pinned (index $pinned .Hash)}}<span class="text-warning" title="Pinned manually">📌</span> {{end}}<a href="/explorer?search={{urlquery $bankText}}&type=Outflow"
+                                    class="text-accent hover:underline"
                                     title="Show all transactions matching “{{$bankText}}” in the Explorer">{{$bankText}}</a>
                             </td>
-                            <td class="py-0.5 px-2 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .AbsAmount}}</td>
+                            <td class="py-0.5 px-2 text-right font-mono text-negative">${{printf "%.2f" .AbsAmount}}</td>
                             <td class="py-0.5 px-2 text-right">
                                 {{if and $pinned (index $pinned .Hash)}}
                                 <button type="button"
                                     hx-delete="/major-expenses/pins/{{.Hash}}"
                                     hx-target="#major-expenses-results" hx-swap="innerHTML"
                                     hx-include="#major-expenses-filter-form"
-                                    class="text-xs text-gray-600 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"
+                                    class="text-xs text-gray-600 hover:text-negative dark:text-gray-400"
                                     aria-label="Unpin transaction">unpin</button>
                                 {{end}}
                             </td>
@@ -1176,20 +1176,20 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     hx-include="#major-expenses-filter-form"
     class="space-y-2 pb-3 mb-3 border-b dark:border-gray-700">
     <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">Add a major expense</h3>
-    <p class="text-xs text-gray-600 dark:text-gray-400">Tip: click an exception row on the right to pre-fill this form.</p>
+    <p class="text-body-sm text-gray-600 dark:text-gray-400">Tip: click an exception row on the right to pre-fill this form.</p>
     {{/* Optional pin: when set by JS via "+ Create new from this", the
          server pins this transaction to the new expense ID after add. */}}
     <input type="hidden" name="pin_hash" id="major-expenses-add-pin-hash" value="">
-    <p id="major-expenses-add-pin-hash-hint" class="text-xs italic text-emerald-700 dark:text-emerald-300 hidden">
+    <p id="major-expenses-add-pin-hash-hint" class="text-body-sm italic text-positive hidden">
         Will also pin the originating transaction to this new expense.
     </p>
     <label class="block">
-        <span class="text-xs text-gray-600 dark:text-gray-300">Name <span class="text-red-500">*</span></span>
+        <span class="text-xs text-gray-600 dark:text-gray-300">Name <span class="text-negative">*</span></span>
         <input type="text" name="name" placeholder="What is this? e.g., Car Payment, Rent, Groceries" required
             class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
     </label>
     <label class="block">
-        <span class="text-xs text-gray-600 dark:text-gray-300">Keywords <span class="text-gray-500">(match by description)</span></span>
+        <span class="text-xs text-gray-600 dark:text-gray-300">Keywords <span class="text-gray-500 dark:text-gray-400">(match by description)</span></span>
         <input type="text" name="keywords" placeholder="e.g., landlord — leave blank for amount-only or pin-only"
             class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
     </label>
@@ -1205,7 +1205,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
         </label>
     </div>
-    <details class="text-xs text-gray-600 dark:text-gray-400">
+    <details class="text-body-sm text-gray-600 dark:text-gray-400">
         <summary class="cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">How matching works</summary>
         <ul class="mt-1 ml-4 list-disc space-y-1">
             <li><strong>Keyword only</strong> — matches anything whose description contains the keyword (case-insensitive). A range, if set, is used for anomaly detection.</li>
@@ -1218,9 +1218,9 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     </details>
     <input type="text" name="notes" placeholder="Notes (optional)"
         class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
-    <label class="flex items-start gap-2 text-xs">
+    <label class="flex items-start gap-2 text-body-sm">
         <input type="checkbox" name="is_internal_transfer" value="on"
-            class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+            class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent">
         <span class="text-gray-600 dark:text-gray-300">
             Treat as internal transfer
             <span class="block text-gray-500 dark:text-gray-400">
@@ -1228,9 +1228,9 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             </span>
         </span>
     </label>
-    <label class="flex items-start gap-2 text-xs">
+    <label class="flex items-start gap-2 text-body-sm">
         <input type="checkbox" name="exclude_from_plan_sync" value="on"
-            class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+            class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent">
         <span class="text-gray-600 dark:text-gray-300">
             Modeled in retirement plan — excluded from the plan's living-expense sync
             <span class="block text-gray-500 dark:text-gray-400">
@@ -1239,7 +1239,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         </span>
     </label>
     <div class="flex justify-end">
-        <button type="submit" class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+        <button type="submit" class="px-3 py-1.5 bg-accent-strong text-white text-sm rounded hover:bg-accent-strong">
             Add expense
         </button>
     </div>
@@ -1300,10 +1300,10 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     {{if .AllUnmatched}}{{$total = add $total (len .AllUnmatched)}}{{else}}{{$total = add $total (len .Match.Exceptions.UnknownLarge)}}{{end}}
     {{$total = add $total (len .Match.Exceptions.Anomalous)}}
     {{$total = add $total (len .Match.Exceptions.NewMerchants)}}
-    <span class="text-xs text-gray-600 dark:text-gray-400" aria-live="polite">
+    <span class="text-body-sm text-gray-600 dark:text-gray-400" aria-live="polite">
         {{$total}} flagged
         <span id="major-expenses-pin-count-chip"
-              class="major-expenses-pin-count-chip hidden ml-1 text-amber-700 dark:text-amber-300">
+              class="major-expenses-pin-count-chip hidden ml-1 text-warning">
             · <span id="major-expenses-pin-count-chip-num">0</span> selected
         </span>
     </span>
@@ -1316,17 +1316,17 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 {{else}}
 
 {{if .ExpenseOptions}}
-<div id="major-expenses-bulk-pin" class="mb-3 hidden items-center gap-2 text-xs px-2 py-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
-    <span class="text-amber-700 dark:text-amber-300 font-medium">
+<div id="major-expenses-bulk-pin" class="mb-3 hidden items-center gap-2 text-xs px-2 py-1.5 bg-warning-soft border border-warning rounded">
+    <span class="text-warning font-medium">
         <span class="major-expenses-bulk-pin-label-lead">Pin all </span><span id="major-expenses-bulk-pin-count">0</span><span class="major-expenses-bulk-pin-label-trail"> matching →</span>
     </span>
     <select id="major-expenses-bulk-pin-target" aria-label="Pin all matching exceptions to this expense"
-        class="text-xs border border-amber-300 dark:border-amber-700 dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5 flex-1 min-w-0">
+        class="text-xs border border-warning dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5 flex-1 min-w-0">
         <option value="" disabled selected>Choose expense…</option>
         {{range .ExpenseOptions}}<option value="{{.ID}}" title="{{.Label}}">{{.Label}}</option>{{end}}
     </select>
     <button type="button" id="major-expenses-bulk-pin-apply"
-        class="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+        class="px-2 py-0.5 bg-warning-strong hover:bg-warning-strong text-white rounded text-xs disabled:opacity-50 disabled:cursor-not-allowed"
         disabled>Apply</button>
     <button type="button" id="major-expenses-bulk-pin-clear"
         class="major-expenses-bulk-pin-clear hidden px-2 py-0.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-100 rounded text-xs"
@@ -1343,21 +1343,21 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     {{$unmatchedFromExceptions = true}}
 {{end}}
 <details id="major-expenses-bucket-unknown-large" class="mb-2 border border-gray-200 dark:border-gray-700 rounded">
-    <summary class="cursor-pointer px-3 py-2 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded">
-        <span class="font-medium text-red-700 dark:text-red-300">
+    <summary class="cursor-pointer px-3 py-2 bg-negative-soft hover:bg-negative-soft rounded">
+        <span class="font-medium text-negative">
             Unmatched
         </span>
         {{if $unmatchedFromExceptions}}
-            <span class="ml-2 text-xs text-red-600 dark:text-red-400">({{len .Match.Exceptions.UnknownLarge}} over ${{printf "%.0f" .Threshold}})</span>
+            <span class="ml-2 text-body-sm text-negative">({{len .Match.Exceptions.UnknownLarge}} over ${{printf "%.0f" .Threshold}})</span>
         {{else}}
-            <span class="ml-2 text-xs text-red-600 dark:text-red-400">({{len $unmatchedRows}})</span>
-            <span class="ml-1 text-xs italic text-red-500 dark:text-red-400">click headers to sort; rows under ${{printf "%.0f" .Threshold}} are dimmed</span>
+            <span class="ml-2 text-xs text-negative">({{len $unmatchedRows}})</span>
+            <span class="ml-1 text-body-sm italic text-negative">click headers to sort; rows under ${{printf "%.0f" .Threshold}} are dimmed</span>
         {{end}}
     </summary>
     {{if $unmatchedFromExceptions}}
         {{/* Legacy render path for fixtures without AllUnmatched. */}}
         {{if .Match.Exceptions.UnknownLarge}}
-        <table class="w-full text-xs mt-1">
+        <table class="w-full text-body-sm mt-1">
             <thead class="text-gray-600 dark:text-gray-400">
                 <tr>
                     <th class="px-2 py-1 w-10">
@@ -1393,10 +1393,10 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     </td>
                     <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
                     <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
-                        class="text-blue-600 dark:text-blue-400 hover:underline"
+                        class="text-accent hover:underline"
                         title="Show this transaction in the Explorer"
                         onclick="event.stopPropagation()">{{$label}}</a></td>
-                    <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
+                    <td class="px-2 py-1 text-right font-mono text-negative">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                     {{if $.Expenses}}
                     <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions "CurrentPin" $pinnedID)}}</td>
                     {{end}}
@@ -1405,11 +1405,11 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             </tbody>
         </table>
         {{else}}
-        <p class="text-xs italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
+        <p class="text-body-sm italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
         {{end}}
     {{else}}
         {{if $unmatchedRows}}
-        <table class="w-full text-xs mt-1 major-expenses-sortable" data-default-sort="amount" data-default-dir="desc">
+        <table class="w-full text-body-sm mt-1 major-expenses-sortable" data-default-sort="amount" data-default-dir="desc">
             <thead class="text-gray-600 dark:text-gray-400">
                 <tr>
                     <th class="px-2 py-1 w-10">
@@ -1421,13 +1421,13 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                                onclick="event.stopPropagation()">
                     </th>
                     <th class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="date" data-sort-type="text" aria-sort="none">
-                        <span class="inline-flex items-center gap-1">Date <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
+                        <span class="inline-flex items-center gap-1">Date <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block"></span></span>
                     </th>
                     <th class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="desc" data-sort-type="text" aria-sort="none">
-                        <span class="inline-flex items-center gap-1">Description <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
+                        <span class="inline-flex items-center gap-1">Description <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block"></span></span>
                     </th>
                     <th class="text-right px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="amount" data-sort-type="number" aria-sort="descending">
-                        <span class="inline-flex items-center justify-end gap-1">Amount <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block">▼</span></span>
+                        <span class="inline-flex items-center justify-end gap-1">Amount <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block">▼</span></span>
                     </th>
                     {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
                 </tr>
@@ -1437,7 +1437,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 {{$label := .Label}}{{$rawText := or .DisplayName .Description}}
                 {{$pinnedID := ""}}{{if $.PinMap}}{{$pinnedID = index $.PinMap .Hash}}{{end}}
                 {{$amt := .AbsAmount}}{{$dim := lt $amt $.Threshold}}
-                <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700{{if $dim}} opacity-70{{end}}"
+                <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                     data-hash="{{.Hash}}"
                     data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" $amt}}"
                     data-search="{{$label}} ${{printf "%.2f" $amt}} {{.Date.Format "2006-01-02"}}"
@@ -1455,10 +1455,10 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     </td>
                     <td class="px-2 py-1 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
                     <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
-                        class="text-blue-600 dark:text-blue-400 hover:underline"
+                        class="text-accent hover:underline"
                         title="Show this transaction in the Explorer"
                         onclick="event.stopPropagation()">{{$label}}</a></td>
-                    <td class="px-2 py-1 text-right font-mono {{if $dim}}text-gray-600 dark:text-gray-400{{else}}text-red-600 dark:text-red-400{{end}}">${{printf "%.2f" $amt}}</td>
+                    <td class="px-2 py-1 text-right font-mono {{if $dim}}text-gray-600 dark:text-gray-400{{else}}text-negative{{end}}">${{printf "%.2f" $amt}}</td>
                     {{if $.Expenses}}
                     <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Hash "Options" $.ExpenseOptions "CurrentPin" $pinnedID)}}</td>
                     {{end}}
@@ -1467,20 +1467,21 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             </tbody>
         </table>
         {{else}}
-        <p class="text-xs italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
+        <p class="text-body-sm italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
         {{end}}
     {{end}}
 </details>
 
 <details id="major-expenses-bucket-anomalous" class="mb-2 border border-gray-200 dark:border-gray-700 rounded">
-    <summary class="cursor-pointer px-3 py-2 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded">
-        <span class="font-medium text-amber-700 dark:text-amber-300">
+    <summary class="cursor-pointer px-3 py-2 bg-warning-soft hover:bg-warning-soft rounded">
+        <span class="font-medium text-warning">
             Matched but anomalous amount
         </span>
-        <span class="ml-2 text-xs text-amber-600 dark:text-amber-400">({{len .Match.Exceptions.Anomalous}})</span>
+        <span class="ml-2 text-xs text-warning">({{len .Match.Exceptions.Anomalous}})</span>
     </summary>
     {{if .Match.Exceptions.Anomalous}}
-    <table class="w-full text-xs mt-1">
+    <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Matched but anomalous amount table">
+    <table class="w-full text-body-sm mt-1">
         <thead class="text-gray-600 dark:text-gray-400">
             <tr>
                 <th class="px-2 py-1 w-10">
@@ -1518,14 +1519,14 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
                 <td class="px-2 py-1 dark:text-gray-200 font-medium">
                     <a href="#major-expense-item-{{.MajorExpenseID}}" data-jump-expense="{{.MajorExpenseID}}"
-                        class="text-amber-700 dark:text-amber-300 hover:underline"
+                        class="text-warning hover:underline"
                         title="Click to edit {{.MajorExpenseName}}">{{.MajorExpenseName}}</a>
                 </td>
                 <td class="px-2 py-1 dark:text-gray-300"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
-                    class="text-blue-600 dark:text-blue-400 hover:underline"
+                    class="text-accent hover:underline"
                     title="Show this transaction in the Explorer"
                     onclick="event.stopPropagation()">{{$desc}}</a></td>
-                <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
+                <td class="px-2 py-1 text-right font-mono text-negative">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                 <td class="px-2 py-1 text-right font-mono text-gray-600 dark:text-gray-400">
                     {{if and (gt .ExpectedMin 0.0) (gt .ExpectedMax 0.0)}}${{printf "%.0f" .ExpectedMin}}–${{printf "%.0f" .ExpectedMax}}
                     {{else if gt .ExpectedMin 0.0}}≥ ${{printf "%.0f" .ExpectedMin}}
@@ -1539,20 +1540,21 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             {{end}}
         </tbody>
     </table>
+    </div>
     {{else}}
-    <p class="text-xs italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
+    <p class="text-body-sm italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
     {{end}}
 </details>
 
 <details id="major-expenses-bucket-new-merchants" class="border border-gray-200 dark:border-gray-700 rounded">
-    <summary class="cursor-pointer px-3 py-2 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded">
-        <span class="font-medium text-blue-700 dark:text-blue-300">
-            New merchants <span class="text-xs">(last {{.WindowDays}} days)</span>
+    <summary class="cursor-pointer px-3 py-2 bg-accent-soft hover:bg-accent-soft rounded">
+        <span class="font-medium text-accent">
+            New merchants <span class="text-body-sm">(last {{.WindowDays}} days)</span>
         </span>
-        <span class="ml-2 text-xs text-blue-600 dark:text-blue-400">({{len .Match.Exceptions.NewMerchants}})</span>
+        <span class="ml-2 text-xs text-accent">({{len .Match.Exceptions.NewMerchants}})</span>
     </summary>
     {{if .Match.Exceptions.NewMerchants}}
-    <table class="w-full text-xs mt-1">
+    <table class="w-full text-body-sm mt-1">
         <thead class="text-gray-600 dark:text-gray-400">
             <tr>
                 <th class="px-2 py-1 w-10">
@@ -1574,7 +1576,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             {{$label := .Transaction.Label}}{{$rawText := or .Transaction.DisplayName .Transaction.Description}}
             {{$matchedID := ""}}{{if $.MatchedHashToExpenseID}}{{$matchedID = index $.MatchedHashToExpenseID .Transaction.Hash}}{{end}}
             {{$pinnedID := ""}}{{if $.PinMap}}{{$pinnedID = index $.PinMap .Transaction.Hash}}{{end}}
-            <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700{{if $matchedID}} opacity-75{{end}}"
+            <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                 data-hash="{{.Transaction.Hash}}"
                 data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.FirstSeen.Format "2006-01-02"}}"
@@ -1589,22 +1591,22 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 </td>
                 <td class="px-2 py-1 dark:text-gray-300">{{.FirstSeen.Format "2006-01-02"}}</td>
                 <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
-                    class="text-blue-600 dark:text-blue-400 hover:underline"
+                    class="text-accent hover:underline"
                     title="Show this transaction in the Explorer"
                     onclick="event.stopPropagation()">{{$label}}</a></td>
-                <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
+                <td class="px-2 py-1 text-right font-mono text-negative">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                 {{if $.Expenses}}
                 <td class="px-2 py-1">
                     {{if $matchedID}}
                         {{$matchedName := $matchedID}}{{if $.ExpenseByID}}{{with index $.ExpenseByID $matchedID}}{{$matchedName = .Name}}{{end}}{{end}}
-                        <span class="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300"
+                        <span class="inline-flex items-center gap-1 text-body-sm text-positive"
                               title="This transaction is already grouped under {{$matchedName}}{{if $pinnedID}} (pinned){{end}}">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                             </svg>
                             <a href="#major-expense-item-{{$matchedID}}" data-jump-expense="{{$matchedID}}"
                                class="hover:underline" onclick="event.stopPropagation()">{{$matchedName}}</a>
-                            {{if $pinnedID}}<span class="text-emerald-600 dark:text-emerald-400" aria-label="pinned" title="Pinned">📌</span>{{end}}
+                            {{if $pinnedID}}<span class="text-positive" aria-label="pinned" title="Pinned">📌</span>{{end}}
                         </span>
                     {{else}}
                         {{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions "CurrentPin" $pinnedID)}}
@@ -1616,7 +1618,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         </tbody>
     </table>
     {{else}}
-    <p class="text-xs italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
+    <p class="text-body-sm italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
     {{end}}
 </details>
 

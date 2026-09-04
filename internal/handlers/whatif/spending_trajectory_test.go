@@ -545,8 +545,10 @@ func TestSpendingTrajectoryEndpoint_RendersRowsFromEngine(t *testing.T) {
 	} else {
 		t.Error("expected RMD cells marked with data-col=\"rmd\"")
 	}
-	// Withdrawal-rate coloring survives the rewrite.
-	if !strings.Contains(out, "text-green-700") && !strings.Contains(out, "text-amber-600") && !strings.Contains(out, "text-red-600") {
+	// Withdrawal-rate coloring survives the rewrite. U6 replaced the
+	// text-green-700/text-amber-600/text-red-600 hue literals with the
+	// semantic positive/warning/negative tokens.
+	if !strings.Contains(out, "text-positive") && !strings.Contains(out, "text-warning") && !strings.Contains(out, "text-negative") {
 		t.Error("expected WR% color classes in rendered rows")
 	}
 }

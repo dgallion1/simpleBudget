@@ -102,10 +102,10 @@ func TestRenderKPIMonthDetail_ExpensesNegativeTotalIsGreen(t *testing.T) {
 	data["Total"] = -42.50
 	html := renderKPIMonthDetail(t, data)
 
-	if !strings.Contains(html, `text-green-700 dark:text-green-400">`+formatMoney(-42.50)) {
+	if !strings.Contains(html, `text-positive">`+formatMoney(-42.50)) {
 		t.Errorf("expected a negative expenses Total (net refund) to render green, got: %s", html)
 	}
-	if strings.Contains(html, `text-red-600 dark:text-red-400">`+formatMoney(-42.50)) {
+	if strings.Contains(html, `text-negative">`+formatMoney(-42.50)) {
 		t.Errorf("negative expenses Total must not render red, got: %s", html)
 	}
 }
@@ -116,10 +116,10 @@ func TestRenderKPIMonthDetail_ExpensesPositiveTotalIsRed(t *testing.T) {
 	data["Total"] = 42.50
 	html := renderKPIMonthDetail(t, data)
 
-	if !strings.Contains(html, `text-red-600 dark:text-red-400">`+formatMoney(42.50)) {
+	if !strings.Contains(html, `text-negative">`+formatMoney(42.50)) {
 		t.Errorf("expected a positive expenses Total (money out) to render red, got: %s", html)
 	}
-	if strings.Contains(html, `text-green-700 dark:text-green-400">`+formatMoney(42.50)) {
+	if strings.Contains(html, `text-positive">`+formatMoney(42.50)) {
 		t.Errorf("positive expenses Total must not render green, got: %s", html)
 	}
 }
@@ -131,7 +131,7 @@ func TestRenderKPIMonthDetail_SavingsPositiveTotalIsGreen(t *testing.T) {
 	data["Total"] = 100.0
 	html := renderKPIMonthDetail(t, data)
 
-	if !strings.Contains(html, `text-green-700 dark:text-green-400">`+formatMoney(100.0)) {
+	if !strings.Contains(html, `text-positive">`+formatMoney(100.0)) {
 		t.Errorf("expected a positive savings Total to render green, got: %s", html)
 	}
 }

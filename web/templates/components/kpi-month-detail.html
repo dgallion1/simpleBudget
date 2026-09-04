@@ -6,7 +6,7 @@
         <div class="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
             <div class="flex items-center space-x-3">
                 <button type="button" onclick="openKPIDetail('{{.Type}}')"
-                    class="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                    class="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-accent"
                     aria-label="Back to monthly {{.Title}}">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
@@ -27,15 +27,15 @@
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Net</p>
-                    <p class="text-xl font-bold {{if ge .Total 0.0}}text-green-700 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">{{formatMoney .Total}}</p>
+                    <p class="text-xl font-bold {{if ge .Total 0.0}}text-positive{{else}}text-negative{{end}}">{{formatMoney .Total}}</p>
                 </div>
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Income</p>
-                    <p class="text-xl font-bold text-green-700 dark:text-green-400">{{formatMoney .IncomeTotal}}</p>
+                    <p class="text-xl font-bold text-positive">{{formatMoney .IncomeTotal}}</p>
                 </div>
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Expenses</p>
-                    <p class="text-xl font-bold text-red-600 dark:text-red-400">{{formatMoney .ExpenseTotal}}</p>
+                    <p class="text-xl font-bold text-negative">{{formatMoney .ExpenseTotal}}</p>
                 </div>
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Transactions</p>
@@ -46,7 +46,7 @@
             <div class="grid grid-cols-3 gap-4 text-center">
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">{{.TotalLabel}}</p>
-                    <p class="text-xl font-bold {{if eq .Type "income"}}text-green-700 dark:text-green-400{{else if gt .Total 0.0}}text-red-600 dark:text-red-400{{else}}text-green-700 dark:text-green-400{{end}}">{{formatMoney .Total}}</p>
+                    <p class="text-xl font-bold {{if eq .Type "income"}}text-positive{{else if gt .Total 0.0}}text-negative{{else}}text-positive{{end}}">{{formatMoney .Total}}</p>
                 </div>
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Transactions</p>
@@ -66,28 +66,28 @@
                     <tr>
                         <th scope="col" data-sort="date" class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">
                             <button type="button" data-sort-btn="date"
-                                class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+                                class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                                 Date
                                 <span data-sort-arrow="date" aria-hidden="true" class="sort-arrow hidden"></span>
                             </button>
                         </th>
                         <th scope="col" data-sort="description" class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">
                             <button type="button" data-sort-btn="description"
-                                class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+                                class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                                 Description
                                 <span data-sort-arrow="description" aria-hidden="true" class="sort-arrow hidden"></span>
                             </button>
                         </th>
                         <th scope="col" data-sort="category" class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">
                             <button type="button" data-sort-btn="category"
-                                class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+                                class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                                 Category
                                 <span data-sort-arrow="category" aria-hidden="true" class="sort-arrow hidden"></span>
                             </button>
                         </th>
                         <th scope="col" data-sort="amount" class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">
                             <button type="button" data-sort-btn="amount"
-                                class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+                                class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                                 Amount
                                 <span data-sort-arrow="amount" aria-hidden="true" class="sort-arrow hidden"></span>
                             </button>
@@ -104,7 +104,7 @@
                         <td class="p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{{formatDate .Date}}</td>
                         <td class="p-3 text-sm text-gray-800 dark:text-gray-200" title="{{.Description}}">{{.Label}}</td>
                         <td class="p-3 text-sm text-gray-600 dark:text-gray-400">{{.Category}}</td>
-                        <td class="p-3 text-sm text-right {{if gt .Amount 0.0}}text-green-700 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">{{if gt .Amount 0.0}}+{{end}}{{formatMoney (abs .Amount)}}</td>
+                        <td class="p-3 text-sm text-right {{if gt .Amount 0.0}}text-positive{{else}}text-negative{{end}}">{{if gt .Amount 0.0}}+{{end}}{{formatMoney (abs .Amount)}}</td>
                     </tr>
                     {{end}}
                 </tbody>

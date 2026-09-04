@@ -13,8 +13,8 @@
                 hx-put="/whatif/healthcare/{{.ID}}" hx-target="#whatif-results" hx-trigger="change"
                 data-quick-adjust-key="healthcare:{{.ID}}:current_coverage"
                 class="text-xs px-2 py-0.5 rounded border-0 cursor-pointer
-                    {{if eq .CurrentCoverage "medicare"}}bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200
-                    {{else if eq .CurrentCoverage "aca"}}bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200
+                    {{if eq .CurrentCoverage "medicare"}}bg-accent-soft text-accent
+                    {{else if eq .CurrentCoverage "aca"}}bg-positive-soft text-positive
                     {{else}}bg-gray-100 dark:bg-gray-600 text-gray-800 dark:text-gray-200{{end}}">
                 <option value="employer" {{if eq .CurrentCoverage "employer"}}selected{{end}}>Employer</option>
                 <option value="aca" {{if eq .CurrentCoverage "aca"}}selected{{end}}>ACA</option>
@@ -22,14 +22,14 @@
             </select>
         </div>
         <button type="button" hx-delete="/whatif/healthcare/{{.ID}}" hx-target="#whatif-results"
-            class="text-red-500 hover:text-red-700 text-sm">Remove</button>
+            class="text-negative hover:text-negative text-sm">Remove</button>
     </div>
     <form hx-put="/whatif/healthcare/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms">
         <div class="grid grid-cols-2 gap-2 text-sm mb-2">
             <div>
                 <label class="block text-xs text-gray-600 dark:text-gray-300">Person</label>
                 <select name="person_id"
-                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
                     <option value="">Manual Entry</option>
                     {{range $settings.Persons}}
                     <option value="{{.ID}}" {{if eq .ID $linkedID}}selected{{end}}>{{.Name}} (Age {{$settings.PersonAge .ID}})</option>
@@ -38,7 +38,7 @@
             </div>
             <div>
                 <label class="block text-xs text-gray-600 dark:text-gray-300">Source</label>
-                <div class="mt-1 rounded-md px-3 py-2 text-sm {{if .IsLinked}}bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200{{else}}bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-100{{end}}">
+                <div class="mt-1 rounded-md px-3 py-2 text-sm {{if .IsLinked}}bg-accent-soft text-accent{{else}}bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-100{{end}}">
                     {{if .IsLinked}}Linked to canonical person{{else}}Manual entry{{end}}
                 </div>
             </div>
@@ -61,12 +61,12 @@
             <div>
                 <label class="block text-xs text-gray-600 dark:text-gray-300">Name</label>
                 <input type="text" name="name" value="{{.Name}}"
-                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
             </div>
             <div>
                 <label class="block text-xs text-gray-600 dark:text-gray-300">Age</label>
                 <input type="number" name="current_age" value="{{.CurrentAge}}" min="0" max="120"
-                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
             </div>
         </div>
         {{end}}
@@ -79,7 +79,7 @@
                         data-quick-adjust-key="healthcare:{{.ID}}:current_monthly_cost"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString('en-US')">
-                    <span class="text-xs text-red-600 dark:text-red-400 w-16" data-quick-adjust-display="healthcare:{{.ID}}:current_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .CurrentMonthlyCost}}</span>
+                    <span class="text-body-sm text-negative w-16" data-quick-adjust-display="healthcare:{{.ID}}:current_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .CurrentMonthlyCost}}</span>
                 </div>
             </div>
             {{if eq .CurrentCoverage "employer"}}
@@ -91,7 +91,7 @@
                         data-quick-adjust-key="healthcare:{{.ID}}:employer_coverage_years"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value == 0 ? 'Medicare' : this.value + ' yrs'">
-                    <span class="text-xs text-gray-600 dark:text-gray-300 w-16" data-quick-adjust-display="healthcare:{{.ID}}:employer_coverage_years" data-quick-adjust-display-format="coverage-years">{{if eq .EmployerCoverageYears 0}}Medicare{{else}}{{.EmployerCoverageYears}} yrs{{end}}</span>
+                    <span class="text-body-sm text-gray-600 dark:text-gray-300 w-16" data-quick-adjust-display="healthcare:{{.ID}}:employer_coverage_years" data-quick-adjust-display-format="coverage-years">{{if eq .EmployerCoverageYears 0}}Medicare{{else}}{{.EmployerCoverageYears}} yrs{{end}}</span>
                 </div>
             </div>
             {{else if ne .CurrentCoverage "medicare"}}
@@ -103,7 +103,7 @@
                         data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'">
-                    <span class="text-xs text-gray-600 dark:text-gray-300 w-10" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
+                    <span class="text-body-sm text-gray-600 dark:text-gray-300 w-10" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
                 </div>
             </div>
             {{end}}
@@ -119,7 +119,7 @@
                         data-quick-adjust-key="healthcare:{{.ID}}:aca_cost_after_employer"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString('en-US')">
-                    <span class="text-xs text-red-600 dark:text-red-400 w-16" data-quick-adjust-display="healthcare:{{.ID}}:aca_cost_after_employer" data-quick-adjust-display-format="currency">${{formatNumber .ACACostAfterEmployer}}</span>
+                    <span class="text-body-sm text-negative w-16" data-quick-adjust-display="healthcare:{{.ID}}:aca_cost_after_employer" data-quick-adjust-display-format="currency">${{formatNumber .ACACostAfterEmployer}}</span>
                 </div>
             </div>
             <div>
@@ -130,7 +130,7 @@
                         data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'">
-                    <span class="text-xs text-gray-600 dark:text-gray-300 w-10" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
+                    <span class="text-body-sm text-gray-600 dark:text-gray-300 w-10" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
                 </div>
             </div>
         </div>
@@ -146,7 +146,7 @@
                         data-quick-adjust-key="healthcare:{{.ID}}:medicare_monthly_cost"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString('en-US')">
-                    <span class="text-xs text-red-600 dark:text-red-400 w-16" data-quick-adjust-display="healthcare:{{.ID}}:medicare_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .MedicareMonthlyCost}}</span>
+                    <span class="text-body-sm text-negative w-16" data-quick-adjust-display="healthcare:{{.ID}}:medicare_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .MedicareMonthlyCost}}</span>
                 </div>
             </div>
             <div>
@@ -157,7 +157,7 @@
                         data-quick-adjust-key="healthcare:{{.ID}}:post_medicare_inflation"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'">
-                    <span class="text-xs text-gray-600 dark:text-gray-300 w-10" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
+                    <span class="text-body-sm text-gray-600 dark:text-gray-300 w-10" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
                 </div>
             </div>
         </div>
@@ -171,7 +171,7 @@
                         data-quick-adjust-key="healthcare:{{.ID}}:post_medicare_inflation"
                         class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                         oninput="this.nextElementSibling.textContent = this.value + '%'">
-                    <span class="text-xs text-gray-600 dark:text-gray-300 w-10" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
+                    <span class="text-body-sm text-gray-600 dark:text-gray-300 w-10" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
                 </div>
             </div>
         </div>
@@ -182,17 +182,17 @@
                 <input type="number" id="care-start-age-{{.ID}}" name="care_start_age"
                     value="{{if gt .CareStartAge 0}}{{.CareStartAge}}{{end}}"
                     min="60" max="100" step="1" placeholder="Off"
-                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
             </div>
             <div>
                 <label for="care-monthly-cost-{{.ID}}" class="block text-xs text-gray-600 dark:text-gray-300">Care monthly cost (today's $)</label>
                 <input type="number" id="care-monthly-cost-{{.ID}}" name="care_monthly_cost"
                     value="{{if gt .CareMonthlyCost 0.0}}{{printf "%.0f" .CareMonthlyCost}}{{end}}"
                     min="0" step="50" placeholder="$0"
-                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
             </div>
         </div>
-        <p class="mt-1 text-xs text-gray-600 dark:text-gray-300">Assisted living / home care, in today's dollars. Inflates at this person's post-Medicare healthcare rate and runs to the end of the projection.</p>
+        <p class="mt-1 text-body-sm text-gray-600 dark:text-gray-300">Assisted living / home care, in today's dollars. Inflates at this person's post-Medicare healthcare rate and runs to the end of the projection.</p>
         {{template "whatif-healthcare-timeline" .}}
     </form>
 </div>
@@ -213,7 +213,7 @@
                 <div class="flex-1 bg-gray-200 dark:bg-gray-600 rounded-l h-4 flex items-center justify-center text-gray-700 dark:text-gray-300 font-medium">
                     Employer ${{formatNumber .CurrentMonthlyCost}}
                 </div>
-                <div class="flex-1 bg-blue-200 dark:bg-blue-800 rounded-r h-4 flex items-center justify-center text-blue-800 dark:text-blue-200 font-medium">
+                <div class="flex-1 bg-accent-soft rounded-r h-4 flex items-center justify-center text-accent font-medium">
                     Medicare ${{formatNumber .MedicareMonthlyCost}}
                 </div>
             </div>
@@ -232,10 +232,10 @@
                 <div class="bg-gray-200 dark:bg-gray-600 rounded-l h-4 flex items-center justify-center text-gray-700 dark:text-gray-300 font-medium px-2" style="flex: {{.EmployerCoverageYears}}">
                     Employer ${{formatNumber .CurrentMonthlyCost}}
                 </div>
-                <div class="bg-green-200 dark:bg-green-800 h-4 flex items-center justify-center text-green-800 dark:text-green-200 font-medium px-2" style="flex: {{sub (sub .MedicareEligibleAge .CurrentAge) .EmployerCoverageYears}}">
+                <div class="bg-positive-soft h-4 flex items-center justify-center text-positive font-medium px-2" style="flex: {{sub (sub .MedicareEligibleAge .CurrentAge) .EmployerCoverageYears}}">
                     ACA ${{formatNumber .ACACostAfterEmployer}}
                 </div>
-                <div class="bg-blue-200 dark:bg-blue-800 rounded-r h-4 flex items-center justify-center text-blue-800 dark:text-blue-200 font-medium px-2" style="flex: 5">
+                <div class="bg-accent-soft rounded-r h-4 flex items-center justify-center text-accent font-medium px-2" style="flex: 5">
                     Medicare ${{formatNumber .MedicareMonthlyCost}}
                 </div>
             </div>
@@ -256,10 +256,10 @@
     <div class="flex items-center text-xs">
         <div class="flex-1 relative">
             <div class="flex">
-                <div class="flex-1 bg-green-200 dark:bg-green-800 rounded-l h-4 flex items-center justify-center text-green-800 dark:text-green-200 font-medium">
+                <div class="flex-1 bg-positive-soft rounded-l h-4 flex items-center justify-center text-positive font-medium">
                     {{if eq .CurrentCoverage "employer"}}Employer{{else}}ACA{{end}} ${{formatNumber .CurrentMonthlyCost}}
                 </div>
-                <div class="flex-1 bg-blue-200 dark:bg-blue-800 rounded-r h-4 flex items-center justify-center text-blue-800 dark:text-blue-200 font-medium">
+                <div class="flex-1 bg-accent-soft rounded-r h-4 flex items-center justify-center text-accent font-medium">
                     Medicare ${{formatNumber .MedicareMonthlyCost}}
                 </div>
             </div>

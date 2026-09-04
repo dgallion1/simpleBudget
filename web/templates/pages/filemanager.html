@@ -14,9 +14,9 @@
             class="flex items-center gap-2">
             <input type="file" name="file" accept=".csv" multiple
                 aria-label="CSV files to upload"
-                class="text-sm text-gray-600 dark:text-gray-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300 hover:file:bg-gray-200 dark:hover:file:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                class="text-sm text-gray-600 dark:text-gray-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300 hover:file:bg-gray-200 dark:hover:file:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-accent">
             <button type="submit"
-                class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors">
+                class="px-3 py-1.5 bg-accent-strong text-white text-sm rounded hover:bg-accent-strong transition-colors">
                 Upload
             </button>
         </form>
@@ -44,7 +44,7 @@
             {{if and .IsEncrypted (not .IsLocked)}}
             <button type="button" onclick="openPlaintextExportModal()"
                 title="Decrypt all data and download as plaintext zip"
-                class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm rounded hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-800 transition-colors">
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-negative-soft text-negative text-sm rounded hover:bg-negative-soft border border-negative transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
@@ -64,13 +64,13 @@
             <h2 id="import-folder-heading" class="text-sm font-medium text-gray-700 dark:text-gray-300">Import from Folder</h2>
             <button type="button"
                 hx-get="/explorer/import/scan" hx-target="#import-scan-list" hx-swap="innerHTML"
-                class="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                class="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-accent">
                 Rescan
             </button>
         </div>
         <div class="p-4 space-y-3">
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                Import folder: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">{{if .ImportDirectory}}{{.ImportDirectory}}{{else}}(not configured){{end}}</code>
+                Import folder: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded text-gray-800 dark:text-gray-100">{{if .ImportDirectory}}{{.ImportDirectory}}{{else}}(not configured){{end}}</code>
             </p>
             <!-- The ticked entries and the delete-source flag are this form's
                  fields, so htmx serializes exactly the pinned wire format:
@@ -87,11 +87,11 @@
                     <label for="import-delete-source"
                         class="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-700 dark:text-gray-300">
                         <input type="checkbox" id="import-delete-source" name="delete_source" value="true"
-                            class="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
+                            class="w-4 h-4 text-accent rounded focus:ring-2 focus:ring-accent dark:bg-gray-700 dark:border-gray-600">
                         Delete source files after import
                     </label>
                     <button type="submit"
-                        class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        class="px-3 py-1.5 bg-accent-strong text-white text-sm rounded hover:bg-accent-strong transition-colors focus:outline-none focus:ring-2 focus:ring-accent">
                         Import
                     </button>
                 </div>
@@ -109,7 +109,7 @@
     <div id="plaintext-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
             <div class="flex items-start gap-3 mb-3">
-                <svg class="w-6 h-6 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-6 h-6 text-negative flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                 </svg>
                 <div>
@@ -117,8 +117,8 @@
                     <p class="text-sm text-gray-600 dark:text-gray-400">Break-glass: decrypt all data to a zip</p>
                 </div>
             </div>
-            <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded p-3 mb-4">
-                <p class="text-sm text-red-800 dark:text-red-200">
+            <div class="bg-negative-soft border border-negative rounded p-3 mb-4">
+                <p class="text-sm text-negative">
                     The downloaded file contains <strong>fully decrypted</strong> copies of every CSV and settings file. Anyone with this file can read your finances. Lands in your Downloads folder — keep it secure or delete it after use.
                 </p>
             </div>
@@ -129,7 +129,7 @@
                         Re-enter your encryption password
                     </label>
                     <input type="password" name="password" id="plaintext-password" required autocomplete="current-password"
-                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-red-500 focus:border-transparent">
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-negative focus:border-transparent">
                 </div>
                 {{else}}
                 <div>
@@ -138,17 +138,17 @@
                     </label>
                     <input type="text" name="confirm" id="plaintext-confirm" required autocomplete="off" spellcheck="false"
                         placeholder="EXPORT"
-                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-red-500 focus:border-transparent">
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-negative focus:border-transparent">
                 </div>
                 {{end}}
-                <div id="plaintext-error" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                <div id="plaintext-error" class="hidden text-sm text-negative"></div>
                 <div class="flex justify-end gap-2 pt-1">
                     <button type="button" onclick="closePlaintextExportModal()"
                         class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600">
                         Cancel
                     </button>
                     <button type="submit" id="plaintext-submit"
-                        class="px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                        class="px-3 py-1.5 text-sm bg-negative-strong text-white rounded hover:bg-negative-strong disabled:opacity-50 disabled:cursor-not-allowed">
                         Download Plaintext
                     </button>
                 </div>
@@ -169,7 +169,7 @@
             <label class="flex items-center gap-2 cursor-pointer select-none">
                 <span class="text-xs text-gray-600 dark:text-gray-400" id="auto-backup-toggle-label">Loading…</span>
                 <input type="checkbox" id="auto-backup-toggle"
-                    class="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
+                    class="w-4 h-4 text-accent rounded focus:ring-2 focus:ring-accent dark:bg-gray-700 dark:border-gray-600">
             </label>
         </div>
         <div class="p-4 space-y-1.5">
@@ -178,12 +178,12 @@
                 &middot; <span id="auto-backup-count" class="font-medium text-gray-800 dark:text-gray-200">…</span> snapshots
                 &middot; <span id="auto-backup-bytes" class="font-medium text-gray-800 dark:text-gray-200">…</span>
             </p>
-            <p class="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1.5 flex-wrap">
+            <p class="text-body-sm text-gray-600 dark:text-gray-400 flex items-center gap-1.5 flex-wrap">
                 <span>Location:</span>
                 <code id="auto-backup-dir"
                     onclick="copyBackupDir()"
                     title="Click to copy path"
-                    class="bg-gray-100 dark:bg-gray-700 px-1 rounded cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 select-all">…</code>
+                    class="bg-gray-100 dark:bg-gray-700 px-1 rounded text-gray-800 dark:text-gray-100 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600 select-all">…</code>
                 <button id="auto-backup-open-btn" type="button" onclick="openBackupDir()"
                     title="Open in file manager"
                     class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
@@ -193,7 +193,7 @@
                     Open
                 </button>
             </p>
-            <p id="auto-backup-error" class="text-sm text-red-600 dark:text-red-400 hidden"></p>
+            <p id="auto-backup-error" class="text-sm text-negative hidden"></p>
         </div>
     </div>
 
@@ -207,14 +207,14 @@
                     hx-swap="none"
                     hx-confirm="Load test data? This replaces ALL current data with the bundled test dataset — any file not in it will be deleted. A safety snapshot is taken first."
                     hx-on::after-request="if(event.detail.successful) { window.location.reload(); }"
-                    class="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    class="text-sm text-accent hover:text-accent">
                     Load Test Data
                 </button>
                 <button hx-delete="/data/all"
                     hx-swap="none"
                     hx-confirm="Are you sure you want to delete all data? This cannot be undone."
                     hx-on::after-request="if(event.detail.successful) { window.location.reload(); }"
-                    class="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300">
+                    class="text-sm text-negative hover:text-negative">
                     Clear All
                 </button>
             </div>
@@ -230,11 +230,11 @@
             <h2 class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                 {{if .IsEncrypted}}
                 {{if .IsLocked}}
-                <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
                 </svg>
                 {{else}}
-                <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4 text-positive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"></path>
                 </svg>
                 {{end}}
@@ -245,7 +245,7 @@
                 {{end}}
                 Data Encryption
             </h2>
-            <span class="text-xs {{if .IsEncrypted}}{{if .IsLocked}}text-amber-700 dark:text-amber-400{{else}}text-green-700 dark:text-green-400{{end}}{{else}}text-gray-600 dark:text-gray-400{{end}}">
+            <span class="text-xs {{if .IsEncrypted}}{{if .IsLocked}}text-warning{{else}}text-positive{{end}}{{else}}text-gray-600 dark:text-gray-400{{end}}">
                 {{if .IsEncrypted}}{{if .IsLocked}}Locked{{else}}Unlocked{{end}}{{else}}Not encrypted{{end}}
             </span>
         </div>
@@ -264,17 +264,17 @@
                         placeholder="{{if eq .AuthMethod "ssh"}}SSH Key Passphrase{{else}}Password{{end}}"
                         aria-label="{{if eq .AuthMethod "ssh"}}SSH Key Passphrase{{else}}Password{{end}}"
                         aria-describedby="unlock-error"
-                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent focus:border-transparent">
                 </div>
-                <div id="unlock-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                <div id="unlock-error" role="alert" class="hidden text-sm text-negative"></div>
                 <button type="submit" id="unlock-btn"
-                    class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                    class="px-4 py-2 bg-accent-strong text-white text-sm rounded-lg hover:bg-accent-strong transition-colors">
                     {{if eq .AuthMethod "age"}}Unlock with Age Identity
                     {{else if eq .AuthMethod "ssh"}}Unlock with SSH Key
                     {{else if eq .AuthMethod "yubikey"}}Unlock with YubiKey
                     {{else}}Unlock{{end}}
                 </button>
-                <p class="text-xs text-gray-600 dark:text-gray-400">
+                <p class="text-body-sm text-gray-600 dark:text-gray-400">
                     Method: <span class="font-medium">{{if eq .AuthMethod "age"}}Age Identity File{{else if eq .AuthMethod "ssh"}}SSH Key{{else if eq .AuthMethod "password"}}Password{{else if eq .AuthMethod "yubikey"}}YubiKey{{else}}{{.AuthMethod}}{{end}}</span>
                 </p>
             </form>
@@ -292,24 +292,24 @@
                     <label for="disable-encryption-password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Password</label>
                     <input type="password" name="password" id="disable-encryption-password" required minlength="8"
                         aria-describedby="disable-encryption-error"
-                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent focus:border-transparent">
                 </div>
                 {{else if eq .AuthMethod "ssh"}}
                 <div>
                     <label for="disable-encryption-passphrase" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SSH Key Passphrase (if encrypted)</label>
                     <input type="password" name="password" id="disable-encryption-passphrase" placeholder="Leave empty if key is not encrypted"
                         aria-describedby="disable-encryption-error"
-                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent focus:border-transparent">
                 </div>
                 {{else if eq .AuthMethod "yubikey"}}
                 <!-- YubiKey doesn't need a password field - just touch to authenticate -->
                 {{end}}
-                <div id="disable-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                <div id="disable-encryption-error" role="alert" class="hidden text-sm text-negative"></div>
                 <button type="submit" id="disable-encryption-btn"
-                    class="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors">
+                    class="px-4 py-2 bg-negative-strong text-white text-sm rounded-lg hover:bg-negative-strong transition-colors">
                     Disable Encryption
                 </button>
-                <p class="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-2">
                     Method: <span class="font-medium">{{if eq .AuthMethod "age"}}Age Identity File{{else if eq .AuthMethod "ssh"}}SSH Key{{else if eq .AuthMethod "password"}}Password{{else}}{{.AuthMethod}}{{end}}</span>
                 </p>
             </form>
@@ -323,7 +323,7 @@
                 <!-- Method selector tabs -->
                 <div class="flex border-b border-gray-200 dark:border-gray-700 mb-4">
                     <button onclick="selectMethod('password')" id="tab-password"
-                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-indigo-500 text-indigo-600 dark:text-indigo-400">
+                        class="method-tab px-4 py-2 text-sm font-medium border-b-2 border-accent text-accent">
                         Password
                     </button>
                     <button onclick="selectMethod('age')" id="tab-age"
@@ -347,27 +347,27 @@
                         <label for="enc-password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
                         <input type="password" name="password" id="enc-password" required minlength="8"
                             aria-describedby="enc-password-hint enable-encryption-error"
-                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                        <p id="enc-password-hint" class="text-xs text-gray-600 dark:text-gray-400 mt-1">Minimum 8 characters.</p>
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent focus:border-transparent">
+                        <p id="enc-password-hint" class="text-body-sm text-gray-600 dark:text-gray-400 mt-1">Minimum 8 characters.</p>
                     </div>
                     <div>
                         <label for="enc-confirm" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Confirm Password</label>
                         <input type="password" name="confirmPassword" id="enc-confirm" required minlength="8"
                             aria-describedby="enc-confirm-hint enable-encryption-error"
-                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                        <p id="enc-confirm-hint" class="text-xs text-gray-600 dark:text-gray-400 mt-1">Minimum 8 characters.</p>
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent focus:border-transparent">
+                        <p id="enc-confirm-hint" class="text-body-sm text-gray-600 dark:text-gray-400 mt-1">Minimum 8 characters.</p>
                     </div>
-                    <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
-                        <p class="text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
+                    <div class="bg-warning-soft border border-warning rounded-lg p-3">
+                        <p class="text-sm text-warning flex items-start gap-2">
                             <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                             </svg>
                             <span>Remember your password! Data cannot be recovered without it.</span>
                         </p>
                     </div>
-                    <div id="enable-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <div id="enable-encryption-error" role="alert" class="hidden text-sm text-negative"></div>
                     <button type="submit" id="enable-encryption-btn"
-                        class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                        class="px-4 py-2 bg-accent-strong text-white text-sm rounded-lg hover:bg-accent-strong transition-colors">
                         Enable Encryption
                     </button>
                 </form>
@@ -381,30 +381,30 @@
                     <div>
                         <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 mb-2">
                             <input type="radio" name="age_option" value="generate" checked
-                                class="text-indigo-600 focus:ring-2 focus:ring-indigo-500" onchange="toggleAgeOption()">
+                                class="text-accent focus:ring-2 focus:ring-accent" onchange="toggleAgeOption()">
                             Generate new identity
                         </label>
                         <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                             <input type="radio" name="age_option" value="existing"
-                                class="text-indigo-600 focus:ring-2 focus:ring-indigo-500" onchange="toggleAgeOption()">
+                                class="text-accent focus:ring-2 focus:ring-accent" onchange="toggleAgeOption()">
                             Use existing identity
                         </label>
                     </div>
                     <div id="age-path-input" class="hidden">
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Identity File Path</label>
                         <input type="text" name="identity_path" placeholder="~/.config/age/keys.txt"
-                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent focus:border-transparent">
                     </div>
-                    <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
-                        <p class="text-sm text-blue-800 dark:text-blue-200 flex items-start gap-2">
+                    <div class="bg-accent-soft border border-accent rounded-lg p-3">
+                        <p class="text-sm text-accent flex items-start gap-2">
                             <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                             </svg>
                             <span>Keep your identity file safe! Store it separately from your data.</span>
                         </p>
                     </div>
-                    <div id="age-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
-                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                    <div id="age-encryption-error" role="alert" class="hidden text-sm text-negative"></div>
+                    <button type="submit" class="px-4 py-2 bg-accent-strong text-white text-sm rounded-lg hover:bg-accent-strong transition-colors">
                         Enable Encryption
                     </button>
                 </form>
@@ -419,7 +419,7 @@
                         <label for="ssh-key-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SSH Key Path</label>
                         <select name="ssh_key_path" id="ssh-key-select"
                             aria-describedby="ssh-encryption-error"
-                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent focus:border-transparent">
                             <option value="">Loading keys...</option>
                         </select>
                     </div>
@@ -427,10 +427,10 @@
                         <label for="ssh-key-passphrase" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Key Passphrase</label>
                         <input type="password" name="passphrase" id="ssh-key-passphrase" placeholder="Enter passphrase if key is encrypted"
                             aria-describedby="ssh-encryption-error"
-                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent focus:border-transparent">
                     </div>
-                    <div id="ssh-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
-                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+                    <div id="ssh-encryption-error" role="alert" class="hidden text-sm text-negative"></div>
+                    <button type="submit" class="px-4 py-2 bg-accent-strong text-white text-sm rounded-lg hover:bg-accent-strong transition-colors">
                         Enable Encryption
                     </button>
                 </form>
@@ -441,14 +441,14 @@
                     <input type="hidden" name="yubikey_identity" id="yubikey-identity-input" value="">
                     <input type="hidden" name="yubikey_recipient" id="yubikey-recipient-input" value="">
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                        Use your YubiKey for hardware-backed encryption. Requires <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">age-plugin-yubikey</code>.
+                        Use your YubiKey for hardware-backed encryption. Requires <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded text-gray-800 dark:text-gray-100">age-plugin-yubikey</code>.
                     </p>
                     <div id="yubikey-status" class="mb-3">
                         <p class="text-sm text-gray-600 dark:text-gray-400">Detecting YubiKey...</p>
                     </div>
                     <div id="yubikey-identities" class="hidden space-y-2">
                         <label for="yubikey-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Available YubiKey Identities</label>
-                        <select id="yubikey-select" aria-describedby="yubikey-encryption-error" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        <select id="yubikey-select" aria-describedby="yubikey-encryption-error" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent focus:border-transparent">
                             <option value="">Select an identity...</option>
                         </select>
                     </div>
@@ -462,24 +462,24 @@
                         </button>
                     </div>
                     <div id="yubikey-ready" class="hidden">
-                        <div class="flex items-center gap-2 text-green-700 dark:text-green-400 text-sm">
+                        <div class="flex items-center gap-2 text-positive text-sm">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span id="yubikey-ready-text">YubiKey ready</span>
                         </div>
                     </div>
-                    <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
-                        <p class="text-sm text-blue-800 dark:text-blue-200 flex items-start gap-2">
+                    <div class="bg-accent-soft border border-accent rounded-lg p-3">
+                        <p class="text-sm text-accent flex items-start gap-2">
                             <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                             </svg>
                             <span>YubiKey encryption requires touching your key when unlocking. Keep your YubiKey accessible.</span>
                         </p>
                     </div>
-                    <div id="yubikey-encryption-error" role="alert" class="hidden text-sm text-red-600 dark:text-red-400"></div>
+                    <div id="yubikey-encryption-error" role="alert" class="hidden text-sm text-negative"></div>
                     <button type="submit" id="yubikey-submit-btn" disabled
-                        class="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        class="px-4 py-2 bg-accent-strong text-white text-sm rounded-lg hover:bg-accent-strong transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         Enable Encryption
                     </button>
                 </form>
@@ -737,18 +737,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.addEventListener('dragenter', function(e) {
         if (e.dataTransfer.types.includes('Files')) {
-            restoreBtn.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900/50');
+            restoreBtn.classList.add('ring-2', 'ring-accent', 'bg-accent-soft', 'bg-accent-soft');
         }
     });
 
     document.addEventListener('dragleave', function(e) {
         if (!e.relatedTarget || e.relatedTarget === document.documentElement) {
-            restoreBtn.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900/50');
+            restoreBtn.classList.remove('ring-2', 'ring-accent', 'bg-accent-soft', 'bg-accent-soft');
         }
     });
 
     document.addEventListener('drop', function(e) {
-        restoreBtn.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-100', 'dark:bg-indigo-900/50');
+        restoreBtn.classList.remove('ring-2', 'ring-accent', 'bg-accent-soft', 'bg-accent-soft');
         if (e.dataTransfer.files.length > 0) {
             handleRestoreFile(e.dataTransfer.files);
         }
@@ -773,9 +773,9 @@ function showToast(message, type) {
     toast.className = 'fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-lg text-sm font-medium';
 
     if (type === 'error') {
-        toast.classList.add('bg-red-500', 'text-white');
+        toast.classList.add('bg-negative-strong', 'text-white');
     } else if (type === 'success') {
-        toast.classList.add('bg-green-500', 'text-white');
+        toast.classList.add('bg-positive-strong', 'text-white');
     } else {
         toast.classList.add('bg-gray-800', 'text-white');
     }
@@ -918,14 +918,14 @@ function selectMethod(method) {
 
     // Update tab styles
     document.querySelectorAll('.method-tab').forEach(tab => {
-        tab.classList.remove('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
+        tab.classList.remove('border-accent', 'text-accent', 'text-accent');
         tab.classList.add('border-transparent', 'text-gray-600', 'dark:text-gray-400');
     });
 
     const activeTab = document.getElementById('tab-' + method);
     if (activeTab) {
         activeTab.classList.remove('border-transparent', 'text-gray-600', 'dark:text-gray-400');
-        activeTab.classList.add('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
+        activeTab.classList.add('border-accent', 'text-accent', 'text-accent');
     }
 
     // Show/hide forms
@@ -990,30 +990,30 @@ document.addEventListener('DOMContentLoaded', function() {
                 updateYubiKeyUI(data);
             } else {
                 document.getElementById('yubikey-status').innerHTML = `
-                    <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
-                        <p class="text-sm text-amber-800 dark:text-amber-200 mb-2">
+                    <div class="bg-warning-soft border border-warning rounded-lg p-3">
+                        <p class="text-sm text-warning mb-2">
                             <strong>age-plugin-yubikey</strong> is required but not installed.
                         </p>
-                        <div class="text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                        <div class="text-body-sm text-warning space-y-1">
                             <div class="flex items-center gap-1">
                                 <strong>macOS:</strong>
-                                <code class="bg-amber-100 dark:bg-amber-800 px-1 rounded">brew install age-plugin-yubikey</code>
-                                <button onclick="copyCmd('brew install age-plugin-yubikey')" class="p-0.5 hover:bg-amber-200 dark:hover:bg-amber-700 rounded" title="Copy" aria-label="Copy">
+                                <code class="bg-warning-soft px-1 rounded">brew install age-plugin-yubikey</code>
+                                <button onclick="copyCmd('brew install age-plugin-yubikey')" class="p-0.5 hover:bg-warning-strong rounded" title="Copy" aria-label="Copy">
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                                 </button>
                             </div>
                             <div class="flex items-center gap-1">
                                 <strong>Ubuntu/Debian:</strong>
-                                <code class="bg-amber-100 dark:bg-amber-800 px-1 rounded">sudo apt install pcscd</code>
-                                <button onclick="copyCmd('sudo apt install pcscd')" class="p-0.5 hover:bg-amber-200 dark:hover:bg-amber-700 rounded" title="Copy" aria-label="Copy">
+                                <code class="bg-warning-soft px-1 rounded">sudo apt install pcscd</code>
+                                <button onclick="copyCmd('sudo apt install pcscd')" class="p-0.5 hover:bg-warning-strong rounded" title="Copy" aria-label="Copy">
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                                 </button>
                                 <span class="ml-1">then download from <a href="https://github.com/str4d/age-plugin-yubikey/releases" target="_blank" class="underline hover:no-underline">Releases</a></span>
                             </div>
                             <div class="flex items-center gap-1">
                                 <strong>Arch Linux:</strong>
-                                <code class="bg-amber-100 dark:bg-amber-800 px-1 rounded">pacman -S age-plugin-yubikey</code>
-                                <button onclick="copyCmd('pacman -S age-plugin-yubikey')" class="p-0.5 hover:bg-amber-200 dark:hover:bg-amber-700 rounded" title="Copy" aria-label="Copy">
+                                <code class="bg-warning-soft px-1 rounded">pacman -S age-plugin-yubikey</code>
+                                <button onclick="copyCmd('pacman -S age-plugin-yubikey')" class="p-0.5 hover:bg-warning-strong rounded" title="Copy" aria-label="Copy">
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
                                 </button>
                             </div>
@@ -1116,23 +1116,23 @@ function setupNewYubiKey() {
             if (data.setup_command) {
                 // Show terminal setup instructions
                 setupDiv.innerHTML = `
-                    <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
-                        <p class="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                    <div class="bg-accent-soft border border-accent rounded-lg p-4">
+                        <p class="text-sm text-accent mb-3">
                             <strong>Terminal Setup Required</strong><br>
                             YubiKey setup requires terminal interaction. Run this command:
                         </p>
                         <div class="flex items-center gap-2 mb-3">
-                            <code class="flex-1 bg-gray-800 text-green-400 px-3 py-2 rounded font-mono text-sm">${data.setup_command}</code>
+                            <code class="flex-1 bg-gray-800 text-positive px-3 py-2 rounded font-mono text-sm">${data.setup_command}</code>
                             <button onclick="copyCmd('${data.setup_command}')" class="p-2 bg-gray-700 hover:bg-gray-600 rounded" title="Copy command" aria-label="Copy command">
                                 <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
                                 </svg>
                             </button>
                         </div>
-                        <p class="text-xs text-blue-700 dark:text-blue-300 mb-3">
+                        <p class="text-body-sm text-accent mb-3">
                             Follow the prompts in your terminal, then click Refresh below.
                         </p>
-                        <button onclick="refreshYubiKeyDetection()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
+                        <button onclick="refreshYubiKeyDetection()" class="w-full px-4 py-2 bg-accent-strong hover:bg-accent-strong text-white rounded-lg font-medium transition-colors">
                             Refresh YubiKey Detection
                         </button>
                     </div>
@@ -1381,7 +1381,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <th scope="col" data-sort="name"
                 class="text-left px-3 py-2 font-medium text-gray-600 dark:text-gray-400">
                 <button type="button" data-sort-btn="name"
-                    class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">
+                    class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                     File
                     <span data-sort-arrow="name" aria-hidden="true" class="sort-arrow hidden"></span>
                 </button>
@@ -1389,7 +1389,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <th scope="col" data-sort="rows"
                 class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400">
                 <button type="button" data-sort-btn="rows"
-                    class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">
+                    class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                     Rows
                     <span data-sort-arrow="rows" aria-hidden="true" class="sort-arrow hidden"></span>
                 </button>
@@ -1397,7 +1397,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <th scope="col" data-sort="mindate"
                 class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400">
                 <button type="button" data-sort-btn="mindate"
-                    class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">
+                    class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                     Date Range
                     <span data-sort-arrow="mindate" aria-hidden="true" class="sort-arrow hidden"></span>
                 </button>
@@ -1405,7 +1405,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <th scope="col" data-sort="enabled"
                 class="text-center px-2 py-2 font-medium text-gray-600 dark:text-gray-400">
                 <button type="button" data-sort-btn="enabled"
-                    class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded">
+                    class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                     On
                     <span data-sort-arrow="enabled" aria-hidden="true" class="sort-arrow hidden"></span>
                 </button>
@@ -1427,7 +1427,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <span class="text-gray-600 dark:text-gray-400 ml-1">({{printf "%.0f" (div (toFloat .Size) 1024.0)}}K)</span>
             </td>
             <td class="px-2 py-1.5 text-center text-gray-600 dark:text-gray-400">{{.Transactions}}</td>
-            <td class="px-2 py-1.5 text-center text-xs text-gray-600 dark:text-gray-400">
+            <td class="px-2 py-1.5 text-center text-body-sm text-gray-600 dark:text-gray-400">
                 {{if .MinDate}}{{.MinDate}} - {{.MaxDate}}{{else}}-{{end}}
             </td>
             <td class="px-2 py-1.5 text-center">
@@ -1435,12 +1435,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     hx-vals='{"file": "{{.Name}}", "enabled": "{{if .Enabled}}false{{else}}true{{end}}"}'
                     hx-target="#file-list" hx-swap="innerHTML"
                     aria-label="Enable {{.Name}}"
-                    class="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600">
+                    class="w-4 h-4 text-accent rounded focus:ring-2 focus:ring-accent dark:bg-gray-700 dark:border-gray-600">
             </td>
             <td class="px-2 py-1.5 text-center">
                 <button hx-delete="/explorer/files/{{urlEncode .Name}}" hx-target="#file-list" hx-swap="innerHTML"
                     aria-label="Delete {{.Name}}"
-                    class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
+                    class="text-negative hover:text-negative">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                     </svg>
@@ -1468,12 +1468,12 @@ document.addEventListener('DOMContentLoaded', function() {
     <li class="py-1.5 flex items-center gap-3">
         <input type="checkbox" name="name" value="{{$e.Name}}" id="import-entry-{{$i}}"
             {{if $e.Exists}}disabled{{else}}checked{{end}}
-            class="w-4 h-4 text-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60">
+            class="w-4 h-4 text-accent rounded focus:ring-2 focus:ring-accent dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60">
         <label for="import-entry-{{$i}}" class="text-sm flex-1 cursor-pointer select-none">
             <span class="font-medium text-gray-900 dark:text-gray-100">{{$e.Name}}</span>
             <span class="text-gray-600 dark:text-gray-400 ml-1">({{printf "%.0f" (div (toFloat $e.Size) 1024.0)}}K)</span>
-            {{if $e.MinDate}}<span class="text-xs text-gray-600 dark:text-gray-400 ml-2">{{$e.MinDate}} - {{$e.MaxDate}}</span>{{end}}
-            {{if $e.Exists}}<span class="text-xs text-gray-600 dark:text-gray-400 ml-2">(already present, will be skipped)</span>{{end}}
+            {{if $e.MinDate}}<span class="text-body-sm text-gray-600 dark:text-gray-400 ml-2">{{$e.MinDate}} - {{$e.MaxDate}}</span>{{end}}
+            {{if $e.Exists}}<span class="text-body-sm text-gray-600 dark:text-gray-400 ml-2">(already present, will be skipped)</span>{{end}}
         </label>
     </li>
     {{end}}
@@ -1494,7 +1494,7 @@ document.addEventListener('DOMContentLoaded', function() {
     {{range .Results}}
     <li class="text-sm text-gray-700 dark:text-gray-300">
         <span class="font-medium text-gray-900 dark:text-gray-100">{{.Name}}</span>
-        <span class="font-medium {{if eq .Status "imported"}}text-emerald-700 dark:text-emerald-300{{else if eq .Status "skipped"}}text-amber-700 dark:text-amber-300{{else}}text-rose-700 dark:text-rose-300{{end}}">— {{.Status}}</span>
+        <span class="font-medium {{if eq .Status "imported"}}text-positive{{else if eq .Status "skipped"}}text-warning{{else}}text-negative{{end}}">— {{.Status}}</span>
         {{if .Reason}}<span class="text-gray-600 dark:text-gray-400">({{.Reason}})</span>{{end}}
     </li>
     {{end}}

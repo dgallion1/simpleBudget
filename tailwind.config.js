@@ -31,7 +31,46 @@ module.exports = {
     './web/static/js/**/*.js',
   ],
   theme: {
-    extend: {},
+    extend: {
+      // U6 semantic palette. Values are CSS custom properties declared on
+      // :root/.dark in web/static/css/styles.css so `text-positive` etc.
+      // flip color automatically under dark mode with no `dark:` twin.
+      colors: {
+        accent: {
+          DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
+          soft: 'rgb(var(--accent-soft) / <alpha-value>)',
+          strong: 'rgb(var(--accent-strong) / <alpha-value>)',
+        },
+        positive: {
+          DEFAULT: 'rgb(var(--positive) / <alpha-value>)',
+          soft: 'rgb(var(--positive-soft) / <alpha-value>)',
+          strong: 'rgb(var(--positive-strong) / <alpha-value>)',
+        },
+        negative: {
+          DEFAULT: 'rgb(var(--negative) / <alpha-value>)',
+          soft: 'rgb(var(--negative-soft) / <alpha-value>)',
+          strong: 'rgb(var(--negative-strong) / <alpha-value>)',
+        },
+        warning: {
+          DEFAULT: 'rgb(var(--warning) / <alpha-value>)',
+          soft: 'rgb(var(--warning-soft) / <alpha-value>)',
+          strong: 'rgb(var(--warning-strong) / <alpha-value>)',
+        },
+        neutral: {
+          DEFAULT: 'rgb(var(--neutral) / <alpha-value>)',
+          soft: 'rgb(var(--neutral-soft) / <alpha-value>)',
+          strong: 'rgb(var(--neutral-strong) / <alpha-value>)',
+        },
+      },
+      // U6 type floor: `text-[10px]`/`text-[11px]` go to zero. `label` is
+      // for eyebrows/section labels/badges (uppercase + tracking already
+      // applied at the call site); `body-sm` is for anything read as a
+      // sentence (helper copy, table cells, targets/deltas/dates).
+      fontSize: {
+        label: ['0.75rem', { lineHeight: '1rem', letterSpacing: '0.05em' }],
+        'body-sm': ['0.875rem', { lineHeight: '1.25rem' }],
+      },
+    },
   },
   // Classes assembled at runtime (JS template-literal interpolation or Go
   // template helper functions returning class strings) are invisible to the
@@ -39,31 +78,40 @@ module.exports = {
   // scanned files. Each entry below is a concrete class that some runtime
   // code path can produce; the comment names the source that constructs it.
   safelist: [
-    // --- web/templates/components/whatif/spending-phases.html ---
-    // `wrColorClass` (withdrawal-rate color, line ~605) and `rmdColorClass`
-    // (RMD color, line ~611) are built as JS string literals then spliced
-    // into a template-literal `class="..."` via `${wrColorClass}` /
-    // `${rmdColorClass}` (lines ~635-636).
-    'text-red-600', 'dark:text-red-400',
-    'text-amber-600', 'dark:text-amber-400',
-    'text-green-700', 'dark:text-green-400',
-    'text-blue-600', 'dark:text-blue-400',
-
-    // --- web/templates/components/whatif/rate-assumptions.html ---
-    // `colorClass` (line ~858) is a JS string literal spliced into a
-    // template-literal `class="..."` via `${colorClass}` (line ~864).
-    // ('text-green-700 dark:text-green-400' and 'text-red-600
-    // dark:text-red-400' already covered above.)
+    // U6 note: the `wrColorClass`/`rmdColorClass` JS functions this section
+    // used to document (spending-phases.html ~605-636) no longer exist in
+    // the codebase — stale documentation from an earlier refactor, not a
+    // U6 regression. The only surviving runtime-assembled JS color literal
+    // is rate-assumptions.html's local `colorClass` (~line 861), which now
+    // emits 'text-positive'/'text-negative' directly in that .html file —
+    // already covered by the static content scan (no safelist entry
+    // needed; the token classes appear literally in a scanned file).
 
     // --- internal/templates/render.go: colorClass(v float64) ---
     // Go template func `{{colorClass .NetAmount}}` (used in
-    // web/templates/pages/explorer.html) returns one of three literal
-    // strings defined in Go source, outside the scanned content globs.
-    'text-gray-600', 'dark:text-gray-400',
-    // ('text-green-700 dark:text-green-400' and 'text-red-600
-    // dark:text-red-400' already covered above.)
+    // web/templates/pages/explorer.html) now returns one of three U6
+    // semantic token classes, defined in Go source outside the scanned
+    // content globs.
+    'text-positive', 'text-negative', 'text-neutral',
 
-    // --- internal/templates/render.go: successRateTextClass(v float64) ---
+    // --- internal/templates/render.go: successRateTextClass(v float64),
+    // successRateBarClass(v float64), verdictClasses map ---
+    // U6 judgment call (documented in the U6 task notes): these three are
+    // NOT in U6's named conversion scope (only colorClass() and the two
+    // whatif JS literals were named). successRateTextClass/BarClass are a
+    // five-tier gradient (green/lime/yellow/orange/red) that does not map
+    // 1:1 onto the four semantic tokens without merging tiers and losing
+    // a visually distinct level — a behavior/design change beyond "hue and
+    // size tokens only". verdictClasses (Green/Amber/Red/Neutral) DOES map
+    // cleanly onto positive/warning/negative/neutral and is a good
+    // low-risk candidate for a follow-up task, but converting it wasn't
+    // asked for here, so it is left unchanged and still needs these
+    // hue-literal safelist entries. These are Go-source literals; they do
+    // NOT count toward U6 criterion (b)'s web/templates hue-family grep.
+    'text-red-600', 'dark:text-red-400',
+    'text-amber-600', 'dark:text-amber-400',
+    'text-green-700', 'dark:text-green-400',
+    'text-gray-600', 'dark:text-gray-400',
     // Go template func `{{successRateTextClass ...}}` returns one of five
     // literal strings defined in Go source.
     'text-lime-600', 'dark:text-lime-400',

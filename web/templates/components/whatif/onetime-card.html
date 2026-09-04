@@ -4,7 +4,7 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">One-Time Expenses</h2>
-        <span class="text-xs text-gray-500 dark:text-gray-400">Roof, car, wedding...</span>
+        <span class="text-body-sm text-gray-500 dark:text-gray-400">Roof, car, wedding...</span>
     </div>
 
     {{template "whatif-onetime-list" .}}
@@ -29,9 +29,9 @@
     <div class="flex items-center justify-between mb-1">
         <span class="font-medium dark:text-gray-200">{{.Item.Description}}</span>
         <div class="flex items-center gap-2">
-            <span class="text-red-600 dark:text-red-400">-${{formatNumber .Item.Amount}}</span>
+            <span class="text-negative">-${{formatNumber .Item.Amount}}</span>
             <button type="button" hx-delete="/whatif/onetime/{{.Item.ID}}" hx-target="#whatif-results"
-                class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                class="text-negative hover:text-negative"
                 aria-label="Remove one-time expense {{.Item.Description}}">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -44,7 +44,7 @@
         Year {{.Item.Year}}{{if .Settings.StartDate}} ({{add (startYear .Settings.StartDate) .Item.Year}}){{end}}
     </div>
     {{if ge .Item.Year .Settings.ProjectionYears}}
-    <div class="text-xs text-amber-600 dark:text-amber-400 mt-1">
+    <div class="text-body-sm text-warning mt-1">
         beyond current horizon ({{.Settings.ProjectionYears}} yr) — not counted; edit the year or extend the projection to reactivate it
     </div>
     {{end}}
@@ -82,7 +82,7 @@
     </div>
     <div class="flex justify-end">
         <button type="submit"
-            class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+            class="px-3 py-1 bg-accent-strong text-white text-sm rounded hover:bg-accent-strong">
             Add one-time expense
         </button>
     </div>

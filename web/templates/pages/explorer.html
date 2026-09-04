@@ -17,7 +17,7 @@
                         <input type="text" name="search" id="search-input" value="{{.Search}}" placeholder="Search descriptions..."
                             hx-get="/explorer/transactions" hx-target="#transactions-container"
                             hx-trigger="keyup changed delay:300ms" hx-include="#explorer-filter-form"
-                            class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 pr-8 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 pr-8 text-sm focus:ring-accent focus:border-accent">
                         <button type="button" onclick="clearSearch()"
                             class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 {{if not .Search}}hidden{{end}}"
                             id="clear-search-btn" title="Clear search" aria-label="Clear search">
@@ -32,7 +32,7 @@
                 <div class="min-w-[150px]">
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
                     <select name="category"
-                        class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
                         <option value="">All Categories</option>
                         {{range .Categories}}
                         <option value="{{.}}" {{if eq $.Category .}}selected{{end}}>{{.}}</option>
@@ -45,7 +45,7 @@
                 <div class="min-w-[150px]">
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Major Expense</label>
                     <select name="majorExpense"
-                        class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
                         <option value="">All</option>
                         {{range .MajorExpenses}}
                         <option value="{{.ID}}" {{if eq $.MajorExpenseFilter .ID}}selected{{end}}>{{.Name}}</option>
@@ -58,7 +58,7 @@
                 <div class="min-w-[120px]">
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
                     <select name="type"
-                        class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
                         <option value="">All Types</option>
                         <option value="Income" {{if eq .Type "Income" }}selected{{end}}>Income</option>
                         <option value="Outflow" {{if eq .Type "Outflow" }}selected{{end}}>Expenses</option>
@@ -73,12 +73,12 @@
                         <div class="min-w-0">
                             <label for="explorer-date-start" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
                             <input type="date" id="explorer-date-start" name="start" value="{{.StartDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
-                                class="w-full min-w-0 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                class="w-full min-w-0 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
                         </div>
                         <div class="min-w-0">
                             <label for="explorer-date-end" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
                             <input type="date" id="explorer-date-end" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
-                                class="w-full min-w-0 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                class="w-full min-w-0 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
                         </div>
                         <div class="flex gap-1 items-center shrink-0">
                             <button type="button" onclick="stepDateRange(-1)" title="Step back" aria-label="Step back"
@@ -115,7 +115,7 @@
                 <!-- Loading Indicator -->
                 <div class="flex items-end pb-2">
                     <span id="loading-indicator" class="htmx-indicator">
-                        <svg class="animate-spin h-5 w-5 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none"
+                        <svg class="animate-spin h-5 w-5 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none"
                             viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
                             </circle>
@@ -358,10 +358,10 @@
             if (btnMonths === selectedMonths) {
                 // Selected state - indigo highlight
                 btn.classList.remove('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
-                btn.classList.add('bg-indigo-600', 'dark:bg-indigo-600', 'text-white', 'dark:text-white');
+                btn.classList.add('bg-accent-strong', 'bg-accent-strong', 'text-white', 'dark:text-white');
             } else {
                 // Default state
-                btn.classList.remove('bg-indigo-600', 'dark:bg-indigo-600', 'text-white', 'dark:text-white');
+                btn.classList.remove('bg-accent-strong', 'bg-accent-strong', 'text-white', 'dark:text-white');
                 btn.classList.add('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
             }
         });
@@ -499,7 +499,7 @@
     // Build the description cell content using safe DOM methods
     function buildDescriptionContent(displayName, description) {
         const wrapper = document.createElement('span');
-        wrapper.className = 'alias-display cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400';
+        wrapper.className = 'alias-display cursor-pointer hover:text-accent';
         wrapper.title = 'Click to filter, double-click to rename';
 
         if (displayName) {
@@ -511,7 +511,7 @@
             wrapper.appendChild(document.createTextNode(' '));
 
             const origSpan = document.createElement('span');
-            origSpan.className = 'text-xs text-gray-500 dark:text-gray-300';
+            origSpan.className = 'text-body-sm text-gray-500 dark:text-gray-300';
             origSpan.textContent = '(' + description + ')';
             wrapper.appendChild(origSpan);
         } else {
@@ -538,7 +538,7 @@
         input.type = 'text';
         input.value = displayName || '';
         input.placeholder = description;
-        input.className = 'w-full border border-indigo-400 dark:border-indigo-500 dark:bg-gray-700 dark:text-gray-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500';
+        input.className = 'w-full border border-accent dark:bg-gray-700 dark:text-gray-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-accent';
 
         td.textContent = '';
         td.appendChild(input);
@@ -697,13 +697,13 @@
 {{$currentPage := .Page}}
 {{$totalPages := .TotalPages}}
 {{range $index, $txn := .Transactions}}
-<tr class="{{if .Suppressed}}opacity-50{{end}} hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" {{if eq (add $index 1) (len $.Transactions)}} {{if lt
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" {{if eq (add $index 1) (len $.Transactions)}} {{if lt
     $currentPage $totalPages}} hx-get="/explorer/transactions?page={{add $currentPage 1}}&append=true"
     hx-trigger="revealed" hx-swap="afterend" hx-include="#explorer-filter-form" {{end}} {{end}}>
     <td class="w-24 p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{{formatDate .Date}}</td>
     <td class="p-3 text-sm text-gray-800 dark:text-gray-200 break-words" data-hash="{{.Hash}}" data-description="{{.Description}}" data-display-name="{{.DisplayName}}" data-major-expense-name="{{.MajorExpenseName}}">
-        <span class="alias-display cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400" onclick="filterByDescription('{{js .Label}}')" title="Click to filter, double-click to rename">{{if ne .Label .Description}}<span class="font-medium">{{.Label}}</span> <span class="text-xs text-gray-500 dark:text-gray-300">({{.Description}})</span>{{else}}{{.Description}}{{end}}</span>
-        {{if .DuplicatePairKey}}<a href="/duplicates#{{.DuplicatePairKey}}" class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/60" title="Unresolved duplicate">dup?</a>{{end}}
+        <span class="alias-display cursor-pointer hover:text-accent" onclick="filterByDescription('{{js .Label}}')" title="Click to filter, double-click to rename">{{if ne .Label .Description}}<span class="font-medium">{{.Label}}</span> <span class="text-body-sm text-gray-500 dark:text-gray-300">({{.Description}})</span>{{else}}{{.Description}}{{end}}</span>
+        {{if .DuplicatePairKey}}<a href="/duplicates#{{.DuplicatePairKey}}" class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning-soft text-warning hover:bg-warning-strong hover:bg-warning-soft" title="Unresolved duplicate">dup?</a>{{end}}
         {{if .Suppressed}}<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 line-through" title="Suppressed duplicate">suppressed dup</span>{{end}}
     </td>
     {{$me := index $.HashToExpense .Hash}}
@@ -714,25 +714,25 @@
         {{end}}
     </td>
     <td class="hidden md:table-cell w-32 p-3 text-sm truncate">
-        {{if $me}}<span class="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded text-xs truncate block" title="{{$me}}">{{$me}}</span>{{end}}
+        {{if $me}}<span class="px-2 py-1 bg-accent-soft text-accent rounded text-xs truncate block" title="{{$me}}">{{$me}}</span>{{end}}
     </td>
-    <td class="w-28 p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-green-700 dark:text-green-400{{else if eq .TransactionType "Transfer"}}text-indigo-600 dark:text-indigo-400{{else}}text-red-600 dark:text-red-400{{end}}">
+    <td class="w-28 p-3 text-sm text-right font-medium {{if eq .TransactionType "Income"}}text-positive{{else if eq .TransactionType "Transfer"}}text-accent{{else}}text-negative{{end}}">
         {{if eq .TransactionType "Income"}}+{{end}}{{formatMoney .Amount}}
     </td>
     <td class="hidden md:table-cell w-20 p-3 text-center">
         {{if eq .TransactionType "Income"}}
-        <span class="px-2 py-1 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 rounded text-xs">Income</span>
+        <span class="px-2 py-1 bg-positive-soft text-positive rounded text-xs">Income</span>
         {{else if eq .TransactionType "Transfer"}}
-        <span class="px-2 py-1 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded text-xs" title="Money moving between your own accounts">
+        <span class="px-2 py-1 bg-accent-soft text-accent rounded text-xs" title="Money moving between your own accounts">
             <svg class="inline-block w-3 h-3 mr-0.5 align-text-bottom" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path>
             </svg>Transfer
         </span>
         {{else}}
-        <span class="px-2 py-1 bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 rounded text-xs">Expense</span>
+        <span class="px-2 py-1 bg-negative-soft text-negative rounded text-xs">Expense</span>
         {{end}}
     </td>
-    <td class="hidden md:table-cell w-36 p-3 text-xs text-gray-500 dark:text-gray-300 text-center truncate" title="{{.SourceFile}}">{{.SourceFile}}</td>
+    <td class="hidden md:table-cell w-36 p-3 text-body-sm text-gray-500 dark:text-gray-300 text-center truncate" title="{{.SourceFile}}">{{.SourceFile}}</td>
 </tr>
 {{end}}
 {{else if eq .Page 1}}
@@ -753,26 +753,26 @@
 {{define "summary-stats"}}
 <div id="summary-stats" class="flex flex-wrap items-center gap-2 text-sm" hx-swap-oob="true">
     <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5">
-        <span class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Transactions</span>
+        <span class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Transactions</span>
         <span class="num font-bold text-gray-900 dark:text-gray-100 ml-1">{{.TotalCount}}</span>
     </div>
     {{if isPositive .TotalIncome}}
-    <div class="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5">
-        <span class="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Income</span>
-        <span class="num font-bold text-emerald-600 dark:text-emerald-400 ml-1">{{formatMoney .TotalIncome}}</span>
+    <div class="rounded-lg border border-positive bg-positive-soft px-3 py-1.5">
+        <span class="text-label uppercase tracking-wide text-positive">Income</span>
+        <span class="num font-bold text-positive ml-1">{{formatMoney .TotalIncome}}</span>
     </div>
     {{end}}
     {{if isPositive .TotalExpenses}}
-    <div class="rounded-lg border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-3 py-1.5">
-        <span class="text-[10px] uppercase tracking-wide text-rose-700 dark:text-rose-300">Expenses</span>
-        <span class="num font-bold text-rose-600 dark:text-rose-400 ml-1">{{formatMoney .TotalExpenses}}</span>
+    <div class="rounded-lg border border-negative bg-negative-soft px-3 py-1.5">
+        <span class="text-label uppercase tracking-wide text-negative">Expenses</span>
+        <span class="num font-bold text-negative ml-1">{{formatMoney .TotalExpenses}}</span>
     </div>
     {{end}}
     <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5">
-        <span class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Net</span>
+        <span class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Net</span>
         <span class="num font-bold {{colorClass .NetAmount}} ml-1">{{formatMoney .NetAmount}}</span>
     </div>
-    <span class="text-gray-500 dark:text-gray-400 text-xs italic ml-auto">
+    <span class="text-gray-500 dark:text-gray-400 text-body-sm italic ml-auto">
         Scroll for more
     </span>
 </div>

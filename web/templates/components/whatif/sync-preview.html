@@ -25,7 +25,7 @@
             ${{formatNumber .Plan.OldMonthlyExpenses}}
             <span class="text-gray-400 dark:text-gray-500">&rarr;</span>
             ${{formatNumber .Plan.NewMonthlyExpenses}}
-            <span class="text-xs text-gray-400 dark:text-gray-500">(12-month average, excluding Health Insurance — premiums are modeled under Healthcare — and expenses modeled separately in the plan)</span>
+            <span class="text-body-sm text-gray-400 dark:text-gray-500">(12-month average, excluding Health Insurance — premiums are modeled under Healthcare — and expenses modeled separately in the plan)</span>
         </p>
     </div>
 
@@ -90,7 +90,7 @@
             <input type="hidden" name="plan_hash" value="{{.PlanHash}}">
             <input type="hidden" name="expected_revision" value="{{.ExpectedRevision}}">
             <button type="submit"
-                class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md">
+                class="px-4 py-2 text-sm font-medium text-white bg-accent-strong hover:bg-accent-strong rounded-md">
                 Apply Changes
             </button>
         </form>

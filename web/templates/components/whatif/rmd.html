@@ -4,15 +4,15 @@
 {{if and .Analysis.RMD (gt .Settings.TaxDeferredPercent 0.0)}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Required Minimum Distributions (RMD)</h2>
-    <p class="text-xs text-gray-600 dark:text-gray-300 mb-3">Required Minimum Distributions the IRS forces from tax-deferred accounts starting at your RMD age.</p>
+    <p class="text-body-sm text-gray-600 dark:text-gray-300 mb-3">Required Minimum Distributions the IRS forces from tax-deferred accounts starting at your RMD age.</p>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-600 dark:text-gray-300 uppercase">Current Age</p>
+            <p class="text-body-sm text-gray-600 dark:text-gray-300 uppercase">Current Age</p>
             <p class="text-xl font-bold text-gray-800 dark:text-gray-200">{{.Analysis.RMD.CurrentAge}}</p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-600 dark:text-gray-300 uppercase">RMDs Begin</p>
+            <p class="text-body-sm text-gray-600 dark:text-gray-300 uppercase">RMDs Begin</p>
             <p class="text-xl font-bold text-gray-800 dark:text-gray-200">
                 {{if gt .Analysis.RMD.StartsInYears 0}}
                     Age {{.Analysis.RMD.StartAge}} ({{.Analysis.RMD.StartsInYears}}yr)
@@ -22,18 +22,18 @@
             </p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-600 dark:text-gray-300 uppercase">Tax-Deferred</p>
-            <p class="text-xl font-bold text-indigo-600 dark:text-indigo-400">{{formatMoney .Analysis.RMD.TaxDeferredValue}}</p>
+            <p class="text-body-sm text-gray-600 dark:text-gray-300 uppercase">Tax-Deferred</p>
+            <p class="text-xl font-bold text-accent">{{formatMoney .Analysis.RMD.TaxDeferredValue}}</p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-600 dark:text-gray-300 uppercase">10-Yr RMD Total</p>
-            <p class="text-xl font-bold text-amber-600 dark:text-amber-400">{{formatMoney .Analysis.RMD.TotalRMDsOver10Yr}}</p>
+            <p class="text-body-sm text-gray-600 dark:text-gray-300 uppercase">10-Yr RMD Total</p>
+            <p class="text-xl font-bold text-warning">{{formatMoney .Analysis.RMD.TotalRMDsOver10Yr}}</p>
         </div>
     </div>
 
     {{if .Analysis.RMD.DepletedBeforeRMD}}
-    <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
-        <p class="text-sm text-amber-800 dark:text-amber-200">
+    <div class="bg-warning-soft border border-warning rounded-lg p-4">
+        <p class="text-sm text-warning">
             Portfolio depletes in year {{.Analysis.RMD.DepletionYear}}{{if .Analysis.RMD.DepletionAge}} (age {{.Analysis.RMD.DepletionAge}}){{end}} — no RMDs would apply in this scenario.
         </p>
     </div>
@@ -58,7 +58,7 @@
                     <td class="py-2 text-right text-gray-600 dark:text-gray-400">{{$p.Year}}</td>
                     <td class="py-2 text-right">{{formatMoney $p.TaxDeferredBal}}</td>
                     <td class="py-2 text-right">{{printf "%.1f" $p.LifeExpFactor}}</td>
-                    <td class="py-2 text-right font-semibold text-amber-600 dark:text-amber-400">{{formatMoney $p.RMDAmount}}</td>
+                    <td class="py-2 text-right font-semibold text-warning">{{formatMoney $p.RMDAmount}}</td>
                     <td class="py-2 text-right">{{printf "%.1f" $p.RMDPercent}}%</td>
                 </tr>
                 {{end}}
@@ -67,11 +67,11 @@
         </table>
     </div>
     {{if .Analysis.RMD.DepletionYear}}
-    <p class="text-xs text-amber-600 dark:text-amber-400 mt-2">
+    <p class="text-body-sm text-warning mt-2">
         Portfolio depletes in year {{.Analysis.RMD.DepletionYear}}{{if .Analysis.RMD.DepletionAge}} (age {{.Analysis.RMD.DepletionAge}}){{end}}; subsequent RMD years not shown.
     </p>
     {{end}}
-    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-2">
         {{if .Analysis.RMD.UsesJointLifeTable}}
         Life Exp. Factor is the IRS Joint Life and Last Survivor Table II divisor (spouse sole beneficiary, &gt;10 yrs younger); RMD amount is the projected withdrawal from your scenario.
         {{else}}
@@ -79,7 +79,7 @@
         {{end}}
     </p>
     {{if .Settings.HasSpouse}}
-    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 caveat">
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-2 caveat">
         Tax-deferred savings are modeled as a single household pool, with the older spouse's age setting the RMD start year and — where the Uniform Lifetime Table applies — the divisor. Account ownership is not modeled: if most of your tax-deferred balance belongs to the younger spouse, real RMDs would start later and be smaller than shown here.
     </p>
     {{end}}

@@ -165,13 +165,17 @@ func TestSummarizeSpendingBudgetBlockNetRefundGroupAddsBackNotSubtracts(t *testi
 	}
 }
 
-// TestSummarizeSpendingBudgetBlockRemainderNetsRefundLivingEqualsAbsRemainder
-// is the required remainder-sign-divergent fixture (ruling SY-2026-08-30d):
-// the checker-second probe verbatim through the MCP tool -- a $1000 grocery
-// outflow plus a $4000 outflow-typed credit (remainder nets +$3000) beside
-// an ordinary flagged $500 car payment. living_monthly_actual must equal
-// |remainder| exactly, not the attempt-2 defect's 2000-class value.
-func TestSummarizeSpendingBudgetBlockRemainderNetsRefundLivingEqualsAbsRemainder(t *testing.T) {
+// TestSummarizeSpendingBudgetBlockRemainderNetsRefundLivingEqualsSignedRemainder
+// is the required remainder-sign-divergent fixture (ruling SY-2026-08-30d,
+// re-pinned by CB7-2026-09-03a): the checker-second probe verbatim through
+// the MCP tool -- a $1000 grocery outflow plus a $4000 outflow-typed credit
+// (remainder nets +$3000, a net credit) beside an ordinary flagged $500 car
+// payment. living_monthly_actual must equal the SIGNED remainder exactly
+// (negative -- a net credit divided across the months), not its absolute
+// value: CB7 made the range-level living figure signed, the same contract
+// every per-month figure already had, so a refund-dominant remainder must
+// read as negative here too.
+func TestSummarizeSpendingBudgetBlockRemainderNetsRefundLivingEqualsSignedRemainder(t *testing.T) {
 	sm := newSummaryTestManager(t, 1200, 0)
 	flaggedDefs := stubMajorExpenses{
 		defs: []models.MajorExpense{
@@ -213,10 +217,13 @@ func TestSummarizeSpendingBudgetBlockRemainderNetsRefundLivingEqualsAbsRemainder
 	start, _ := time.Parse("2006-01-02", "2026-01-01")
 	end, _ := time.Parse("2006-01-02", "2026-01-31")
 	months := metrics.MonthsBetween(start, end)
-	wantLivingActual := math.Round((3000/months)*100) / 100
+	// Ruling CB7-2026-09-03a: the remainder nets +3000 (a credit), so
+	// living_monthly_actual is the SIGNED negated net divided across the
+	// months, i.e. negative.
+	wantLivingActual := math.Round((-3000/months)*100) / 100
 
 	if math.Abs(out.Budget.LivingActual-wantLivingActual) > 0.01 {
-		t.Errorf("budget.living_monthly_actual = %v, want ~%v (|remainder| exactly)",
+		t.Errorf("budget.living_monthly_actual = %v, want ~%v (signed remainder exactly; CB7-2026-09-03a)",
 			out.Budget.LivingActual, wantLivingActual)
 	}
 }

@@ -1,0 +1,205 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: CB8
+ATTEMPT: 1
+---
+Method: all execution in `cp -a` scratch copies
+(.../scratchpad/cb8work, .../scratchpad/mut). The real tree was never
+written except this verdict file; the two CB8 files were `cmp`-verified
+byte-identical to the tested copy before and after.
+
+Foreign territory (attributed, not failed): CB7 is mid-edit in
+internal/services/metrics/**, internal/handlers/explorer/**,
+internal/models/dashboard.go, internal/services/mcpsvc/**,
+web/templates/components/kpis.html, web/templates/pages/explorer.html,
+.swarm/NEXT.md (+ .swarm/ledger.tsv, lead-owned).
+
+--- CONTRACT (ruling CB8-2026-09-03a) ---
+Read at /home/darrell/bin/ai/budget2/internal/services/insights/trends.go
+:339-366 (scratch copy). The shipped code is exactly the contract text:
+
+    change := dailyAvg - historicalDaily
+    var burnRateChange float64
+    switch {
+    case historicalDaily != 0:
+        burnRateChange = change / math.Abs(historicalDaily) * 100
+    case change > 0:
+        burnRateChange = 100
+    case change < 0:
+        burnRateChange = -100
+    default:
+        burnRateChange = 0
+    }
+
+`metrics.PercentChange` is NOT called:
+  $ grep -n "PercentChange" internal/services/insights/trends.go
+  78: // documents for PercentChange: divide by |previous| so the result's
+  350: // metrics.PercentChange here, whose zero-base case is an unconditional
+Both hits are comment text. `sed -n '1,12p' trends.go` shows the import
+block is `math sort strings time budget2/internal/models
+budget2/internal/services/majorexpenses` — the metrics package is not
+imported at all, so no call is possible.
+The CB3-D comment block at :339-346 was rewritten (per contract).
+
+--- (a) PACKAGE TESTS AND FULL SUITE ---
+PASS.
+  $ go build ./...                                  -> exit 0, no output
+  $ go test -count=1 ./internal/services/insights/... \
+        ./internal/handlers/insights/...
+    ok  budget2/internal/services/insights   0.004s
+    ok  budget2/internal/handlers/insights   0.201s
+  $ go test -count=1 -v -run TestCalculateSpendingVelocity \
+        ./internal/services/insights/
+    10/10 PASS, including the four CB8-relevant ones:
+    --- PASS: TestCalculateSpendingVelocity_RefundDominantPeriodIsNegative
+    --- PASS: TestCalculateSpendingVelocity_RefundDominantHistoryStillReportsChange
+    --- PASS: TestCalculateSpendingVelocity_ZeroHistoricalBaseSpendingIsPositive100
+    --- PASS: TestCalculateSpendingVelocity_ZeroHistoricalBaseRefundIsNegative100
+
+Full suite (`go test -count=1 ./...`) is NOT clean; every failure is in
+CB7 territory:
+    --- FAIL: TestHandleTransactionsPartial_RefundReducesTotalExpenses
+    FAIL budget2/internal/handlers/explorer
+    --- FAIL: TestSummarizeSpendingBudgetBlockRemainderNetsRefundLivingEqualsAbsRemainder
+    FAIL budget2/internal/services/mcpsvc/spend
+    --- FAIL: TestCalculateMetrics_PlanExclusions_RemainderNetsRefundLivingEqualsAbsRemainder
+    --- FAIL: TestComparison_PlanExclusions_RemainderNetsRefundAppliedToBothWindows
+    FAIL budget2/internal/services/metrics
+ATTRIBUTION PROVEN, not assumed. In the scratch copy I reverted BOTH CB8
+files to HEAD (`git show HEAD:...insights/trends.go > ...`, same for
+trends_test.go) and re-ran only those three packages:
+    --- FAIL: TestHandleTransactionsPartial_RefundReducesTotalExpenses
+    --- FAIL: TestCalculateMetrics_PlanExclusions_RemainderNetsRefundLivingEqualsAbsRemainder
+    --- FAIL: TestComparison_PlanExclusions_RemainderNetsRefundAppliedToBothWindows
+    --- FAIL: TestSummarizeSpendingBudgetBlockRemainderNetsRefundLivingEqualsAbsRemainder
+Identical failure set with CB8 entirely absent => CB8 is not the cause.
+All four test names exist unmodified at HEAD
+(`git grep -l <name> HEAD -- '*_test.go'` resolves each to a committed
+file), so they are pre-existing tests broken by CB7's uncommitted source
+edits. Additionally `go list -deps -test` reports 0 dependency on
+budget2/internal/services/insights for handlers/explorer and
+services/metrics.
+
+Composite check target: `make check` = vet static vuln css-verify test.
+I ran its non-test stages in the scratch copy:
+  $ go vet ./...        -> exit 0, no output
+  $ make static         -> `staticcheck ./...`, no findings
+  $ make css-verify     -> "tailwind.css is up to date"
+`make test` cannot pass in this tree because of the CB7 failures above;
+per the dispatch brief acceptance stands on package scope, which is green.
+
+--- (b) EVERY NEW ASSERTION PROVEN LOAD-BEARING BY MUTATION ---
+PASS. Four mutants applied to a scratch copy of trends.go only, each
+followed by `go test -count=1 [-run TestCalculateSpendingVelocity]
+./internal/services/insights/` and a byte-identical restore
+(`diff -q` => IDENTICAL after each).
+
+M1 — old `> 0` guard restored verbatim
+    (`if historicalDaily > 0 { burnRateChange = ((dailyAvg -
+     historicalDaily) / historicalDaily) * 100 }`):
+  --- FAIL: ..._RefundDominantHistoryStillReportsChange
+      trends_test.go:897: BurnRateChange = 0.0000, want 2300.0000
+      trends_test.go:900: BurnRateChange = 0.0000, want positive
+  --- FAIL: ..._ZeroHistoricalBaseSpendingIsPositive100
+      trends_test.go:932: BurnRateChange = 0.0000, want exactly 100
+  --- FAIL: ..._ZeroHistoricalBaseRefundIsNegative100
+      trends_test.go:962: BurnRateChange = 0.0000, want exactly -100
+
+M2 — signed (non-Abs) denominator (`change / historicalDaily * 100`):
+  --- FAIL: ..._RefundDominantHistoryStillReportsChange
+      trends_test.go:897: BurnRateChange = -2300.0000, want 2300.0000
+      trends_test.go:900: BurnRateChange = -2300.0000, want positive
+  (the sign inversion the |base| rule exists to prevent)
+
+M3 — zero base hardcoded +100 (zero-base cases collapsed to
+    `default: burnRateChange = 100`, i.e. PercentChange's rule):
+  --- FAIL: ..._ZeroHistoricalBaseRefundIsNegative100
+      trends_test.go:962: BurnRateChange = 100.0000, want exactly -100
+
+M4 (mine, not in the manifest) — added to prove the EXTENDED assertion in
+    the pre-existing test is itself load-bearing, since M1-M3 all leave it
+    green. Mutant: `change := dailyAvg + historicalDaily`:
+  --- FAIL: TestCalculateSpendingVelocity_RefundDominantPeriodIsNegative
+      trends_test.go:855: BurnRateChange = -200.0000, want exactly 0
+        (current period == historical period)
+  --- FAIL: ..._RefundDominantHistoryStillReportsChange
+        trends_test.go:897: BurnRateChange = 2100.0000, want 2300.0000
+So all four new assertions are killed by at least one mutant. The
+manifest's mutation report reproduces exactly (M1/M2/M3 failing-test sets
+match its claims line for line, including its claim that M3's positive
+zero-base companion coincidentally survives).
+
+--- (c) ORDINARY LEDGERS (historicalDaily > 0) UNCHANGED ---
+PASS, empirically, not by argument. Under mutant M1 (the pre-CB8 code
+verbatim) with the NEW test file in place:
+  $ go test -count=1 ./internal/services/insights/... \
+        ./internal/handlers/insights/...
+    --- FAIL: ..._RefundDominantHistoryStillReportsChange
+    --- FAIL: ..._ZeroHistoricalBaseSpendingIsPositive100
+    --- FAIL: ..._ZeroHistoricalBaseRefundIsNegative100
+    FAIL  budget2/internal/services/insights
+    ok    budget2/internal/handlers/insights   0.191s
+The ONLY differences between old and new code across both packages are
+the three refund/zero-base cases. Every pre-existing positive-base
+assertion — notably TestCalculateSpendingVelocity_BurnRateChange,
+_BasicCalculation, _SingleDayData, _MonthProjectionIdentity — and the
+whole handlers/insights rendering suite produce identical results under
+both implementations. (Consistent with `math.Abs(h) == h` bit-exactly for
+h > 0.)
+
+--- (d) DIFF LIMITED TO THE TWO FILES ---
+PASS.
+  $ git --no-pager diff --name-only HEAD -- internal/services/insights \
+        internal/handlers/insights web/templates
+    internal/services/insights/trends.go
+    internal/services/insights/trends_test.go
+    web/templates/components/kpis.html      <- CB7 territory (declared)
+    web/templates/pages/explorer.html       <- CB7 territory (declared)
+  $ git --no-pager diff --name-only HEAD -- web/templates/pages/insights.html \
+        'web/templates/components/insights*' internal/services/insights/verdict.go
+    (empty) => no insights template, no insights-verdict-bar, no
+    verdict.go change, satisfying spec criterion (d) "no template or
+    verdict.go change".
+Whole-tree `git diff --stat HEAD` lists 13 files; the 11 that are not
+CB8's are exactly the CB7 declared-territory set plus the lead-owned
+.swarm/ledger.tsv (and metrics_test.go, which appeared during my run as
+CB7 progressed). Manifest `.swarm/manifests/CB8.1.files` names precisely
+the two CB8 files and matches.
+No path in `.swarm/critical.globs` (storage, dataloader, retirement/engine,
+transfers, accounts.go, mcpsvc/confirm) is touched by either CB8 file.
+
+--- ADDITIONAL CHECKS REQUESTED ---
+1. Fixtures dated relative to time.Now() (CB3 lesson): CONFIRMED by
+   reading trends_test.go:858-965. All three new tests open with
+   `now := time.Now()`; every current-period transaction is dated `now`
+   (so it falls inside currentMonthStart..now and exercises the
+   current-calendar-month spentSoFar path), and historical rows use
+   `now.AddDate(0, 0, -65)` / `-60` / `-59`. No literal calendar dates.
+   The assertions (HistoricalDaily, DailyAverage, BurnRateChange) are
+   day-count-driven, not month-boundary-driven, so no date flakiness.
+2. Extended TestCalculateSpendingVelocity_RefundDominantPeriodIsNegative
+   really pins 0 for identical sets: CONFIRMED. trends_test.go:849 calls
+   `SpendingVelocity(period, period)` (same pointer for both arguments,
+   so change == 0 with a NONZERO historicalDaily of -550), and
+   trends_test.go:854-856 asserts `velocity.BurnRateChange != 0 ->
+   t.Errorf(... want exactly 0 ...)`. Mutant M4 above fires that exact
+   line, so the assertion is executed and load-bearing, not decorative.
+3. `gofmt -l internal/services/insights/trends.go
+   internal/services/insights/trends_test.go` -> no output (clean).
+   `gofmt -l ./internal/services/insights` -> no output.
+4. `go vet ./internal/services/insights/...` -> exit 0, no output
+   (and `go vet ./...` repo-wide -> exit 0).
+
+--- OBSERVATIONS (not CB8 defects) ---
+O1. Three CB7-territory packages fail the full suite at this moment
+    (handlers/explorer, services/metrics, mcpsvc/spend — four tests).
+    Proven independent of CB8 by full revert, see (a). For the CB7 lead,
+    not a CB8 finding.
+O2. Spec criterion (c) for CB8 (live-ledger byte-identical insights page /
+    synthetic refund-dominant render) is checker-second's lane and was
+    NOT verified by me; I verified the code-level ordinary-ledger
+    invariance instead. No command I ran demonstrates the rendered live
+    page is byte-identical.
+O3. `.swarm/ledger.tsv` row 115 still reads `CB8 2 tests,second
+    in-progress 1 worker-coder` — lead's to update.

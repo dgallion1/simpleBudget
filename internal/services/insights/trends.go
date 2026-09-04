@@ -8,6 +8,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/majorexpenses"
+	"budget2/internal/services/metrics"
 )
 
 // MajorExpenseTrends groups outflows by matched MajorExpense.Name
@@ -311,7 +312,9 @@ func SpendingVelocity(currentPeriod, allData *models.TransactionSet) *models.Spe
 	// refund-dominant period yields a NEGATIVE daily average -- honest;
 	// see burnRateChange's guard below for how a negative historicalDaily
 	// is handled downstream.
-	dailyAvg := -currentOutflows.SumAmount() / currentDays
+	// Routed through metrics.SignedNet (CB9): a window whose outflows cancel
+	// exactly must yield +0, not IEEE -0, which json.Marshal emits as "-0".
+	dailyAvg := metrics.SignedNet(currentOutflows) / currentDays
 
 	allMin := allData.MinDate()
 	allMax := allData.MaxDate()
@@ -320,7 +323,7 @@ func SpendingVelocity(currentPeriod, allData *models.TransactionSet) *models.Spe
 		allDays = 1
 	}
 	// Signed net over the whole ledger (CB3-D), same contract as dailyAvg.
-	historicalDaily := -allOutflows.SumAmount() / allDays
+	historicalDaily := metrics.SignedNet(allOutflows) / allDays
 
 	now := time.Now()
 	daysInMonth := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, time.Local).Day()
@@ -333,20 +336,36 @@ func SpendingVelocity(currentPeriod, allData *models.TransactionSet) *models.Spe
 	// Signed net for the current calendar month (CB3-D), same contract as
 	// dailyAvg; monthProjection below inherits the sign (a refund-dominant
 	// month-to-date projects a negative total -- honest, not a division).
-	spentSoFar := -currentMonthOutflows.SumAmount()
+	spentSoFar := metrics.SignedNet(currentMonthOutflows)
 
 	monthProjection := spentSoFar + (dailyAvg * float64(daysRemaining))
 
-	// CB3-D downstream trace: historicalDaily can now be negative (a
-	// refund-dominant full ledger). The `> 0` guard already here (needed
-	// even before CB3-D, for a zero-outflow ledger) also covers that case:
-	// burnRateChange is left at its zero value rather than dividing by a
-	// negative baseline. This is a pre-existing guarded degradation, not
-	// new misbehavior -- no crash, no NaN, no sign inversion, just an
-	// unreported change stat when the baseline itself was net-refund.
+	// CB8 (ruling CB8-2026-09-03a): CB3-D made historicalDaily signed, but
+	// left the `> 0` guard, so a ledger whose entire history nets a refund
+	// (historicalDaily < 0) reported burnRateChange=0 regardless of the
+	// current pace -- silently hiding a real acceleration. Fixed the same
+	// way CB3-c fixed MajorExpenseTrends' changePercent: divide by
+	// |historicalDaily| so the sign of the result ALWAYS tracks the sign
+	// of the change (spending faster than history -> positive, never
+	// inverted by a negative base), and for a historicalDaily of exactly
+	// zero, pick the result by the SIGN OF CHANGE rather than leaving it
+	// at (or hardcoding it to) a flat value -- do not call
+	// metrics.PercentChange here, whose zero-base case is an unconditional
+	// +100 and would misreport a slowdown from a zero baseline as growth.
+	// For an ordinary positive historicalDaily this is arithmetically
+	// identical to the pre-CB8 formula (dividing by historicalDaily itself
+	// vs. |historicalDaily| is the same number when historicalDaily > 0).
+	change := dailyAvg - historicalDaily
 	var burnRateChange float64
-	if historicalDaily > 0 {
-		burnRateChange = ((dailyAvg - historicalDaily) / historicalDaily) * 100
+	switch {
+	case historicalDaily != 0:
+		burnRateChange = change / math.Abs(historicalDaily) * 100
+	case change > 0:
+		burnRateChange = 100
+	case change < 0:
+		burnRateChange = -100
+	default:
+		burnRateChange = 0
 	}
 
 	return &models.SpendingVelocity{

@@ -423,6 +423,17 @@ func (r *Renderer) ExecuteTemplate(w io.Writer, name string, data interface{}) e
 // Template functions
 
 func formatMoney(v float64) string {
+	// Belt (ruling CB7-2026-09-03c): normalize IEEE negative zero to +0
+	// before the sign check. `v < 0` is false for -0.0, so an upstream -0.0
+	// (an exactly-cancelling window, e.g. metrics.SignedNet's own
+	// pre-normalization result before that fix, or any other caller that
+	// forgot to normalize) would otherwise fall through to the POSITIVE
+	// branch below and let fmt.Sprintf("%.2f", v) honor the sign bit
+	// anyway, rendering the literal "$-0.00". `-0.0 == 0` is true in Go, so
+	// assigning the literal 0 clears the sign bit.
+	if v == 0 {
+		v = 0
+	}
 	negative := v < 0
 	if negative {
 		v = -v
@@ -544,6 +555,9 @@ func formatAbbreviatedTotal(v float64) string {
 }
 
 func formatNumber(v float64) string {
+	if v == 0 {
+		v = 0 // IEEE -0 belt, same as formatMoney/formatPercent (CB9)
+	}
 	negative := v < 0
 	if negative {
 		v = -v
@@ -566,6 +580,9 @@ func formatNumber(v float64) string {
 }
 
 func formatPercent(v float64) string {
+	if v == 0 {
+		v = 0 // IEEE -0 would print "-0.0" (sign bit survives %.1f); same belt as formatMoney (CB9)
+	}
 	if v > 0 {
 		return fmt.Sprintf("+%.1f", v)
 	}

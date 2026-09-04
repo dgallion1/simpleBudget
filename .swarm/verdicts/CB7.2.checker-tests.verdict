@@ -1,0 +1,226 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: CB7
+ATTEMPT: 2
+---
+Method: all commands run in a `cp -a` scratch copy of the tree at
+/tmp/.../scratchpad/cb7 (and a second copy .../scratchpad/mut for mutation).
+The real tree was never written except this verdict file. Byte-identical
+restoration proven with `cmp` after every mutation.
+
+(a) BUILD / VET / TEST / GOFMT — PASS
+  $ gofmt -l $(grep '\.go$' .swarm/manifests/CB7.2.files)
+    -> no output (all 12 Go files in the manifest are gofmt-clean)
+  $ go build ./...            -> BUILD_EXIT=0
+  $ go vet ./...              -> VET_EXIT=0
+  $ go test -count=1 ./...    -> TEST_EXIT=0, zero FAIL lines
+  Repo composite target as well:
+  $ make check   (= vet static vuln css-verify test)
+    -> last line "✓ all checks passed", CHECK_EXIT=0
+
+(b) NO RANGE-LEVEL math.Abs REMAINS — PASS
+  $ grep -n "math.Abs" internal/services/metrics/metrics.go \
+        internal/handlers/explorer/handlers.go
+    -> 18 hits total (metrics.go 12, handlers.go 6).
+  $ ... | grep -v "//"
+    -> exactly ONE non-comment hit:
+       internal/services/metrics/metrics.go:763:
+         return ((current - previous) / math.Abs(previous)) * 100
+       This is PercentChange's |previous| denominator, which the spec
+       explicitly states is NOT modified ("PercentChange itself is NOT
+       modified", CB3-E). It is not applied to a SumAmount().
+  The other 17 hits are prose in doc comments describing the removed
+  behaviour (handlers.go 188/191/193/345/348/350; metrics.go 307/379/382/
+  384/421/454/521/522/524/602/607).
+  The five sites now read (grep -n "totalExpenses :=|healthcareTotal :=|livingTotal :="):
+    metrics.go:391  totalExpenses   := -outflows.SumAmount()
+    metrics.go:422  healthcareTotal := -healthcareOutflows.SumAmount()
+    metrics.go:455  livingTotal     := -livingOutflows.SumAmount()
+    handlers.go:197 totalExpenses   := -filtered.FilterByType(models.Outflow).SumAmount()
+    handlers.go:354 totalExpenses   := -filtered.FilterByType(models.Outflow).SumAmount()
+  Additionally, `"math"` is no longer imported by explorer/handlers.go at
+  all (re-adding it was required to make mutants M4/M5 even compile).
+
+(c) MUTATION — ALL FIVE SITES LOAD-BEARING — PASS
+  Each site reverted to math.Abs(...) individually, package tests run with
+  -count=1, then restored (cmp vs the pristine scratch copy: "METRICS
+  RESTORED BYTE-IDENTICAL", "EXPLORER RESTORED BYTE-IDENTICAL").
+    M1 metrics.go:391 totalExpenses ->
+       FAIL TestCalculateMetrics_RefundDominantRange_SignedTotalsAndCombinedInvariantHolds
+       FAIL TestCalculateComparison_ExpensesChangeTracksNegativeComparisonPeriod
+       FAIL TestSummarizeSpendingRefundDominantWindowNegatesTotalExpensesAndReconciles
+    M2 metrics.go:422 healthcareTotal ->
+       FAIL TestCalculateMetrics_RefundDominantRange_SignedTotalsAndCombinedInvariantHolds
+    M3 metrics.go:455 livingTotal ->
+       FAIL TestCalculateMetrics_RefundDominantRange_SignedTotalsAndCombinedInvariantHolds
+       FAIL TestCalculateMetrics_PlanExclusions_RemainderNetsRefundLivingEqualsSignedRemainder
+       FAIL TestComparison_PlanExclusions_RemainderNetsRefundAppliedToBothWindows
+       FAIL TestSummarizeSpendingBudgetBlockRemainderNetsRefundLivingEqualsSignedRemainder
+    M4 handlers.go:197 (page handler, +"math" import) ->
+       FAIL TestHandleExplorer_WithRenderer_RefundDominantFilterRendersNegativeExpenses
+    M5 handlers.go:354 (partial/HTMX handler, +"math" import) ->
+       FAIL TestHandleTransactionsPartial_RefundDominantFilterNegatesTotalExpenses
+  Template/contract mutants (also killed, each restored + cmp-verified):
+    T1 kpis.html reverted to HEAD (abs + static rose) ->
+       FAIL TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative
+    T2 explorer.html chip guard back to {{if isPositive .TotalExpenses}} ->
+       FAIL TestHandleExplorer_WithRenderer_RefundDominantFilterRendersNegativeExpenses
+    T3 server.go instructions reverted to HEAD wording ->
+       FAIL TestServerInstructionsCarryLoadBearingClaims
+    T4 kpis.html COLOR-ONLY revert (signed value kept, static rose) ->
+       FAIL TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative
+       (proves the sign-aware colour, not just the value, is guarded)
+  No site is unguarded.
+
+(d) MCP WORDING — PASS
+  $ grep -rn "non-negative\|absolute value" --include=*.go --include=*.md . \
+      | grep -v '^\./\.swarm'
+    -> the only total_expenses-related hit is
+       internal/services/mcpsvc/spend/summary.go:185
+         "...total_expenses exactly: total_expenses is SIGNED, not an
+          absolute value -- positive means net ..."
+       i.e. an assertion that it is NOT an absolute value. Every other hit
+       is unrelated (retirement validate.go, anomalies, pricecreep,
+       render_helpers_test, whatif docs, models.AbsAmount doc, etc.).
+  $ grep -rn "total_expenses" --include=*.go --include=*.md . | grep -v '^\./\.swarm'
+    -> zero remaining "always non-negative" claim about total_expenses
+       anywhere outside .swarm/ (which is lead-owned run records).
+  Three wording sites all changed (git diff HEAD):
+    summary.go:181-187  "summing it always EQUALS total_expenses exactly:
+                         total_expenses is SIGNED, not an absolute value"
+                        ("in MAGNITUDE / negation of each other" deleted)
+    server.go:84-86     "summarize_spending (total_expenses is SIGNED --
+                         positive is net spend, and it goes NEGATIVE ...)"
+    server_test.go:196  pin updated to "summarize_spending (total_expenses is SIGNED"
+  $ go test -count=1 -run TestServerInstructionsCarryLoadBearingClaims ./internal/services/mcpsvc/
+    -> ok (and mutant T3 above proves the pin is load-bearing).
+
+(e) SPEC-REQUIRED TESTS PRESENT AND COMMITTED IN TREE — PASS
+  Refund-dominant RANGE fixture: metrics_test.go
+    TestCalculateMetrics_RefundDominantRange_SignedTotalsAndCombinedInvariantHolds
+    Read in full. Asserts:
+      TotalExpenses == -5300 (floatEqual, t.Fatalf) — NEGATIVE
+      NetSavings == TotalIncome - TotalExpenses, and == 10300, and
+        NetSavings > TotalIncome
+      LivingExpensesTotal == -5000 plus ActualMonthly/PerMonthDelta/
+        CumulativeDelta derived exactly from it
+      HealthcareTotal == -300 plus HealthcareActual/PerMonthDelta/
+        CumulativeDelta derived exactly
+      CombinedCumulativeBalance non-empty, and
+        math.Abs(last - (-m.CombinedCumulativeDelta)) <= 0.01
+        i.e. the `last == -CombinedCumulativeDelta` invariant HOLDS in the
+        previously-excluded refund-dominant case.
+  PeriodComparison negative-base sign test: metrics_test.go
+    TestCalculateComparison_ExpensesChangeTracksNegativeComparisonPeriod
+    Asserts Previous.TotalExpenses == -3000, Current == 1000,
+    ExpensesChange == ((1000-(-3000))/|−3000|)*100 and > 0.
+  Explorer, BOTH handler paths:
+    TestHandleExplorer_WithRenderer_RefundDominantFilterRendersNegativeExpenses
+      (handleExplorer, site 197) — rendered body contains "-$400.00",
+      ">Expenses<" (chip renders at all), "$2,400.00" (Net = 2000-(-400)).
+    TestHandleTransactionsPartial_RefundDominantFilterNegatesTotalExpenses
+      (handleTransactionsPartial, site 354) — JSON TotalExpenses == -400.00,
+      NetAmount == 2400.00.
+  MCP: summary_test.go
+    TestSummarizeSpendingRefundDominantWindowNegatesTotalExpensesAndReconciles
+    Asserts out.TotalExpenses == -450 (exact ==, not tolerance), < 0, and
+    round2(sum(ByMonth)) == out.TotalExpenses — i.e. EQUAL, not equal in
+    magnitude.
+  Rendered-string test of kpis.html:
+    internal/handlers/dashboard/verdict_render_test.go
+    TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative
+    CONFIRMED it renders the real template, not a float: it calls
+      renderer.RenderToString("kpis", map[string]any{"Metrics": m, ...})
+    and RenderToString (internal/templates/render.go:410) is
+    `r.templates.ExecuteTemplate(&buf, name, data)` on the parsed template
+    set — the actual web/templates/components/kpis.html. Assertions are on
+    the RENDERED STRING:
+      strings.Contains(out, "-$1,234.56")           (signed figure present)
+      !strings.Contains(out, ">$1,234.56<")         (abs'd figure absent)
+      strings.Contains(out, "text-emerald-800 dark:text-emerald-300")
+    Mutants T1 and T4 both kill it.
+
+(f) CSS FRESHNESS AND CLASS PRESENCE — PASS
+  $ make css-verify
+    -> "tailwind.css is up to date", CSSVERIFY_EXIT=0
+       (the target rebuilds to tmp/tailwind.check.css and `cmp`s it against
+        the committed web/static/css/tailwind.css — so the served sheet IS
+        what the current tree builds; not stale.)
+  $ grep -o "\.text-emerald-800" web/static/css/tailwind.css   -> 1 match
+  $ grep -o "[.:a-zA-Z0-9\\-]*emerald-300[^{]*" web/static/css/tailwind.css
+    -> ".dark\:text-emerald-300:is(.dark *)"  (and .border-emerald-300)
+  Both new template classes resolve to real rules in the served stylesheet.
+  (web/static/css/tailwind.css is unmodified vs HEAD because both classes
+   were already emitted by pre-existing usage — verified by the rebuild
+   comparison above, not assumed.)
+
+(g) ORDINARY-RANGE BEHAVIOUR UNCHANGED — PASS
+  $ git diff --numstat HEAD -- internal/services/metrics/metrics_test.go \
+        internal/services/mcpsvc/spend/summary_test.go \
+        internal/handlers/dashboard/verdict_render_test.go
+    -> 148/0, 64/0, 35/0 — pure INSERTIONS, zero deletions.
+  $ head -c $(stat -c%s <HEAD copy>) metrics_test.go | cmp - <HEAD copy>
+    -> identical: metrics_test.go is HEAD's bytes verbatim plus appended
+       new tests; not one pre-existing byte changed.
+  $ diff <(git show HEAD:.../summary_test.go) summary_test.go | grep -c '^<'
+    -> 0 removed lines.
+  Two named ordinary (outflow-negative) tests, expected values byte-unchanged
+  and passing:
+    $ go test -count=1 -v -run 'TestCalculateComparison_PreviousPeriod$' ./internal/services/metrics/
+      -> --- PASS (pins IncomeChange 25.0, ExpensesChange 50.0,
+                   Current.TotalIncome 5000 — all unmodified)
+    $ go test -count=1 -v -run 'TestSummarizeSpendingTotalsByCategoryAndMonth$' ./internal/services/mcpsvc/spend/
+      -> --- PASS
+  The only pre-existing tests whose expected values changed are the four
+  covered by the lead's rulings:
+    CB7-2026-09-03a: metrics/plan_exclusions_remainder_test.go x2 and
+      mcpsvc/spend/plan_exclusions_test.go x1 — verified re-pinned 3000 ->
+      -3000 (and wantLivingActual (3000/months) -> (-3000/months)), i.e.
+      got == -want, MAGNITUDES UNCHANGED, confirming a sign change and not
+      new arithmetic. Renames verified:
+        TestCalculateMetrics_PlanExclusions_RemainderNetsRefundLivingEqualsAbsRemainder
+          -> ...LivingEqualsSignedRemainder
+        TestSummarizeSpendingBudgetBlockRemainderNetsRefundLivingEqualsAbsRemainder
+          -> ...LivingEqualsSignedRemainder
+    CB7-2026-09-03b: explorer TestHandleTransactionsPartial_RefundReducesTotalExpenses
+      — fixture negated to the canonical convention; `const want = 349.61`
+      PRESERVED and the NetAmount assertion untouched (context lines in the
+      diff), exactly as the ruling directs. Only 4 diff hunks exist in
+      handlers_test.go: this one (2 hunks) plus 2 pure additions.
+
+SCOPE
+  $ git status --porcelain (real tree) — tracked modifications are exactly:
+    the 15 paths of .swarm/manifests/CB7.2.files, plus
+    internal/services/insights/trends.go + trends_test.go (CB8, accepted),
+    plus .swarm/ledger.tsv (lead-owned). Nothing else tracked is dirty.
+  Untracked: .swarm/CB7-RUN-SPEC.md, .swarm/manifests/*, .swarm/verdicts/*,
+    .swarm-local/, budget2.old-1345, budget2.old-2103, nohup.out —
+    the last three are pre-existing deploy/log artifacts (timestamps
+    2026-08-30 13:45 / 2026-09-03 11:36 / running log), not CB7 output.
+  $ cat .swarm/critical.globs — storage/**, dataloader/**,
+    retirement/engine/**, transfers/**, accounts/accounts.go,
+    mcpsvc/confirm/**. NONE touched by CB7.
+  No new template helper added (internal/templates/render.go unmodified);
+  explorer.html uses the existing isPositive/isNegative funcmap entries
+  (render.go:104-105, `<0` and `>0`), so the chip renders iff nonzero, as
+  the spec required.
+  The budget2 binary was never invoked.
+
+OBSERVATIONS (backlog, NOT FAIL grounds)
+  1. TestHandleExplorer_WithRenderer_RefundDominantFilterRendersNegativeExpenses
+     asserts the chip RENDERS and carries "-$400.00" but does not assert the
+     sign-aware emerald class on the explorer chip (kpis.html's equivalent
+     IS class-asserted, and mutant T4 kills it). A colour-only revert of
+     explorer.html's chip span would survive the Go suite. The spec's own
+     test list for explorer only required the figure/NetAmount, and the
+     colour is checker-a11y's lane, so this is not a FAIL — but a
+     class assertion there would close the gap.
+  2. Contrast of text-emerald-800 on bg-rose-50 and dark:text-emerald-300 on
+     dark:bg-rose-900/20 is criterion (f) of the run spec, measured by
+     checker-a11y, not by this lane. Not assessed here.
+  3. Ruling CB7-2026-09-03a names "-2945.56" as a re-pin target; no literal
+     2945 appears anywhere in internal/ — the assertion is expressed as
+     math.Round((-3000/months)*100)/100, which is the same figure computed
+     rather than hard-coded. Noted only so the ruling's wording is not
+     mistaken for a missing pin.

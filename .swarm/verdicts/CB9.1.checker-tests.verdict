@@ -1,0 +1,220 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: CB9
+ATTEMPT: 1
+---
+All work reproduced in a `cp -a` scratch copy at
+/tmp/claude-1000/.../scratchpad/cb9work (real tree read-only; handlers.go
+byte-compared IDENTICAL to the real tree after every mutation).
+
+=========================================================================
+(a) BUILD / CHECK / TESTS  -- PASS
+=========================================================================
+- `gofmt -l internal/handlers/dashboard/handlers.go
+   internal/handlers/dashboard/cb9_negzero_http_test.go
+   internal/templates/render.go internal/templates/render_helpers_test.go
+   internal/services/mcpsvc/spend/trends.go`
+  -> empty output (clean).
+- `go build ./...` -> build-exit=0.
+- `make check` (vet, staticcheck, govulncheck, css-verify, test) -> final
+  lines "✓ all checks passed" / MAKE_CHECK_EXIT=0.
+- Cache defeated: `go test -count=1 ./...` -> GOTEST_EXIT=0, zero non-"ok"
+  lines across all packages.
+
+=========================================================================
+(b) NO INLINE NEGATED SUM REMAINS  -- FAIL
+=========================================================================
+The brief's grep, run on the real tree:
+  grep -n "= -[a-zA-Z]*[.(]\|-sumSigned(\|SumAmount()" \
+       internal/handlers/dashboard/handlers.go
+returns, among comment lines, a live code line the manifest never mentions:
+
+  1522:		monthlyTotals[m] = -monthlyOutflowSets[m].SumAmount()
+
+(in `buildSpendingTrendChartData`, served by GET
+/dashboard/charts/data/spending-trend). An exhaustive negation sweep
+  grep -nE '(=|\(|,|return|\+=|-=)[[:space:]]*-[a-zA-Z_]|[-][=][[:space:]]' \
+       internal/handlers/dashboard/handlers.go | grep -v '^[0-9]*:[[:space:]]*//'
+yields exactly five non-comment negations:
+   403: total -= t.Amount                       (accumulator, safe)
+  1340: total += -t.Amount                      (accumulator, safe)
+  1401: unmatchedTotal += -t.Amount             (accumulator, safe)
+  1522: monthlyTotals[m] = -...SumAmount()      **INLINE NEGATED SUM, NOT ROUTED**
+  1598: merchantTotals[t.Label()] -= t.Amount   (accumulator, safe)
+
+So the brief's own statement that "the two `+= -t.Amount` accumulators
+(1340, 1401) are the only negations" is factually false in two ways: there
+are FOUR accumulators (403 and 1598 were not enumerated by the manifest,
+though both are safe by the same argument), and there is a fifth, unfixed
+inline negated sum at 1522.
+
+PROOF THAT 1522 PRODUCES AN OBSERVABLE -0, using CB9's OWN fixture
+(`cb9CancellingRows`, in-package probe hitting the real chi route):
+  GET /dashboard/charts/data/spending-trend?start=2025-01-01&end=2025-02-28
+  -> 200, body:
+     {"data":[{"customdata":[[-0,520]], ... "hovertemplate":
+      "...Spent: $%{customdata[0]:,.0f}<br>Prior: $%{customdata[1]:,.0f}..."}]}
+  The served JSON literally contains the token `-0`. Its source is the
+  February all-outflow bucket, which my type/sum probe shows nets exactly
+  IEEE -0:
+     PROBE ALLOUT month=2025-02 rawNeg=-0 signbit=true signedNet=0 n=4
+  This is the SAME layer the CB9 tests themselves treat as a defect:
+  `TestHandleKPIMonthDetail_CB9_...` fails a response whose JSON "carries
+  a -0 token", justified as "a JSON consumer or a raw formatter would
+  surface the sign". CB9 asserts that for the KPI month-detail endpoint
+  and leaves the identical token in the spending-trend chart endpoint.
+
+  Rendered-surface note (disclosed, not decisive): I decompiled the
+  d3-format copy inside data/cache/plotly.min.js and found the guard
+  `m&&0==+t&&"+"!==n&&(m=!1)` (d3-format's "clear valueNegative when the
+  formatted value is zero and sign spec is not '+'"), so the hovertemplate
+  `$%{customdata[0]:,.0f}` would render "$0", not "$-0". The defect is
+  therefore at the JSON/API layer, not the pixel layer -- but that is
+  exactly the layer CB9's own month-detail test polices.
+
+  This site is NOT excluded by the spec. `.swarm/CB7-RUN-SPEC.md` "Not in
+  scope" names only the **`prev > 0` guard at handlers.go:1533** in this
+  same function (percent-change product semantics, reclassified
+  2026-09-03) -- a different line addressing a different question. The -0
+  at 1522 falls squarely under the CB9 contract sentence "every
+  negated-sum spend site in internal/handlers/dashboard/handlers.go
+  routes through metrics.SignedNet".
+
+ACCUMULATOR ARGUMENT -- I AGREE, AND IT IS PROVEN.
+`go run` on a throwaway module (scratchpad/zeroprobe):
+  after += -0.0      : v=0 signbit=false %.2f=0.00
+  after += -100,+100 : v=0 signbit=false %.2f=0.00
+  accum with true -0 : v=0 signbit=false      (+0 + (-0) = +0, IEEE 754)
+  -= form            : v=0 signbit=false      (covers 403 and 1598)
+  inline -sum        : v=-0 signbit=true %.2f=-0.00   <-- the 1522 shape
+An accumulator declared `var x float64` starts at +0; (+0)+(-0)=+0 and
+x+(-x)=+0 in round-to-nearest, so no accumulator can land on -0. The
+inline `-(sum)` form provably can, and does.
+
+=========================================================================
+(c) MUTATION PROOFS  -- PARTIAL (4 of 7 handlers sites killed; 2 survivors
+    are NOT consumer-unobservable)
+=========================================================================
+Each site reverted one at a time, `go test -count=1
+./internal/handlers/dashboard/`, file restored from a pristine copy and
+`cmp`-verified between mutants:
+
+  M1  :555  expAmt = -exp.SumAmount()          (handleKPIDetail)
+        -> FAIL: TestHandleKPIDetail_CB9_CancellingMonthRowsHaveNoNegativeZero
+  M2  :690  return -sumSigned(txns)            (negSumSigned body)
+        -> FAIL: TestHandleKPIMonthDetail_CB9_CancellingMonthTotalIsPositiveZero
+  M3  :714  totals[m] = -set.SumAmount()       (classifiedMonthlyTotals)
+        -> FAIL: TestHandleKPIExport_CB9_... AND TestHandleKPIDetail_CB9_...
+  M4  :943  expAmt = -exp.SumAmount()          (handleKPIExport)
+        -> FAIL: TestHandleKPIExport_CB9_CancellingMonthWritesPositiveZero
+  M5  :1109 hcAmt = -hc.SumAmount()            -> SURVIVES (ok)
+  M6  :1119 livingMonth = -lo.SumAmount()      -> SURVIVES (ok)
+  M7  :1160 spend = -bucket.SumAmount()        -> SURVIVES (ok)
+  M8  render.go formatPercent belt deleted
+        -> FAIL: render_helpers_test.go:165: formatPercent(-0) = "-0.0",
+           want "0.0"  (TestFormatPercent)  [restored, then ok]
+
+The unobservability argument for M5/M6 does NOT hold. `hcAmt` and
+`livingMonth` are appended straight into `healthcareValues` /
+`livingValues`, which become the Plotly traces' `y` arrays -- no
+subtraction absorbs the sign. Direct call to
+`buildBudgetVsActualChartData(filtered, 2025-01-01, 2025-02-28, 400, 350,
+coverageStart, true, nil)` on the CB9 fixture:
+  with the fix   : "name":"Living",...,"y":[220,0]
+                   "name":"Healthcare",...,"y":[300,0]
+  with M5+M6     : "name":"Living",...,"y":[220,-0]
+                   "name":"Healthcare",...,"y":[300,-0]
+So those two fixes ARE consumer-observable at the served-JSON layer and
+are simply untested. The lead's own written acceptance line in
+`.swarm/CB7-RUN-SPEC.md` ("every SignedNet site load-bearing by mutation
+or provably consumer-unobservable") is therefore unmet at :1109 and :1119.
+Only M7 (`spend`) qualifies as unobservable: its sole use is
+`running += monthTarget - spend`, and `x - (-0) == x - 0` for every x, so
+the sign never reaches `cumulativeValues`. I accept M7's survival on the
+CB7 precedent; I do not accept M5/M6's on the stated argument, because the
+stated argument ("subtraction absorbs -0") is false for those two.
+Note the code at :1109/:1119 is CORRECT -- this is a coverage/justification
+gap, not a wrong figure.
+
+=========================================================================
+(d) NEW TESTS ASSERT WHAT THEY CLAIM  -- PASS
+=========================================================================
+Read /home/darrell/bin/ai/budget2/internal/handlers/dashboard/cb9_negzero_http_test.go
+in full. Assertions are on RENDERED strings (CSV cells parsed with
+encoding/csv, compared to the literal "0.00" and prefix-checked for "-0"),
+on the raw JSON body (regexp `-0(\.0+)?[,}\]\s]`), and on the decoded
+float's sign bit (`math.Signbit`). No float-only assertions substituted
+for a displayed figure.
+
+The fixture is NOT vacuous. In-package probe dumping `TransactionType`
+after the real dataloader/classifier ran on `cb9CancellingRows()`:
+  date=2025-02-15 desc="Health Insurance Premium"        amt=-300.00 cat=Health Insurance type=Outflow
+  date=2025-02-20 desc="Health Insurance Premium Credit" amt= 300.00 cat=Health Insurance type=Outflow
+  date=2025-02-10 desc="Groceries"                       amt=-100.00 cat=Food             type=Outflow
+  date=2025-02-12 desc="Store Credit"                    amt= 100.00 cat=Food             type=Outflow
+Both credit rows are Outflow-typed (the "Premium Credit" / "Store Credit"
+wording avoids the classifier's income keywords), so February really nets
+exactly zero at every slicing, and it nets IEEE -0 before the fix:
+  PROBE ALLOUT month=2025-02 rawNeg=-0 signbit=true signedNet=0 n=4
+  PROBE HC     month=2025-02 rawNeg=-0 signbit=true      n=2
+  PROBE LIVING month=2025-02 rawNeg=-0 signbit=true      n=2
+January (rawNeg=520 / 300 / 220, signbit=false) keeps the range
+net-spend, so the fixture is not degenerate. Mutations M1-M4 above prove
+the tests are load-bearing rather than merely present.
+
+`render_helpers_test.go` adds `{math.Copysign(0, -1), "0.0"}` to
+TestFormatPercent's table -- a real -0, killed by M8.
+
+=========================================================================
+(e) MCP DOC COMMENT MATCHES THE IMPLEMENTED RULE  -- PASS
+=========================================================================
+`internal/services/mcpsvc/spend/trends.go:80-89` now documents:
+  (window - history) / |history| * 100 when history is non-zero; when
+  history is exactly zero it is +100 / -100 / 0 by the sign of the change
+  (ruling CB8-2026-09-03a).
+`internal/services/insights/trends.go:355-366` implements exactly:
+  change := dailyAvg - historicalDaily
+  case historicalDaily != 0: change / math.Abs(historicalDaily) * 100
+  case change > 0: 100 ; case change < 0: -100 ; default: 0
+And `trends.go:142-146` `velocityRowFrom` sets
+`BurnRateChange: round2(v.BurnRateChange)` straight from
+`*models.SpendingVelocity`, so the documented type IS the one produced by
+that code path. Denominator (|history|) and zero-base rule both match.
+
+=========================================================================
+SCOPE  -- CLEAN
+=========================================================================
+`git diff --name-only` (via `rtk proxy`, since rtk falsifies diffs):
+  .swarm/CB7-RUN-SPEC.md, .swarm/ledger.tsv,
+  internal/handlers/dashboard/handlers.go,
+  internal/services/mcpsvc/spend/trends.go,
+  internal/templates/render.go, internal/templates/render_helpers_test.go
+plus untracked internal/handlers/dashboard/cb9_negzero_http_test.go.
+All five code files are exactly `.swarm/manifests/CB9.1.files`; the two
+`.swarm/*` edits are lead bookkeeping. No path in
+`.swarm/critical.globs` (storage, dataloader, retirement/engine,
+transfers, accounts.go, mcpsvc/confirm) is touched. Untracked
+`budget2.old-1345`, `budget2.old-2103`, `nohup.out`, `.swarm-local/` are
+pre-existing artifacts, not CB9 output. The budget2 binary was never run.
+
+Observation (not FAIL grounds): `.swarm/CB7-RUN-SPEC.md` gained its CB9
+section DURING this verification run (it was unmodified at my starting
+`git status`); the code files were byte-identical to my `cp -a` copy
+throughout, confirmed by `cmp` at the end.
+
+=========================================================================
+WHAT IS MISSING (for the worker/lead, precisely)
+=========================================================================
+1. `internal/handlers/dashboard/handlers.go:1522`
+   `monthlyTotals[m] = -monthlyOutflowSets[m].SumAmount()` must route
+   through `metrics.SignedNet` (or `negSumSigned`), with a committed test
+   asserting the /dashboard/charts/data/spending-trend response body
+   carries no `-0` token for an exactly-cancelling month. (The `prev > 0`
+   guard eleven lines below stays out of scope, per the spec.)
+2. `:1109` (hcAmt) and `:1119` (livingMonth) need either a killing test
+   (a budget-vs-actual chart-JSON assertion on the cancelling fixture --
+   the two-line probe above is sufficient and should be promoted per the
+   V3 pattern) or a corrected written justification; the current
+   "subtraction absorbs -0" argument is false for these two, as the
+   `y":[220,-0]` mutant output shows.

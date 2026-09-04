@@ -387,6 +387,41 @@ func TestVerdictRender_NoNegativeZero(t *testing.T) {
 	}
 }
 
+// TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative pins
+// CB7's kpis.html consumer fix: the Total Expenses tile used to read
+// {{formatMoney (abs .Metrics.TotalExpenses)}}, re-flipping a
+// refund-dominant range's now-negative TotalExpenses back to positive. It
+// must render the SIGNED value formatMoney itself produces for a negative
+// number -- "-$1,234.56" for -1234.56, per render.go's formatMoney (pinned
+// here, not reimplemented: negative sign prefix, "$" marker, comma
+// thousands grouping, two decimals) -- and use the sign-aware emerald
+// (net-credit) color, not the rose (spend) color, for that tile.
+func TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t, defaultRows())
+	defer cleanup()
+
+	m := &models.DashboardMetrics{
+		TotalIncome:   5000,
+		TotalExpenses: -1234.56,
+	}
+	v := BuildBudgetVerdict(m)
+
+	out, err := renderer.RenderToString("kpis", map[string]any{"Metrics": m, "BudgetVerdict": v})
+	if err != nil {
+		t.Fatalf("RenderToString(kpis): %v", err)
+	}
+
+	if !strings.Contains(out, "-$1,234.56") {
+		t.Errorf("expected the Expenses tile to render \"-$1,234.56\" (signed, not math.Abs'd); got: %s", trunc(out, 2500))
+	}
+	if strings.Contains(out, ">$1,234.56<") {
+		t.Errorf("Expenses tile rendered the POSITIVE (math.Abs'd) figure instead of the signed negative one: %s", trunc(out, 2500))
+	}
+	if !strings.Contains(out, "text-emerald-800 dark:text-emerald-300") {
+		t.Errorf("expected the sign-aware emerald (net-credit) color class on a negative TotalExpenses; got: %s", trunc(out, 2500))
+	}
+}
+
 // bothBucketsMetrics builds DashboardMetrics with both Living and Healthcare
 // configured, given the two per-bucket cumulative deltas, mirroring the
 // tier-3 oracle's fixture shape (2000 living target + 300 healthcare target).

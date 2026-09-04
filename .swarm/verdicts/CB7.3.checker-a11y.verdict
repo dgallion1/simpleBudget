@@ -1,0 +1,154 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: CB7
+ATTEMPT: 3
+---
+SCOPE (item 1)
+`git diff 6d6dc41 b1f0f36 -- web/templates` shows exactly the SAME two
+hunks reviewed and PASSed in CB7.2 (kpis.html line 36 sign-aware
+rose/emerald class + dropped `abs()`; explorer.html lines 755/758 chip
+visibility widened to `isPositive or isNegative` + sign-aware class). Byte
+count `+3 -3` across both files, identical to CB7.2's diff. No other
+template file appears in `git diff 6d6dc41 b1f0f36 --stat` (26 files
+changed total; the rest are Go: metrics.go, render.go, explorer/handlers.go,
+mcpsvc/*, models/dashboard.go, plus tests and .swarm/*). Attempt 3 is
+Go-only: a new `metrics.SignedNet` helper, 8+2 call-site conversions, and a
+belt in `formatMoney` (internal/templates/render.go) that zeroes the sign
+bit on `v == 0` before the `negative := v < 0` check. Confirmed via
+`git diff 6d6dc41 b1f0f36 -- internal/templates/render.go` (11-line diff,
+comment + 3-line normalization only, no change to the "-$"/"$" branch
+logic that produces the visible minus sign).
+
+CSS (item 2)
+`make css-verify` on HEAD, in a `cp -a` scratch copy
+(/tmp/.../scratchpad/budget2-cb7-a3-copy, never the real tree — `git
+status --short` on the real repo confirmed clean of any of my edits
+afterward): tailwindcss rebuild ended "tailwind.css is up to date", exit 0.
+
+RENDERED -0.0 CHECKS (item 3) — real templates, real renderer, throwaway
+Go tests added ONLY in the scratch copy
+(internal/handlers/dashboard/zz_a11y_negzero_test.go,
+internal/handlers/explorer/zz_a11y_negzero_test.go; never in the real
+tree):
+1. `TestA11y_KPIs_NegativeZero_RendersSameAsPositiveZero` — rendered the
+   real "kpis" template with `TotalExpenses = HealthcareTotal =
+   HealthcareActual = math.Copysign(0, -1)` vs. an all-`0.0` control.
+   Result: `PASS`. Total Expenses tile renders
+   `text-emerald-800 dark:text-emerald-300">$0.00` (NOT
+   `text-rose-600 dark:text-rose-400`, and NOT "$-0.00"/"-$0.00"). Monthly
+   Healthcare tile renders "$0.00" via its own fixed `text-gray-900
+   dark:text-gray-100` (that tile's number is never sign-conditional in
+   this template; its "Target ... under" line — driven by
+   HealthcarePerMonthDelta, not HealthcareTotal — is untouched by CB7 and
+   unaffected). The neg-zero render is BYTE-IDENTICAL to the
+   positive-zero render (`outNeg != outPos` assertion), which is the
+   correct proof that -0 is not being classified as a distinct "credit"
+   state from ordinary +0 — it takes the exact same branch. Command:
+   `go test ./internal/handlers/dashboard/... -run
+   TestA11y_KPIs_NegativeZero -v` → PASS.
+2. `TestA11y_SummaryStats_NegativeZero_ChipGuardMatchesPositiveZero` —
+   rendered the real "summary-stats" template directly (bypassing handler
+   computation, to stress the template guard itself) with
+   `TotalExpenses = math.Copysign(0, -1)`. Result: `PASS`. The Expenses
+   chip (`text-rose-700 dark:text-rose-300">Expenses<`) is ABSENT, no
+   "-$0.00"/"$-0.00" anywhere, and output is byte-identical to the
+   `TotalExpenses = 0.0` control. Command: `go test
+   ./internal/handlers/explorer/... -run
+   TestA11y_SummaryStats_NegativeZero -v` → PASS.
+3. Also independently re-ran the worker's own attempt-3 regression tests
+   in the scratch copy (not just trusted the manifest):
+   `TestVerdictRender_NoNegativeZero`,
+   `TestHandleExplorer_WithRenderer_ZeroOutflowsNoNegativeZero`,
+   `TestHandleTransactionsPartial_ZeroOutflowsNoNegativeZero`,
+   `TestHandleExplorer_WithRenderer_RefundDominantFilterRendersNegativeExpenses`,
+   `TestHandleExplorer_WithRenderer_OrdinarySpendRendersRoseExpensesClass`,
+   `TestCalculateMetrics_EmptyHealthcareWindow_NoNegativeZero`,
+   `TestCalculateMetrics_NoOutflowsAtAll_NoNegativeZero`,
+   `TestCalculateMetrics_IncomeOnlyMonth_TrendEntriesNoNegativeZero`,
+   `TestCalculateMetrics_MonthWithExactlyCancellingOutflows_TrendEntriesNoNegativeZero`,
+   `TestSignedNet`, `TestFormatMoney` — all PASS.
+4. AXE on the real -0.0 fixtures: dumped the actual rendered kpis and
+   summary-stats fragments (TotalExpenses/HealthcareTotal = -0.0) to
+   files, wrapped in light and `class="dark"` pages loading the real
+   compiled `web/static/css/tailwind.css` (byte-copy, not rebuilt/guessed;
+   summary-stats fragment nested in explorer's real `bg-white
+   dark:bg-gray-800` footer div, matching CB7.2's harness). Ran
+   `npx @axe-core/cli --tags wcag2a,wcag2aa,wcag22aa` on all 4 pages:
+   - kpis_negzero_light: 3 `color-contrast` hits, all on
+     `.text-emerald-600.text-sm.dark\:text-emerald-400` (the Income-tile
+     %-change / "under" text line, driven by `PerMonthDelta`, not
+     `TotalExpenses`/`HealthcareTotal`) — PRE-EXISTING, confirmed
+     byte-identical in `git show e04bae2:web/templates/components/kpis.html`
+     lines 11/73/107 (master, pre-CB7). NOT a CB7 defect.
+   - kpis_negzero_dark: 0 violations.
+   - summary_negzero_light: 1 `color-contrast` hit on `.text-emerald-600`
+     (the Income chip, unrelated field, unchanged) — PRE-EXISTING,
+     confirmed byte-identical in
+     `git show e04bae2:web/templates/pages/explorer.html` line 752.
+   - summary_negzero_dark: 0 violations.
+   Zero occurrences of `.text-emerald-800`/`.text-emerald-300` (CB7's own
+   classes) in any axe run — matches CB7.2's hand-computed contrast
+   ratios (6.99:1 light / 11.02:1 dark), which apply unchanged since the
+   -0.0 case renders the identical class pair as the already-audited
+   genuine-negative case.
+
+RE-CONFIRMED FROM ATTEMPT 2 (item 4)
+- Contrast of the new emerald-800/emerald-300 classes on both grounds:
+  unchanged (template byte-identical since attempt 1/2) — 6.99:1 light /
+  11.02:1 dark on kpis' rose-50/rose-900 card backgrounds; 6.99:1 light /
+  9.43:1 dark on the explorer chip's rose-50/composited-footer
+  backgrounds. Re-verified this attempt only that -0.0 selects this same
+  already-passing class pair, not a new one.
+- Visible minus sign for a genuine negative: re-ran
+  `TestHandleExplorer_WithRenderer_RefundDominantFilterRendersNegativeExpenses`
+  and `TestKPIsTotalExpensesTile...` equivalents — still assert the exact
+  substring `-$400.00`/`-$1,234.56` alongside the emerald class. `formatMoney`'s
+  `"-$" + result` branch (render.go, tail of function) is untouched by the
+  attempt-3 diff — confirmed by reading the 11-line diff directly (only the
+  belt above `negative := v < 0` was added).
+
+STRUCTURE (item 5)
+No template file other than kpis.html/explorer.html appears in CB7's diff,
+and both of those diffs are confined to class-attribute expressions plus
+one `{{if}}` guard — no heading/landmark/tag/attribute-order changes.
+`grep -c "<h1"` / `<header>`/`<main>`/`<footer>` presence in base.html
+unaffected (not touched by this diff at all). Not re-audited wholesale,
+per the CB7.2-established scope rule (traced via diff, which shows zero
+structural surface).
+
+CLEANUP
+Scratch copy and dump files are in /tmp scratchpad only; real tree
+(`/home/darrell/bin/ai/budget2`) verified untouched via `git status
+--short` (no changes) and a direct diff of `internal/templates/render.go`
+between HEAD and the working tree (empty diff). Real tree not modified;
+no commit/checkout/stash/reset performed; budget2 binary never run.
+
+VERDICT RATIONALE
+No FAIL attributable to CB7 attempt 3's diff. The two axe color-contrast
+hits are byte-identical to master (pre-existing, out of scope per the
+attribution rule) and were already recorded as an OBSERVATION in CB7.2.
+The attempt's actual surface — IEEE -0.0 normalization — renders
+identically to +0.0 on every consumer checked (no minus sign, no
+color-only "credit" misclassification, chip hidden same as +0).
+
+OBSERVATIONS (non-blocking, backlog; carried forward from CB7.2, still
+accurate)
+- PRE-EXISTING (not CB7): kpis.html's Income-tile %-change line and
+  Living/Healthcare "Target ... over/under" lines, and explorer.html's
+  Income chip, use `text-emerald-600`/`text-rose-600` at 14px/small-text
+  sizes against `-50` backgrounds, measuring below the 4.5:1 AA threshold
+  in light mode (axe-confirmed again this attempt, same classes, same
+  ratio). Present identically in master (e04bae2). Candidate a11y backlog
+  item, independent of CB7.
+- PRE-EXISTING: clickable `<div onclick="openKPIDetail(...)">` pattern
+  across KPI tiles (not a real button/link) — known backlog item, CB6
+  precedent, unchanged by CB7.
+- The Total Expenses tile's two-branch color scheme (rose for positive,
+  emerald for the "else" bucket covering both exact zero AND negative) has
+  no third "neutral zero" color — this is attempt-1/2's already-reviewed
+  and PASSed design (identical for +0.0 and -0.0 now that -0.0 is
+  correctly normalized to take the same branch as +0.0); noted here only
+  because attempt 3's brief asked me to look for a distinct
+  "zero/neutral" state and none exists by design — not a regression, and
+  not a FAIL since -0 and +0 are, correctly, indistinguishable.

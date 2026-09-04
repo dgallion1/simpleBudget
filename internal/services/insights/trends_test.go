@@ -1,8 +1,10 @@
 package insights
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"testing"
 	"time"
 
@@ -1045,5 +1047,35 @@ func TestAnalyzeIncomePatterns_LastDate(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected employer pattern")
+	}
+}
+
+// TestCalculateSpendingVelocity_CancellingWindowIsPositiveZero (CB9): a
+// window whose outflow rows cancel exactly used to yield IEEE -0 for
+// DailyAverage/HistoricalDaily/MonthProjection, which json.Marshal (and
+// the MCP get_trends round2 path) emits as the literal token -0.
+func TestCalculateSpendingVelocity_CancellingWindowIsPositiveZero(t *testing.T) {
+	now := time.Now()
+	txns := []models.Transaction{
+		{Description: "purchase", Amount: -250, Date: now, TransactionType: models.Outflow},
+		{Description: "merchandise credit", Amount: 250, Date: now, TransactionType: models.Outflow},
+	}
+	period := &models.TransactionSet{Transactions: txns}
+
+	v := SpendingVelocity(period, period)
+
+	for name, val := range map[string]float64{
+		"DailyAverage": v.DailyAverage, "HistoricalDaily": v.HistoricalDaily, "MonthProjection": v.MonthProjection, "BurnRateChange": v.BurnRateChange,
+	} {
+		if val != 0 || math.Signbit(val) {
+			t.Errorf("%s = %v (signbit=%v), want +0 for an exactly-cancelling window", name, val, math.Signbit(val))
+		}
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if regexp.MustCompile(`-0(\.0+)?[,}\]]`).Match(raw) {
+		t.Errorf("velocity JSON carries a -0 token: %s", raw)
 	}
 }

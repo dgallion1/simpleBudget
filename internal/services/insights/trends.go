@@ -8,6 +8,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/majorexpenses"
+	"budget2/internal/services/metrics"
 )
 
 // MajorExpenseTrends groups outflows by matched MajorExpense.Name
@@ -311,7 +312,9 @@ func SpendingVelocity(currentPeriod, allData *models.TransactionSet) *models.Spe
 	// refund-dominant period yields a NEGATIVE daily average -- honest;
 	// see burnRateChange's guard below for how a negative historicalDaily
 	// is handled downstream.
-	dailyAvg := -currentOutflows.SumAmount() / currentDays
+	// Routed through metrics.SignedNet (CB9): a window whose outflows cancel
+	// exactly must yield +0, not IEEE -0, which json.Marshal emits as "-0".
+	dailyAvg := metrics.SignedNet(currentOutflows) / currentDays
 
 	allMin := allData.MinDate()
 	allMax := allData.MaxDate()
@@ -320,7 +323,7 @@ func SpendingVelocity(currentPeriod, allData *models.TransactionSet) *models.Spe
 		allDays = 1
 	}
 	// Signed net over the whole ledger (CB3-D), same contract as dailyAvg.
-	historicalDaily := -allOutflows.SumAmount() / allDays
+	historicalDaily := metrics.SignedNet(allOutflows) / allDays
 
 	now := time.Now()
 	daysInMonth := time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, time.Local).Day()
@@ -333,7 +336,7 @@ func SpendingVelocity(currentPeriod, allData *models.TransactionSet) *models.Spe
 	// Signed net for the current calendar month (CB3-D), same contract as
 	// dailyAvg; monthProjection below inherits the sign (a refund-dominant
 	// month-to-date projects a negative total -- honest, not a division).
-	spentSoFar := -currentMonthOutflows.SumAmount()
+	spentSoFar := metrics.SignedNet(currentMonthOutflows)
 
 	monthProjection := spentSoFar + (dailyAvg * float64(daysRemaining))
 

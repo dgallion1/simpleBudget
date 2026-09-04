@@ -552,7 +552,7 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 		// they derive correctly once expAmt is signed.
 		expAmt := 0.0
 		if exp, ok := monthlyOutflows[m]; ok {
-			expAmt = -exp.SumAmount()
+			expAmt = metrics.SignedNet(exp)
 		}
 
 		savings := incAmt - expAmt
@@ -681,6 +681,15 @@ func sumSigned(txns []models.Transaction) float64 {
 	return sum
 }
 
+// negSumSigned is the spend-side counterpart of sumSigned: the negated
+// signed sum routed through metrics.SignedNet so an exactly-cancelling
+// slice yields +0, never IEEE -0 (ruling CB7-2026-09-03c / CB9). Never
+// write -sumSigned(...) inline -- fmt's %.2f honors the sign bit and the
+// CSV export below would emit "-0.00".
+func negSumSigned(txns []models.Transaction) float64 {
+	return metrics.SignedNet(models.NewTransactionSet(txns))
+}
+
 // classifiedMonthlyTotals groups a classified set (living or healthcare
 // outflows, already filtered via metrics.LivingOutflows / FilterByCategory)
 // by month and returns each month's NEGATED signed sum -- positive means
@@ -689,9 +698,12 @@ func sumSigned(txns []models.Transaction) float64 {
 // the modal's Total tile is the sum of these same displayed values (one
 // rounding path), a row's displayed figure and the Total it feeds always
 // reconcile exactly; Total also equals Metrics.LivingExpensesTotal /
-// HealthcareTotal whenever the range nets spend (the only divergence is a
-// whole-range net refund, where Total honestly renders negative while the
-// card figure is an Abs -- documented, accepted). A month absent from the
+// HealthcareTotal exactly, for every range: since CB7 the card figure is
+// the same signed net (metrics.SignedNet), so a whole-range net refund
+// renders negative on both surfaces. Each month's figure goes through
+// SignedNet too, so an exactly-cancelling month is +0, never IEEE -0 --
+// this map feeds the CSV export's raw %.2f, which would otherwise print
+// "-0.00" (CB9, closing checker-second's CB7 observation). A month absent from the
 // classified set is simply absent from the returned map; callers read it
 // with a plain map lookup, which yields 0 for those months. Shared by
 // handleKPIDetail and handleKPIExport (K8) so the modal and its CSV export
@@ -699,7 +711,7 @@ func sumSigned(txns []models.Transaction) float64 {
 func classifiedMonthlyTotals(classified *models.TransactionSet) map[string]float64 {
 	totals := make(map[string]float64)
 	for m, set := range classified.GroupByMonth() {
-		totals[m] = -set.SumAmount()
+		totals[m] = metrics.SignedNet(set)
 	}
 	return totals
 }
@@ -760,7 +772,7 @@ func handleKPIMonthDetail(w http.ResponseWriter, r *http.Request) {
 	// expAmt. A refund-dominant month renders negative (a credit), keeping
 	// this tile and the parent modal row agreeing exactly.
 	incomeTotal := sumSigned(monthIncome)
-	expenseTotal := -sumSigned(monthOutflow)
+	expenseTotal := negSumSigned(monthOutflow)
 
 	var txns []models.Transaction
 	var total float64
@@ -785,7 +797,7 @@ func handleKPIMonthDetail(w http.ResponseWriter, r *http.Request) {
 		txns = monthLiving
 		incomeTotal = 0
 		expenseTotal = 0
-		total, totalLabel = -sumSigned(monthLiving), "Living Spent"
+		total, totalLabel = negSumSigned(monthLiving), "Living Spent"
 	case "healthcare":
 		// Negated signed sum, NO per-month Abs (ruling KD-2026-08-30d) --
 		// see the "living" case above.
@@ -793,7 +805,7 @@ func handleKPIMonthDetail(w http.ResponseWriter, r *http.Request) {
 		txns = monthHealthcare
 		incomeTotal = 0
 		expenseTotal = 0
-		total, totalLabel = -sumSigned(monthHealthcare), "Healthcare Spent"
+		total, totalLabel = negSumSigned(monthHealthcare), "Healthcare Spent"
 	default:
 		// Both savings KPIs are income minus expenses, so the drill-down
 		// shows both sides -- and leaves transfers out, exactly as the
@@ -928,7 +940,7 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 		// sign. DERIVED savings/rate below need no change.
 		expAmt := 0.0
 		if exp, ok := monthlyOutflows[m]; ok {
-			expAmt = -exp.SumAmount()
+			expAmt = metrics.SignedNet(exp)
 		}
 
 		savings := incAmt - expAmt
@@ -1094,7 +1106,7 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 		// flipped this sign.
 		hcAmt := 0.0
 		if hc, ok := monthlyHealthcare[m]; ok {
-			hcAmt = -hc.SumAmount()
+			hcAmt = metrics.SignedNet(hc)
 		}
 		// Set exclusion (ruling SY-2026-08-30d; signed per CB2): the
 		// signed negated net runs directly on livingOutflows' month bucket
@@ -1104,7 +1116,7 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 		// of the flagged group's own sign.
 		livingMonth := 0.0
 		if lo, ok := monthlyLiving[m]; ok {
-			livingMonth = -lo.SumAmount()
+			livingMonth = metrics.SignedNet(lo)
 		}
 
 		livingValues = append(livingValues, livingMonth)
@@ -1145,7 +1157,7 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 		// refund), not be charged as spend. math.Abs flipped this sign.
 		spend := 0.0
 		if bucket, ok := monthlyNonExcluded[m]; ok {
-			spend = -bucket.SumAmount()
+			spend = metrics.SignedNet(bucket)
 		}
 
 		running += monthTarget - spend
@@ -1507,7 +1519,7 @@ func buildSpendingTrendChartData(ts *models.TransactionSet) map[string]interface
 	// sensible sign convention, not a defect this fix addresses.
 	monthlyTotals := make(map[string]float64, len(months))
 	for _, m := range months {
-		monthlyTotals[m] = -monthlyOutflowSets[m].SumAmount()
+		monthlyTotals[m] = metrics.SignedNet(monthlyOutflowSets[m])
 	}
 
 	// Need at least 2 months to show change

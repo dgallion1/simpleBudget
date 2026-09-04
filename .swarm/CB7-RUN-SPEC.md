@@ -224,6 +224,46 @@ markup change, so no a11y lane.
 
 ---
 
+---
+
+## CB9 — negative-zero source sites CB7 left out; formatPercent belt; MCP doc
+
+Opened from checker-second's CB7.3 and CB8.1 observations. Lead-authored
+(lean exception), Tier 2, checks tests,second (money surfaces: CSV export
+and modal totals; no markup change → no a11y lane).
+- `internal/handlers/dashboard/handlers.go`: classifiedMonthlyTotals (feeds
+  the KPI modal rows AND the CSV export's raw `%.2f`), expAmt ×2,
+  handleKPIMonthDetail's three `-sumSigned` totals (via a new
+  `negSumSigned` wrapper), and the chart walk's hcAmt/livingMonth/spend all
+  route through `metrics.SignedNet`. Accumulator loops (`+= -t.Amount`)
+  are untouched: an accumulator starting at +0 cannot land on -0.
+- `formatPercent` gets the same -0 belt as formatMoney.
+- `mcpsvc/spend/trends.go` BurnRateChange doc states the CB8 rule.
+- Attempt 2 (both lanes FAILED attempt 1 on untested chart-walk sites, and
+  checker-tests found a fifth site the lead's grep missed —
+  buildSpendingTrendChartData's indexed `-monthlyOutflowSets[m].SumAmount()`):
+  that site fixed; chart-endpoint tests added (spending-trend and
+  budget-vs-actual with targets wired) asserting no `-0` token and
+  Signbit-clear traces; checker-second's same-class observation folded
+  in — SpendingVelocity's three negated sums (insights/trends.go) reached
+  MCP get_trends as `-0` via round2, now SignedNet with a test; and
+  formatNumber gets the belt. Re-enumeration rule: `grep -n "= -\|:= -"`
+  (the `[a-zA-Z]*[.(]` pattern missed indexed expressions).
+- Tests: exactly-cancelling February at every slicing (healthcare,
+  living, expenses); export cells "0.00" for all kinds; month-detail JSON
+  free of `-0` tokens and Signbit-clear; KPI detail response free of
+  "$-0"; chart JSON free of `-0`; velocity struct free of `-0`;
+  formatPercent(-0) == "0.0"; formatNumber(-0) == "0".
+Acceptance: `make check` green; every SignedNet site load-bearing by
+mutation or provably consumer-unobservable (CB7 precedent); live-ledger
+export/detail bytes identical except any genuine "-0.00"→"0.00" cell.
+Stated survivors (attempt 2, both proven unobservable by checker-tests):
+`spend` in the cumulative walk (`running += monthTarget - spend` absorbs
+-0 bit-for-bit) and `spentSoFar` in SpendingVelocity (reaches only
+MonthProjection, diverges only when daysRemaining==0 && dailyAvg<0, and
+is belted by formatMoney / dropped by MCP). Both converted for
+single-source consistency.
+
 ## Not in scope (recorded so it is not rediscovered)
 - **MoM spending-trend `prev > 0` guard** (`internal/handlers/dashboard/
   handlers.go:1533`), pinned by `cb2_signed_spending_trend_test.go:48`
@@ -265,9 +305,10 @@ markup change, so no a11y lane.
   (391, 422, 442, 455, 530, 536, 545, 618 — the CB2/SY4 per-month sites
   carry the same latent idiom and are folded in as the same single-source
   fix) and both explorer sites; plus `formatMoney` normalizes -0 to 0 as
-  a formatter-layer belt (pre-existing KD idiom in kpi-month-detail's
-  handler is thereby covered on the rendered surface; source-level fix
-  there is backlog). Boundary tests required at source (Signbit false),
+  a formatter-layer belt. (Coverage claim corrected by checker-second at
+  attempt 3: the belt covers the HTML modal but NOT the KPI CSV export,
+  which is raw %.2f — so the KD-era dashboard/handlers.go sites are fixed
+  at source in CB9, not left as backlog.) Boundary tests required at source (Signbit false),
   at JSON (no "-0" token), and at the formatter ("$0.00").
 - CB8-2026-09-03a — velocity percent-change rule = CB3-c (|base|
   denominator, sign-of-change on zero base), stated above.
@@ -281,11 +322,30 @@ markup change, so no a11y lane.
   mutation proofs nor checker-a11y's rendered probes had a zero-sum
   window. The mechanism was the "every populated range on real data"
   probe, not the diff.
+- CB7 attempt 3: no catch; all three lanes PASS. checker-second's re-run
+  sweep (24 windows, signbit + JSON-token checks) clean; it surfaced the
+  CSV-export gap in the ruling's coverage claim → CB9.
+- CB9 attempt 1 (lead-authored): **both lanes FAIL**, same ground —
+  checker-tests (primary) found the fifth negated site via a wider grep
+  and proved hcAmt/livingMonth observable in chart JSON; checker-second
+  proved the same three chart-walk sites both-ends against the real
+  classifier pipeline and found the velocity→MCP round2 `-0` leak. The
+  lead's own mutation sanity had covered only the sites its grep found:
+  the enumeration was the defect (lean-exception data point — non-author
+  verification caught the lead's blind spot exactly as W4 predicted).
 - CB8 attempt 1: no catch. checker-second PASS with live-ledger probe
   (HistoricalDaily 226.17 > 0, BurnRateChange 23.358011 byte-identical
   before/after); five mutants killed.
 
 ## Observations (backlog, not FAIL grounds)
+- [checker-tests, CB9.2] `mcpsvc/spend/summary.go:91/121/144` `round2(-…)`
+  per-row negations (by_category/by_merchant/by_month) can emit a JSON
+  `-0` for an exactly-cancelling row; pre-existing, self-documented, a
+  JSON consumer reads -0 == 0. Same class; route through SignedNet when
+  next touching summarize_spending.
+- [checker-tests, CB9.2] accumulators at `insights/trends.go:45/50` and
+  dashboard `:403/:1598` are -0-safe (start at +0) — enumerated here so
+  they are not re-audited.
 - [checker-second, CB7] the registered budget2 MCP server still serves the
   OLD "always non-negative" wording — it runs a binary built from another
   worktree; rebuild/redeploy after merge (deploy note, not a code defect).

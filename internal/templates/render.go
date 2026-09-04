@@ -555,6 +555,9 @@ func formatAbbreviatedTotal(v float64) string {
 }
 
 func formatNumber(v float64) string {
+	if v == 0 {
+		v = 0 // IEEE -0 belt, same as formatMoney/formatPercent (CB9)
+	}
 	negative := v < 0
 	if negative {
 		v = -v
@@ -577,6 +580,9 @@ func formatNumber(v float64) string {
 }
 
 func formatPercent(v float64) string {
+	if v == 0 {
+		v = 0 // IEEE -0 would print "-0.0" (sign bit survives %.1f); same belt as formatMoney (CB9)
+	}
 	if v > 0 {
 		return fmt.Sprintf("+%.1f", v)
 	}

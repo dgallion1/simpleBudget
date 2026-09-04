@@ -134,6 +134,7 @@ func TestFormatNumber(t *testing.T) {
 		want string
 	}{
 		{0, "0"},
+		{math.Copysign(0, -1), "0"}, // CB9: -0 belt
 		{1234, "1,234"},
 		{-1234, "-1,234"},
 		{1000000, "1,000,000"},
@@ -156,6 +157,8 @@ func TestFormatPercent(t *testing.T) {
 		{5.5, "+5.5"},
 		{-3.2, "-3.2"},
 		{0, "0.0"},
+		// CB9: IEEE negative zero must not leak its sign bit through %.1f.
+		{math.Copysign(0, -1), "0.0"},
 	}
 	for _, tt := range tests {
 		got := formatPercent(tt.in)

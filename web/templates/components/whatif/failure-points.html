@@ -4,7 +4,7 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Failure Thresholds</h2>
     {{if not .Analysis.FailurePoints.BaselineSurvives}}
-    <p class="text-red-600 dark:text-red-400">Portfolio already depletes under current settings. Adjust parameters to find survival thresholds.</p>
+    <p class="text-negative">Portfolio already depletes under current settings. Adjust parameters to find survival thresholds.</p>
     {{else if eq (len .Analysis.FailurePoints.FailurePoints) 0}}
     <p class="text-gray-600 dark:text-gray-300">No failure points found - your scenario is very robust.</p>
     {{else}}
@@ -20,7 +20,7 @@
 
 {{/* Single Failure Point Card */}}
 {{define "whatif-failure-point-card"}}
-<div class="border rounded-lg p-4 {{if eq .SafetyLevel "critical"}}border-red-300 bg-red-50 dark:border-red-700 dark:bg-red-900/20{{else if eq .SafetyLevel "marginal"}}border-yellow-300 bg-yellow-50 dark:border-yellow-700 dark:bg-yellow-900/20{{else}}border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-900/20{{end}}">
+<div class="border rounded-lg p-4 {{if eq .SafetyLevel "critical"}}border-negative bg-negative-soft{{else if eq .SafetyLevel "marginal"}}border-warning bg-warning-soft{{else}}border-positive bg-positive-soft{{end}}">
     <div class="flex justify-between items-start">
         <div>
             <h3 class="font-medium text-gray-800 dark:text-gray-200">{{.ParamLabel}}</h3>
@@ -34,7 +34,7 @@
                 {{end}}
             </p>
         </div>
-        <span class="px-2 py-1 text-xs font-medium rounded {{if eq .SafetyLevel "critical"}}bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200{{else if eq .SafetyLevel "marginal"}}bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200{{else}}bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-200{{end}}">
+        <span class="px-2 py-1 text-xs font-medium rounded {{if eq .SafetyLevel "critical"}}bg-negative-soft text-negative{{else if eq .SafetyLevel "marginal"}}bg-warning-soft text-warning{{else}}bg-positive-soft text-positive{{end}}">
                 {{if eq .SafetyLevel "critical"}}Critical{{else if eq .SafetyLevel "marginal"}}Marginal{{else}}Safe{{end}}
         </span>
     </div>
@@ -53,7 +53,7 @@
         </p>
         <p class="text-sm mt-1">
             <span class="text-gray-600 dark:text-gray-300">Safety margin:</span>
-            <span class="font-semibold {{if eq .SafetyLevel "critical"}}text-red-600 dark:text-red-400{{else if eq .SafetyLevel "marginal"}}text-yellow-600 dark:text-yellow-400{{else}}text-green-700 dark:text-green-400{{end}}">
+            <span class="font-semibold {{if eq .SafetyLevel "critical"}}text-negative{{else if eq .SafetyLevel "marginal"}}text-warning{{else}}text-positive{{end}}">
                 {{printf "%.1f" .Margin}}{{if or (eq .ParamName "monthly_expenses") (eq .ParamName "portfolio_value")}}%{{else}} pts{{end}}
             </span>
         </p>

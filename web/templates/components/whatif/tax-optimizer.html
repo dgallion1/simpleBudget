@@ -11,7 +11,7 @@
     {{/* Focusable (tabindex="-1") so the Run button's after-swap handler
          can move focus here once the ~10 s request lands; visible focus
          ring matches the Conversion Sweep heading. */}}
-    <h2 tabindex="-1" class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4 rounded focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-indigo-500 dark:focus:outline-indigo-400">Tax Optimizer</h2>
+    <h2 tabindex="-1" class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4 rounded focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent">Tax Optimizer</h2>
 
     {{if not $to.Eligible}}
     <p class="text-sm text-gray-600 dark:text-gray-400">{{$to.IneligibleReason}}</p>
@@ -22,7 +22,7 @@
     {{/* Best strategy headline. Lead with the metric that actually drives
          ranking (MC median in real $) so it matches the sort key in the
          table. Deterministic ending balance shown in parens as context. */}}
-    <div class="text-xs bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-md p-2 mb-3 text-gray-700 dark:text-gray-200">
+    <div class="text-body-sm bg-accent-soft border border-accent rounded-md p-2 mb-3 text-gray-700 dark:text-gray-200">
         Best: SS {{$best.PrimaryClaimAge}}{{if $best.SpouseClaimAge}}/{{$best.SpouseClaimAge}}{{end}},
         {{$best.RothStrategy.Label}} —
         {{if gt $to.MonteCarloRuns 0}}
@@ -62,7 +62,7 @@
                         {{template "taxopt-th-tooltip" (dict "Label" "End Portfolio" "Tip" "Deterministic projection ending balance in today's dollars (real, inflation-adjusted). Uses your expected return — no randomness." "Align" "right")}}
                     </th>
                     {{if gt $to.MonteCarloRuns 0}}
-                    <th class="text-right py-2 px-2 text-indigo-600 dark:text-indigo-300 font-semibold">
+                    <th class="text-right py-2 px-2 text-accent font-semibold">
                         {{template "taxopt-th-tooltip" (dict "Label" "MC Median ▼" "Tip" (printf "Monte Carlo median ending balance in today's dollars across %d random return paths. THIS is the ranking metric — strategies are sorted by this column." $to.MonteCarloRuns) "Align" "right" "Accent" "indigo")}}
                     </th>
                     {{end}}
@@ -88,11 +88,11 @@
             <tbody>
                 {{range $i, $c := $to.Top}}
                 {{$delta := sub $c.EndingPortfolioReal $baseline.EndingPortfolioReal}}
-                <tr class="{{if not $c.PerYearConversions}}border-b dark:border-gray-700 {{end}}{{if eq $i 0}}bg-green-50 dark:bg-green-900/20{{end}}">
+                <tr class="{{if not $c.PerYearConversions}}border-b dark:border-gray-700 {{end}}{{if eq $i 0}}bg-positive-soft{{end}}">
                     <td class="py-2 px-2 text-gray-800 dark:text-gray-200">
                         {{$c.RothStrategy.Label}}
                         {{if eq $i 0}}
-                        <span class="text-xs text-green-700 dark:text-green-400" title="Best strategy by MC median ending balance.">&#9733;</span>
+                        <span class="text-xs text-positive" title="Best strategy by MC median ending balance.">&#9733;</span>
                         {{end}}
                     </td>
                     <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">
@@ -100,12 +100,12 @@
                     </td>
                     <td class="py-2 px-2 text-right text-gray-800 dark:text-gray-200">{{formatMoney $c.EndingPortfolioReal}}</td>
                     {{if gt $to.MonteCarloRuns 0}}
-                    <td class="py-2 px-2 text-right text-indigo-700 dark:text-indigo-300 font-semibold">{{formatMoney $c.MCMedianEndingReal}}</td>
+                    <td class="py-2 px-2 text-right text-accent font-semibold">{{formatMoney $c.MCMedianEndingReal}}</td>
                     {{end}}
-                    <td class="py-2 px-2 text-right text-red-600 dark:text-red-400">{{formatMoney $c.LifetimeTaxReal}}</td>
+                    <td class="py-2 px-2 text-right text-negative">{{formatMoney $c.LifetimeTaxReal}}</td>
                     <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{if eq $c.PeakMarginalBracket 0.0}}&mdash;{{else}}{{printf "%.0f" $c.PeakMarginalBracket}}%{{end}}</td>
                     <td class="py-2 px-2 text-right text-gray-600 dark:text-gray-300">{{if eq $c.TotalRothConverted 0.0}}&mdash;{{else}}{{formatMoney $c.TotalRothConverted}}{{end}}</td>
-                    <td class="py-2 px-2 text-right {{if gt $delta 0.0}}text-green-700 dark:text-green-400{{else if lt $delta 0.0}}text-amber-600 dark:text-amber-400{{else}}text-gray-600 dark:text-gray-400{{end}}">
+                    <td class="py-2 px-2 text-right {{if gt $delta 0.0}}text-positive{{else if lt $delta 0.0}}text-warning{{else}}text-gray-600 dark:text-gray-400{{end}}">
                         {{if gt $delta 0.0}}+{{end}}{{formatMoney $delta}}
                     </td>
                     {{if gt $to.MonteCarloRuns 0}}
@@ -115,14 +115,14 @@
                     {{end}}
                 </tr>
                 {{if $c.PerYearConversions}}
-                <tr class="border-b dark:border-gray-700 {{if eq $i 0}}bg-green-50 dark:bg-green-900/20{{end}}">
+                <tr class="border-b dark:border-gray-700 {{if eq $i 0}}bg-positive-soft{{end}}">
                     <td colspan="{{if gt $to.MonteCarloRuns 0}}9{{else}}7{{end}}" class="px-2 pb-2">
-                        <details class="text-xs text-gray-600 dark:text-gray-300">
-                            <summary class="cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400">
+                        <details class="text-body-sm text-gray-600 dark:text-gray-300">
+                            <summary class="cursor-pointer hover:text-accent">
                                 Show conversion amounts
                             </summary>
                             <div class="mt-2 pl-4">
-                                <table class="text-xs">
+                                <table class="text-body-sm">
                                     <thead>
                                         <tr>
                                             <th class="text-left pr-4 font-medium">Age</th>
@@ -138,7 +138,7 @@
                                         {{end}}
                                     </tbody>
                                 </table>
-                                <p class="mt-2 text-gray-600 dark:text-gray-400">
+                                <p class="mt-2 text-body-sm text-gray-600 dark:text-gray-400">
                                     {{conversionSummary $c.PerYearConversions}}
                                 </p>
                             </div>
@@ -150,13 +150,13 @@
             </tbody>
         </table>
     </div>
-    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">&#9733; Best strategy. Ending portfolio and lifetime tax in today's dollars. {{$to.CandidatesScored}} strategies scored{{if $to.MonteCarloRuns}}, top-5 refined with {{$to.MonteCarloRuns}} Monte Carlo runs each (shared seed across finalists){{end}}.</p>
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-2">&#9733; Best strategy. Ending portfolio and lifetime tax in today's dollars. {{$to.CandidatesScored}} strategies scored{{if $to.MonteCarloRuns}}, top-5 refined with {{$to.MonteCarloRuns}} Monte Carlo runs each (shared seed across finalists){{end}}.</p>
 
     {{/* Glossary — hover-tooltips on headers cover most cases, but a
          visible disclosure helps mobile users and anyone who wants the
          full reference at a glance. */}}
-    <details class="text-xs text-gray-600 dark:text-gray-400 mt-2">
-        <summary class="cursor-pointer text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400">What do these columns mean?</summary>
+    <details class="text-body-sm text-gray-600 dark:text-gray-400 mt-2">
+        <summary class="cursor-pointer text-gray-600 dark:text-gray-300 hover:text-accent">What do these columns mean?</summary>
         <dl class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 pl-2">
             <dt class="font-medium text-gray-700 dark:text-gray-200">Strategy</dt>
             <dd>Roth conversion plan: which marginal tax bracket to fill with conversions, and over which ages (e.g. <em>Fill 24% bracket, 67→72</em>).</dd>
@@ -165,7 +165,7 @@
             <dt class="font-medium text-gray-700 dark:text-gray-200">End Portfolio</dt>
             <dd>Deterministic projection ending balance in today's dollars (uses your expected return — no randomness).</dd>
             {{if gt $to.MonteCarloRuns 0}}
-            <dt class="font-medium text-indigo-700 dark:text-indigo-300">MC Median &#9660; <span class="text-gray-600 dark:text-gray-400 font-normal">(ranking metric)</span></dt>
+            <dt class="font-medium text-accent">MC Median &#9660; <span class="text-gray-600 dark:text-gray-400 font-normal">(ranking metric)</span></dt>
             <dd>Median ending balance across {{$to.MonteCarloRuns}} <strong>M</strong>onte <strong>C</strong>arlo runs in today's dollars. Strategies are sorted by this column — it's the most robust single-number summary because randomized return paths capture sequence-of-returns risk.</dd>
             {{end}}
             <dt class="font-medium text-gray-700 dark:text-gray-200">Lifetime Tax</dt>
@@ -188,7 +188,7 @@
         {{end}}
     </details>
 
-    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 caveat">Recommendations are read-only — edit your scenario manually to apply. Survivor-spouse filing-status changes are not modeled in Phase&nbsp;1.</p>
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-2 caveat">Recommendations are read-only — edit your scenario manually to apply. Survivor-spouse filing-status changes are not modeled in Phase&nbsp;1.</p>
     {{end}}
     {{end}}
 </div>
@@ -207,7 +207,7 @@
             hx-swap="innerHTML"
             hx-indicator="#tax-optimizer-loading"
             hx-disabled-elt="this"
-            class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-wait text-white text-sm font-medium rounded-md transition-colors">
+            class="inline-flex items-center gap-2 px-4 py-2 bg-accent-strong hover:bg-accent-strong disabled:opacity-60 disabled:cursor-wait text-white text-sm font-medium rounded-md transition-colors">
         Run Tax Optimizer
         <span id="tax-optimizer-loading" class="htmx-indicator" aria-hidden="true">
             <svg class="animate-spin motion-reduce:animate-none h-4 w-4" viewBox="0 0 24 24">
@@ -228,12 +228,12 @@
      title= fallback keeps screen readers / mobile long-press working. */}}
 {{define "taxopt-th-tooltip"}}
 <span class="group relative inline-block cursor-help" tabindex="0">
-    <span class="border-b border-dotted {{if eq .Accent "indigo"}}border-indigo-400 dark:border-indigo-500{{else}}border-gray-400 dark:border-gray-500{{end}}" title="{{.Tip}}">{{.Label}}</span>
+    <span class="border-b border-dotted {{if eq .Accent "indigo"}}border-accent{{else}}border-gray-400 dark:border-gray-500{{end}}" title="{{.Tip}}">{{.Label}}</span>
     <span role="tooltip"
           class="pointer-events-none absolute z-30 bottom-full {{if eq .Align "left"}}left-0{{else}}right-0{{end}} mb-2 w-72
                  px-3 py-2 rounded-md
                  bg-gray-900 dark:bg-gray-700 text-gray-100
-                 text-xs text-left font-normal normal-case leading-snug
+                 text-body-sm text-left font-normal normal-case leading-snug
                  shadow-xl ring-1 ring-black/20
                  whitespace-normal
                  opacity-0 group-hover:opacity-100 group-focus:opacity-100

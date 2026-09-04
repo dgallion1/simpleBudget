@@ -6,12 +6,12 @@
     <div class="flex items-start justify-between gap-3 mb-4">
         <div>
             <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Yearly Income by Source</h2>
-            <p class="text-xs text-gray-600 dark:text-gray-300">Stacked annual cash flow: Social Security, other ordinary income, and portfolio withdrawals.</p>
+            <p class="text-body-sm text-gray-600 dark:text-gray-300">Stacked annual cash flow: Social Security, other ordinary income, and portfolio withdrawals.</p>
         </div>
         <div class="flex items-center gap-2">
             <div class="inline-flex rounded-md shadow-sm border border-gray-200 dark:border-gray-600 overflow-hidden" role="group" aria-label="Display dollars mode">
                 <button type="button" data-income-display-dollars="nominal" aria-pressed="true"
-                    class="income-display-toggle px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white">
+                    class="income-display-toggle px-3 py-1.5 text-xs font-medium bg-accent-strong text-white">
                     Nominal
                 </button>
                 <button type="button" data-income-display-dollars="real" aria-pressed="false"
@@ -50,7 +50,7 @@
             toggles.forEach(function(other) {
                 const isActive = other === btn;
                 other.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-                other.classList.toggle('bg-indigo-600', isActive);
+                other.classList.toggle('bg-accent-strong', isActive);
                 other.classList.toggle('text-white', isActive);
                 other.classList.toggle('bg-white', !isActive);
                 other.classList.toggle('dark:bg-gray-700', !isActive);

@@ -111,3 +111,18 @@ CB4	2	tests,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane
 CB5	2	tests,second	accepted	1	lead	gate-ok-tier2-attempt-1-dual-lane-lead-authored
 CB6	2	tests,a11y	accepted	2	worker-coder	gate-ok-tier2-attempt-2-after-a11y-ring-catch
 LB1	2	tests,second	accepted	3	worker-coder	gate-ok-tier2-attempt-3-after-T18-contract-rewrite
+U1	1	a11y	accepted	1	worker-coder	gate-ok-tier1-attempt-1-after-scope-ruling-b-checker-clean
+U2	2	a11y,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane-first-attempt-clean
+U3	2	a11y	accepted	1	worker-coder	gate-ok-tier2-attempt-1-a11y-first-attempt-clean
+U4	2	a11y	accepted	1	worker-coder	gate-ok-tier2-attempt-1-a11y-first-attempt-clean
+U5	3	tests,second	accepted	3	worker-coder	gate-ok-tier3-attempt-3-oracle-pass-dual-lane-after-two-second-FAILs
+U6	3	a11y,tests,second	accepted	4	worker-coder	gate-ok-tier3-attempt-4-dual-lane-PASS-oracle11of11; reopened after worktree-loss recovery (ruling j)
+U7	2	tests,a11y	pending	0	-	phase0-draft-awaiting-tier-signoff
+U8	2	tests,second	pending	0	-	phase0-draft-awaiting-tier-signoff
+U9	1	a11y	pending	0	-	phase0-draft-awaiting-tier-signoff
+U10	2	content,second	pending	0	-	phase0-draft-awaiting-tier-signoff
+U11	2	tests,a11y	pending	0	-	phase0-draft-awaiting-tier-signoff
+U12	2	tests,a11y	pending	0	-	phase0-draft-awaiting-tier-signoff
+U13	2	tests,a11y	pending	0	-	phase0-draft-awaiting-tier-signoff
+U14	3	tests,second	pending	0	-	phase0-draft-awaiting-tier-signoff
+U15	2	a11y	pending	0	-	phase0-draft-awaiting-tier-signoff

@@ -666,14 +666,14 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 func renderError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(statusCode)
-	body := fmt.Sprintf(`<div class="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+	body := fmt.Sprintf(`<div class="p-4 bg-negative-soft border border-negative rounded-lg">
 		<div class="flex items-center">
-			<svg class="w-5 h-5 text-red-500 dark:text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+			<svg class="w-5 h-5 text-negative mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
 			</svg>
-			<span class="text-red-700 dark:text-red-300 font-medium">Error</span>
+			<span class="text-negative font-medium">Error</span>
 		</div>
-		<p class="mt-2 text-sm text-red-600 dark:text-red-400">%s</p>
+		<p class="mt-2 text-body-sm text-negative">%s</p>
 	</div>`, html.EscapeString(message))
 	_, _ = w.Write([]byte(body))
 }

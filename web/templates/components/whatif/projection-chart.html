@@ -9,12 +9,12 @@
     <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-4">
         <div>
             <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Portfolio Longevity</h2>
-            <p class="text-xs text-gray-600 dark:text-gray-300">After-tax projection. Toggle between future dollars and today's dollars.</p>
+            <p class="text-body-sm text-gray-600 dark:text-gray-300">After-tax projection. Toggle between future dollars and today's dollars.</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
             <div class="inline-flex flex-wrap rounded-md shadow-sm border border-gray-200 dark:border-gray-600" role="group" aria-label="Display dollars mode">
                 <button type="button" data-display-dollars="nominal" aria-pressed="true"
-                    class="projection-display-toggle whitespace-nowrap px-3 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-l-md">
+                    class="projection-display-toggle whitespace-nowrap px-3 py-1.5 text-xs font-medium bg-accent-strong text-white rounded-l-md">
                     Nominal
                 </button>
                 <button type="button" data-display-dollars="real" aria-pressed="false"
@@ -39,7 +39,7 @@
     </div>
     {{with .Analysis.ProjectionExplainability}}
     <div class="mt-4 space-y-3">
-        <div class="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+        <div class="space-y-1 text-body-sm text-gray-600 dark:text-gray-300">
             <p id="projection-display-caption"
                 data-caption-nominal="Viewing future dollars. Real mode removes {{printf "%.1f" .InflationLossPercent}}% of inflation distortion from the final balance."
                 data-caption-real="Viewing today's dollars. Inflation has been removed from the displayed path.">
@@ -49,8 +49,8 @@
             <p>Cumulative inflation over the projection: {{printf "%.1f" (mul (sub .CumulativeInflation 1) 100)}}%.</p>
         </div>
         <div class="rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
-            <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Model assumptions</p>
-            <div class="mt-2 grid gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2">
+            <p class="text-label font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Model assumptions</p>
+            <div class="mt-2 grid gap-2 text-body-sm text-gray-600 dark:text-gray-300 sm:grid-cols-2">
                 <p>After-tax cash flow and spending</p>
                 <p>Average-cost basis for taxable sales</p>
                 <p>Annual Roth conversions post at the year boundary when enabled</p>
@@ -66,7 +66,7 @@
     <div class="mt-4 grid grid-cols-2 gap-4 text-center">
         <div>
             <p class="text-sm text-gray-600 dark:text-gray-300">Portfolio Longevity</p>
-            <p class="text-2xl font-bold {{if .Analysis.Projection.Survives}}text-green-700 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">
+            <p class="text-2xl font-bold {{if .Analysis.Projection.Survives}}text-positive{{else}}text-negative{{end}}">
                 {{if .Analysis.Projection.Survives}}
                 {{.Settings.ProjectionYears}}+ years
                 {{else}}
@@ -77,7 +77,7 @@
         <div>
             <p id="projection-final-balance-label" class="text-sm text-gray-600 dark:text-gray-300">Final Balance (Nominal)</p>
             <p id="projection-final-balance-value"
-                class="text-2xl font-bold {{if gt .Analysis.Projection.FinalBalance 0.0}}text-green-700 dark:text-green-400{{else}}text-gray-600 dark:text-gray-300{{end}}">
+                class="text-2xl font-bold {{if gt .Analysis.Projection.FinalBalance 0.0}}text-positive{{else}}text-gray-600 dark:text-gray-300{{end}}">
                 {{formatMoney .Analysis.Projection.FinalBalance}}
             </p>
         </div>

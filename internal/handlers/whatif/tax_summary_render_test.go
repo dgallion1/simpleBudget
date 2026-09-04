@@ -49,9 +49,9 @@ func TestWhatIfTaxSummary_RendersFederalStateSplit(t *testing.T) {
 			t.Errorf("expected %q in tax summary; got: %s", want, truncate(out, 1200))
 		}
 	}
-	// Cost figures must use rose styling per project convention.
-	if !strings.Contains(out, "text-rose-600") {
-		t.Errorf("expected rose-styled tax figures; got: %s", truncate(out, 1200))
+	// Cost figures must use the negative token (U6; was rose styling).
+	if !strings.Contains(out, "text-negative") {
+		t.Errorf("expected negative-token tax figures; got: %s", truncate(out, 1200))
 	}
 	// The scenario must be genuinely taxable (the per-year table needs rows
 	// to render the split); data-level reconciliation is covered by the
@@ -174,8 +174,8 @@ func TestWhatIfTaxSummary_WholeDollarsAndRMDBadge(t *testing.T) {
 		if !strings.Contains(out, "RMDs begin") {
 			t.Errorf("expected the age-73 row to carry the RMDs-begin badge: %s", truncate(out, 1200))
 		}
-		if !strings.Contains(out, "bg-amber-50") {
-			t.Errorf("expected the RMD-start row to carry the amber highlight: %s", truncate(out, 1200))
+		if !strings.Contains(out, "bg-warning-soft") {
+			t.Errorf("expected the RMD-start row to carry the warning-token highlight (U6; was amber): %s", truncate(out, 1200))
 		}
 	})
 

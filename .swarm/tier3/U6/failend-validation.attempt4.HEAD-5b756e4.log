@@ -1,0 +1,78 @@
+CHECK 0 playwright+axe-core available (/home/darrell/bin/ai/budget2/.claude/worktrees/ui-audit/.swarm/work/u6/node_modules): PASS
+CHECK 1 zero text-[10px]/text-[11px] in templates (found 0): PASS
+CHECK 2 hue families remaining in templates <= 6 (found 0): PASS
+CHECK 3 type-floor allow-list: every surviving text-xs element is label-class (R1–R4): FAIL
+    web/templates/components/whatif/failure-points.html:37: <span class=text-xs> — R3 sentence run (7 words): "X Critical X Marginal X Safe X"
+    web/templates/components/whatif/healthcare-person.html:256: <div class=text-xs> — R3 sentence run (6 words): "X Employer X ACA X $ X"
+    web/templates/components/whatif/onetime-card.html:66: <label class=text-xs> — R3 sentence run (9 words): "Projection year (0 = X X X first year X )"
+    web/templates/components/whatif/projection-breakdown.html:15: <tr class=text-xs> — R1 tag <tr>
+    web/templates/components/whatif/spending-phases.html:41: <span class=text-xs> — R3 sentence run (21 words): "X Retirement start X X X Younger X Older X Spouse X Your X age X + X A"
+    web/templates/pages/filemanager.html:248: <span class=text-xs> — R3 sentence run (10 words): "X X Locked X Unlocked X X Not encrypted X"
+    web/templates/pages/insights.html:253: <span class=text-xs> — R4 renders prose variable {{$label := or .MajorExpenseName .Description}}
+    web/templates/pages/insights.html:338: <span class=text-xs> — R3 sentence run (6 words): "X X x X X X"
+    web/templates/pages/major-expenses.html:1014: <thead class=text-xs> — R1 tag <thead>
+    type-floor allow-list: 9 denied text-xs element(s)
+CHECK 4 tokens defined in styles.css and mapped in tailwind.config.js (incl. fontSize body-sm): PASS
+CHECK 5 make css-verify (committed tailwind.css matches templates): PASS
+CHECK 6 verify server up on :8198: PASS
+    CONTRAST /whatif light: 1 node(s): .text-lime-600.dark\:text-lime-400.num
+    RENDER PROBE: 1 failure(s)
+CHECK 7 rendered: no horizontal overflow at 1440/1280 (details opened) and zero color-contrast violations, 9 pages x 2 themes: FAIL
+    CONTRAST /whatif light: 1 node(s): .text-lime-600.dark\:text-lime-400.num
+    RENDER PROBE: 1 failure(s)
+    STATUS accounts delete missing id: HTTP 200 (expected an error status)
+    FRAGMENT accounts delete missing id: no error banner in response ( <div class="space-y-4"> <span id="accounts-warnings-data" hidden data-warnings-t)
+    HUE whatif expense invalid form: hue-literal class in error fragment: bg-red-50
+    HUE major-expenses delete missing: hue-literal class in error fragment: bg-red-50
+    UNSTYLED accounts delete missing id light: banner background is transparent (rgba(0, 0, 0, 0))
+    UNSTYLED accounts delete missing id light: banner border missing (0px rgb(229, 231, 235))
+    UNSTYLED whatif expense invalid form light: banner background is transparent (rgba(0, 0, 0, 0))
+    CONTRAST whatif expense invalid form light: 1 node(s) fail color-contrast
+    UNSTYLED major-expenses delete missing light: banner background is transparent (rgba(0, 0, 0, 0))
+    CONTRAST major-expenses delete missing light: 1 node(s) fail color-contrast
+    UNSTYLED accounts delete missing id dark: banner background is transparent (rgba(0, 0, 0, 0))
+    UNSTYLED accounts delete missing id dark: banner border missing (0px rgb(229, 231, 235))
+    UNSTYLED whatif expense invalid form dark: banner background is transparent (rgba(0, 0, 0, 0))
+    CONTRAST whatif expense invalid form dark: 1 node(s) fail color-contrast
+    UNSTYLED major-expenses delete missing dark: banner background is transparent (rgba(0, 0, 0, 0))
+    CONTRAST major-expenses delete missing dark: 1 node(s) fail color-contrast
+    ERROR PROBE: 16 failure(s)
+CHECK 10 error paths (accounts/whatif/major-expenses POST+DELETE) render a styled, token-only, contrast-clean banner in both themes: FAIL
+    STATUS accounts delete missing id: HTTP 200 (expected an error status)
+    FRAGMENT accounts delete missing id: no error banner in response ( <div class="space-y-4"> <span id="accounts-warnings-data" hidden data-warnings-t)
+    HUE whatif expense invalid form: hue-literal class in error fragment: bg-red-50
+    HUE major-expenses delete missing: hue-literal class in error fragment: bg-red-50
+    UNSTYLED accounts delete missing id light: banner background is transparent (rgba(0, 0, 0, 0))
+    UNSTYLED accounts delete missing id light: banner border missing (0px rgb(229, 231, 235))
+    UNSTYLED whatif expense invalid form light: banner background is transparent (rgba(0, 0, 0, 0))
+    CONTRAST whatif expense invalid form light: 1 node(s) fail color-contrast
+    UNSTYLED major-expenses delete missing light: banner background is transparent (rgba(0, 0, 0, 0))
+    CONTRAST major-expenses delete missing light: 1 node(s) fail color-contrast
+    UNSTYLED accounts delete missing id dark: banner background is transparent (rgba(0, 0, 0, 0))
+    UNSTYLED accounts delete missing id dark: banner border missing (0px rgb(229, 231, 235))
+    UNSTYLED whatif expense invalid form dark: banner background is transparent (rgba(0, 0, 0, 0))
+    CONTRAST whatif expense invalid form dark: 1 node(s) fail color-contrast
+    UNSTYLED major-expenses delete missing dark: banner background is transparent (rgba(0, 0, 0, 0))
+    CONTRAST major-expenses delete missing dark: 1 node(s) fail color-contrast
+    ERROR PROBE: 16 failure(s)
+    MISSING bg-red-50  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    MISSING border-red-200  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    MISSING dark:bg-red-900/30  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    MISSING dark:border-red-800  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    MISSING dark:text-red-300  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    MISSING text-red-500  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    MISSING text-red-700  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    EMITTER COVERAGE: 7 class(es) missing from built CSS
+CHECK 9 every colour class emitted from Go/JS source has a rule in the built tailwind.css: FAIL
+    scanned 191 files, 63 distinct colour classes emitted from Go/JS
+    MISSING bg-red-50  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    MISSING border-red-200  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    MISSING dark:bg-red-900/30  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    MISSING dark:border-red-800  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    MISSING dark:text-red-300  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    MISSING text-red-500  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    MISSING text-red-700  <- internal/handlers/accounts/handlers.go, internal/handlers/majorexpenses/handlers.go, internal/handlers/whatif/handlers.go
+    EMITTER COVERAGE: 7 class(es) missing from built CSS
+CHECK 8 go build/vet/test/staticcheck green (bare): PASS
+SUMMARY: 7 passed, 4 failed
+ORACLE FAIL

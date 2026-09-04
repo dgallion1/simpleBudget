@@ -1,0 +1,178 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U6
+ATTEMPT: 4
+---
+Scope: SPEC §2a (design tokens + type floor), ruling U-2026-09-04j (renderError
+in accounts/whatif/majorexpenses handlers -> token classes; emitter_coverage
+check 9; error_probe check 10; darken successRateTextClass/BarClass tiers).
+Standard: budget2 ACCESSIBILITY.md (17 points) + WCAG 2.2 AA.
+
+1. INDEPENDENT ORACLE RE-RUN (not trusting the worker's log)
+   First run (bash .swarm/tier3/U6/accept.sh, own invocation, not the
+   worker's oracle.4.log): FAILED at checks 7 and 10 with
+   net::ERR_CONNECTION_REFUSED against the verify server on :8198. Traced
+   the cause before accepting/rejecting: at that moment a leftover
+   CPU-heavy `go build` from an earlier fail-end-validation run
+   (scratchpad/u6-failend, unrelated to this attempt, visible in `ps aux`)
+   was still consuming ~200% CPU, starving the verify-server's own
+   `go build` inside whatif-verify.sh and destabilizing it between the
+   health check and the first page load. Confirmed the job had exited,
+   re-ran the FULL oracle a second time with no contention:
+     CHECK 0-10: all PASS. SUMMARY: 11 passed, 0 failed. ORACLE PASS.
+   No stray server left on :8198 afterward (`ss -ltnp`, `ls /tmp/budget2-
+   whatif-verify-8198` both empty). This matches the worker's
+   oracle.4.log exactly. Verdict: the failing first run was environmental
+   flakiness, not a defect; the clean second run is the operative result.
+
+2. renderError TOKEN CONVERSION (live-traced, not just diffed)
+   `git diff master` on internal/handlers/{accounts,whatif,majorexpenses}/
+   handlers.go: each renderError() converted from
+   `bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800` /
+   `text-red-700 dark:text-red-300` / `text-red-600 dark:text-red-400` to
+   `bg-negative-soft border-negative` / `text-negative` / `text-body-sm
+   text-negative` — no dark: twin needed (CSS custom properties flip per
+   theme). Traced all three live against scripts/whatif-verify.sh (own
+   throwaway copy, ports 8199/8198, never :8080):
+     POST /accounts/no-such-account/anchor (anchor_date/anchor_amount) ->
+       HTTP 404, body is exactly renderError's token markup.
+     POST /whatif/expense (name=&amount=not-a-number) -> HTTP 400,
+       bg-negative-soft/border-negative/text-negative/text-body-sm present.
+     DELETE /major-expenses/no-such-expense -> HTTP 500, same token set.
+   No `red-*` literal in any of the three responses. error_probe.js
+   (oracle check 10) independently confirms non-transparent background,
+   visible border, and zero axe color-contrast violations for all three
+   cases in both light and dark themes.
+
+3. error_probe.js FIELD-NAME FIX (scope-discipline question, item 4)
+   Traced both the OLD probe's field names and the NEW ones against the
+   live server:
+     date=...&amount=100          -> HTTP 200, a DIFFERENT inline
+       validation-error fragment (role="alert", already token-styled
+       separately) — renderError's not-found path is NEVER reached.
+     anchor_date=...&anchor_amount=100 -> HTTP 404, renderError's actual
+       body verbatim.
+   This confirms the worker's stated reason (old names hit the "required
+   fields" branch before ever calling renderError) is factually correct,
+   and the fix makes check 10 exercise the intended code path instead of
+   passing vacuously against an unrelated branch. Judgment: STRENGTHENED,
+   not weakened. Legitimate oracle fix, in scope (the case is the oracle's
+   own, not the app).
+
+4. successRateTextClass DARKENING (contrast math + live trace)
+   render.go: lime-600->700, yellow-600->700, orange-600->700 on the light
+   side only (dark: variants unchanged, already passing on a dark ground),
+   with contrast-ratio citations in comments (3.09/2.94/3.56:1 failing ->
+   4.99/4.92/5.18:1 passing). These three classes are used only inside
+   /whatif's "risk" and "strategies" tab panels (monte-carlo.html,
+   historical-backtest.html, tax-optimizer.html), which are `hidden` by
+   default and only shown via whatif-tabs.js's activateTab().
+   FINDING: the reconstructed render_probe.js (oracle check 7) opens
+   `<details>` elements but does NOT click what-if tabs or open the
+   dashboard's HTMX-loaded modals (kpi-detail, kpi-month-detail,
+   major-expense-drilldown all load into empty containers via
+   htmx.ajax(), so they are absent from the DOM entirely at page load,
+   not merely `hidden`). This is the exact gap the attempt-3 addendum in
+   SPEC.md §10 required attempt 4's oracle to close ("must activate every
+   tab and open every modal before measuring"); the reconstruction after
+   the worktree loss did not carry that requirement into render_probe.js,
+   so check 7's "9 pages x 2 themes" claim does not actually reach the
+   very code this attempt was scoped to fix.
+   Did NOT stop at the log — independently drove the real app to close
+   this gap myself:
+     - Clicked all 5 what-if tabs (cashflow/risk/taxes/strategies/overview)
+       in both themes and ran axe color-contrast on the full document
+       after each activation: zero violations every time, both themes.
+     - Triggered all 4 KPI-detail modal types (income/expenses/living/
+       healthcare) via window.openKPIDetail() in both themes: zero axe
+       color-contrast violations.
+     - Triggered kpi-month-detail (openKPIMonthDetail) in both themes:
+       zero violations.
+     - major-expense-drilldown.html's diff is a 2-line mechanical
+       text-red-600/dark:text-red-400 -> text-negative swap, identical to
+       the token already verified clean elsewhere; not independently
+       re-tested live (no seed data exercised the trigger on dashboard),
+       judged low-risk by construction.
+   Net: the darkened tiers and the token conversions are ACTUALLY clean in
+   both themes on real rendered content, verified by me, independent of
+   the oracle's blind spot. This is a PASS on the accessibility facts, but
+   the oracle process itself has a real, reproducible gap that should be
+   fixed before it is trusted again for tab/modal-gated content (see
+   OBSERVATIONS).
+
+5. TYPE FLOOR (independently re-run, not just log-checked)
+   `grep -rE 'text-\[1[01]px\]' web/templates` = 0.
+   `python3 .swarm/tier3/U6/typefloor_allowlist.py` = "0 denied text-xs
+   element(s)" (re-read the R1-R4 logic myself; it is a legitimate
+   mechanical allow-list, not a sample).
+   Hue-family grep on web/templates = 0 residual families (all 5 tokens
+   only; ≤6 budget met with room to spare).
+   `make css-verify` passed inside the oracle run (check 5).
+
+6. EMITTER COVERAGE / SAFELIST (check 9, read not just log)
+   tailwind.config.js content globs cover web/templates/**/*.html and
+   web/static/js/**/*.js only — Go-source-only class literals
+   (colorClass, successRateTextClass/BarClass, verdictClasses map) are
+   NOT scanned and would otherwise be purged; the worker's safelist entry
+   documents each source function and is current (grep confirms no
+   Go-emitted color class is missing a matching safelist/scan entry, and
+   emitter_coverage.py — independently re-read, logic is sound — reported
+   clean on both my oracle runs).
+   successRateBarClass (bg-lime-500 etc.) was left un-darkened: traced its
+   only three call sites (whatif/monte-carlo.html) and confirmed it is a
+   plain progress-bar FILL with no overlaid text — the 4.5:1 text
+   criterion the ruling named does not apply to it, and it is not a
+   template-content color-literal purge risk (present in the safelist).
+   Judged correctly out of the darkening requirement's scope.
+
+7. ACCESSIBILITY.md CONFORMANCE for all touched surfaces
+   Point 7 (contrast, both themes): verified live per #4 above, plus the
+   oracle's clean 9-page x 2-theme sweep for everything the sweep does
+   reach.
+   Point 12 (dark-mode parity): CSS-custom-property tokens flip
+   automatically; verified no `dark:` twin needed and both themes clean.
+   Point 8 (meaning not by color alone): renderError banners pair color
+   with an icon (SVG alert glyph, aria-hidden) and the literal text
+   "Error" — unchanged by this attempt, still present.
+   No new hidden-text abuse, no new clickable div/span/tr introduced by
+   this attempt (pre-existing onclick-div sites, e.g. KPI tiles, are
+   unchanged carry-overs, U15's scope per SPEC.md — not this task's).
+
+OBSERVATIONS (non-blocking, for the lead):
+- Oracle gap: render_probe.js does not activate what-if tabs or open the
+  dashboard's HTMX-loaded modals before its axe sweep, so the "9 pages x 2
+  themes" claim is narrower than it reads for /whatif and /dashboard.
+  I closed this gap manually this attempt (all clean); recommend folding
+  tab-click + modal-open steps into render_probe.js itself so future edits
+  to hidden-by-default content are caught mechanically, not by a checker's
+  manual probe. This is a process/tooling finding, not an a11y defect —
+  it does not change this PASS because the underlying rendered content was
+  independently confirmed clean.
+- Oracle flakiness under CPU contention (my first run's spurious FAIL) is
+  worth a note for whoever runs accept.sh next: an unrelated concurrent
+  `go build` can starve whatif-verify.sh's own build/start and produce a
+  false ORACLE FAIL. Not a defect in U6's deliverable.
+- successRateBarClass's un-darkened -500 fills are pre-existing and out of
+  this attempt's explicitly named scope (text tiers only); no contrast
+  violation found live, but a formal 3:1 non-text-contrast check was not
+  run (WCAG 1.4.11 is largely a manual criterion axe does not fully
+  cover). Candidate for a follow-up if the lead wants numeric coverage.
+- All other findings in SPEC.md §10 (th scope, onclick-div sites, tab a11y
+  cluster) are explicitly PRE-EXISTING / deferred to U15 per the rulings
+  already on record; not re-litigated here.
+
+Commands run (for the record):
+  bash .swarm/tier3/U6/accept.sh   (x2, second run clean: 11/11 PASS)
+  python3 .swarm/tier3/U6/typefloor_allowlist.py
+  python3 .swarm/tier3/U6/emitter_coverage.py (via oracle)
+  grep -rE 'text-\[1[01]px\]' web/templates
+  grep -rhoE '...' web/templates | sort -u   (hue family count)
+  scripts/whatif-verify.sh start/stop 8199   (own throwaway copies; :8080
+    live instance never touched, confirmed via `ss -ltnp`/`ps aux` before
+    and after)
+  curl POST/DELETE against all three renderError call sites, both old and
+    new error_probe.js field names
+  custom Playwright probes (tab-click axe sweep, KPI-modal axe sweep,
+    kpi-month-detail axe sweep) using the project's own
+    .swarm/work/u6/node_modules (playwright + axe-core)

@@ -6,7 +6,7 @@
     class="verdict-{{$v.Health}} rounded-xl border px-4 py-3 mb-3 flex flex-wrap items-center gap-x-6 gap-y-2 {{verdictBandClass $v.Health}}">
 
     <div class="flex-1 min-w-[12rem]">
-        <div class="text-[10px] font-semibold tracking-widest uppercase {{verdictLabelClass $v.Health}}">Tracking Coverage</div>
+        <div class="text-label font-semibold tracking-widest uppercase {{verdictLabelClass $v.Health}}">Tracking Coverage</div>
         <div class="text-lg font-bold text-gray-900 dark:text-gray-100">
             {{if not $v.HasSpend}}
             No spending in this range
@@ -22,12 +22,12 @@
     {{if $v.HasSpend}}
     <div class="flex items-center gap-6 ml-auto">
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Declared</div>
+            <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Declared</div>
             <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{formatMoney $v.DeclaredTotal}}</div>
         </div>
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Unmatched</div>
-            <div class="num text-base font-bold {{if gt $v.UnmatchedTotal 0.0}}text-amber-700 dark:text-amber-400{{else}}text-gray-700 dark:text-gray-200{{end}}">{{formatMoney $v.UnmatchedTotal}}</div>
+            <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Unmatched</div>
+            <div class="num text-base font-bold {{if gt $v.UnmatchedTotal 0.0}}text-warning{{else}}text-gray-700 dark:text-gray-200{{end}}">{{formatMoney $v.UnmatchedTotal}}</div>
         </div>
     </div>
     {{end}}

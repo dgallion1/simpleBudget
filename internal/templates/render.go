@@ -714,13 +714,17 @@ func safeJS(s string) template.JS {
 	return template.JS(s)
 }
 
+// colorClass maps a signed amount to a semantic text-color token (U6):
+// positive amounts use the `positive` token, negative use `negative`, zero
+// uses `neutral`. The token's CSS variable flips light/dark on its own, so
+// no `dark:` twin is needed here.
 func colorClass(v float64) string {
 	if v > 0 {
-		return "text-green-700 dark:text-green-400"
+		return "text-positive"
 	} else if v < 0 {
-		return "text-red-600 dark:text-red-400"
+		return "text-negative"
 	}
-	return "text-gray-600 dark:text-gray-400"
+	return "text-neutral"
 }
 
 // successRateTextClass maps a Monte-Carlo / historical success rate (0-100)
@@ -733,11 +737,15 @@ func successRateTextClass(v float64) string {
 	case v >= 90:
 		return "text-green-700 dark:text-green-400"
 	case v >= 80:
-		return "text-lime-600 dark:text-lime-400"
+		// lime-600 is 3.09:1 on white (fails WCAG AA 4.5:1); lime-700 is
+		// 4.99:1. dark:lime-400 is measured on a dark ground and passes.
+		return "text-lime-700 dark:text-lime-400"
 	case v >= 70:
-		return "text-yellow-600 dark:text-yellow-400"
+		// yellow-600 is 2.94:1 on white (fails); yellow-700 is 4.92:1.
+		return "text-yellow-700 dark:text-yellow-400"
 	case v >= 60:
-		return "text-orange-600 dark:text-orange-400"
+		// orange-600 is 3.56:1 on white (fails); orange-700 is 5.18:1.
+		return "text-orange-700 dark:text-orange-400"
 	default:
 		return "text-red-600 dark:text-red-400"
 	}

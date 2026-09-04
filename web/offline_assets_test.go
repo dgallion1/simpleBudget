@@ -110,7 +110,7 @@ func TestTailwindBuildCoversEveryClassSource(t *testing.T) {
 		// internal/templates/render.go return these to the templates as opaque
 		// strings. No content glob covers Go source, so if the safelist is
 		// dropped or regenerated without effect they vanish.
-		{".text-lime-600", "the safelist (Go template helpers in internal/templates)"},
+		{".text-lime-700", "the safelist (Go template helpers in internal/templates)"},
 		{".border-rose-300", "the safelist (Go template helpers in internal/templates)"},
 	} {
 		if !strings.Contains(css, c.selector) {

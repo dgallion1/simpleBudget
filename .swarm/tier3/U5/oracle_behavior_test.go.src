@@ -1,0 +1,427 @@
+package templates
+
+// Lead-authored Tier-3 oracle for U5 (contract v3, SPEC §2d). Planted by
+// accept.sh, removed afterwards. Drives the REAL producers
+// (insights.CategoryTrends, insights.MajorExpenseTrends) and the REAL
+// templates at both Change-cell sites, then asserts self-consistency of the
+// RENDERED strings only. It never reads a raw float from the producer to
+// form an expectation: every expectation derives from what the user sees.
+
+import (
+	"fmt"
+	"io/fs"
+	"math"
+	"math/rand"
+	"regexp"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"budget2/internal/models"
+	"budget2/internal/services/insights"
+	"budget2/web"
+)
+
+type oRow struct {
+	name, cur, prev, change string
+	rawChange               string // inner HTML of the change cell (attrs+content)
+	direction               string // from color class: up/down/stable
+}
+
+var (
+	oCurStart = time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	oCurEnd   = time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+	oPrevDate = time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)
+	oCurDate  = time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)
+	oTag      = regexp.MustCompile(`<[^>]+>`)
+	oWS       = regexp.MustCompile(`\s+`)
+)
+
+func oRender(t *testing.T) func(site string, trends []models.CategoryTrend) string {
+	t.Helper()
+	tfs, err := fs.Sub(web.EmbeddedFS, "templates")
+	if err != nil {
+		t.Fatalf("fs.Sub: %v", err)
+	}
+	r, err := NewFromFS(tfs, false)
+	if err != nil {
+		t.Fatalf("NewFromFS: %v", err)
+	}
+	return func(site string, trends []models.CategoryTrend) string {
+		var html string
+		var err error
+		if site == "insights-content" {
+			html, err = r.RenderToString("insights-content", map[string]any{
+				"PaceVerdict": map[string]any{"Health": models.HealthNeutral, "HasData": false},
+				"MinDate":     "2024-01-01", "MaxDate": "2025-02-28",
+				"StartDate": "2025-02-01", "EndDate": "2025-02-28",
+				"Insights": models.InsightsData{CategoryTrends: trends},
+			})
+		} else {
+			html, err = r.RenderToString(site, map[string]any{"CategoryTrends": trends})
+		}
+		if err != nil {
+			t.Fatalf("RenderToString(%s): %v", site, err)
+		}
+		return html
+	}
+}
+
+func oText(s string) string {
+	return strings.TrimSpace(oWS.ReplaceAllString(oTag.ReplaceAllString(s, " "), " "))
+}
+
+func oRows(t *testing.T, html string) map[string]oRow {
+	t.Helper()
+	out := map[string]oRow{}
+	trRe := regexp.MustCompile(`(?s)<tr[^>]*data-category="([^"]*)"[^>]*>(.*?)</tr>`)
+	tdRe := regexp.MustCompile(`(?s)<td([^>]*)>(.*?)</td>`)
+	for _, m := range trRe.FindAllStringSubmatch(html, -1) {
+		tds := tdRe.FindAllStringSubmatch(m[2], -1)
+		if len(tds) < 4 {
+			continue
+		}
+		last := tds[len(tds)-1]
+		raw := last[1] + last[2]
+		dir := "stable"
+		if strings.Contains(raw, "text-rose") {
+			dir = "up"
+		} else if strings.Contains(raw, "text-emerald") {
+			dir = "down"
+		}
+		out[m[1]] = oRow{name: m[1], cur: oText(tds[1][2]), prev: oText(tds[2][2]), change: oText(last[2]), rawChange: raw, direction: dir}
+	}
+	return out
+}
+
+func oMoney(t *testing.T, s string) float64 {
+	t.Helper()
+	s = strings.TrimSpace(s)
+	neg := strings.HasPrefix(s, "-") || strings.HasPrefix(s, "−")
+	s = strings.TrimLeft(s, "+-−")
+	s = strings.ReplaceAll(strings.TrimPrefix(s, "$"), ",", "")
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		t.Fatalf("parse money %q: %v", s, err)
+	}
+	if neg {
+		v = -v
+	}
+	return v
+}
+
+func oCents(v float64) float64 { r, _ := strconv.ParseFloat(fmt.Sprintf("%.2f", v), 64); return r }
+
+// oCheckRow asserts contract-v3 self-consistency from the displayed strings.
+func oCheckRow(t *testing.T, site string, row oRow) {
+	t.Helper()
+	prev := oMoney(t, row.prev)
+	cur := oMoney(t, row.cur)
+	// displayed money must already be at cent precision
+	if prev != oCents(prev) || cur != oCents(cur) {
+		t.Errorf("[%s %s] displayed money not at cent precision: prev=%q cur=%q", site, row.name, row.prev, row.cur)
+	}
+	diff := oCents(cur - prev)
+	var pct float64
+	switch {
+	case prev == 0 && cur > 0:
+		pct = 100
+	case prev == 0 && cur < 0:
+		pct = -100
+	case prev == 0:
+		pct = 0
+	default:
+		pct = diff / math.Abs(prev) * 100
+	}
+	wantDir := "stable"
+	if pct > 5 {
+		wantDir = "up"
+	} else if pct < -5 {
+		wantDir = "down"
+	}
+	var wantKind string
+	switch {
+	case prev == 0 && cur > 0:
+		wantKind = "new"
+	case prev == 0 && cur == 0:
+		wantKind = "none"
+	case (prev != 0 && math.Abs(prev) < 100) || (prev == 0 && cur < 0):
+		wantKind = "dollar"
+	default:
+		wantKind = "percent"
+	}
+	switch wantKind {
+	case "new":
+		if row.change != "new" {
+			t.Errorf("[%s %s] prev=%s cur=%s: want cell 'new', got %q", site, row.name, row.prev, row.cur, row.change)
+		}
+	case "none":
+		if !strings.Contains(row.change, "—") || !strings.Contains(strings.ToLower(row.rawChange), "no change") {
+			t.Errorf("[%s %s] prev=%s cur=%s: want '—' with accessible 'no change', got text %q raw %q", site, row.name, row.prev, row.cur, row.change, row.rawChange)
+		}
+		if strings.Contains(row.change, "%") || strings.Contains(row.change, "$") {
+			t.Errorf("[%s %s] $0.00→$0.00 row shows a figure: %q", site, row.name, row.change)
+		}
+	case "dollar":
+		if strings.Contains(row.change, "%") || row.change == "new" {
+			t.Errorf("[%s %s] prev=%s cur=%s: want dollar delta, got %q", site, row.name, row.prev, row.cur, row.change)
+			break
+		}
+		got := oMoney(t, row.change)
+		if got != diff {
+			t.Errorf("[%s %s] SUM INVARIANT: %s − %s = %.2f but cell shows %q", site, row.name, row.cur, row.prev, diff, row.change)
+		}
+		if diff > 0 && !strings.HasPrefix(row.change, "+") {
+			t.Errorf("[%s %s] positive dollar delta lacks '+': %q", site, row.name, row.change)
+		}
+		if diff < 0 && !(strings.HasPrefix(row.change, "-") || strings.HasPrefix(row.change, "−")) {
+			t.Errorf("[%s %s] negative dollar delta lacks '-': %q", site, row.name, row.change)
+		}
+	case "percent":
+		if !strings.HasSuffix(row.change, "%") {
+			t.Errorf("[%s %s] prev=%s cur=%s: want percent, got %q", site, row.name, row.prev, row.cur, row.change)
+			break
+		}
+		ps := strings.TrimSuffix(strings.TrimLeft(row.change, "+"), "%")
+		got, err := strconv.ParseFloat(strings.ReplaceAll(ps, "−", "-"), 64)
+		if err != nil {
+			t.Fatalf("[%s %s] parse percent %q: %v", site, row.name, row.change, err)
+		}
+		if math.Abs(got-pct) > 0.051 {
+			t.Errorf("[%s %s] PERCENT vs DOLLARS: (%s − %s)/|%s| = %.1f%% but cell shows %q", site, row.name, row.cur, row.prev, row.prev, pct, row.change)
+		}
+		if row.cur == row.prev && got != 0 {
+			t.Errorf("[%s %s] identical displayed amounts but percent %q", site, row.name, row.change)
+		}
+	}
+	if row.direction != wantDir {
+		t.Errorf("[%s %s] prev=%s cur=%s cell=%q: arrow/color says %s, displayed figures imply %s", site, row.name, row.prev, row.cur, row.change, row.direction, wantDir)
+	}
+}
+
+// oCheckProducer asserts contract-v3 rule 1/2 on the struct the MCP tool and
+// the templates both read: totals are cent-rounded at the source, and
+// ChangeAmount / ChangePercent / Direction / Change.Kind all derive from that
+// rounded pair.
+func oCheckProducer(t *testing.T, tr models.CategoryTrend) {
+	t.Helper()
+	prev, cur := tr.PreviousAmount, tr.CurrentAmount
+	if prev != oCents(prev) || cur != oCents(cur) {
+		t.Errorf("[producer %s] totals not cent-rounded at source: prev=%v cur=%v", tr.Category, prev, cur)
+		return
+	}
+	diff := oCents(cur - prev)
+	if tr.ChangeAmount != diff {
+		t.Errorf("[producer %s] ChangeAmount=%v, want %v (= rounded cur − rounded prev)", tr.Category, tr.ChangeAmount, diff)
+	}
+	var pct float64
+	var kind string
+	switch {
+	case prev == 0 && cur > 0:
+		pct, kind = 100, "new"
+	case prev == 0 && cur < 0:
+		pct, kind = -100, "dollar"
+	case prev == 0:
+		pct, kind = 0, "none"
+	default:
+		pct = diff / math.Abs(prev) * 100
+		kind = "percent"
+		if math.Abs(prev) < 100 {
+			kind = "dollar"
+		}
+	}
+	if math.Abs(tr.ChangePercent-pct) > 1e-9 {
+		t.Errorf("[producer %s] ChangePercent=%v, want %v from the rounded pair (%v, %v)", tr.Category, tr.ChangePercent, pct, prev, cur)
+	}
+	dir := "stable"
+	if pct > 5 {
+		dir = "up"
+	} else if pct < -5 {
+		dir = "down"
+	}
+	if tr.Direction != dir {
+		t.Errorf("[producer %s] Direction=%q, want %q (pct %v)", tr.Category, tr.Direction, dir, pct)
+	}
+	if tr.Change.Kind != kind {
+		t.Errorf("[producer %s] Change.Kind=%q, want %q (prev %v cur %v)", tr.Category, tr.Change.Kind, kind, prev, cur)
+	}
+}
+
+func oTxn(desc, cat string, amount float64, d time.Time) models.Transaction {
+	return models.Transaction{Description: desc, Category: cat, Amount: -amount, Date: d, TransactionType: models.Outflow}
+}
+
+// --- named fixtures through CategoryTrends (Abs-summed totals) ---
+func TestOracleU5_NamedFixtures_CategoryTrends(t *testing.T) {
+	render := oRender(t)
+	type fx struct {
+		name       string
+		prev, cur  []float64 // transaction amounts per window
+		wantChange string    // exact cell text
+		wantDir    string
+	}
+	fixtures := []fx{
+		{"dollar-fractional", []float64{30.005}, []float64{6931.004}, "+$6,901.00", "up"},
+		{"new", nil, []float64{12.345}, "new", "up"},
+		{"percent", []float64{250.555}, []float64{300.001}, "+19.7%", "up"},
+		{"boundary-at-floor", []float64{99.995}, []float64{150.005}, "+50.0%", "up"},
+		{"dollar-rounding-divergence", []float64{40.00}, []float64{140.115}, "+$100.12", "up"},
+		{"tiny-previous-is-new", []float64{0.001}, []float64{50}, "new", "up"},
+		{"dollar-down", []float64{80}, []float64{20}, "-$60.00", "down"},
+		{"percent-stable", []float64{1000}, []float64{1020}, "+2.0%", "stable"},
+		{"round-then-subtract", []float64{4.246}, []float64{686.823}, "+$682.57", "up"}, // $686.82 − $4.25; round-after-subtract would print $682.58
+	}
+	var txns []models.Transaction
+	for _, f := range fixtures {
+		for _, a := range f.prev {
+			txns = append(txns, oTxn("x", f.name, a, oPrevDate))
+		}
+		for _, a := range f.cur {
+			txns = append(txns, oTxn("x", f.name, a, oCurDate))
+		}
+	}
+	trends := insights.CategoryTrends(models.NewTransactionSet(txns), oCurStart, oCurEnd)
+	for _, tr := range trends {
+		oCheckProducer(t, tr)
+	}
+	for _, site := range []string{"insights-content", "category-trends"} {
+		rows := oRows(t, render(site, trends))
+		for _, f := range fixtures {
+			row, ok := rows[f.name]
+			if !ok {
+				t.Errorf("[%s] fixture %s not rendered", site, f.name)
+				continue
+			}
+			if row.change != f.wantChange {
+				t.Errorf("[%s %s] cell = %q, want %q (prev=%s cur=%s)", site, f.name, row.change, f.wantChange, row.prev, row.cur)
+			}
+			if row.direction != f.wantDir {
+				t.Errorf("[%s %s] direction = %s, want %s", site, f.name, row.direction, f.wantDir)
+			}
+			oCheckRow(t, site, row)
+		}
+	}
+}
+
+// --- MajorExpenseTrends (signed net totals: negatives and float noise) ---
+func TestOracleU5_MajorExpense_FloatNoiseAndSigned(t *testing.T) {
+	render := oRender(t)
+	defs := []models.MajorExpense{
+		{ID: "noise", Name: "Noise", Keywords: []string{"noise vendor"}},
+		{ID: "refprev", Name: "RefundPrev", Keywords: []string{"refprev vendor"}},
+		{ID: "refonly", Name: "RefundOnly", Keywords: []string{"refonly vendor"}},
+		{ID: "steady", Name: "Steady", Keywords: []string{"steady vendor"}},
+	}
+	txns := []models.Transaction{
+		// Noise: 0.10 + 0.20 charges and a 0.30 refund in the current window, nothing prior → true $0.00 → "—", stable
+		oTxn("Noise Vendor", "c", 0.10, oCurDate), oTxn("Noise Vendor", "c", 0.20, oCurDate), oTxn("Noise Vendor", "c", -0.30, oCurDate),
+		// RefundPrev: previous window refund-dominant (−50), current 40 → dollar "+$90.00", up
+		oTxn("Refprev Vendor", "c", -50, oPrevDate), oTxn("Refprev Vendor", "c", 40, oCurDate),
+		// RefundOnly: no previous, current is a lone refund (−12.34) → dollar "-$12.34", down
+		oTxn("Refonly Vendor", "c", -12.34, oCurDate),
+		// Steady: identical both windows via noisy sums → 0.0%, stable
+		oTxn("Steady Vendor", "c", 100.10, oPrevDate), oTxn("Steady Vendor", "c", 200.20, oPrevDate),
+		oTxn("Steady Vendor", "c", 300.30, oCurDate),
+	}
+	trends := insights.MajorExpenseTrends(models.NewTransactionSet(txns), defs, nil, oCurStart, oCurEnd)
+	byName := map[string]models.CategoryTrend{}
+	for _, tr := range trends {
+		byName[tr.Category] = tr
+		oCheckProducer(t, tr)
+	}
+	// Producer-level: the struct fields MCP reads must agree with the cell (rule 2)
+	if n, ok := byName["Noise"]; !ok {
+		t.Fatalf("Noise row missing from MajorExpenseTrends")
+	} else {
+		if n.Direction != "stable" || n.ChangePercent != 0 || n.ChangeAmount != 0 {
+			t.Errorf("Noise row: Direction=%q ChangePercent=%v ChangeAmount=%v; want stable/0/0 (float-noise $0.00→$0.00)", n.Direction, n.ChangePercent, n.ChangeAmount)
+		}
+	}
+	if s, ok := byName["Steady"]; ok && (s.Direction != "stable" || s.ChangePercent != 0) {
+		t.Errorf("Steady row: Direction=%q ChangePercent=%v; want stable/0", s.Direction, s.ChangePercent)
+	}
+	want := map[string][2]string{"Noise": {"—", "stable"}, "RefundPrev": {"+$90.00", "up"}, "RefundOnly": {"-$12.34", "down"}, "Steady": {"0.0%", "stable"}}
+	for _, site := range []string{"insights-content", "category-trends"} {
+		rows := oRows(t, render(site, trends))
+		for name, w := range want {
+			row, ok := rows[name]
+			if !ok {
+				t.Errorf("[%s] %s not rendered", site, name)
+				continue
+			}
+			if name == "Noise" {
+				if !strings.Contains(row.change, "—") {
+					t.Errorf("[%s Noise] cell = %q, want '—' (prev=%s cur=%s)", site, row.change, row.prev, row.cur)
+				}
+			} else if row.change != w[0] {
+				t.Errorf("[%s %s] cell = %q, want %q (prev=%s cur=%s)", site, name, row.change, w[0], row.prev, row.cur)
+			}
+			if row.direction != w[1] {
+				t.Errorf("[%s %s] direction = %s, want %s", site, name, row.direction, w[1])
+			}
+			oCheckRow(t, site, row)
+		}
+	}
+}
+
+// --- property sweep: random pairs incl. fractional cents, near-floor, noisy sums ---
+func TestOracleU5_Property_RenderedSelfConsistency(t *testing.T) {
+	render := oRender(t)
+	rng := rand.New(rand.NewSource(20260903))
+	amount := func() float64 {
+		switch rng.Intn(6) {
+		case 0:
+			return 0
+		case 1:
+			return 99.99 + rng.Float64()*0.02 // straddle the floor
+		case 2:
+			return math.Round(rng.Float64()*30000) / 100 // cent-valued
+		default:
+			return rng.Float64() * 300 // arbitrary fractional
+		}
+	}
+	split := func(total float64) []float64 { // 1–4 transactions summing (with float noise) to total
+		k := 1 + rng.Intn(4)
+		if total == 0 || k == 1 {
+			return []float64{total}
+		}
+		var parts []float64
+		rem := total
+		for i := 0; i < k-1; i++ {
+			p := math.Round(rem*rng.Float64()*100) / 100
+			parts = append(parts, p)
+			rem -= p
+		}
+		return append(parts, rem)
+	}
+	checked := 0
+	for batch := 0; batch < 300; batch++ {
+		var txns []models.Transaction
+		for i := 0; i < 10; i++ {
+			name := fmt.Sprintf("cat-%03d-%d", batch, i)
+			for _, a := range split(amount()) {
+				txns = append(txns, oTxn("x", name, a, oPrevDate))
+			}
+			for _, a := range split(amount()) {
+				txns = append(txns, oTxn("x", name, a, oCurDate))
+			}
+		}
+		trends := insights.CategoryTrends(models.NewTransactionSet(txns), oCurStart, oCurEnd)
+		for _, tr := range trends {
+			oCheckProducer(t, tr)
+		}
+		site := "category-trends"
+		if batch%25 == 0 {
+			site = "insights-content"
+		}
+		for _, row := range oRows(t, render(site, trends)) {
+			oCheckRow(t, site, row)
+			checked++
+		}
+	}
+	if checked < 2000 {
+		t.Fatalf("property sweep checked only %d rows", checked)
+	}
+	t.Logf("property sweep: %d rendered rows checked", checked)
+}

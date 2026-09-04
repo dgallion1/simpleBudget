@@ -29,12 +29,13 @@ func TestSummaryStats_Render_Tokens(t *testing.T) {
 			t.Errorf("expected %q in summary-stats; got: %s", want, strunc(out, 700))
 		}
 	}
-	// Income tile uses the emerald token, expenses uses rose.
-	if !strings.Contains(out, "emerald") {
-		t.Errorf("expected emerald token on income tile; got: %s", strunc(out, 700))
+	// Income tile uses the positive token, expenses uses negative (U6;
+	// these were the emerald/rose hue literals before the token sweep).
+	if !strings.Contains(out, "text-positive") {
+		t.Errorf("expected positive token on income tile; got: %s", strunc(out, 700))
 	}
-	if !strings.Contains(out, "rose") {
-		t.Errorf("expected rose token on expenses tile; got: %s", strunc(out, 700))
+	if !strings.Contains(out, "text-negative") {
+		t.Errorf("expected negative token on expenses tile; got: %s", strunc(out, 700))
 	}
 }
 

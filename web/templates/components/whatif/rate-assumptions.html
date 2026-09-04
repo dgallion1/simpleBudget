@@ -12,14 +12,14 @@
                 <label for="projection-start-date" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Projection Start Date</label>
                 <input type="month" name="start_date" id="projection-start-date" value="{{.Settings.StartDate}}"
                     onchange="updatePersonAgePreviews(); togglePhaseReferenceDropdown()"
-                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
             </div>
 
             <div class="space-y-2">
                 <div class="flex items-center justify-between">
                     <span class="block text-sm font-medium text-gray-700 dark:text-gray-200">Persons</span>
                     <button type="button" onclick="addPersonRow()"
-                        class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                        class="text-xs text-accent hover:text-accent">
                         + Add Person
                     </button>
                 </div>
@@ -32,24 +32,24 @@
                         <div class="col-span-4">
                             <label for="person-name-{{.ID}}" class="block text-xs text-gray-600 dark:text-gray-400">Name</label>
                             <input type="text" id="person-name-{{.ID}}" name="person_name[]" value="{{.Name}}"
-                                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
                         </div>
                         <div class="col-span-3">
                             <label for="person-birth-month-{{.ID}}" class="block text-xs text-gray-600 dark:text-gray-400">Birth Month</label>
                             <input type="month" id="person-birth-month-{{.ID}}" name="person_birth_month[]" value="{{.BirthMonth}}"
                                 onchange="updatePersonAgePreviews()"
-                                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
                         </div>
                         <div class="col-span-2">
                             {{if eq .Role "primary"}}
                             <span class="block text-xs text-gray-600 dark:text-gray-400">Role</span>
-                            <div class="mt-1 rounded-md bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200">
+                            <div class="mt-1 rounded-md bg-accent-soft px-3 py-2 text-sm font-medium text-accent">
                                 Primary
                             </div>
                             {{else}}
                             <label for="person-role-{{.ID}}" class="block text-xs text-gray-600 dark:text-gray-400">Role</label>
                             <select id="person-role-{{.ID}}" data-person-role-selector onchange="updatePersonRole(this)"
-                                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
                                 <option value="spouse" {{if eq .Role "spouse"}}selected{{end}}>Spouse</option>
                                 <option value="other" {{if eq .Role "other"}}selected{{end}}>Other</option>
                             </select>
@@ -64,7 +64,7 @@
                         <div class="col-span-1 flex justify-end">
                             {{if ne .Role "primary"}}
                             <button type="button" onclick="removePersonRow(this)"
-                                class="text-xs text-red-500 hover:text-red-700">
+                                class="text-xs text-negative hover:text-negative">
                                 Remove
                             </button>
                             {{end}}
@@ -79,19 +79,19 @@
         <div id="phase-age-reference-container" class="{{if not (.Settings.GetSpousePerson)}}hidden{{end}}">
             <label for="phase-age-reference-select" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Phase Based On</label>
             <select name="phase_age_reference" id="phase-age-reference-select"
-                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 <option value="younger" {{if eq .Settings.PhaseAgeReference "younger"}}selected{{end}}>Younger Person (conservative)</option>
                 <option value="older" {{if eq .Settings.PhaseAgeReference "older"}}selected{{end}}>Older Person</option>
                 <option value="primary" {{if eq .Settings.PhaseAgeReference "primary"}}selected{{end}}>Your Age Only</option>
                 <option value="spouse" {{if eq .Settings.PhaseAgeReference "spouse"}}selected{{end}}>Spouse Age Only</option>
             </select>
-            <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Which person's age triggers Go-Go/Slow-Go/No-Go phase transitions</p>
+            <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-1">Which person's age triggers Go-Go/Slow-Go/No-Go phase transitions</p>
         </div>
 
         <div>
             <div class="flex items-center justify-between mb-1">
                 <span class="block text-sm font-medium text-gray-700 dark:text-gray-200">Portfolio Allocation</span>
-                <span class="text-xs text-gray-600 dark:text-gray-400">Must equal 100%</span>
+                <span class="text-body-sm text-gray-600 dark:text-gray-400">Must equal 100%</span>
             </div>
             <div class="grid grid-cols-3 gap-2">
                 <div>
@@ -99,7 +99,7 @@
                     <div class="flex items-center">
                         <input type="number" id="tax-deferred-percent-input" name="tax_deferred_percent" value="{{printf "%.0f" .Settings.TaxDeferredPercent}}"
                             min="0" max="100" step="1"
-                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm"
                             oninput="updateTaxablePercent()">
                         <span class="ml-1 text-sm text-gray-600 dark:text-gray-400">%</span>
                     </div>
@@ -110,7 +110,7 @@
                     <div class="flex items-center">
                         <input type="number" id="roth-percent-input" name="roth_percent" value="{{printf "%.0f" .Settings.RothPercent}}"
                             min="0" max="100" step="1"
-                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                            class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm"
                             oninput="updateTaxablePercent()">
                         <span class="ml-1 text-sm text-gray-600 dark:text-gray-400">%</span>
                     </div>
@@ -124,7 +124,7 @@
                     <span class="text-xs text-gray-500 dark:text-gray-400">Brokerage</span>
                 </div>
             </div>
-            <p id="allocation-note" class="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">
+            <p id="allocation-note" class="text-body-sm text-gray-500 dark:text-gray-400 mt-1 italic">
                 This split only affects returns when accounts have different asset allocations below.
             </p>
         </div>
@@ -132,23 +132,23 @@
         <div>
             <label for="projection-timing-select" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Projection Timing</label>
             <select id="projection-timing-select" name="projection_timing"
-                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 <option value="end_of_month" {{if eq .Settings.ProjectionTiming "end_of_month"}}selected{{end}}>End of month</option>
                 <option value="mid_month" {{if eq .Settings.ProjectionTiming "mid_month"}}selected{{end}}>Mid-month</option>
                 <option value="start_of_month" {{if eq .Settings.ProjectionTiming "start_of_month"}}selected{{end}}>Start of month</option>
             </select>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Controls whether growth is applied before, around, or after monthly withdrawals and deposits.</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">Controls whether growth is applied before, around, or after monthly withdrawals and deposits.</p>
         </div>
 
         <div>
             <label for="rmd-timing-select" class="block text-sm font-medium text-gray-700 dark:text-gray-200">RMD Timing</label>
             <select id="rmd-timing-select" name="rmd_timing"
-                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 <option value="start_of_year" {{if eq .Settings.RMDTiming "start_of_year"}}selected{{end}}>Start of year (conservative)</option>
                 <option value="mid_year" {{if eq .Settings.RMDTiming "mid_year"}}selected{{end}}>Mid year (recommended)</option>
                 <option value="end_of_year" {{if eq .Settings.RMDTiming "end_of_year"}}selected{{end}}>End of year</option>
             </select>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">When during the year RMDs are taken. Mid-year approximates a typical taxpayer who batches the withdrawal during the year. Start-of-year is conservative for portfolio growth.</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">When during the year RMDs are taken. Mid-year approximates a typical taxpayer who batches the withdrawal during the year. Start-of-year is conservative for portfolio growth.</p>
         </div>
 
         <div>
@@ -157,23 +157,23 @@
                 <input type="hidden" name="spouse_sole_beneficiary" value="false">
                 <input type="checkbox" name="spouse_sole_beneficiary" value="true"
                     {{if .Settings.IsSpouseSoleBeneficiary}}checked{{end}}
-                    class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 focus:ring-indigo-500">
+                    class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-accent focus:ring-accent">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-200">Spouse is sole IRA beneficiary</span>
             </label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">When your spouse is your sole beneficiary and more than 10 years younger, RMDs use the IRS Joint Life and Last Survivor Table (larger divisors, smaller RMDs) instead of the Uniform Lifetime Table. Has no effect otherwise.</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">When your spouse is your sole beneficiary and more than 10 years younger, RMDs use the IRS Joint Life and Last Survivor Table (larger divisors, smaller RMDs) instead of the Uniform Lifetime Table. Has no effect otherwise.</p>
         </div>
 
         <div>
             <label for="filing-status-select" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Filing Status</label>
             <select id="filing-status-select" name="filing_status"
-                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 {{$fs := ""}}{{if .Settings.TaxConfig}}{{$fs = printf "%s" .Settings.TaxConfig.FilingStatus}}{{end}}
                 <option value="single" {{if eq $fs "single"}}selected{{end}}>Single</option>
                 <option value="married_joint" {{if eq $fs "married_joint"}}selected{{end}}>Married Filing Jointly</option>
                 <option value="married_separate" {{if eq $fs "married_separate"}}selected{{end}}>Married Filing Separately</option>
                 <option value="head_of_household" {{if eq $fs "head_of_household"}}selected{{end}}>Head of Household</option>
             </select>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Used for federal brackets, standard deduction, IRMAA thresholds, and Social Security taxation.</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">Used for federal brackets, standard deduction, IRMAA thresholds, and Social Security taxation.</p>
         </div>
 
         <div>
@@ -182,8 +182,8 @@
                 value="{{if and .Settings.TaxConfig .Settings.TaxConfig.StateIncomeTaxRate}}{{printf "%.2f" (deref .Settings.TaxConfig.StateIncomeTaxRate)}}{{end}}"
                 placeholder="e.g. 0 for FL/TX, 9.3 for CA"
                 min="0" max="20" step="0.05"
-                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Flat rate applied to ordinary income. Enter <code>0</code> for no-income-tax states (FL, TX, WA, etc.). Leaving the field blank flags this scenario as unconfigured.</p>
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+            <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">Flat rate applied to ordinary income. Enter <code>0</code> for no-income-tax states (FL, TX, WA, etc.). Leaving the field blank flags this scenario as unconfigured.</p>
         </div>
 
         <div class="space-y-2">
@@ -196,57 +196,57 @@
                     <label for="taxable-dividend-yield-input" class="block text-xs text-gray-600 dark:text-gray-400">Dividend Yield %</label>
                     <input type="number" id="taxable-dividend-yield-input" name="taxable_dividend_yield" value="{{printf "%.1f" .Settings.TaxableDividendYield}}"
                         min="0" max="20" step="0.1"
-                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 </div>
                 <div>
                     <label for="taxable-qualified-dividend-percent-input" class="block text-xs text-gray-600 dark:text-gray-400">Qualified Share %</label>
                     <input type="number" id="taxable-qualified-dividend-percent-input" name="taxable_qualified_dividend_percent" value="{{printf "%.0f" .Settings.GetTaxableQualifiedDividendPercent}}"
                         min="0" max="100" step="1"
-                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 </div>
                 <div>
                     <label for="taxable-cap-gains-distribution-rate-input" class="block text-xs text-gray-600 dark:text-gray-400">Cap Gains Dist. %</label>
                     <input type="number" id="taxable-cap-gains-distribution-rate-input" name="taxable_cap_gains_distribution_rate" value="{{printf "%.1f" .Settings.TaxableCapitalGainsDistributionRate}}"
                         min="0" max="20" step="0.1"
-                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 </div>
             </div>
             <div>
                 <label for="taxable-cost-basis-input" class="block text-xs text-gray-600 dark:text-gray-400">Cost Basis $</label>
                 <input type="number" id="taxable-cost-basis-input" name="taxable_cost_basis" value="{{if .Settings.TaxableCostBasis}}{{printf "%.0f" (deref .Settings.TaxableCostBasis)}}{{end}}"
                     min="0" max="1000000000" step="1000" placeholder="What you paid for these holdings"
-                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Leave blank and the projection assumes no unrealized gain, understating the tax on every taxable withdrawal. Enter 0 if the position is fully appreciated.</p>
+                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                <p class="mt-1 text-body-sm text-gray-500 dark:text-gray-400">Leave blank and the projection assumes no unrealized gain, understating the tax on every taxable withdrawal. Enter 0 if the position is fully appreciated.</p>
             </div>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Dividends and capital-gains distributions are treated as taxable cash events and reinvested unless spent.</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400">Dividends and capital-gains distributions are treated as taxable cash events and reinvested unless spent.</p>
         </div>
 
         <div class="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-4">
             <div class="flex items-center justify-between">
                 <span class="block text-sm font-medium text-gray-700 dark:text-gray-200">Marketplace Health Coverage</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">Only if retiring before 65</span>
+                <span class="text-body-sm text-gray-500 dark:text-gray-400">Only if retiring before 65</span>
             </div>
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label for="aca-household-size-input" class="block text-xs text-gray-600 dark:text-gray-400">Tax Household Size</label>
                     <input type="number" id="aca-household-size-input" name="aca_household_size" value="{{if and .Settings.ACA .Settings.ACA.HouseholdSize}}{{.Settings.ACA.HouseholdSize}}{{end}}"
                         min="0" max="20" step="1" placeholder="Everyone on your return"
-                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 </div>
                 <div>
                     <label for="aca-premium-credit-input" class="block text-xs text-gray-600 dark:text-gray-400">Premium Tax Credit $/yr</label>
                     <input type="number" id="aca-premium-credit-input" name="aca_premium_credit" value="{{if and .Settings.ACA .Settings.ACA.AnnualPremiumTaxCredit}}{{printf "%.0f" (deref .Settings.ACA.AnnualPremiumTaxCredit)}}{{end}}"
                         min="0" max="100000" step="100" placeholder="From Form 1095-A"
-                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 </div>
             </div>
-            <label class="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-300">
+            <label class="flex items-start gap-2 text-body-sm text-gray-600 dark:text-gray-300">
                 <input type="hidden" name="aca_advance_credits" value="false">
                 <input type="checkbox" id="aca-advance-credits-input" name="aca_advance_credits" value="true" {{if and .Settings.ACA .Settings.ACA.AdvanceCreditsTaken}}checked{{end}}
-                    class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+                    class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent">
                 <span>Credits paid in advance to the insurer. If so, income over the cliff claws back what has already been paid this year &mdash; repayment is uncapped at and above 400% of the poverty level.</span>
             </label>
-            <p class="text-xs text-gray-500 dark:text-gray-400">The subsidy cliff is measured against ACA MAGI, which counts <em>all</em> Social Security benefits, not just the taxable part. COBRA counts as employer coverage and forfeits the credit at any income.</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400">The subsidy cliff is measured against ACA MAGI, which counts <em>all</em> Social Security benefits, not just the taxable part. COBRA counts as employer coverage and forfeits the credit at any income.</p>
         </div>
 
         <div>
@@ -257,14 +257,14 @@
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                 oninput="this.nextElementSibling.textContent = this.value == 0 ? 'No delay' : this.value + ' years'">
             <span class="text-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="tax_deferred_delay_years" data-quick-adjust-display-format="delay-years">{{if eq .Settings.TaxDeferredDelayYears 0}}No delay{{else}}{{.Settings.TaxDeferredDelayYears}} years{{end}}</span>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Cover expenses from income, taxable, and Roth first. RMDs at 73 still apply.</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">Cover expenses from income, taxable, and Roth first. RMDs at 73 still apply.</p>
         </div>
 
         <!-- Per-Account Asset Allocation -->
         <div class="space-y-3">
             <div class="flex items-center justify-between">
                 <span class="block text-sm font-medium text-gray-700 dark:text-gray-200">Asset Allocation by Account</span>
-                <span class="text-xs text-gray-600 dark:text-gray-400">Each must equal 100%</span>
+                <span class="text-body-sm text-gray-600 dark:text-gray-400">Each must equal 100%</span>
             </div>
 
             <!-- Tax-Deferred Account (hidden when 0% allocation) -->
@@ -272,9 +272,9 @@
                 <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2">
                         <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Tax-Deferred (401k/IRA)</span>
-                        <span id="td-amount-display" class="text-xs text-green-700 dark:text-green-400 font-medium"></span>
+                        <span id="td-amount-display" class="text-xs text-positive font-medium"></span>
                     </div>
-                    <span id="td-bond-display" class="text-xs text-gray-600 dark:text-gray-400">Bonds: {{printf "%.0f" .Settings.TaxDeferredBondPct}}%</span>
+                    <span id="td-bond-display" class="text-body-sm text-gray-600 dark:text-gray-400">Bonds: {{printf "%.0f" .Settings.TaxDeferredBondPct}}%</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div class="flex items-center">
@@ -282,7 +282,7 @@
                         <input type="number" id="tax-deferred-stock-percent-input" name="tax_deferred_stock_percent"
                             value="{{printf "%.0f" .Settings.TaxDeferredStockPct}}"
                             min="0" max="100" step="1"
-                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs"
                             oninput="updateAccountBonds('td')">
                         <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">%</span>
                     </div>
@@ -291,7 +291,7 @@
                         <input type="number" id="tax-deferred-cash-percent-input" name="tax_deferred_cash_percent"
                             value="{{printf "%.0f" .Settings.TaxDeferredCashPct}}"
                             min="0" max="100" step="1"
-                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs"
                             oninput="updateAccountBonds('td')">
                         <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">%</span>
                     </div>
@@ -303,9 +303,9 @@
                 <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2">
                         <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Roth (Roth IRA/401k)</span>
-                        <span id="roth-amount-display" class="text-xs text-green-700 dark:text-green-400 font-medium"></span>
+                        <span id="roth-amount-display" class="text-xs text-positive font-medium"></span>
                     </div>
-                    <span id="roth-bond-display" class="text-xs text-gray-600 dark:text-gray-400">Bonds: {{printf "%.0f" .Settings.RothBondPct}}%</span>
+                    <span id="roth-bond-display" class="text-body-sm text-gray-600 dark:text-gray-400">Bonds: {{printf "%.0f" .Settings.RothBondPct}}%</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div class="flex items-center">
@@ -313,7 +313,7 @@
                         <input type="number" id="roth-stock-percent-input" name="roth_stock_percent"
                             value="{{printf "%.0f" .Settings.RothStockPct}}"
                             min="0" max="100" step="1"
-                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs"
                             oninput="updateAccountBonds('roth')">
                         <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">%</span>
                     </div>
@@ -322,7 +322,7 @@
                         <input type="number" id="roth-cash-percent-input" name="roth_cash_percent"
                             value="{{printf "%.0f" .Settings.RothCashPct}}"
                             min="0" max="100" step="1"
-                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs"
                             oninput="updateAccountBonds('roth')">
                         <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">%</span>
                     </div>
@@ -337,15 +337,15 @@
                     value="{{if .Settings.RothFirstFundedYear}}{{.Settings.RothFirstFundedYear}}{{end}}"
                     min="1998" step="1"
                     placeholder="e.g. 2010"
-                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">IRS 5-year rule for tax-free Roth earnings. Leave blank if unknown; projections assume the clock started in the projection start year.</p>
+                    class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
+                <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">IRS 5-year rule for tax-free Roth earnings. Leave blank if unknown; projections assume the clock started in the projection start year.</p>
                 {{if and (gt .Settings.RothFirstFundedYear 0) (lt (now).Year (add .Settings.RothFirstFundedYear 5))}}
-                <div class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                <div class="mt-1 text-body-sm text-warning">
                     &#8987; 5-year clock matures in {{add .Settings.RothFirstFundedYear 5}}
                 </div>
                 {{end}}
                 {{if and (gt .Settings.RothPercent 0.0) (eq .Settings.RothFirstFundedYear 0)}}
-                <div class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                <div class="mt-1 text-body-sm text-warning">
                     You have a Roth balance but have not set the first-funded year. Projections assume the 5-year clock starts in the projection start year.
                 </div>
                 {{end}}
@@ -357,9 +357,9 @@
                 <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2">
                         <span class="text-xs font-medium text-gray-600 dark:text-gray-300">Taxable (Brokerage)</span>
-                        <span id="taxable-amount-display" class="text-xs text-green-700 dark:text-green-400 font-medium"></span>
+                        <span id="taxable-amount-display" class="text-xs text-positive font-medium"></span>
                     </div>
-                    <span id="taxable-bond-display" class="text-xs text-gray-600 dark:text-gray-400">Bonds: {{printf "%.0f" .Settings.TaxableBondPct}}%</span>
+                    <span id="taxable-bond-display" class="text-body-sm text-gray-600 dark:text-gray-400">Bonds: {{printf "%.0f" .Settings.TaxableBondPct}}%</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div class="flex items-center">
@@ -367,7 +367,7 @@
                         <input type="number" id="taxable-stock-percent-input" name="taxable_stock_percent"
                             value="{{printf "%.0f" .Settings.TaxableStockPct}}"
                             min="0" max="100" step="1"
-                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs"
                             oninput="updateAccountBonds('taxable')">
                         <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">%</span>
                     </div>
@@ -376,7 +376,7 @@
                         <input type="number" id="taxable-cash-percent-input" name="taxable_cash_percent"
                             value="{{printf "%.0f" .Settings.TaxableCashPct}}"
                             min="0" max="100" step="1"
-                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs"
+                            class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs"
                             oninput="updateAccountBonds('taxable')">
                         <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">%</span>
                     </div>
@@ -394,7 +394,7 @@
             <form hx-post="/whatif/glide-path" hx-target="#whatif-results" class="space-y-2">
                 <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
                     <input type="checkbox" name="enabled" {{if and .Settings.GlidePath .Settings.GlidePath.Enabled}}checked{{end}}
-                        class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 focus:ring-indigo-500"
+                        class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-accent focus:ring-accent"
                         onchange="this.form.requestSubmit()">
                     Shift stock allocation over time
                 </label>
@@ -404,26 +404,26 @@
                         <label for="glide-start-stock-pct" class="block text-xs text-gray-600 dark:text-gray-400">Start %</label>
                         <input type="number" id="glide-start-stock-pct" name="start_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.StartStockPct}}"
                             min="0" max="100" step="1"
-                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                     </div>
                     <div>
                         <label for="glide-end-stock-pct" class="block text-xs text-gray-600 dark:text-gray-400">End %</label>
                         <input type="number" id="glide-end-stock-pct" name="end_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.EndStockPct}}"
                             min="0" max="100" step="1"
-                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                     </div>
                     <div>
                         <label for="glide-transition-years" class="block text-xs text-gray-600 dark:text-gray-400">Years</label>
                         <input type="number" id="glide-transition-years" name="transition_years" value="{{.Settings.GlidePath.TransitionYears}}"
                             min="1" max="50" step="1"
-                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs">
+                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                     </div>
                 </div>
                 <button type="submit"
-                    class="w-full text-xs px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+                    class="w-full text-xs px-3 py-1.5 rounded-md bg-accent-strong hover:bg-accent-strong text-white transition-colors">
                     Apply Glide Path
                 </button>
-                <p class="text-xs text-gray-500 dark:text-gray-400">Stocks shift linearly from {{printf "%.0f" .Settings.GlidePath.StartStockPct}}% to {{printf "%.0f" .Settings.GlidePath.EndStockPct}}% over {{.Settings.GlidePath.TransitionYears}} years. Bonds adjust inversely.</p>
+                <p class="text-body-sm text-gray-500 dark:text-gray-400">Stocks shift linearly from {{printf "%.0f" .Settings.GlidePath.StartStockPct}}% to {{printf "%.0f" .Settings.GlidePath.EndStockPct}}% over {{.Settings.GlidePath.TransitionYears}} years. Bonds adjust inversely.</p>
                 {{end}}
             </form>
         </div>
@@ -448,9 +448,9 @@
                 <span class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Model</span>
             </div>
             <p class="text-sm text-gray-600 dark:text-gray-400 mt-1 mb-2">
-                Using <span class="font-medium text-indigo-600 dark:text-indigo-400">phase-based spending</span> model.
+                Using <span class="font-medium text-accent">phase-based spending</span> model.
             </p>
-            <p class="text-xs text-gray-500 dark:text-gray-400">
+            <p class="text-body-sm text-gray-500 dark:text-gray-400">
                 Configure phases in the Spending Phases card below.
             </p>
             {{else}}
@@ -458,7 +458,7 @@
             <div class="flex items-center justify-between">
                 <label for="spending-decline-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Spending Decline Rate (%)</label>
                 <button type="button" onclick="toggleSpendingPreview()"
-                    class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    class="text-xs text-accent hover:text-accent">
                     <span id="spending-preview-toggle-text">Show Impact</span>
                 </button>
             </div>
@@ -470,7 +470,7 @@
             <span class="text-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="spending_decline_rate" data-quick-adjust-display-format="percent1">{{printf "%.1f" .Settings.SpendingDeclineRate}}%</span>
 
             <!-- Spending Decline Preview Panel -->
-            <div id="spending-preview-panel" class="hidden mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg text-xs">
+            <div id="spending-preview-panel" class="hidden mt-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg text-body-sm">
                 <p class="text-gray-600 dark:text-gray-200 mb-2">
                     <strong>Compound decline:</strong> Spending = Base x (1 + net%)^years
                 </p>
@@ -478,7 +478,7 @@
                     Net rate: <span id="net-rate-display" class="font-medium text-gray-700 dark:text-gray-100">2.0%</span>/year
                     <span class="text-gray-500 dark:text-gray-300">(inflation - decline)</span>
                 </p>
-                <table class="w-full text-xs">
+                <table class="w-full text-body-sm">
                     <thead>
                         <tr class="text-gray-600 dark:text-gray-300">
                             <th class="text-left py-1">Year</th>
@@ -496,7 +496,7 @@
         <div>
             <div class="flex items-center justify-between">
                 <label for="investment-return-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Investment Return Override</label>
-                <span class="text-xs text-gray-600 dark:text-gray-400">0% = use allocation</span>
+                <span class="text-body-sm text-gray-600 dark:text-gray-400">0% = use allocation</span>
             </div>
             <input type="range" id="investment-return-slider" name="investment_return" value="{{printf "%.1f" .Settings.InvestmentReturn}}"
                 min="0" max="15" step="0.5"
@@ -505,11 +505,11 @@
                 oninput="updateInvestmentReturnDisplay(this.value)">
             <div id="investment-return-display" class="text-sm mt-1" data-quick-adjust-display="investment_return" data-quick-adjust-display-format="investment-return">
                 {{if eq .Settings.InvestmentReturn 0.0}}
-                <span class="text-green-700 dark:text-green-400">Using asset allocation</span>
+                <span class="text-positive">Using asset allocation</span>
                 <span class="text-gray-600 dark:text-gray-400">(~{{printf "%.1f" .Settings.GetExpectedReturnFromAllocation}}% expected)</span>
                 {{else}}
                 <span class="text-gray-600 dark:text-gray-300">Fixed {{printf "%.1f" .Settings.InvestmentReturn}}%</span>
-                <span class="text-amber-600 dark:text-amber-400 text-xs">(overrides allocation)</span>
+                <span class="text-warning text-body-sm">(overrides allocation)</span>
                 {{end}}
             </div>
         </div>
@@ -589,18 +589,18 @@ function addPersonRow() {
         <div class="col-span-4">
             <span class="block text-xs text-gray-600 dark:text-gray-400">Name</span>
             <input type="text" name="person_name[]" value="" aria-label="Person name"
-                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
         </div>
         <div class="col-span-3">
             <span class="block text-xs text-gray-600 dark:text-gray-400">Birth Month</span>
             <input type="month" name="person_birth_month[]" value="" aria-label="Person birth month"
                 onchange="updatePersonAgePreviews()"
-                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
         </div>
         <div class="col-span-2">
             <span class="block text-xs text-gray-600 dark:text-gray-400">Role</span>
             <select data-person-role-selector onchange="updatePersonRole(this)" aria-label="Person role"
-                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
                 <option value="spouse" ${role === 'spouse' ? 'selected' : ''}>Spouse</option>
                 <option value="other" ${role === 'other' ? 'selected' : ''}>Other</option>
             </select>
@@ -611,7 +611,7 @@ function addPersonRow() {
         </div>
         <div class="col-span-1 flex justify-end">
             <button type="button" onclick="removePersonRow(this)"
-                class="text-xs text-red-500 hover:text-red-700">Remove</button>
+                class="text-xs text-negative hover:text-negative">Remove</button>
         </div>
     `;
     container.appendChild(row);
@@ -644,10 +644,10 @@ function updateTaxablePercent() {
         display.textContent = Math.round(taxable) + '%';
         // Warn if over 100%
         if (taxDeferred + roth > 100) {
-            display.classList.add('text-red-600', 'dark:text-red-400');
+            display.classList.add('text-negative', 'text-negative');
             display.textContent = 'Over 100%!';
         } else {
-            display.classList.remove('text-red-600', 'dark:text-red-400');
+            display.classList.remove('text-negative', 'text-negative');
         }
     }
     // Show/hide per-account allocation sections based on portfolio split
@@ -725,7 +725,7 @@ function updateAccountBonds(account) {
     const display = document.getElementById(`${account}-bond-display`);
     if (display) {
         display.textContent = 'Bonds: ' + Math.round(bonds) + '%';
-        display.classList.remove('text-red-600', 'dark:text-red-400');
+        display.classList.remove('text-negative', 'text-negative');
     }
     // Update expected return if using allocation-based returns
     const returnSlider = document.querySelector('input[name="investment_return"]');
@@ -749,7 +749,7 @@ function updateInvestmentReturnDisplay(value) {
         if (val === 0) {
             const expectedReturn = calculateExpectedReturnFromAllocation();
             const label = document.createElement('span');
-            label.className = inPanel ? 'text-green-400' : 'text-green-700 dark:text-green-400';
+            label.className = inPanel ? 'text-positive' : 'text-positive';
             label.textContent = 'Using asset allocation';
             const detail = document.createElement('span');
             detail.className = inPanel ? 'text-gray-500' : 'text-gray-600 dark:text-gray-400';
@@ -762,7 +762,7 @@ function updateInvestmentReturnDisplay(value) {
             label.className = inPanel ? 'text-gray-200' : 'text-gray-600 dark:text-gray-300';
             label.textContent = 'Fixed ' + val.toFixed(1) + '%';
             const detail = document.createElement('span');
-            detail.className = inPanel ? 'text-amber-400 text-xs' : 'text-amber-600 dark:text-amber-400 text-xs';
+            detail.className = inPanel ? 'text-warning text-body-sm' : 'text-warning text-body-sm';
             detail.textContent = '(overrides allocation)';
             display.appendChild(label);
             display.appendChild(document.createTextNode(' '));
@@ -858,8 +858,8 @@ function updateSpendingPreview() {
         row.className = 'border-t border-gray-200 dark:border-gray-600';
 
         const sign = pctChange >= 0 ? '+' : '';
-        const colorClass = pctChange < 0 ? 'text-green-700 dark:text-green-400' :
-                          pctChange > 20 ? 'text-red-600 dark:text-red-400' : '';
+        const colorClass = pctChange < 0 ? 'text-positive' :
+                          pctChange > 20 ? 'text-negative' : '';
 
         row.innerHTML = `
             <td class="py-1">Year ${year}</td>

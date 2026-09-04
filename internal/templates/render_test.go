@@ -230,9 +230,12 @@ func extractRow(t *testing.T, html, category string) (current, previous, change,
 	rawChange = lastAttrs + lastContent
 
 	direction = "stable"
-	if strings.Contains(rawChange, "text-rose") {
+	// U6: insights.html renders the arrow/color from the semantic tokens
+	// (text-negative for "up" spend, text-positive for "down"), not the
+	// pre-U6 text-rose/text-emerald hue literals.
+	if strings.Contains(rawChange, "text-negative") {
 		direction = "up"
-	} else if strings.Contains(rawChange, "text-emerald") {
+	} else if strings.Contains(rawChange, "text-positive") {
 		direction = "down"
 	}
 

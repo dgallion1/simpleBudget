@@ -1,0 +1,52 @@
+package insights
+
+// Lead-authored Tier-3 oracle for U5 contract v3 (SPEC §2d rule 2): the one
+// classifier's API and its decisions on rounded inputs. Planted by accept.sh.
+
+import (
+	"testing"
+
+	"budget2/internal/models"
+)
+
+func TestOracleU5_ContractAPI(t *testing.T) {
+	var f func(previous, current float64) models.ChangeCell = ChangeDisplay // rounded pair only, no percent input
+	if models.ChangeKindNone != "none" || models.ChangeKindNew != "new" || models.ChangeKindDollar != "dollar" || models.ChangeKindPercent != "percent" {
+		t.Fatalf("ChangeKind constants: none=%q new=%q dollar=%q percent=%q", models.ChangeKindNone, models.ChangeKindNew, models.ChangeKindDollar, models.ChangeKindPercent)
+	}
+	if ChangeDollarFloor != 100 {
+		t.Fatalf("ChangeDollarFloor = %v, want 100", ChangeDollarFloor)
+	}
+	cases := []struct {
+		prev, cur     float64
+		kind, dir     string
+		amount, pct   float64
+		checkAmt, checkPct bool
+	}{
+		{0, 0, models.ChangeKindNone, "stable", 0, 0, true, true},
+		{5.55e-17, 0, models.ChangeKindNone, "stable", 0, 0, true, true},
+		{0, 12.345, models.ChangeKindNew, "up", 12.35, 100, true, true},
+		{0.001, 50, models.ChangeKindNew, "up", 50, 100, true, true},
+		{0, -12.34, models.ChangeKindDollar, "down", -12.34, -100, true, true},
+		{-50, 40, models.ChangeKindDollar, "up", 90, 180, true, true},
+		{40, 140.115, models.ChangeKindDollar, "up", 100.12, 0, true, false},
+		{99.994, 150, models.ChangeKindDollar, "up", 50.01, 0, true, false},
+		{99.995, 150.005, models.ChangeKindPercent, "up", 50, 50, true, true},
+		{100, 100, models.ChangeKindPercent, "stable", 0, 0, true, true},
+		{1000, 1020, models.ChangeKindPercent, "stable", 20, 2, true, true},
+		{1000, 940, models.ChangeKindPercent, "down", -60, -6, true, true},
+		{30.005, 6931.004, models.ChangeKindDollar, "up", 6901.00, 0, true, false},
+	}
+	for _, c := range cases {
+		got := f(c.prev, c.cur)
+		if got.Kind != c.kind || got.Direction != c.dir {
+			t.Errorf("ChangeDisplay(%v, %v) = kind %q dir %q; want %q %q", c.prev, c.cur, got.Kind, got.Direction, c.kind, c.dir)
+		}
+		if c.checkAmt && got.Amount != c.amount {
+			t.Errorf("ChangeDisplay(%v, %v).Amount = %v, want %v", c.prev, c.cur, got.Amount, c.amount)
+		}
+		if c.checkPct && got.Percent != c.pct {
+			t.Errorf("ChangeDisplay(%v, %v).Percent = %v, want %v", c.prev, c.cur, got.Percent, c.pct)
+		}
+	}
+}

@@ -19,21 +19,21 @@
 */}}
 {{define "unassigned_banner"}}
 {{if .UnassignedCount}}
-<div id="unassigned-banner" class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+<div id="unassigned-banner" class="bg-warning-soft border border-warning rounded-lg p-4">
     <div class="flex items-start gap-3">
-        <svg class="w-5 h-5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <svg class="w-5 h-5 text-warning flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"></path>
         </svg>
         <div class="flex-1 min-w-0">
-            <p class="text-sm text-amber-700 dark:text-amber-300">
+            <p class="text-sm text-warning">
                 <span class="font-medium">{{.UnassignedCount}} transaction{{if gt .UnassignedCount 1}}s{{end}} came from CSV files matching no account.</span>
                 These rows are still loaded but carry no account attribution.
-                <a href="/accounts" class="underline font-medium text-amber-800 dark:text-amber-200 hover:text-amber-900 dark:hover:text-amber-100">Assign them on the accounts page</a>.
+                <a href="/accounts" class="underline font-medium text-warning hover:text-warning">Assign them on the accounts page</a>.
             </p>
         </div>
         <button type="button"
             onclick="document.getElementById('unassigned-banner').remove()"
-            class="flex-shrink-0 text-amber-500 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-200 rounded p-1 focus:outline-none focus:ring-2 focus:ring-amber-400"
+            class="flex-shrink-0 text-warning hover:text-warning rounded p-1 focus:outline-none focus:ring-2 focus:ring-warning"
             aria-label="Dismiss unassigned files notice">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>

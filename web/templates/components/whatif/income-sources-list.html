@@ -24,18 +24,18 @@
 
 {{/* Read-only Social Security item rendered from SS Optimizer settings */}}
 {{define "whatif-projected-ss-item"}}
-<div class="p-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded text-sm" title="Computed from the SS Claiming Age Optimizer below. Edit there to change.">
+<div class="p-2 bg-accent-soft border border-accent rounded text-sm" title="Computed from the SS Claiming Age Optimizer below. Edit there to change.">
     <div class="flex items-center justify-between mb-1">
         <div>
-            <span class="font-medium text-indigo-900 dark:text-indigo-100">{{.Label}}</span>
-            <span class="text-indigo-700 dark:text-indigo-200">- ${{printf "%.0f" .MonthlyAmount}}/mo</span>
+            <span class="font-medium text-accent">{{.Label}}</span>
+            <span class="text-accent">- ${{printf "%.0f" .MonthlyAmount}}/mo</span>
             {{if .SpousalTopUp}}
-            <span class="ml-1 text-xs text-indigo-600 dark:text-indigo-300" title="Includes spousal top-up (50% of higher earner's PIA, reduced for early claim)">+ spousal</span>
+            <span class="ml-1 text-xs text-accent" title="Includes spousal top-up (50% of higher earner's PIA, reduced for early claim)">+ spousal</span>
             {{end}}
         </div>
-        <span class="text-xs text-indigo-500 dark:text-indigo-300">from SS Optimizer</span>
+        <span class="text-xs text-accent">from SS Optimizer</span>
     </div>
-    <div class="text-xs text-indigo-700 dark:text-indigo-200">
+    <div class="text-body-sm text-accent">
         {{if .AlreadyClaiming}}
         Already claiming at age {{.ClaimAge}}
         {{else}}
@@ -49,15 +49,15 @@
 this source name matches the SS detection rule. Read-only with a "remove or
 keep" affordance so the user can either delete the duplicate or rename it. */}}
 {{define "whatif-income-source-item-excluded"}}
-<div class="p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded text-sm" title="Excluded from the projection because the SS Optimizer is active and this source name looks like a Social Security entry.">
+<div class="p-2 bg-warning-soft border border-warning rounded text-sm" title="Excluded from the projection because the SS Optimizer is active and this source name looks like a Social Security entry.">
     <div class="flex items-center justify-between">
         <div>
-            <span class="font-medium text-amber-900 dark:text-amber-100 line-through">{{.Name}}</span>
-            <span class="text-amber-700 dark:text-amber-200">- ${{printf "%.0f" .Amount}}/mo</span>
-            <span class="ml-1 text-xs text-amber-600 dark:text-amber-300">excluded — handled by SS Optimizer</span>
+            <span class="font-medium text-warning line-through">{{.Name}}</span>
+            <span class="text-warning">- ${{printf "%.0f" .Amount}}/mo</span>
+            <span class="ml-1 text-body-sm text-warning">excluded — handled by SS Optimizer</span>
         </div>
         <button type="button" hx-delete="/whatif/income/{{.ID}}" hx-target="#whatif-results"
-            class="text-red-500 hover:text-red-700" title="Delete this duplicate" aria-label="Delete income source {{.Name}}">
+            class="text-negative hover:text-negative" title="Delete this duplicate" aria-label="Delete income source {{.Name}}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
             </svg>
@@ -76,7 +76,7 @@ keep" affordance so the user can either delete the duplicate or rename it. */}}
             <span class="text-gray-600 dark:text-gray-300">- ${{printf "%.0f" .Amount}}/mo</span>
         </div>
         <button type="button" hx-delete="/whatif/income/{{.ID}}" hx-target="#whatif-results"
-            class="text-red-500 hover:text-red-700" aria-label="Delete income source {{.Name}}">
+            class="text-negative hover:text-negative" aria-label="Delete income source {{.Name}}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
             </svg>
@@ -97,7 +97,7 @@ keep" affordance so the user can either delete the duplicate or rename it. */}}
         </label>
         <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
             <input type="checkbox" name="cola" {{if gt .COLARate 0.0}}checked{{end}}
-                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600">
+                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-accent">
             COLA (2%/yr)
         </label>
     </div>
@@ -108,16 +108,16 @@ keep" affordance so the user can either delete the duplicate or rename it. */}}
 {{define "whatif-removed-income-sources"}}
 <div id="removed-income-sources" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedIncomeSources}}hidden{{end}}">
     {{if .Settings.RemovedIncomeSources}}
-    <p class="text-xs text-gray-500 dark:text-gray-400 font-medium">Recently Removed</p>
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 font-medium">Recently Removed</p>
     {{range .Settings.RemovedIncomeSources}}
-    <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
+    <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm">
         <div>
             <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
-            <span class="text-gray-500 dark:text-gray-300">- ${{printf "%.0f" .Amount}}/mo</span>
+            <span class="text-gray-600 dark:text-gray-300">- ${{printf "%.0f" .Amount}}/mo</span>
         </div>
         <div class="flex items-center gap-1">
             <button hx-post="/whatif/income/{{.ID}}/restore" hx-target="#whatif-results"
-                class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore" aria-label="Restore income source {{.Name}}">
+                class="text-positive hover:text-positive" title="Restore" aria-label="Restore income source {{.Name}}">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
@@ -125,7 +125,7 @@ keep" affordance so the user can either delete the duplicate or rename it. */}}
             </button>
             <button hx-delete="/whatif/income/{{.ID}}/purge" hx-target="#whatif-results"
                 hx-confirm="Permanently delete {{.Name}}?"
-                class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" title="Permanently delete" aria-label="Permanently delete income source {{.Name}}">
+                class="text-negative hover:text-negative" title="Permanently delete" aria-label="Permanently delete income source {{.Name}}">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                 </svg>
@@ -167,10 +167,10 @@ keep" affordance so the user can either delete the duplicate or rename it. */}}
     <div class="flex items-center justify-between">
         <label class="flex items-center text-sm dark:text-gray-300">
             <input type="checkbox" name="cola"
-                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 mr-2">
+                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-accent mr-2">
             Apply COLA (2%/yr)
         </label>
-        <button type="submit" class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+        <button type="submit" class="px-3 py-1 bg-accent-strong text-white text-sm rounded hover:bg-accent-strong">
             Add Income
         </button>
     </div>

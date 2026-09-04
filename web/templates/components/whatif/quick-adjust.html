@@ -6,7 +6,7 @@
         type="button"
         aria-expanded="false"
         aria-controls="quick-adjust-panel"
-        onclick="toggleQuickAdjustPanel()"
+       
         class="fixed left-6 bottom-6 z-40 inline-flex items-center gap-2 rounded-full bg-gray-900 px-4 py-3 text-sm font-medium text-white shadow-2xl ring-1 ring-white/10 transition hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-accent dark:bg-gray-950 dark:hover:bg-gray-900">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -24,8 +24,8 @@
                     <p class="text-body-sm text-gray-600 dark:text-gray-400">Keep results visible while tuning assumptions.</p>
                 </div>
                 <button type="button"
+                    id="quick-adjust-close"
                     class="rounded-md p-1 text-gray-600 transition hover:bg-gray-900/10 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-accent dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
-                    onclick="toggleQuickAdjustPanel(false)"
                     aria-label="Close quick-adjust panel">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -33,19 +33,19 @@
                 </button>
             </div>
             <div class="mt-3 grid grid-cols-4 gap-1 rounded-xl bg-gray-900/5 p-1 dark:bg-white/5">
-                <button type="button" data-quick-adjust-tab="portfolio" onclick="showQuickAdjustTab('portfolio')"
+                <button type="button" data-quick-adjust-tab="portfolio"
                     class="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-900/10 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white">
                     Portfolio
                 </button>
-                <button type="button" data-quick-adjust-tab="rates" onclick="showQuickAdjustTab('rates')"
+                <button type="button" data-quick-adjust-tab="rates"
                     class="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-900/10 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white">
                     Rates
                 </button>
-                <button type="button" data-quick-adjust-tab="phases" onclick="showQuickAdjustTab('phases')"
+                <button type="button" data-quick-adjust-tab="phases"
                     class="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-900/10 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white">
                     Phases
                 </button>
-                <button type="button" data-quick-adjust-tab="healthcare" onclick="showQuickAdjustTab('healthcare')"
+                <button type="button" data-quick-adjust-tab="healthcare"
                     class="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-gray-900/10 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white">
                     Healthcare
                 </button>

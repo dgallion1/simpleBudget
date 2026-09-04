@@ -64,6 +64,13 @@
     </form>
 </div>
 
+{{/* U7 inline-script allowance (one of the <=5 sitewide): this script
+     builds the "Add Step" row's <select> options from the server-rendered
+     .Scenarios list and .Settings.CurrentAge, which a plain <script src>
+     cannot see — moving it out would require serializing that data into a
+     data-* JSON attribute instead, a larger change than a script-location
+     refactor should make; left inline and data-driven only from this
+     component's own render. */}}
 <script>
 (function() {
     var btn = document.getElementById('add-chain-step-btn');

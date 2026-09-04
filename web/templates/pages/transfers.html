@@ -192,30 +192,7 @@
      #transfers-queue, move focus to the region's heading so the user lands
      somewhere sensible inside the new markup; the aria-live region above
      already announced the outcome. Progressive enhancement only. */}}
-<script>
-    (function () {
-        document.body.addEventListener('htmx:afterSwap', function (evt) {
-            var target = evt.detail && evt.detail.target;
-            if (!target || target.id !== 'transfers-queue') return;
-            var heading = target.querySelector('#transfers-queue-heading')
-                || target.querySelector('[data-focus-target]');
-            if (heading) {
-                try { heading.focus(); } catch (e) {}
-            }
-        });
-
-        {{/* Render the transfers flow chart from the inline JSON payload.
-             Uses the existing renderChart from charts.js, which themes for
-             both light and dark mode (ACCESSIBILITY.md point 12). */}}
-        var flowEl = document.getElementById('chart-transfers-flow');
-        if (flowEl && typeof renderChart === 'function') {
-            var payload = flowEl.getAttribute('data-chart-payload');
-            if (payload) {
-                renderChart('chart-transfers-flow', payload);
-            }
-        }
-    })();
-</script>
+<script src="/static/js/transfers.js" defer></script>
 {{end}}
 
 {{/* transfers-queue-partial is the HTMX swap target for the confirm/reject

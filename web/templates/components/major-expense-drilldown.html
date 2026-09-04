@@ -1,11 +1,11 @@
 {{define "major-expense-drilldown"}}
 <div class="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50" id="major-expense-modal"
-    onclick="closeMajorExpenseModal(event)">
+    data-modal-backdrop data-modal-close="closeMajorExpenseModal">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
-        onclick="event.stopPropagation()">
+        data-modal-panel>
         <div class="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
             <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{.Name}}</h3>
-            <button onclick="closeMajorExpenseModal()" class="text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+            <button data-modal-close-btn="closeMajorExpenseModal" class="text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" aria-label="Close">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
                     </path>

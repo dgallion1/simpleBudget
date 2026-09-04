@@ -4,7 +4,7 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <div class="flex justify-between items-center mb-4">
         <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Healthcare Costs</h2>
-        <button type="button" onclick="toggleAddHealthcare()"
+        <button type="button" data-toggle-add-healthcare
             class="text-sm text-accent hover:text-accent">
             + Add Person
         </button>
@@ -66,7 +66,7 @@
             </div>
         </div>
         <div class="flex justify-end gap-2">
-            <button type="button" onclick="toggleAddHealthcare()"
+            <button type="button" data-toggle-add-healthcare
                 class="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-200">
                 Cancel
             </button>
@@ -108,35 +108,5 @@
 
 {{/* Healthcare Toggle Script */}}
 {{define "whatif-healthcare-scripts"}}
-<script>
-function toggleAddHealthcare(forceOpen) {
-    const form = document.getElementById('add-healthcare-form');
-    if (typeof forceOpen === 'boolean') {
-        form.classList.toggle('hidden', !forceOpen);
-        return;
-    }
-    form.classList.toggle('hidden');
-}
-
-function toggleHealthcareFormMode(form) {
-    if (!form) {
-        return;
-    }
-    const select = form.querySelector('select[name="person_id"]');
-    const manualFields = form.querySelector('[data-manual-healthcare-fields]');
-    const preview = form.querySelector('[data-linked-healthcare-preview]');
-    const option = select?.selectedOptions?.[0];
-    const linked = !!select?.value;
-
-    if (manualFields) {
-        manualFields.classList.toggle('hidden', linked);
-    }
-    if (preview) {
-        preview.classList.toggle('hidden', !linked);
-        if (linked && option) {
-            preview.textContent = option.textContent;
-        }
-    }
-}
-</script>
+<script src="/static/js/whatif-healthcare-card.js" defer></script>
 {{end}}

@@ -1,18 +1,18 @@
 {{define "kpi-detail"}}
 <div class="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50" id="kpi-modal"
-    onclick="closeKPIModal(event)">
+    data-modal-backdrop data-modal-close="closeKPIModal">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
-        onclick="event.stopPropagation()">
+        data-modal-panel>
         <div class="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
             <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{.Title}} Details</h3>
             <div class="flex items-center space-x-2">
-                <button onclick="exportKPIToCSV('{{.Type}}')" class="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-accent">
+                <button data-export-kpi="{{.Type}}" class="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-accent">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
                     <span>Export CSV</span>
                 </button>
-                <button onclick="closeKPIModal()" class="text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                <button data-modal-close-btn="closeKPIModal" class="text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" aria-label="Close">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
                         </path>
@@ -92,9 +92,9 @@
                     {{$isRate := .IsRate}}
                     {{$noCoverage := and (eq .Type "healthcare") .HealthcareNoCoverageInRange -}}
                     {{range .Monthly}}
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer" onclick="openKPIMonthDetail('{{$type}}', '{{.Month}}')">
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer" data-kpi-month-detail="{{$type}}|{{.Month}}">
                         <td class="p-3 text-sm text-gray-800 dark:text-gray-200">
-                            <button type="button" onclick="event.stopPropagation(); openKPIMonthDetail('{{$type}}', '{{.Month}}')"
+                            <button type="button" data-kpi-month-detail="{{$type}}|{{.Month}}"
                                 class="underline decoration-dotted underline-offset-2 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent rounded"
                                 aria-label="Show {{.Month}} transactions">{{.Month}}</button>
                         </td>

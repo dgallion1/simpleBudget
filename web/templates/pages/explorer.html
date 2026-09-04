@@ -18,7 +18,7 @@
                             hx-get="/explorer/transactions" hx-target="#transactions-container"
                             hx-trigger="keyup changed delay:300ms" hx-include="#explorer-filter-form"
                             class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 pr-8 text-sm focus:ring-accent focus:border-accent">
-                        <button type="button" onclick="clearSearch()"
+                        <button type="button"
                             class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 {{if not .Search}}hidden{{end}}"
                             id="clear-search-btn" title="Clear search" aria-label="Clear search">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -30,8 +30,8 @@
 
                 <!-- Category Filter -->
                 <div class="min-w-[150px]">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
-                    <select name="category"
+                    <label for="explorer-category-filter" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
+                    <select id="explorer-category-filter" name="category"
                         class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
                         <option value="">All Categories</option>
                         {{range .Categories}}
@@ -43,8 +43,8 @@
                 <!-- Major Expense Filter -->
                 {{if .MajorExpenses}}
                 <div class="min-w-[150px]">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Major Expense</label>
-                    <select name="majorExpense"
+                    <label for="explorer-major-expense-filter" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Major Expense</label>
+                    <select id="explorer-major-expense-filter" name="majorExpense"
                         class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
                         <option value="">All</option>
                         {{range .MajorExpenses}}
@@ -56,8 +56,8 @@
 
                 <!-- Type Filter -->
                 <div class="min-w-[120px]">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
-                    <select name="type"
+                    <label for="explorer-type-filter" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
+                    <select id="explorer-type-filter" name="type"
                         class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
                         <option value="">All Types</option>
                         <option value="Income" {{if eq .Type "Income" }}selected{{end}}>Income</option>
@@ -66,50 +66,31 @@
                     </select>
                 </div>
 
-                <!-- Date Range -->
+                <!-- Date Range (shared/range-picker.html, U7) -->
                 <div class="flex flex-wrap items-end gap-2">
-                    <!-- From/To inputs + step back/forward: kept on one line, inputs shrink first -->
-                    <div class="flex items-end gap-2">
-                        <div class="min-w-0">
-                            <label for="explorer-date-start" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
-                            <input type="date" id="explorer-date-start" name="start" value="{{.StartDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
-                                class="w-full min-w-0 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
-                        </div>
-                        <div class="min-w-0">
-                            <label for="explorer-date-end" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
-                            <input type="date" id="explorer-date-end" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
-                                class="w-full min-w-0 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
-                        </div>
-                        <div class="flex gap-1 items-center shrink-0">
-                            <button type="button" onclick="stepDateRange(-1)" title="Step back" aria-label="Step back"
-                                class="p-2 min-w-[24px] min-h-[24px] text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-                                </svg>
-                            </button>
-                            <button type="button" onclick="stepDateRange(1)" title="Step forward" aria-label="Step forward"
-                                class="p-2 min-w-[24px] min-h-[24px] text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                    <!-- Quick Date Range Shortcuts: free to wrap onto their own line(s) below md -->
-                    <div class="flex flex-wrap gap-1 items-center" id="date-range-buttons">
-                        <button type="button" onclick="setDateRange(1)" data-months="1"
-                            class="date-range-btn min-w-[24px] min-h-[24px] px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">1M</button>
-                        <button type="button" onclick="setDateRange(2)" data-months="2"
-                            class="date-range-btn min-w-[24px] min-h-[24px] px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">2M</button>
-                        <button type="button" onclick="setDateRange(3)" data-months="3"
-                            class="date-range-btn min-w-[24px] min-h-[24px] px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">3M</button>
-                        <button type="button" onclick="setDateRange(6)" data-months="6"
-                            class="date-range-btn min-w-[24px] min-h-[24px] px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">6M</button>
-                        <button type="button" onclick="setDateRange(12)" data-months="12"
-                            class="date-range-btn min-w-[24px] min-h-[24px] px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">12M</button>
-                        <button type="button" onclick="setDateRange(0)" data-months="0"
-                            class="date-range-btn min-w-[24px] min-h-[24px] px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">All</button>
-                    </div>
+                    {{template "shared/range-picker" (dict
+                        "Layout" "stacked"
+                        "ArrowPosition" "adjacent"
+                        "StackedWrapClass" "min-w-0"
+                        "StackedInputClass" "w-full min-w-0"
+                        "StartID" "explorer-date-start"
+                        "EndID" "explorer-date-end"
+                        "StartValue" .StartDate
+                        "EndValue" .EndDate
+                        "MinDate" .MinDate
+                        "MaxDate" .MaxDate
+                        "PresetGroupID" "date-range-buttons"
+                        "PresetAttr" "data-months"
+                        "PresetClass" "date-range-btn"
+                        "PresetInactiveClass" "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                        "PresetActiveClass" "bg-accent-strong text-white"
+                        "Presets" (slice
+                            (dict "Value" "1" "Label" "1M")
+                            (dict "Value" "2" "Label" "2M")
+                            (dict "Value" "3" "Label" "3M")
+                            (dict "Value" "6" "Label" "6M")
+                            (dict "Value" "12" "Label" "12M")
+                            (dict "Value" "0" "Label" "All")))}}
                 </div>
 
                 <!-- Loading Indicator -->
@@ -128,7 +109,7 @@
 
                 <!-- Clear Filters -->
                 <div class="flex items-end pb-2 ml-auto">
-                    <a href="/explorer" onclick="sessionStorage.removeItem('explorerFilters')"
+                    <a href="/explorer" id="explorer-clear-filters"
                         class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors">
                         Clear Filters
                     </a>
@@ -155,426 +136,7 @@
 
 </div>
 
-<script>
-    // Persist explorer filter state across tab changes
-    (function() {
-        const STORAGE_KEY = 'explorerFilters';
-
-        // On bare /explorer load (no query params), restore saved filters
-        if (window.location.search === '' || window.location.search === '?') {
-            const saved = sessionStorage.getItem(STORAGE_KEY);
-            if (saved && !sessionStorage.getItem(STORAGE_KEY + '_restoring')) {
-                sessionStorage.setItem(STORAGE_KEY + '_restoring', '1');
-                window.location.replace('/explorer?' + saved);
-                return; // stop further script execution during redirect
-            }
-            sessionStorage.removeItem(STORAGE_KEY + '_restoring');
-        } else {
-            // We have query params - save them (strip leading ?)
-            sessionStorage.removeItem(STORAGE_KEY + '_restoring');
-            sessionStorage.setItem(STORAGE_KEY, window.location.search.substring(1));
-        }
-
-        // Save filter state before every HTMX request from the form
-        document.body.addEventListener('htmx:configRequest', function(evt) {
-            const form = document.getElementById('explorer-filter-form');
-            if (form && (evt.detail.elt === form || form.contains(evt.detail.elt))) {
-                const params = new URLSearchParams(evt.detail.parameters);
-                // Don't persist page number - always start at page 1
-                params.set('page', '1');
-                sessionStorage.setItem(STORAGE_KEY, params.toString());
-            }
-        });
-    })();
-
-    // Clear search input
-    function clearSearch() {
-        const form = document.getElementById('explorer-filter-form');
-        const searchInput = document.getElementById('search-input');
-        const clearBtn = document.getElementById('clear-search-btn');
-        const pageInput = form.querySelector('input[name="page"]');
-
-        searchInput.value = '';
-        clearBtn.classList.add('hidden');
-        pageInput.value = '1';
-
-        htmx.trigger(form, 'submit');
-    }
-
-    // Show/hide clear button based on search input
-    document.addEventListener('DOMContentLoaded', function() {
-        const searchInput = document.getElementById('search-input');
-        const clearBtn = document.getElementById('clear-search-btn');
-
-        if (searchInput && clearBtn) {
-            searchInput.addEventListener('input', function() {
-                if (this.value) {
-                    clearBtn.classList.remove('hidden');
-                } else {
-                    clearBtn.classList.add('hidden');
-                }
-            });
-        }
-
-        // Highlight the correct date range button on page load
-        detectSelectedDateRange();
-
-        // Clear stored activeMonths when the user manually edits a date
-        // input, so post-swap detection runs from the date values.
-        const filterForm = document.getElementById('explorer-filter-form');
-        if (filterForm) {
-            filterForm.querySelectorAll('input[type="date"]').forEach(function (input) {
-                input.addEventListener('change', function () {
-                    filterForm.dataset.activeMonths = '';
-                });
-            });
-        }
-    });
-
-    // Re-detect after every HTMX swap (the inputs may have new values).
-    document.body.addEventListener('htmx:afterSwap', detectSelectedDateRange);
-
-    // Parse "YYYY-MM-DD" as a local-timezone date (avoids UTC off-by-one).
-    function parseDateLocal(s) {
-        if (!s) return null;
-        const parts = s.split('-').map(Number);
-        if (parts.length !== 3 || parts.some(isNaN)) return null;
-        return new Date(parts[0], parts[1] - 1, parts[2]);
-    }
-
-    function formatDateLocal(d) {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return year + '-' + month + '-' + day;
-    }
-
-    // Step the date range forward or backward.
-    // If a month-based preset is active (1/2/3/6/12), shift by N months
-    // preserving day-of-month and keeping the preset highlight. Otherwise,
-    // shift by the current span in days. The "All" preset is a no-op.
-    function stepDateRange(direction) {
-        const form = document.getElementById('explorer-filter-form');
-        const startInput = form.querySelector('input[name="start"]');
-        const endInput = form.querySelector('input[name="end"]');
-        const pageInput = form.querySelector('input[name="page"]');
-
-        const currentStart = parseDateLocal(startInput.value);
-        const currentEnd = parseDateLocal(endInput.value);
-        if (!currentStart || !currentEnd) return;
-
-        const monthMap = { 1: 1, 2: 2, 3: 3, 6: 6, 12: 12 };
-        const activeMonths = parseInt(form.dataset.activeMonths || '-1', 10);
-        let newStart, newEnd;
-
-        if (monthMap[activeMonths]) {
-            const months = monthMap[activeMonths] * direction;
-            newStart = new Date(currentStart);
-            newStart.setMonth(newStart.getMonth() + months);
-            newEnd = new Date(currentEnd);
-            newEnd.setMonth(newEnd.getMonth() + months);
-        } else if (activeMonths === 0) {
-            return;
-        } else {
-            const dayMs = 86400000;
-            const spanDays = Math.round((currentEnd - currentStart) / dayMs) + 1;
-            const shiftMs = spanDays * direction * dayMs;
-            newStart = new Date(currentStart.getTime() + shiftMs);
-            newEnd = new Date(currentEnd.getTime() + shiftMs);
-        }
-
-        const minDate = parseDateLocal(startInput.getAttribute('min'));
-        const maxDate = parseDateLocal(endInput.getAttribute('max'));
-        if (minDate && newStart < minDate) {
-            const diffMs = minDate - newStart;
-            newStart = new Date(newStart.getTime() + diffMs);
-            newEnd = new Date(newEnd.getTime() + diffMs);
-        }
-        if (maxDate && newEnd > maxDate) {
-            const diffMs = newEnd - maxDate;
-            newStart = new Date(newStart.getTime() - diffMs);
-            newEnd = new Date(newEnd.getTime() - diffMs);
-        }
-        if (minDate && newStart < minDate) newStart = new Date(minDate);
-        if (maxDate && newEnd > maxDate) newEnd = new Date(maxDate);
-
-        const newStartStr = formatDateLocal(newStart);
-        const newEndStr = formatDateLocal(newEnd);
-        if (newStartStr === startInput.value && newEndStr === endInput.value) return;
-
-        startInput.value = newStartStr;
-        endInput.value = newEndStr;
-
-        // Preset highlight is intentionally preserved across shifts —
-        // form.dataset.activeMonths stays set so post-swap detection
-        // re-applies the same highlight.
-        pageInput.value = '1';
-        htmx.trigger(form, 'submit');
-    }
-
-    // Set date range (months back from max date, or 0 for all)
-    function setDateRange(months) {
-        const form = document.getElementById('explorer-filter-form');
-        const startInput = form.querySelector('input[name="start"]');
-        const endInput = form.querySelector('input[name="end"]');
-        const pageInput = form.querySelector('input[name="page"]');
-
-        const minDate = startInput.getAttribute('min');
-        const maxDate = endInput.getAttribute('max');
-
-        if (months === 0) {
-            // All - use full range
-            startInput.value = minDate;
-            endInput.value = maxDate;
-        } else {
-            // Calculate start date as X months before max date
-            const end = new Date(maxDate);
-            const start = new Date(end);
-            start.setMonth(start.getMonth() - months);
-
-            // Ensure start doesn't go before min date
-            const minDateObj = new Date(minDate);
-            if (start < minDateObj) {
-                start.setTime(minDateObj.getTime());
-            }
-
-            startInput.value = start.toISOString().split('T')[0];
-            endInput.value = maxDate;
-        }
-
-        // Update button selection state
-        form.dataset.activeMonths = String(months);
-        updateDateRangeButtons(months);
-
-        pageInput.value = '1';
-        htmx.trigger(form, 'submit');
-    }
-
-    // Update which date range button appears selected
-    function updateDateRangeButtons(selectedMonths) {
-        const buttons = document.querySelectorAll('.date-range-btn');
-        buttons.forEach(btn => {
-            const btnMonths = parseInt(btn.getAttribute('data-months'));
-            if (btnMonths === selectedMonths) {
-                // Selected state - indigo highlight
-                btn.classList.remove('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
-                btn.classList.add('bg-accent-strong', 'bg-accent-strong', 'text-white', 'dark:text-white');
-            } else {
-                // Default state
-                btn.classList.remove('bg-accent-strong', 'bg-accent-strong', 'text-white', 'dark:text-white');
-                btn.classList.add('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
-            }
-        });
-    }
-
-    // Detect which date range button should be selected based on current dates
-    function detectSelectedDateRange() {
-        const form = document.getElementById('explorer-filter-form');
-        // Honor an explicit activeMonths set by setDateRange / stepDateRange
-        // so a scrolled window keeps its preset highlight across swaps.
-        const explicit = parseInt(form.dataset.activeMonths || '', 10);
-        if (!isNaN(explicit) && [0, 1, 2, 3, 6, 12].includes(explicit)) {
-            updateDateRangeButtons(explicit);
-            return;
-        }
-        const startInput = form.querySelector('input[name="start"]');
-        const endInput = form.querySelector('input[name="end"]');
-
-        const minDate = startInput.getAttribute('min');
-        const maxDate = endInput.getAttribute('max');
-        const startDate = startInput.value;
-        const endDate = endInput.value;
-
-        // If end date isn't max, no button matches
-        if (endDate !== maxDate) {
-            updateDateRangeButtons(-1);
-            return;
-        }
-
-        // Check if "All" is selected
-        if (startDate === minDate) {
-            updateDateRangeButtons(0);
-            return;
-        }
-
-        // Check for 1, 2, 3, 6, 12 month ranges
-        const end = new Date(maxDate);
-        for (const months of [1, 2, 3, 6, 12]) {
-            const expectedStart = new Date(end);
-            expectedStart.setMonth(expectedStart.getMonth() - months);
-            if (startDate === expectedStart.toISOString().split('T')[0]) {
-                updateDateRangeButtons(months);
-                return;
-            }
-        }
-
-        updateDateRangeButtons(-1);
-    }
-
-    // Filter by clicking on a description
-    function filterByDescription(description) {
-        const form = document.getElementById('explorer-filter-form');
-        const searchInput = form.querySelector('input[name="search"]');
-        const clearBtn = document.getElementById('clear-search-btn');
-        const pageInput = form.querySelector('input[name="page"]');
-
-        searchInput.value = description;
-        if (clearBtn) clearBtn.classList.remove('hidden');
-        pageInput.value = '1';
-
-        htmx.trigger(form, 'submit');
-    }
-
-    // Update sort parameters and trigger refresh
-    function sortBy(column) {
-        const form = document.getElementById('explorer-filter-form');
-        const sortInput = form.querySelector('input[name="sort"]');
-        const orderInput = form.querySelector('input[name="order"]');
-        const pageInput = form.querySelector('input[name="page"]');
-
-        if (sortInput.value === column) {
-            // Toggle order
-            orderInput.value = orderInput.value === 'asc' ? 'desc' : 'asc';
-        } else {
-            sortInput.value = column;
-            orderInput.value = column === 'date' ? 'desc' : 'asc';
-        }
-
-        // Reset to page 1 when sorting changes
-        pageInput.value = '1';
-
-        // Trigger HTMX request
-        htmx.trigger(form, 'submit');
-    }
-
-    // Go to specific page
-    function goToPage(page) {
-        const form = document.getElementById('explorer-filter-form');
-        const pageInput = form.querySelector('input[name="page"]');
-        pageInput.value = page;
-        htmx.trigger(form, 'submit');
-    }
-
-
-    // Infinite scroll handler for nested scrollable container
-    // HTMX's revealed trigger doesn't work with nested scroll containers
-    function setupInfiniteScroll() {
-        const scrollContainer = document.querySelector('#transactions-container .overflow-y-auto');
-        if (!scrollContainer) return;
-
-        let loading = false;
-
-        scrollContainer.addEventListener('scroll', function() {
-            if (loading) return;
-
-            // Check if we're near the bottom (within 100px)
-            const scrollBottom = this.scrollTop + this.clientHeight;
-            const threshold = this.scrollHeight - 100;
-
-            if (scrollBottom >= threshold) {
-                // Find the LAST row with hx-get attribute (the infinite scroll trigger)
-                // querySelector returns first match, but we need the last one after appends
-                const triggerRows = document.querySelectorAll('#transaction-rows tr[hx-get]');
-                const lastTriggerRow = triggerRows.length > 0 ? triggerRows[triggerRows.length - 1] : null;
-                if (lastTriggerRow) {
-                    loading = true;
-                    htmx.trigger(lastTriggerRow, 'revealed');
-                    // Reset loading flag after request completes
-                    setTimeout(() => { loading = false; }, 500);
-                }
-            }
-        });
-    }
-
-    // Setup on initial load
-    setupInfiniteScroll();
-
-    // Re-setup after HTMX swaps content
-    document.body.addEventListener('htmx:afterSwap', function(e) {
-        if (e.detail.target.id === 'transactions-container') {
-            setupInfiniteScroll();
-        }
-    });
-
-    // Build the description cell content using safe DOM methods
-    function buildDescriptionContent(displayName, description) {
-        const wrapper = document.createElement('span');
-        wrapper.className = 'alias-display cursor-pointer hover:text-accent';
-        wrapper.title = 'Click to filter, double-click to rename';
-
-        if (displayName) {
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'font-medium';
-            nameSpan.textContent = displayName;
-            wrapper.appendChild(nameSpan);
-
-            wrapper.appendChild(document.createTextNode(' '));
-
-            const origSpan = document.createElement('span');
-            origSpan.className = 'text-body-sm text-gray-500 dark:text-gray-300';
-            origSpan.textContent = '(' + description + ')';
-            wrapper.appendChild(origSpan);
-        } else {
-            wrapper.textContent = description;
-        }
-
-        wrapper.addEventListener('click', function() {
-            filterByDescription(displayName || description);
-        });
-
-        return wrapper;
-    }
-
-    // Double-click on description to rename
-    document.addEventListener('dblclick', function(e) {
-        const td = e.target.closest('td[data-hash]');
-        if (!td || td.querySelector('input')) return;
-
-        const hash = td.dataset.hash;
-        const description = td.dataset.description;
-        const displayName = td.dataset.displayName;
-
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = displayName || '';
-        input.placeholder = description;
-        input.className = 'w-full border border-accent dark:bg-gray-700 dark:text-gray-100 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-accent';
-
-        td.textContent = '';
-        td.appendChild(input);
-        input.focus();
-        input.select();
-
-        function save() {
-            const newName = input.value.trim();
-            const form = new FormData();
-            form.append('hash', hash);
-            form.append('display_name', newName);
-
-            fetch('/explorer/alias', { method: 'POST', body: form })
-                .then(resp => {
-                    if (!resp.ok) throw new Error('Save failed');
-                    td.dataset.displayName = newName;
-                    td.textContent = '';
-                    td.appendChild(buildDescriptionContent(newName, description));
-                })
-                .catch(() => {
-                    td.textContent = '';
-                    td.appendChild(buildDescriptionContent(displayName, description));
-                });
-        }
-
-        input.addEventListener('blur', save);
-        input.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-            if (e.key === 'Escape') {
-                input.removeEventListener('blur', save);
-                td.textContent = '';
-                td.appendChild(buildDescriptionContent(displayName, description));
-            }
-        });
-    });
-</script>
+<script src="/static/js/explorer.js" defer></script>
 {{end}}
 
 {{define "transactions-table"}}
@@ -585,7 +147,7 @@
             <thead>
                 <tr>
                     <th class="w-24 text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        onclick="sortBy('date')">
+                        data-sort-key="date">
                         <div class="flex items-center gap-1">
                             Date
                             {{if eq .Sort "date"}}
@@ -598,7 +160,7 @@
                         </div>
                     </th>
                     <th class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        onclick="sortBy('description')">
+                        data-sort-key="description">
                         <div class="flex items-center gap-1">
                             Description
                             {{if eq .Sort "description"}}
@@ -611,7 +173,7 @@
                         </div>
                     </th>
                     <th class="hidden md:table-cell w-32 text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        onclick="sortBy('category')">
+                        data-sort-key="category">
                         <div class="flex items-center gap-1">
                             Category
                             {{if eq .Sort "category"}}
@@ -624,7 +186,7 @@
                         </div>
                     </th>
                     <th class="hidden md:table-cell w-32 text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        onclick="sortBy('majorExpense')">
+                        data-sort-key="majorExpense">
                         <div class="flex items-center gap-1">
                             Major Expense
                             {{if eq .Sort "majorExpense"}}
@@ -637,7 +199,7 @@
                         </div>
                     </th>
                     <th class="w-28 text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        onclick="sortBy('amount')">
+                        data-sort-key="amount">
                         <div class="flex items-center justify-end gap-1">
                             Amount
                             {{if eq .Sort "amount"}}
@@ -650,7 +212,7 @@
                         </div>
                     </th>
                     <th class="hidden md:table-cell w-20 text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        onclick="sortBy('type')">
+                        data-sort-key="type">
                         <div class="flex items-center justify-center gap-1">
                             Type
                             {{if eq .Sort "type"}}
@@ -663,7 +225,7 @@
                         </div>
                     </th>
                     <th class="hidden md:table-cell w-36 text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        onclick="sortBy('source')">
+                        data-sort-key="source">
                         <div class="flex items-center justify-center gap-1">
                             Source
                             {{if eq .Sort "source"}}
@@ -681,7 +243,7 @@
     </div>
 
     <!-- Scrollable Table Body -->
-    <div class="flex-1 overflow-y-auto">
+    <div class="flex-1 overflow-y-auto" tabindex="0" role="region" aria-label="Transactions">
         <table class="w-full table-fixed">
             <tbody id="transaction-rows" class="divide-y divide-gray-100 dark:divide-gray-700">
                 {{template "transaction-rows" .}}
@@ -702,7 +264,7 @@
     hx-trigger="revealed" hx-swap="afterend" hx-include="#explorer-filter-form" {{end}} {{end}}>
     <td class="w-24 p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">{{formatDate .Date}}</td>
     <td class="p-3 text-sm text-gray-800 dark:text-gray-200 break-words" data-hash="{{.Hash}}" data-description="{{.Description}}" data-display-name="{{.DisplayName}}" data-major-expense-name="{{.MajorExpenseName}}">
-        <span class="alias-display cursor-pointer hover:text-accent" onclick="filterByDescription('{{js .Label}}')" title="Click to filter, double-click to rename">{{if ne .Label .Description}}<span class="font-medium">{{.Label}}</span> <span class="text-body-sm text-gray-500 dark:text-gray-300">({{.Description}})</span>{{else}}{{.Description}}{{end}}</span>
+        <span class="alias-display cursor-pointer hover:text-accent" data-filter-by="{{.Label}}" title="Click to filter, double-click to rename">{{if ne .Label .Description}}<span class="font-medium">{{.Label}}</span> <span class="text-body-sm text-gray-500 dark:text-gray-300">({{.Description}})</span>{{else}}{{.Description}}{{end}}</span>
         {{if .DuplicatePairKey}}<a href="/duplicates#{{.DuplicatePairKey}}" class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning-soft text-warning hover:bg-warning-strong hover:bg-warning-soft" title="Unresolved duplicate">dup?</a>{{end}}
         {{if .Suppressed}}<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 line-through" title="Suppressed duplicate">suppressed dup</span>{{end}}
     </td>

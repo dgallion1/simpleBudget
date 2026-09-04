@@ -53,7 +53,7 @@
             <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{formatMoney $v.TargetTotal}}</div>
         </div>
         {{end}}
-        <button type="button" onclick="openKPIDetail('savings')"
+        <button type="button" data-kpi-detail="savings"
             class="text-center rounded px-2 py-1 -my-1 hover:bg-black/5 dark:hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-accent"
             aria-label="Show monthly net savings detail">
             <span class="block text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Net Savings</span>

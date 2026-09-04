@@ -1,5 +1,57 @@
 // Dashboard-specific JavaScript functionality
 
+// KPI cards/buttons carry data-kpi-detail/-month-detail/-export instead of
+// an inline onclick= (U7); delegated so it also covers the KPI detail /
+// month-detail modal content the HTMX swap injects. closest() finds the
+// nearest match (e.g. a "view" button inside a row that also carries the
+// attribute), so a click never fires the handler twice.
+document.addEventListener('click', function (e) {
+    var el;
+    if ((el = e.target.closest('[data-kpi-detail]'))) {
+        openKPIDetail(el.getAttribute('data-kpi-detail'));
+        return;
+    }
+    if ((el = e.target.closest('[data-kpi-month-detail]'))) {
+        var parts = el.getAttribute('data-kpi-month-detail').split('|');
+        openKPIMonthDetail(parts[0], parts[1]);
+        return;
+    }
+    if ((el = e.target.closest('[data-export-kpi]'))) {
+        exportKPIToCSV(el.getAttribute('data-export-kpi'));
+        return;
+    }
+});
+
+// The KPI-tile cards (shared/kpi-tile.html) are tabindex="0" role="button"
+// divs, not native <button>s — Enter/Space don't activate those on their
+// own, so this fires the same openKPIDetail() the click handler above
+// uses (U7 attempt 2, ruling U-2026-09-04l). Scoped to [role="button"] so
+// it does not double-fire on the real <button data-kpi-detail="savings">
+// in the verdict bar, which already gets Enter/Space for free.
+document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    var el = e.target.closest('[data-kpi-detail][role="button"]');
+    if (!el || e.target !== el) return;
+    e.preventDefault();
+    openKPIDetail(el.getAttribute('data-kpi-detail'));
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    var dropZone = document.getElementById('drop-zone');
+    var fileInput = document.getElementById('file-input');
+    if (dropZone && fileInput) {
+        dropZone.addEventListener('click', function () { fileInput.click(); });
+        fileInput.addEventListener('change', function () { handleFileSelect(this.files); });
+    }
+
+    document.querySelectorAll('#date-filter-form [data-step]').forEach(function (btn) {
+        btn.addEventListener('click', function () { shiftWindow(parseInt(btn.dataset.step, 10)); });
+    });
+    document.querySelectorAll('#date-filter-form .preset-btn[data-preset]').forEach(function (btn) {
+        btn.addEventListener('click', function () { setPreset(btn.dataset.preset); });
+    });
+});
+
 // Major Expense drilldown functions
 function openMajorExpenseDrilldown(name) {
     const form = document.getElementById('date-filter-form');

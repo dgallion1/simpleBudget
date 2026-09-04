@@ -1,0 +1,60 @@
+{{/* shared/kpi-tile.html — KPI card shell (U7, absorbs U2's dashboard tile).
+   Same open/close-pair shape as shared/card.html and for the same reason:
+   {{template}} can't dispatch to a name chosen at runtime, and every KPI
+   tile's value/delta paragraphs need page-specific template actions.
+
+   shared/kpi-tile-open dict fields:
+     ID             - optional id for the outer <div>
+     ContainerClass - border/background utility classes for the tile
+     ColSpanClass   - optional extra classes (e.g. "xl:col-span-2")
+     Clickable      - bool; when true AND DetailKey is set, adds
+                      cursor-pointer/hover classes, data-kpi-detail, AND
+                      keyboard operability: tabindex="0" role="button"
+                      plus an aria-label derived from Label (U7 attempt 2,
+                      ruling U-2026-09-04l). The tile can't safely become a
+                      native <button> — the Budget tile conditionally
+                      nests a real <a> ("Set a budget in What-If"), and a
+                      <button> cannot contain interactive content — so
+                      this is the tabindex+role+keydown fallback the
+                      ruling names; the page JS adds the matching
+                      Enter/Space handler alongside its click delegation.
+                      When Clickable is false (U7 attempt 3, ruling
+                      U-2026-09-04m: the Budget tile passes
+                      .Metrics.HasCombinedTarget here, not a literal
+                      true), the div gets NONE of role/tabindex/
+                      data-kpi-detail/cursor-pointer — the delegated
+                      click/keydown listeners skip it entirely, so a tile
+                      whose body nests a real link (Budget, no target
+                      set) is never a role="button" ancestor of that
+                      link. data-kpi-detail is gated on `and .Clickable
+                      .DetailKey` together, not on DetailKey alone, for
+                      exactly this reason.
+     DetailKey      - if set (and Clickable), adds data-kpi-detail=
+                      "<DetailKey>" (the click/keydown is wired by the
+                      page's JS, not an onclick=)
+     LabelClass     - text color class for the label
+     Label          - label text
+
+   Usage:
+     {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-positive bg-positive-soft" "Clickable" true "DetailKey" "income" "LabelClass" "text-positive" "Label" "Total Income")}}
+     ...value/delta markup...
+     {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-positive-soft" "IconSVG" (safeHTML `<svg>...</svg>`))}}
+     {{if sparkline}}<div id="..." class="h-10 mt-2" data-values="..." data-color="..."></div>{{end}}
+     {{template "shared/kpi-tile-close" .}}
+*/}}
+{{define "shared/kpi-tile-open"}}
+<div{{if .ID}} id="{{.ID}}"{{end}} class="rounded-xl border {{.ContainerClass}} p-4{{if .Clickable}} cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-accent{{end}}{{if .ColSpanClass}} {{.ColSpanClass}}{{end}}"{{if and .Clickable .DetailKey}} data-kpi-detail="{{.DetailKey}}" tabindex="0" role="button" aria-label="{{.Label}} details"{{end}}>
+    <div class="flex items-center justify-between">
+        <div>
+            <p class="text-label font-semibold uppercase tracking-wide {{.LabelClass}}">{{.Label}}</p>
+{{end}}
+{{define "shared/kpi-tile-icon"}}
+        </div>
+        <div class="p-3 {{.IconBgClass}} rounded-full">
+            {{.IconSVG}}
+        </div>
+    </div>
+{{end}}
+{{define "shared/kpi-tile-close"}}
+</div>
+{{end}}

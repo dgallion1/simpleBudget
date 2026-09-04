@@ -1,11 +1,11 @@
 {{define "kpi-month-detail"}}
 <div class="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50" id="kpi-modal"
-    onclick="closeKPIModal(event)">
+    data-modal-backdrop data-modal-close="closeKPIModal">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
-        onclick="event.stopPropagation()">
+        data-modal-panel>
         <div class="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
             <div class="flex items-center space-x-3">
-                <button type="button" onclick="openKPIDetail('{{.Type}}')"
+                <button type="button" data-kpi-detail="{{.Type}}"
                     class="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-accent"
                     aria-label="Back to monthly {{.Title}}">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -15,7 +15,7 @@
                 </button>
                 <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{.Title}} &middot; {{.MonthLabel}}</h3>
             </div>
-            <button onclick="closeKPIModal()" class="text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" aria-label="Close">
+            <button data-modal-close-btn="closeKPIModal" class="text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" aria-label="Close">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
                     </path>
@@ -64,34 +64,10 @@
             <table class="w-full" id="kpi-month-txn-table">
                 <thead class="bg-gray-100 dark:bg-gray-900 sticky top-0">
                     <tr>
-                        <th scope="col" data-sort="date" class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">
-                            <button type="button" data-sort-btn="date"
-                                class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-                                Date
-                                <span data-sort-arrow="date" aria-hidden="true" class="sort-arrow hidden"></span>
-                            </button>
-                        </th>
-                        <th scope="col" data-sort="description" class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">
-                            <button type="button" data-sort-btn="description"
-                                class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-                                Description
-                                <span data-sort-arrow="description" aria-hidden="true" class="sort-arrow hidden"></span>
-                            </button>
-                        </th>
-                        <th scope="col" data-sort="category" class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">
-                            <button type="button" data-sort-btn="category"
-                                class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-                                Category
-                                <span data-sort-arrow="category" aria-hidden="true" class="sort-arrow hidden"></span>
-                            </button>
-                        </th>
-                        <th scope="col" data-sort="amount" class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">
-                            <button type="button" data-sort-btn="amount"
-                                class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-                                Amount
-                                <span data-sort-arrow="amount" aria-hidden="true" class="sort-arrow hidden"></span>
-                            </button>
-                        </th>
+                        {{template "shared/sortable-th" (dict "Key" "date" "Label" "Date" "Class" "text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300")}}
+                        {{template "shared/sortable-th" (dict "Key" "description" "Label" "Description" "Class" "text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300")}}
+                        {{template "shared/sortable-th" (dict "Key" "category" "Label" "Category" "Class" "text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300")}}
+                        {{template "shared/sortable-th" (dict "Key" "amount" "Label" "Amount" "Class" "text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300")}}
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700">

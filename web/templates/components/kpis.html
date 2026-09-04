@@ -3,11 +3,8 @@
 {{template "dashboard-verdict-bar" .}}
 
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-4">
-    <!-- Total Income -->
-    <div class="rounded-xl border border-positive bg-positive-soft p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('income')">
-        <div class="flex items-center justify-between">
-            <div>
-                <p class="text-label font-semibold uppercase tracking-wide text-positive">Total Income</p>
+    {{/* Total Income (shared/kpi-tile.html, U7) */}}
+    {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-positive bg-positive-soft" "Clickable" true "DetailKey" "income" "LabelClass" "text-positive" "Label" "Total Income")}}
                 <p class="num text-2xl font-bold text-positive">{{formatMoney .Metrics.TotalIncome}}</p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
@@ -16,23 +13,12 @@
                 </p>
                 {{end}}
                 {{end}}
-            </div>
-            <div class="p-3 bg-positive-soft rounded-full">
-                <svg class="w-6 h-6 text-positive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
-                    </path>
-                </svg>
-            </div>
-        </div>
-        <div id="sparkline-income" class="h-10 mt-2" data-values="{{toJSON .Metrics.IncomeTrend}}" data-color="#10b981"></div>
-    </div>
+    {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-positive-soft" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-positive" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`))}}
+    <div id="sparkline-income" class="h-10 mt-2" data-values="{{toJSON .Metrics.IncomeTrend}}" data-color="#10b981"></div>
+    {{template "shared/kpi-tile-close" .}}
 
-    <!-- Total Expenses -->
-    <div class="rounded-xl border border-negative bg-negative-soft p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('expenses')">
-        <div class="flex items-center justify-between">
-            <div>
-                <p class="text-label font-semibold uppercase tracking-wide text-negative">Total Expenses</p>
+    {{/* Total Expenses */}}
+    {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-negative bg-negative-soft" "Clickable" true "DetailKey" "expenses" "LabelClass" "text-negative" "Label" "Total Expenses")}}
                 <p class="num text-2xl font-bold text-negative">{{formatMoney (abs .Metrics.TotalExpenses)}}</p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
@@ -41,23 +27,12 @@
                 </p>
                 {{end}}
                 {{end}}
-            </div>
-            <div class="p-3 bg-negative-soft rounded-full">
-                <svg class="w-6 h-6 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z">
-                    </path>
-                </svg>
-            </div>
-        </div>
-        <div id="sparkline-expenses" class="h-10 mt-2" data-values="{{toJSON .Metrics.ExpensesTrend}}" data-color="#f43f5e"></div>
-    </div>
+    {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-negative-soft" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>`))}}
+    <div id="sparkline-expenses" class="h-10 mt-2" data-values="{{toJSON .Metrics.ExpensesTrend}}" data-color="#f43f5e"></div>
+    {{template "shared/kpi-tile-close" .}}
 
-    <!-- Monthly Living Expenses -->
-    <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('living')">
-        <div class="flex items-center justify-between">
-            <div>
-                <p class="text-label font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Monthly Living Expenses</p>
+    {{/* Monthly Living Expenses */}}
+    {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800" "Clickable" true "DetailKey" "living" "LabelClass" "text-gray-600 dark:text-gray-400" "Label" "Monthly Living Expenses")}}
                 <p class="num text-2xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Metrics.ActualMonthly}}</p>
                 {{if .Metrics.HasBudgetTarget}}
                 {{- $prov := .TargetProvenance}}
@@ -83,25 +58,15 @@
                 </p>
                 {{end}}
                 {{end}}
-            </div>
-            <div class="p-3 bg-gray-100 dark:bg-gray-700 rounded-full">
-                <svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
-                </svg>
-            </div>
-        </div>
-        <div id="sparkline-monthly" class="h-10 mt-2"
-             data-values="{{toJSON .Metrics.LivingExpensesTrend}}"
-             data-color="#9ca3af"
-             {{if .Metrics.HasBudgetTarget}}data-target="{{.Metrics.BudgetTarget}}"{{end}}></div>
-    </div>
+    {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-gray-100 dark:bg-gray-700" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path></svg>`))}}
+    <div id="sparkline-monthly" class="h-10 mt-2"
+         data-values="{{toJSON .Metrics.LivingExpensesTrend}}"
+         data-color="#9ca3af"
+         {{if .Metrics.HasBudgetTarget}}data-target="{{.Metrics.BudgetTarget}}"{{end}}></div>
+    {{template "shared/kpi-tile-close" .}}
 
-    <!-- Monthly Healthcare (premiums tagged "Health Insurance" vs what-if target) -->
-    <div class="rounded-xl border border-negative bg-negative-soft p-4 cursor-pointer hover:shadow-lg transition-shadow" onclick="openKPIDetail('healthcare')">
-        <div class="flex items-center justify-between">
-            <div>
-                <p class="text-label font-semibold uppercase tracking-wide text-negative">Monthly Healthcare</p>
+    {{/* Monthly Healthcare (premiums tagged "Health Insurance" vs what-if target) */}}
+    {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-negative bg-negative-soft" "Clickable" true "DetailKey" "healthcare" "LabelClass" "text-negative" "Label" "Monthly Healthcare")}}
                 <p class="num text-2xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Metrics.HealthcareActual}}</p>
                 {{if .Metrics.HasHealthcareTarget}}
                 <p class="text-sm {{if gt .Metrics.HealthcarePerMonthDelta 0.0}}text-negative{{else}}text-positive{{end}}">
@@ -114,19 +79,12 @@
                 <p class="text-sm text-gray-600 dark:text-gray-400 italic">No premium target set</p>
                 {{end}}
                 <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-1">Category: Health Insurance</p>
-            </div>
-            <div class="p-3 bg-negative-soft rounded-full">
-                <svg class="w-6 h-6 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
-                </svg>
-            </div>
-        </div>
-        <div id="sparkline-healthcare" class="h-10 mt-2"
-             data-values="{{toJSON .Metrics.HealthcareTrend}}"
-             data-color="#e11d48"
-             {{if .Metrics.HasHealthcareTarget}}data-target="{{.Metrics.HealthcareTarget}}"{{end}}></div>
-    </div>
+    {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-negative-soft" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>`))}}
+    <div id="sparkline-healthcare" class="h-10 mt-2"
+         data-values="{{toJSON .Metrics.HealthcareTrend}}"
+         data-color="#e11d48"
+         {{if .Metrics.HasHealthcareTarget}}data-target="{{.Metrics.HealthcareTarget}}"{{end}}></div>
+    {{template "shared/kpi-tile-close" .}}
 
     <!-- Budget (combined cumulative variance: Living + Healthcare for the period) -->
     {{/* Ruling 2026-08-29c: the card's container tint and headline must
@@ -135,13 +93,19 @@
          against 0, and no separate numeric threshold literal here. */}}
     {{$budgetOver := and .BudgetVerdict.HasTarget .BudgetVerdict.IsOver}}
     {{$budgetHealthy := and .BudgetVerdict.HasTarget .BudgetVerdict.IsUnder}}
-    <div class="rounded-xl border p-4 cursor-pointer hover:shadow-lg transition-shadow xl:col-span-2
-        {{if $budgetOver}}border-negative bg-negative-soft
-        {{else if $budgetHealthy}}border-positive bg-positive-soft
-        {{else}}border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800{{end}}" onclick="openKPIDetail('expenses')">
-        <div class="flex items-center justify-between">
-            <div>
-                <p class="text-label font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Budget</p>
+    {{$budgetContainerClass := "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800"}}
+    {{$budgetIconBgClass := "bg-gray-100 dark:bg-gray-700"}}
+    {{$budgetIconColorClass := "text-gray-500 dark:text-gray-400"}}
+    {{if $budgetOver}}
+        {{$budgetContainerClass = "border-negative bg-negative-soft"}}
+        {{$budgetIconBgClass = "bg-negative-soft"}}
+        {{$budgetIconColorClass = "text-negative"}}
+    {{else if $budgetHealthy}}
+        {{$budgetContainerClass = "border-positive bg-positive-soft"}}
+        {{$budgetIconBgClass = "bg-positive-soft"}}
+        {{$budgetIconColorClass = "text-positive"}}
+    {{end}}
+    {{template "shared/kpi-tile-open" (dict "ContainerClass" $budgetContainerClass "ColSpanClass" "xl:col-span-2" "Clickable" .Metrics.HasCombinedTarget "DetailKey" "expenses" "LabelClass" "text-gray-600 dark:text-gray-400" "Label" "Budget")}}
                 {{if .Metrics.HasCombinedTarget}}
                 {{if $budgetOver}}
                 <p class="text-2xl font-bold text-negative"><span class="num">{{formatMoney (abs .Metrics.CombinedCumulativeDelta)}}</span> over</p>
@@ -195,14 +159,7 @@
                      data-mode="balance"
                      data-neutral-band="{{.BudgetVerdict.Eps}}"></div>
                 {{end}}
-            </div>
-            <div class="p-3 {{if $budgetOver}}bg-negative-soft{{else if $budgetHealthy}}bg-positive-soft{{else}}bg-gray-100 dark:bg-gray-700{{end}} rounded-full">
-                <svg class="w-6 h-6 {{if $budgetOver}}text-negative{{else if $budgetHealthy}}text-positive{{else}}text-gray-500 dark:text-gray-400{{end}}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                </svg>
-            </div>
-        </div>
-    </div>
+    {{template "shared/kpi-tile-icon" (dict "IconBgClass" $budgetIconBgClass "IconSVG" (safeHTML (printf `<svg class="w-6 h-6 %s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>` $budgetIconColorClass)))}}
+    {{template "shared/kpi-tile-close" .}}
 </div>
 {{end}}

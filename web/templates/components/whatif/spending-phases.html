@@ -110,7 +110,7 @@
         <div class="flex items-center justify-between mb-2">
             <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">Spending Trajectory</h3>
             <div class="flex items-center gap-2">
-                <button type="button" onclick="togglePhasePreview()"
+                <button type="button" id="phase-preview-toggle-btn"
                     class="text-xs text-accent hover:text-accent">
                     <span id="phase-preview-toggle-text">Show</span>
                 </button>
@@ -125,11 +125,11 @@
             <!-- Dollar view toggle -->
             <div class="flex items-center justify-end gap-1 mb-2">
                 <span class="text-gray-600 dark:text-gray-400 text-xs">View:</span>
-                <button type="button" id="btn-nominal" onclick="setDollarView('nominal')"
+                <button type="button" id="btn-nominal" data-dollar-view="nominal"
                     class="px-2 py-0.5 rounded text-xs bg-accent-strong text-white">
                     Nominal $
                 </button>
-                <button type="button" id="btn-today" onclick="setDollarView('today')"
+                <button type="button" id="btn-today" data-dollar-view="today"
                     class="px-2 py-0.5 rounded text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
                     Today's $
                 </button>
@@ -188,7 +188,13 @@
 {{end}}
 
 {{/* Trajectory refresh hook - re-rendered (OOB) on every results recalc so
-     the engine-fed Spending Trajectory table refreshes when it's open. */}}
+     the engine-fed Spending Trajectory table refreshes when it's open.
+     U7 inline-script allowance (one of the <=5 sitewide): this script IS
+     the refresh trigger — htmx re-executes an inline <script> it swaps in
+     on every OOB update, which is exactly the "call updatePhasePreview()
+     again" behavior this hook needs; a <script src> would not be re-run
+     the same way on repeat swaps, so extracting this one would regress
+     the trajectory table's live refresh. */}}
 {{define "whatif-trajectory-refresh"}}
 <script id="trajectory-refresh-script">
 if (typeof updatePhasePreview === 'function') {
@@ -202,89 +208,5 @@ if (typeof updatePhasePreview === 'function') {
 <div id="trajectory-refresh-wrapper">
 {{template "whatif-trajectory-refresh" .}}
 </div>
-<script>
-function updatePhaseSliderLabel(slider) {
-    var key = slider.dataset.quickAdjustKey;
-    if (key) {
-        var pctLabels = document.querySelectorAll('[data-quick-adjust-display="' + key + '"][data-quick-adjust-display-format="phase-percent"]');
-        pctLabels.forEach(function(label) {
-            label.textContent = Math.round(slider.value * 100) + '%';
-        });
-
-        var dollarLabels = document.querySelectorAll('[data-quick-adjust-display="' + key + '"][data-quick-adjust-display-format="phase-dollar"]');
-        if (dollarLabels.length > 0) {
-            // Canonical exact value (hidden field), not the step=100-snapped
-            // visible range.
-            var baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_value')?.value || '0');
-            var formatted = formatWholeDollars(slider.value * baseExpenses) + '/mo';
-            dollarLabels.forEach(function(label) {
-                label.textContent = formatted;
-            });
-        }
-        return;
-    }
-
-    // Fallback for any legacy slider markup without quick-adjust hooks.
-    var pctLabel = slider.nextElementSibling;
-    if (!pctLabel) return;
-    pctLabel.textContent = Math.round(slider.value * 100) + '%';
-
-    var dollarLabel = pctLabel.nextElementSibling;
-    if (dollarLabel && dollarLabel.classList.contains('phase-dollar-label')) {
-        var baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_value')?.value || '0');
-        dollarLabel.textContent = formatWholeDollars(slider.value * baseExpenses) + '/mo';
-    }
-}
-
-function togglePhaseInputs(enabled) {
-    const config = document.getElementById('spending-phases-config');
-    if (enabled) {
-        config.classList.remove('opacity-50', 'pointer-events-none');
-    } else {
-        config.classList.add('opacity-50', 'pointer-events-none');
-    }
-}
-
-function togglePhasePreview() {
-    const panel = document.getElementById('phase-preview-panel');
-    const toggleText = document.getElementById('phase-preview-toggle-text');
-    if (panel.classList.contains('hidden')) {
-        panel.classList.remove('hidden');
-        toggleText.textContent = 'Hide';
-        updatePhasePreview();
-    } else {
-        panel.classList.add('hidden');
-        toggleText.textContent = 'Show';
-    }
-}
-
-function setDollarView(mode) {
-    const panel = document.getElementById('phase-preview-panel');
-    const btnNominal = document.getElementById('btn-nominal');
-    const btnToday = document.getElementById('btn-today');
-    const note = document.getElementById('dollar-view-note');
-
-    panel.classList.toggle('traj-view-real', mode === 'today');
-    if (mode === 'nominal') {
-        btnNominal.className = 'px-2 py-0.5 rounded text-xs bg-accent-strong text-white';
-        btnToday.className = 'px-2 py-0.5 rounded text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300';
-        note.classList.add('hidden');
-    } else {
-        btnNominal.className = 'px-2 py-0.5 rounded text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300';
-        btnToday.className = 'px-2 py-0.5 rounded text-xs bg-accent-strong text-white';
-        note.classList.remove('hidden');
-    }
-}
-
-// Fetch the Spending Trajectory rows from the engine projection. The table
-// is server-rendered from the same projection as the results column and
-// re-fetched on every recalc (the OOB whatif-trajectory-refresh script).
-function updatePhasePreview() {
-    const panel = document.getElementById('phase-preview-panel');
-    if (!panel || panel.classList.contains('hidden')) return;
-    if (window.htmx) {
-        htmx.ajax('GET', '/whatif/spending-trajectory', {target: '#phase-preview-body', swap: 'innerHTML'});
-    }
-}
-</script>
+<script src="/static/js/whatif-spending-phases.js" defer></script>
 {{end}}

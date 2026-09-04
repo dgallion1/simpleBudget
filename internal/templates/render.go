@@ -87,6 +87,8 @@ func getFuncMap() template.FuncMap {
 		"toFloat":                             toFloat,
 		"seq":                                 seq,
 		"dict":                                dict,
+		"slice":                               sliceOf,
+		"htmlSelected":                        htmlSelected,
 		"json":                                jsonMarshal,
 		"toJSON":                              jsonMarshal,
 		"lower":                               strings.ToLower,
@@ -152,8 +154,9 @@ func (r *Renderer) loadTemplates() error {
 		templateFiles = append(templateFiles, matches...)
 	}
 
-	// Nested component subdirectories (e.g., components/whatif/*.html)
-	for _, subdir := range []string{"components/whatif"} {
+	// Nested component subdirectories (e.g., components/whatif/*.html,
+	// components/shared/*.html — the U7 shared partials)
+	for _, subdir := range []string{"components/whatif", "components/shared"} {
 		var matches []string
 		var err error
 
@@ -696,6 +699,24 @@ func dict(values ...interface{}) map[string]interface{} {
 		result[key] = values[i+1]
 	}
 	return result
+}
+
+// htmlSelected returns the literal "selected" attribute text when cond is
+// true, else "" — for building a small pre-rendered HTML snippet (e.g. the
+// Comparison <select> passed into shared/range-picker.html, U7) with printf
+// rather than a template action per option.
+func htmlSelected(cond bool) string {
+	if cond {
+		return "selected"
+	}
+	return ""
+}
+
+// sliceOf builds a []interface{} from its arguments, for building ad-hoc
+// lists (e.g. of dicts) in templates that need one (shared/range-picker.html
+// preset lists, U7).
+func sliceOf(values ...interface{}) []interface{} {
+	return values
 }
 
 func jsonMarshal(v interface{}) template.JS {

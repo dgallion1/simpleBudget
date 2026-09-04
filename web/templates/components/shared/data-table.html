@@ -1,0 +1,35 @@
+{{/* shared/data-table.html — table header helpers (U7).
+   Every data table in the app has its own bespoke <table>/<tbody> markup
+   (columns and row data differ too much to generalize), but the header
+   cell shapes repeat verbatim across tables: a plain scoped header, and a
+   sortable header (a <button> + arrow indicator inside a <th>) that the
+   sort click-handler and screen readers both key off the same data-sort /
+   data-sort-btn / data-sort-arrow attributes. This file gives every table
+   ONE source for both shapes (ACCESSIBILITY.md point 2: every <th> is
+   scoped).
+
+   shared/th dict fields:
+     Label  - header text
+     Scope  - "col" (default) or "row"
+     Class  - cell classes (alignment, responsive hide/width utilities)
+
+   shared/sortable-th dict fields:
+     Key    - the data-sort / data-sort-btn / data-sort-arrow value
+     Label  - header text
+     Scope  - "col" (default) or "row"
+     Class  - cell classes (alignment, responsive hide/width utilities)
+     Align  - extra classes for the inner button's flex alignment
+              (e.g. "justify-end" for a right-aligned numeric column)
+*/}}
+{{define "shared/th"}}
+<th scope="{{if .Scope}}{{.Scope}}{{else}}col{{end}}" class="{{.Class}}">{{.Label}}</th>
+{{end}}
+{{define "shared/sortable-th"}}
+<th scope="{{if .Scope}}{{.Scope}}{{else}}col{{end}}" data-sort="{{.Key}}" class="{{.Class}}">
+    <button type="button" data-sort-btn="{{.Key}}"
+        class="inline-flex items-center gap-1 -mx-1 px-1 py-0.5 rounded text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent {{.Align}}">
+        {{.Label}}
+        <span data-sort-arrow="{{.Key}}" aria-hidden="true" class="sort-arrow hidden"></span>
+    </button>
+</th>
+{{end}}

@@ -101,6 +101,16 @@ func accountsTemplatePath(t *testing.T) string {
 	return filepath.Join(repoRoot, "web", "templates", "pages", "accounts.html")
 }
 
+// accountsScriptPath resolves web/static/js/accounts.js relative to this
+// package's directory. syncWarnings() moved from an inline <script> in
+// accounts.html into this file (U7, script extraction); the harness reads
+// it from here now, still fresh off disk on every run.
+func accountsScriptPath(t *testing.T) string {
+	t.Helper()
+	repoRoot := filepath.Join(thisDir(t), "..", "..", "..")
+	return filepath.Join(repoRoot, "web", "static", "js", "accounts.js")
+}
+
 // warningsHarnessPath resolves testdata/js/warnings_dom_harness.js
 // relative to this package's directory.
 func warningsHarnessPath(t *testing.T) string {
@@ -108,22 +118,36 @@ func warningsHarnessPath(t *testing.T) string {
 	return filepath.Join(thisDir(t), "testdata", "js", "warnings_dom_harness.js")
 }
 
-// extractSyncWarningsScript reads accounts.html fresh from disk and
-// returns the text of its sole <script> element.
+// extractSyncWarningsScript reads accounts.html and static/js/accounts.js
+// fresh from disk. accounts.html must load accounts.js via <script src>
+// and carry NO inline <script> body of its own (U7 moved syncWarnings()
+// out); accounts.js is returned as the script body the node harness runs,
+// so the check still cannot rot out of sync with an edited page.
 func extractSyncWarningsScript(t *testing.T) string {
 	t.Helper()
-	path := accountsTemplatePath(t)
-	body, err := os.ReadFile(path)
+	htmlPath := accountsTemplatePath(t)
+	htmlBody, err := os.ReadFile(htmlPath)
 	if err != nil {
-		t.Fatalf("reading %s: %v", path, err)
+		t.Fatalf("reading %s: %v", htmlPath, err)
 	}
-	matches := syncWarningsScriptRE.FindAllStringSubmatch(string(body), -1)
-	if len(matches) != 1 {
-		t.Fatalf("expected exactly one <script> block in %s, found %d; "+
-			"the harness in warnings_dom_harness.js assumes syncWarnings is the "+
-			"only script on the page and needs updating if that changed", path, len(matches))
+	matches := syncWarningsScriptRE.FindAllStringSubmatch(string(htmlBody), -1)
+	for _, m := range matches {
+		if regexp.MustCompile(`\S`).MatchString(m[1]) {
+			t.Fatalf("expected accounts.html to carry NO inline <script> body "+
+				"(syncWarnings moved to static/js/accounts.js, U7), found one with "+
+				"content in %s", htmlPath)
+		}
 	}
-	return matches[0][1]
+	if !regexp.MustCompile(`<script\s+src="/static/js/accounts\.js"`).MatchString(string(htmlBody)) {
+		t.Fatalf("expected %s to load /static/js/accounts.js via <script src>", htmlPath)
+	}
+
+	jsPath := accountsScriptPath(t)
+	jsBody, err := os.ReadFile(jsPath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", jsPath, err)
+	}
+	return string(jsBody)
 }
 
 // TestExtractSyncWarningsScript_FindsExactlyOneBlock is a narrow sanity
@@ -134,10 +158,10 @@ func extractSyncWarningsScript(t *testing.T) string {
 func TestExtractSyncWarningsScript_FindsExactlyOneBlock(t *testing.T) {
 	got := extractSyncWarningsScript(t)
 	if got == "" {
-		t.Fatal("extracted <script> body is empty")
+		t.Fatal("extracted script body is empty")
 	}
 	if !regexp.MustCompile(`function\s+syncWarnings`).MatchString(got) {
-		t.Fatalf("extracted <script> body does not define syncWarnings(); "+
+		t.Fatalf("extracted script body does not define syncWarnings(); "+
 			"got:\n%s", got)
 	}
 }

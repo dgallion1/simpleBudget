@@ -23,7 +23,7 @@
         </div>
 
         <!-- New Scenario Button -->
-        <button type="button" onclick="document.getElementById('new-scenario-form').classList.toggle('hidden')"
+        <button type="button" id="whatif-new-scenario-toggle"
             class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-accent-strong hover:bg-accent-strong text-white transition-colors">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
@@ -55,7 +55,7 @@
                 class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-positive-strong hover:bg-positive-strong text-white transition-colors">
                 Create
             </button>
-            <button type="button" onclick="document.getElementById('new-scenario-form').classList.add('hidden')"
+            <button type="button" id="whatif-new-scenario-cancel"
                 class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-gray-500 hover:bg-gray-600 text-white transition-colors">
                 Cancel
             </button>

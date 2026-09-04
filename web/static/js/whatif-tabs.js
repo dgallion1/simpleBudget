@@ -114,7 +114,24 @@
     syncSettingsRail();
   }
 
-  document.addEventListener('DOMContentLoaded', function () { wire(); restoreTab(); });
+  // New-scenario form toggle/cancel buttons used to carry inline onclick=
+  // (U7); harmless no-op on any other page since these ids only exist on
+  // pages/whatif.html.
+  function wireScenarioForm() {
+    var toggle = document.getElementById('whatif-new-scenario-toggle');
+    var form = document.getElementById('new-scenario-form');
+    if (toggle && form && !toggle.__wfWired) {
+      toggle.__wfWired = true;
+      toggle.addEventListener('click', function () { form.classList.toggle('hidden'); });
+    }
+    var cancel = document.getElementById('whatif-new-scenario-cancel');
+    if (cancel && form && !cancel.__wfWired) {
+      cancel.__wfWired = true;
+      cancel.addEventListener('click', function () { form.classList.add('hidden'); });
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () { wire(); restoreTab(); wireScenarioForm(); });
 
   // After the results partial re-renders, re-wire tabs and re-apply active tab
   // (charts.js handles chart (re)creation on the same afterSettle event).

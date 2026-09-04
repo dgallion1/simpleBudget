@@ -1,0 +1,174 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U7
+ATTEMPT: 1
+---
+
+## Method
+- Read ACCESSIBILITY.md (17 points) and .swarm/U-RUN-SPEC.md §2b (U7 contract)
+  and §7 task table row for U7 (acceptance criteria a-e).
+- Read the worker manifest .swarm/manifests/U7.1.manifest.md.
+- Started a throwaway server: `scripts/whatif-verify.sh start 8099`
+  (isolated data/backups copy). Ran the worker's own oracle probe
+  `.swarm/work/u6/u7_axe_probe.js` (axe-core 4.13 via Playwright chromium,
+  wcag2a/wcag2aa/wcag21aa/wcag22aa tags) independently against all 9 pages,
+  both themes, with <details> opened, tabs/collapse-toggles/quick-adjust
+  tabs clicked, and KPI/month-detail/drilldown modal openers clicked.
+  Result reproduced exactly: **AXE PROBE: clean** (0 violations, 18/18
+  page×theme combinations). Full log kept for the record.
+- Manually traced keyboard operability of every control whose onclick=
+  was removed (per this task's own check #2), using a live Playwright
+  Tab-walk and DOM attribute inspection against the running server —
+  not template source.
+- Diffed every flagged template against `git diff master` to separate
+  pre-existing markup from content this task edited or newly authored.
+- Spot-checked the "axe fallout" fixes (2 modal close aria-labels, 4
+  select accessible names, 5 scroll regions) and the type-floor/token
+  claims directly in the rendered/source files.
+- Stopped the server (`scripts/whatif-verify.sh stop 8099`) when done.
+
+## 1. Axe sweep — PASS (necessary but not sufficient, see below)
+Reproduced independently, zero violations, all 9 pages × light/dark:
+dashboard, explorer, whatif, insights, major-expenses, duplicates,
+filemanager, accounts, transfers. Matches the manifest's own reported run.
+
+## 2. Manual keyboard-operability check — FAIL (in-scope, task's own check #2)
+The task brief's check #2 requires: "every control that was a click target
+is now a real `<button>`/link or has `addEventListener` with keyboard
+support (no new `<div onclick>` in the JS-wired hooks)." Live-probed via
+Playwright against the running server (not just template source):
+
+a) `web/templates/components/shared/kpi-tile.html:24` (`shared/kpi-tile-open`,
+   a NEW U7 partial) renders the `Clickable`+`DetailKey` case as a bare
+   `<div ... data-kpi-detail="...">` with `cursor-pointer`, no `tabindex`,
+   no `role`, no keydown handler. Wired only via a delegated
+   `document.addEventListener('click', ...)` in `web/static/js/dashboard.js:10`.
+   Live check: `document.querySelector('[data-kpi-detail="income"]')` →
+   `{tag: DIV, tabIndex: -1, role: null}`. A Tab-walk of the rendered
+   /dashboard page (60 tabs) never focused this element (only the
+   hand-coded `<button data-kpi-detail="savings">` in
+   `dashboard-verdict-bar.html:56` was reachable). Used at 5 sites in
+   `web/templates/components/kpis.html` (income, expenses, living,
+   healthcare, budget tiles) — a keyboard user cannot open any of these
+   five KPI-detail modals. `git diff master` on `kpis.html` shows the
+   pre-U7 markup was `<div ... onclick="openKPIDetail('income')">` — i.e.
+   also click-only in master, but U7 **replicated the exact same
+   keyboard-inoperable click target into a brand-new shared partial**
+   while explicitly claiming (manifest §3) that onclick removal was
+   "Wired via id/data-* hooks + addEventListener" — without adding the
+   keyboard equivalent the task's own check demands.
+
+b) `web/templates/pages/insights.html` lines 134, 210, 276, 356 (+ OOB-swap
+   duplicates ~520s): `<div>`/`<tr data-navigate-href="...">` rows that
+   navigate to Explorer on click, wired via delegated click listener in
+   `web/static/js/insights.js:27-30`. `git diff master` confirms these
+   were `onclick="window.location.href='...'"` before U7 and are now
+   `data-navigate-href="..."` with the SAME absence of tabindex/role/
+   keydown — U7 edited these exact lines and replicated the same
+   keyboard gap. Live check: `tag: DIV, tabIndex: -1, role: null`.
+
+c) `web/templates/pages/insights.html` sortable `<th data-sort-fn="...">`
+   headers (lines 194, 197, 200, 203, 340, 343, 346, 349, 520, 523, 526,
+   529 — 12 sites incl. OOB duplicates): `git diff master` confirms U7
+   directly edited each of these lines, removing
+   `onclick="sortRecurringTable('description')"` etc. and adding
+   `data-sort-fn="sortRecurringTable"` — but left the header as a bare
+   `<th>`, not a `<button>`. This is a direct violation of
+   **ACCESSIBILITY.md point 2** ("Sortable or interactive headers are
+   buttons, not bare clickable text") on content this task itself edited.
+   U7 built the correct button pattern for exactly this
+   (`shared/data-table.html`'s `shared/sortable-th`) and applied it to
+   `kpi-month-detail.html` and `filemanager.html`, but did not apply it
+   here despite editing these exact headers in the same task. Live check:
+   `tag: TH, tabIndex: -1, role: null, hasButton: false`.
+
+   (major-expenses.html's `<th data-sort-key>` headers were checked and
+   are UNCHANGED by `git diff master` — no onclick was removed from them —
+   so that instance is pre-existing/out of scope, reported as an
+   OBSERVATION below, not a FAIL.)
+
+Axe-core's default ruleset cannot reliably detect "click handler without
+keyboard equivalent" on a delegated document-level listener (there is no
+DOM-visible signal to key off), which is why the clean axe sweep and this
+manual finding coexist — this is exactly the gap the task's manual check
+#2 exists to catch.
+
+Constitution/WCAG citations: ACCESSIBILITY.md point 3 ("No `<div onclick>`;
+anything clickable is focusable and has a role"), point 9 ("All
+functionality is keyboard-operable"), point 2 (sortable headers must be
+buttons); WCAG 2.2 2.1.1 Keyboard (Level A, part of the AA baseline).
+
+Per the checker's own attribution rule: this is not byte-identical
+carryover from master (the onclick attribute is gone, the wiring
+mechanism changed, and in (a) it moved into a brand-new shared partial) —
+the same accessibility failure was **replicated into new content** this
+task authored or directly edited. That is FAIL-eligible under the stated
+rule, and is exactly what the task's own check #2 was written to catch.
+
+## 3. Modal dialog semantics (point 17) — OBSERVATION, not a FAIL
+`kpi-detail.html`, `kpi-month-detail.html`, `major-expense-drilldown.html`
+have none of: `role="dialog"`, `aria-modal`, focus-move-on-open, Tab trap.
+Esc-to-close DOES work (verified: `dashboard.js` keydown listener calls
+`closeKPIModal`/`closeMajorExpenseModal`). Per `.swarm/U-RUN-SPEC.md`
+§7 task table, this exact remediation (role/aria-modal/focus-trap, these
+exact three files plus filemanager/transfers) is explicitly assigned to
+**U15** ("Accessibility cluster"), not U7 — U7 did not regress this (Esc
+still works, same as before), so this is an observation for the U15
+checker, not a U7 FAIL.
+
+## 4. Axe-fallout fixes claimed by the worker — verified genuine, no regression
+- Modal close buttons: `aria-label="Close"` present and correct on
+  `kpi-detail.html:15` and `major-expense-drilldown.html:8`.
+- Explorer's 3 filter `<select>`s (`explorer.html:32-60`) and dashboard's
+  Compare select each have a correctly associated `<label for="...">` —
+  no redundant/incorrect aria-label found.
+- 5 scroll regions (`explorer.html:246`, `insights.html:130,189,263,468,571`)
+  carry `tabindex="0" role="region" aria-label="..."` — the standard
+  pattern for a keyboard-reachable scrollable region, no tabindex trap.
+These are genuine, correctly-implemented fixes and are properly in-scope
+for criterion (e) as the manifest argues.
+
+## 5. Type floor / tokens (U6 non-regression) — PASS
+`grep -rn 'text-\[10px\]\|text-\[11px\]'` across
+`web/templates/components/shared/*.html`, all modified pages/components,
+and `web/static/js/*.js` → zero hits. New partials use token classes
+(`text-label`, `text-body-sm`, `border-accent`, `bg-positive-soft`, etc.),
+not hue literals.
+
+## VERDICT RATIONALE
+Criterion (e) for U7 is "axe clean sitewide, both themes" AND (per the
+task brief's explicit check #2, which the lead added precisely because
+axe cannot see this class of defect) that onclick removal did not drop
+keyboard operability. The axe sweep passes; the manual keyboard check
+does not. Five KPI-detail tiles on the dashboard, four Explorer-navigating
+rows/tiles on Insights, and twelve sortable `<th>` headers on Insights are
+click-only after this task's edits — a keyboard-only user cannot open a
+KPI breakdown, jump from a recurring/trend row to Explorer, or sort either
+Insights table. FAIL.
+
+## OBSERVATIONS (not blocking U7; for the ledger/backlog)
+- Modal `role="dialog"`/`aria-modal`/focus-trap gap on kpi-detail,
+  kpi-month-detail, major-expense-drilldown — explicitly U15's scope per
+  U-RUN-SPEC.md §7; Esc-close already works and was not regressed.
+- major-expenses.html's bare `<th data-sort-key>` sortable headers are the
+  same pre-existing pattern (unchanged by `git diff master`), also
+  presumably U15's "remaining onclick sites" sweep, though these never
+  had onclick to begin with — flag for U15's point-2 pass regardless.
+- The five-KPI-tile-in-a-four-column-grid layout note from U-RUN-SPEC.md
+  line 564 ("U10/U7 revisit the row's shape") is unrelated to
+  accessibility and out of this checker's lane.
+
+## Evidence commands
+```
+scripts/whatif-verify.sh start 8099
+cd .swarm/work/u6 && node u7_axe_probe.js http://localhost:8099 ./node_modules/axe-core/axe.min.js
+# -> AXE PROBE: clean (18/18 ok)
+node kbd_probe.js   # live Playwright Tab-walk + DOM attribute check
+# -> KPI income tile attrs: {"tag":"DIV","tabIndex":-1,"role":null}
+# -> insights data-navigate-href attrs: {"tag":"DIV","tabIndex":-1,"role":null}
+# -> insights sortable th attrs: {"tag":"TH","tabIndex":-1,"role":null,"hasButton":false}
+git diff master -- web/templates/pages/insights.html | grep '<th'
+git diff master -- web/templates/components/kpis.html | head -30
+scripts/whatif-verify.sh stop 8099
+```

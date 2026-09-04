@@ -1,0 +1,87 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: U7
+ATTEMPT: 3
+---
+Re-verification of U7 attempt 3 (Tier 2, PRIMARY, lane anthropic). Attempt 3 is
+a 2-file delta on the uncommitted cumulative U7 work in worktree
+/home/darrell/bin/ai/budget2/.claude/worktrees/ui-audit (branch feat/ui-audit,
+HEAD 0fcaadb). All work done in a `cp -a` scratch copy; verdict file is the only
+write to the real tree. Server was started via scripts/whatif-verify.sh and
+stopped; the budget2 binary was never run directly.
+
+(a) BUILD/VET/TEST/STATICCHECK — PASS
+  Scratch copy /tmp/.../u7scratch:
+  - `go build ./...`      rc=0
+  - `go vet ./...`        rc=0
+  - `go test -count=1 ./...` rc=0, 49 packages "ok" (cache defeated with -count=1)
+  - `staticcheck ./...`   rc=0 (no output)
+
+(b) DASHBOARD RENDER TESTS / FIXTURE — PASS
+  The attempt-3 delta changes the Budget tile's Clickable from literal `true`
+  to `.Metrics.HasCombinedTarget` (web/templates/components/kpis.html:108) and
+  consolidates the kpi-tile partial's data-kpi-detail/tabindex/role/aria-label
+  gate to `{{if and .Clickable .DetailKey}}`
+  (web/templates/components/shared/kpi-tile.html).
+  Fixture: `setupTestEnvWithRenderer` yields HasCombinedTarget=FALSE (no
+  retirement manager wired). This is asserted, not assumed, by
+  TestHandleDashboard_BudgetVsActualCard_EmptyState (handlers_http_test.go:1989),
+  which requires the chart container to be ABSENT precisely because
+  HasCombinedTarget is false.
+  No test wrongly assumes the old unconditional Budget-tile clickability:
+  - The full-dashboard render tests over that false-target fixture
+    (TestHandleDashboard_WithRenderer:1667, TestHandleKPIsPartial_WithRenderer:1790)
+    assert only HTTP 200 / content-type — they do not assert the Budget tile is a
+    role="button"; they pass with the tile now non-clickable.
+  - The `data-kpi-detail="expenses"` string assertion (handlers_http_test.go:2434,
+    TestHandleKPIMonthDetail_WithRenderer) is on the KPI-month-detail endpoint and
+    is ALSO emitted by the always-clickable Total Expenses tile (kpis.html:21,
+    Clickable=true), so it never depended on the Budget tile's state.
+  - The wired-target test TestHandleDashboard_RendersBudgetVsActualCard:1954
+    writes whatif.json monthly_living_expenses=2000 → HasCombinedTarget=true →
+    Budget tile clickable, and asserts the chart container is present. Consistent.
+  Assertions are not weakened; the full suite is green in both directions.
+
+(c) LIVE BEHAVIOR — PASS
+  scripts/whatif-verify.sh start 8099 (server data sets a target →
+  HasCombinedTarget=true). GET /dashboard = 200. The Budget tile renders
+  exactly `data-kpi-detail="expenses" tabindex="0" role="button"
+  aria-label="Budget details"` (count 1) and id="chart-budget-vs-actual" is
+  present (confirms target-set state). No "internal server error"/"renderError"/
+  raw "template:" text in body (count 0). All 9 pages returned 200
+  (dashboard/explorer/whatif/insights/major-expenses/duplicates/filemanager/
+  accounts/transfers). Server stopped; /api/health then refuses connection.
+
+(d) CSS / SCOPE — PASS
+  - `make css-verify` rc=0 ("tailwind.css is up to date").
+  - `grep -c '!important' web/static/css/styles.css` = 0. The generated
+    web/static/css/tailwind.css has exactly 1 (framework .sr-only utility);
+    master's tailwind.css also has exactly 1, so it is native/unchanged.
+  - Inline `<script>` bodies across web/templates = 4 (base.html, unlock.html,
+    whatif/spending-phases.html, whatif/scenario-chain-card.html) — <=5.
+  - Scope: the working tree is U7's full uncommitted cumulative work (all
+    attempts). Every changed/untracked source file is within the union of
+    .swarm/manifests/U7.{1,2,3}.files (54 files); the only comm-23 residue was
+    the collapsed untracked dir web/templates/components/shared/, whose 4 files
+    (card/data-table/kpi-tile/range-picker.html) are all in the union.
+  - Nothing in .swarm/critical.globs touched (no
+    internal/services/{storage,dataloader,retirement/engine,transfers}/**,
+    accounts.go, or mcpsvc/confirm/**).
+  - Attempt-1/2 work not reverted: dashboard.js keydown/[data-kpi-detail]
+    delegation + role="button" Enter/Space handler present; render.go shared-
+    partial loader + slice/htmlSelected funcs present; shared/kpi-tile.html
+    aria-label/role additions present; full suite green.
+
+FINDING (out of attempt-3 scope — backlog, not a FAIL):
+  internal/templates/render.go (attempt-1 work, in the U7.1 manifest, already
+  accepted at attempts 1 & 2; unchanged since — NOT part of the attempt-3
+  delta) removed the IEEE negative-zero belts (`if v == 0 { v = 0 }`) from
+  formatMoney, formatNumber, and formatPercent that ruling CB7-2026-09-03c
+  added, with no replacing normalization (no math.Copysign) and no guarding
+  test (render_helpers_test.go covers only -0.01). Go's fmt honors the sign
+  bit, so a -0.0 input can render "$-0.00"/"-0.0" again. This is a money-
+  formatting defect-history surface and may be an unintended revert (or a
+  missing master merge of CB7 into feat/ui-audit); flagged for the lead to
+  confirm intentionality. It does not affect the attempt-3 delta and the gate
+  requirement of a fresh tests PASS at attempt 3 is met.

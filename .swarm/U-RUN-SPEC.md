@@ -489,6 +489,54 @@ report the first-attempt clean rate verbatim.
   write-only dead code (a second home for the cell text) — remove; (4) a
   "+0.0%" is constructible but not live. Candidates for a follow-up task
   after wave D; none block the row.
+- **U-2026-09-04m** (catch — checker-a11y, U7 attempt 2, FAIL CONCEDED;
+  CONTRACT REWRITE per the two-same-class rule): attempt 2 fixed keyboard
+  operability but INTRODUCED a serious nested-interactive violation (axe
+  WCAG 4.1.2, absent on master) — the shared kpi-tile now emits
+  `role="button"` on the outer div, and the Budget tile
+  (`kpis.html:108`) passes `Clickable: true` UNCONDITIONALLY, so in its
+  no-target state the role="button" container wraps a real
+  `<a href="/whatif">Set a budget</a>`. Two attempts have now failed on the
+  same root: the "whole tile is one button" model cannot host the Budget
+  tile's dual nature (modal trigger AND, when no target is set, a link).
+  Per CLAUDE.md ("two attempts to the SAME defect class ⇒ rewrite the
+  contract, T18 precedent"), the fix is a contract change, not a third
+  variant of the same design:
+  **The Budget tile is a modal trigger ONLY when a budget target is set.**
+  At `kpis.html:108` set `Clickable` to `.Metrics.HasCombinedTarget`
+  (not the literal `true`). When a target is set the tile has no nested
+  link and stays a `role="button"` modal trigger (its DetailKey "expenses");
+  when no target is set it is a plain container whose SOLE interactive
+  element is the existing `<a href="/whatif">` — no role=button ancestor,
+  so no nested-interactive. The other four tiles are unchanged (pure modal
+  triggers, no nested link). Verify: axe nested-interactive = 0 sitewide
+  both themes; all previously-fixed controls still keyboard-operable; the
+  Budget tile opens the expenses modal by keyboard WHEN a target is set and
+  offers the keyboard-focusable /whatif link WHEN not. This is U7's last
+  attempt before a Tier-2 hard stop.
+
+- **U-2026-09-04l** (catch — mechanism: PRIMARY CHECKER checker-a11y, U7
+  attempt 1, FAIL CONCEDED): axe passed 18/18 (9 pages × 2 themes) but a
+  manual Tab-walk found the onclick→delegated-listener refactor left three
+  families of controls keyboard-unreachable — the 5 shared KPI-tile cards
+  (kpi-tile.html, from kpis.html), 4 Insights navigation targets
+  (insights.html data-navigate-href), and 12 Insights sortable `<th
+  data-sort-fn>` headers — all wired by a delegated click listener on a
+  non-focusable element (`tabIndex -1`, no role). axe cannot see a
+  click-listener-on-a-div, which is exactly why the lead's dispatch made
+  keyboard operability a manual check. The gap is a div/th-onclick pattern
+  (nominally U15's sweep), but U7 REWROTE the interaction layer on these
+  exact sites, so making the controls it rewired operable belongs with the
+  rewiring, not a later re-touch of the same JS. CONCEDE, attempt 2, scoped:
+  ONLY the sites U7 touched — sortable headers become real `<button>`; the
+  KPI tiles and Insights nav targets become keyboard-operable (native
+  `<button>`/link where the markup allows, else `tabindex="0"` + `role` +
+  an Enter/Space keydown handler in the page JS, focus-visible ring). Do
+  NOT expand into the rest of U15's onclick inventory. The modal
+  role=dialog/aria-modal gap stays U15 (checker agreed: observation, Esc
+  still works). The worker's genuine pre-existing axe fixes (modal
+  aria-labels, select names, scroll-region keyboard access) STAND.
+
 - **U-2026-09-04k** (oracle hardening + catches, U6 attempt 4 accepted):
   both lanes PASS; the lead re-validated the oracle at both ends (renderError
   reverted ⇒ checks 9+10 FAIL; successRate darkening reverted ⇒ check 9

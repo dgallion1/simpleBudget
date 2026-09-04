@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -52,15 +51,15 @@ func TestRenderRateAssumptions_PhasesEnabledOmitsPreviewPanel(t *testing.T) {
 	}
 }
 
-// scriptSourceRE pulls the static JS out of the whatif-spending-preview-scripts
-// template. The block contains no template actions, so it runs as-is.
-var scriptSourceRE = regexp.MustCompile(`(?s)\{\{define "whatif-spending-preview-scripts"\}\}\s*<script>(.*?)</script>\s*\{\{end\}\}`)
+// The whatif-spending-preview-scripts template now just loads
+// static/js/whatif-rate-assumptions.js (U7); read that file directly
+// instead of extracting an inline <script> body.
 
-// quickAdjustScriptSourceRE pulls the static JS out of
-// whatif-quick-adjust-scripts.html — the real page loads this alongside
-// whatif-spending-preview-scripts, and (W2 fix) updateSpendingPreview's
-// table rows now route through the shared formatWholeDollars() it defines.
-var quickAdjustScriptSourceRE = regexp.MustCompile(`(?s)\{\{define "whatif-quick-adjust-scripts"\}\}\s*<script>(.*?)</script>\s*\{\{end\}\}`)
+// quick-adjust's script moved from an inline <script> in
+// quick-adjust-scripts.html into static/js/whatif-quick-adjust.js (U7); the
+// real page still loads it alongside whatif-spending-preview-scripts, and
+// (W2 fix) updateSpendingPreview's table rows route through the shared
+// formatWholeDollars() it defines — read directly from that file below.
 
 // TestUpdateSpendingPreview_NoPanelDoesNotThrow executes the real
 // updateSpendingPreview against a DOM that omits the preview panel — the
@@ -73,26 +72,16 @@ func TestUpdateSpendingPreview_NoPanelDoesNotThrow(t *testing.T) {
 		t.Skip("node not available; skipping browser-script execution test")
 	}
 
-	templatesFS, err := fs.Sub(web.EmbeddedFS, "templates")
+	m1, err := fs.ReadFile(web.EmbeddedFS, "static/js/whatif-rate-assumptions.js")
 	if err != nil {
-		t.Fatalf("fs.Sub() error: %v", err)
-	}
-	raw, err := fs.ReadFile(templatesFS, "components/whatif/rate-assumptions.html")
-	if err != nil {
-		t.Fatalf("ReadFile() error: %v", err)
-	}
-	m := scriptSourceRE.FindSubmatch(raw)
-	if m == nil {
-		t.Fatal("could not extract whatif-spending-preview-scripts source")
+		t.Fatalf("ReadFile(static/js/whatif-rate-assumptions.js) error: %v", err)
 	}
 
-	qaRaw, err := fs.ReadFile(templatesFS, "components/whatif/quick-adjust-scripts.html")
+	// quick-adjust's JS moved out of an inline <script> into
+	// static/js/whatif-quick-adjust.js (U7); read it directly.
+	qaJS, err := fs.ReadFile(web.EmbeddedFS, "static/js/whatif-quick-adjust.js")
 	if err != nil {
-		t.Fatalf("ReadFile(quick-adjust-scripts.html) error: %v", err)
-	}
-	qa := quickAdjustScriptSourceRE.FindSubmatch(qaRaw)
-	if qa == nil {
-		t.Fatal("could not extract whatif-quick-adjust-scripts source")
+		t.Fatalf("ReadFile(static/js/whatif-quick-adjust.js) error: %v", err)
 	}
 
 	dir := t.TempDir()
@@ -100,7 +89,7 @@ func TestUpdateSpendingPreview_NoPanelDoesNotThrow(t *testing.T) {
 	// formatWholeDollars (defined in quick-adjust-scripts.html) first, then
 	// the spending-preview script that calls it — the same load order as the
 	// real page.
-	combined := append(append([]byte{}, qa[1]...), m[1]...)
+	combined := append(append([]byte{}, qaJS...), m1...)
 	if err := os.WriteFile(scriptPath, combined, 0o600); err != nil {
 		t.Fatalf("WriteFile(script) error: %v", err)
 	}

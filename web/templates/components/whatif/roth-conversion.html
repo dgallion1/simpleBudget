@@ -69,15 +69,5 @@
     </form>
 </div>
 
-<script>
-function toggleRothConversionFields() {
-    const enabled = document.getElementById('roth-conversion-enabled').checked;
-    const fields = document.getElementById('roth-conversion-fields');
-    if (enabled) {
-        fields.classList.remove('hidden');
-    } else {
-        fields.classList.add('hidden');
-    }
-}
-</script>
+<script src="/static/js/whatif-roth-conversion.js" defer></script>
 {{end}}

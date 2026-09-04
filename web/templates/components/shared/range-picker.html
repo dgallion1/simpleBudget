@@ -1,0 +1,124 @@
+{{/* shared/range-picker.html — date range control (U7/U8 foundation).
+   Renders the From/To date inputs plus ONE quick-button set (optional
+   step-back/step-forward arrows plus a row of preset/quick buttons). The
+   Dashboard-only "Compare" selector is NOT part of this partial — pass it
+   as pre-rendered HTML via .Comparison and it renders right after the To
+   input, in the same place the hand-rolled markup put it.
+
+   The four pages that had their own copy of this block differ in real,
+   pre-existing ways this partial preserves via config rather than by
+   forking: dashboard/insights label inline ("From:") with an ml-auto
+   "Quick:" group whose arrows WRAP the preset buttons; explorer/major-
+   expenses stack the label above the input ("From") with arrows next to
+   the inputs and an unlabeled preset row below. Each page's own JS still
+   owns what a preset/step actually does (the values and the endpoints
+   refreshed differ by page) — this partial only emits the markup and the
+   data-* hooks (data-step, and whatever PresetAttr names) that JS attaches
+   listeners to; no onclick=.
+
+   dict fields:
+     Layout          - "inline" (label beside input) or "stacked" (label
+                       above input, explorer/major-expenses style)
+     StartID, StartName, StartValue
+     EndID, EndName, EndValue
+     MinDate, MaxDate
+     Comparison      - optional template.HTML, dashboard's Compare select
+     QuickLabel      - optional text shown before the quick-button group
+                       ("Quick:" on dashboard/insights)
+     ArrowPosition   - "wrap" (arrows flank the preset group) or
+                       "adjacent" (arrows sit next to the date inputs,
+                       before a separate preset row) or "" (no arrows)
+     PresetGroupID   - optional id for the preset-button container
+     PresetAttr      - data-* attribute name the preset value is stored
+                       under (e.g. "data-preset" or "data-months")
+     PresetClass     - CSS class the page's JS selects preset buttons by
+     Presets         - []dict{Value, Label, Active bool}
+     PresetActiveClass, PresetInactiveClass - class strings
+*/}}
+{{define "shared/range-picker"}}
+{{$stacked := eq .Layout "stacked"}}
+{{if $stacked}}
+{{$group := ne .GroupInputs false}}
+{{if $group}}<div class="flex items-end gap-2">{{end}}
+    <div{{if .StackedWrapClass}} class="{{.StackedWrapClass}}"{{end}}>
+        <label for="{{.StartID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
+        <input type="date" id="{{.StartID}}" name="{{if .StartName}}{{.StartName}}{{else}}start{{end}}" value="{{.StartValue}}" min="{{.MinDate}}" max="{{.MaxDate}}"
+            class="{{if .StackedInputClass}}{{.StackedInputClass}} {{end}}border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
+    </div>
+    <div{{if .StackedWrapClass}} class="{{.StackedWrapClass}}"{{end}}>
+        <label for="{{.EndID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
+        <input type="date" id="{{.EndID}}" name="{{if .EndName}}{{.EndName}}{{else}}end{{end}}" value="{{.EndValue}}" min="{{.MinDate}}" max="{{.MaxDate}}"
+            class="{{if .StackedInputClass}}{{.StackedInputClass}} {{end}}border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
+    </div>
+    {{if eq .ArrowPosition "adjacent"}}
+    <div class="flex gap-1 items-center shrink-0">
+        <button type="button" data-step="-1" title="Step back" aria-label="Step back"
+            class="p-2 min-w-[24px] min-h-[24px] text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+        </button>
+        <button type="button" data-step="1" title="Step forward" aria-label="Step forward"
+            class="p-2 min-w-[24px] min-h-[24px] text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+        </button>
+    </div>
+    {{end}}
+{{if $group}}</div>{{end}}
+{{if .Presets}}
+<div class="flex flex-wrap gap-1 items-center"{{if .PresetGroupID}} id="{{.PresetGroupID}}"{{end}}>
+    {{if eq .ArrowPosition "wrap"}}
+    <button type="button" data-step="-1" title="Step back" aria-label="Step back"
+        class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+    </button>
+    {{end}}
+    {{range .Presets}}
+    <button type="button" {{$.PresetAttr}}="{{.Value}}"
+        class="{{$.PresetClass}} min-w-[24px] min-h-[24px] px-3 py-1 text-sm rounded-md transition-colors {{if .Active}}{{$.PresetActiveClass}}{{else}}{{$.PresetInactiveClass}}{{end}}">{{.Label}}</button>
+    {{end}}
+    {{if eq .ArrowPosition "wrap"}}
+    <button type="button" data-step="1" title="Step forward" aria-label="Step forward"
+        class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+    </button>
+    {{end}}
+</div>
+{{end}}
+{{else}}
+<div class="flex items-center space-x-2">
+    <label for="{{.StartID}}" class="text-sm font-medium text-gray-700 dark:text-gray-300">From:</label>
+    <input type="date" id="{{.StartID}}" name="{{if .StartName}}{{.StartName}}{{else}}start{{end}}" value="{{.StartValue}}" min="{{.MinDate}}" max="{{.MaxDate}}"
+        {{if .InputOnInput}}oninput="{{.InputOnInput}}"{{end}}
+        {{if .InputHxAttrs}}{{.InputHxAttrs}}{{end}}
+        class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-1.5 text-sm focus:ring-accent focus:border-accent">
+</div>
+<div class="flex items-center space-x-2">
+    <label for="{{.EndID}}" class="text-sm font-medium text-gray-700 dark:text-gray-300">To:</label>
+    <input type="date" id="{{.EndID}}" name="{{if .EndName}}{{.EndName}}{{else}}end{{end}}" value="{{.EndValue}}" min="{{.MinDate}}" max="{{.MaxDate}}"
+        {{if .InputOnInput}}oninput="{{.InputOnInput}}"{{end}}
+        {{if .InputHxAttrs}}{{.InputHxAttrs}}{{end}}
+        class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-1.5 text-sm focus:ring-accent focus:border-accent">
+</div>
+{{if .Comparison}}{{.Comparison}}{{end}}
+{{if .Presets}}
+<div class="flex items-center space-x-2 ml-auto"{{if .PresetGroupID}} id="{{.PresetGroupID}}"{{end}}>
+    {{if .QuickLabel}}<span class="text-sm text-gray-600 dark:text-gray-400">{{.QuickLabel}}</span>{{end}}
+    {{if eq .ArrowPosition "wrap"}}
+    <button type="button" data-step="-1" title="Shift window backward" aria-label="Shift window backward"
+        class="min-w-[2rem] px-1.5 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    </button>
+    {{end}}
+    {{range .Presets}}
+    <button type="button" {{$.PresetAttr}}="{{.Value}}"
+        class="{{$.PresetClass}} min-w-[2.5rem] px-2 py-1 text-sm rounded-md transition-colors {{if .Active}}{{$.PresetActiveClass}}{{else}}{{$.PresetInactiveClass}}{{end}}">{{.Label}}</button>
+    {{end}}
+    {{if eq .ArrowPosition "wrap"}}
+    <button type="button" data-step="1" title="Shift window forward" aria-label="Shift window forward"
+        class="min-w-[2rem] px-1.5 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </button>
+    {{end}}
+</div>
+{{end}}
+{{end}}
+{{end}}

@@ -1,0 +1,4 @@
+web/templates/pages/insights.html
+web/templates/components/shared/kpi-tile.html
+web/static/js/dashboard.js
+web/static/js/insights.js

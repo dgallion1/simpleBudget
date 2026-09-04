@@ -1,0 +1,100 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: CB8
+ATTEMPT: 1
+---
+Scope: diff confirmed limited to internal/services/insights/trends.go and
+trends_test.go (`git diff --stat`, `git status --short`); all other
+modified files (metrics.go, explorer/handlers.go, dashboard.go, mcpsvc/*,
+kpis.html, explorer.html, NEXT.md, ledger.tsv) match the declared CB7
+foreign territory verbatim — attributed, not charged to CB8.
+
+Contract match: trends.go:355-366 implements exactly ruling CB8-2026-09-03a
+(`change := dailyAvg - historicalDaily`; `historicalDaily != 0` -> `change /
+math.Abs(historicalDaily) * 100`; zero base -> sign-of-change ±100/0). No
+call to metrics.PercentChange (`grep -n PercentChange trends.go` only hits
+an unrelated comment at :78 and the CB8 comment block itself).
+
+(a) `go build ./internal/services/insights/... ./internal/handlers/insights/...`
+    and `go vet` clean; `go test ./internal/services/insights/...
+    ./internal/handlers/insights/...` all PASS (ran with -v). Full `go test
+    ./...`: 4 pre-existing failures, all inside CB7's declared territory
+    (TestHandleTransactionsPartial_RefundReducesTotalExpenses in
+    internal/handlers/explorer; TestCalculateMetrics_PlanExclusions_...
+    and TestComparison_PlanExclusions_... in internal/services/metrics;
+    TestSummarizeSpendingBudgetBlockRemainder... in
+    internal/services/mcpsvc/spend) — none touch insights/SpendingVelocity.
+
+(b) Independently re-ran all three named mutants against a scratch-restored
+    copy of trends.go (not the worker's own claim):
+    - old `> 0` guard restored verbatim -> 3 new tests FAIL exactly as
+      claimed (RefundDominantHistoryStillReportsChange,
+      ZeroHistoricalBaseSpendingIsPositive100,
+      ZeroHistoricalBaseRefundIsNegative100), all others PASS.
+    - signed denominator (`change / historicalDaily` w/o Abs) ->
+      RefundDominantHistoryStillReportsChange FAILS (result flips
+      negative), matching claim.
+    - zero-base collapsed to unconditional +100 (PercentChange rule) ->
+      ZeroHistoricalBaseRefundIsNegative100 FAILS, matching claim.
+    - additional self-devised mutants also killed: `>=` in place of `!=`
+      (all three zero-base-adjacent + main tests fail/produce +Inf/-Inf),
+      swapped operands `historicalDaily - dailyAvg` (3 tests fail).
+    File restored byte-identical after every mutation
+    (`diff -q` against a pre-mutation backup, confirmed each time; final
+    `git diff --stat` on trends.go matched the original 25+/9- throughout).
+
+(c) Real-data check: wrote a throwaway `cmd/cb8probe` (deleted after use,
+    tree left clean per `git status --short` before/after match) that
+    replicates handleInsights' exact load path (storage.New + dataloader.New
+    against ./data, data.Active(), default 12-month window) and calls
+    insights.SpendingVelocity(filtered, active) directly — no server
+    started, :8080 untouched. Live ledger: HistoricalDaily=226.169544 (>0,
+    confirming CB1's premise), BurnRateChange=23.358011. Re-ran with a
+    scratch copy of trends.go with the pre-CB8 `> 0` guard restored:
+    BurnRateChange=23.358011 — byte-identical to 6 decimal places. Ordinary
+    ledger is unaffected by the fix, as required.
+
+(d) `grep -rn "BurnRateChange\|HistoricalDaily\|SpendingVelocity"` across
+    templates/JS/handlers/mcpsvc confirms insights.html, insights-verdict-
+    bar.html, and verdict.go all consume the value unchanged (no Abs, no
+    clamp, no re-derivation) and mcpsvc/spend/trends.go's velocityRowFrom
+    is a pure passthrough (round2 only) of the same computed value — single
+    source of truth, no split classification. No template or verdict.go
+    diff present.
+
+Edge-semantics: period==allData fixture asserts BurnRateChange==0 exactly
+(change==0 identically, not float-noise-dependent). Fixture dates use
+`time.Now()` + relative AddDate offsets throughout (no hardcoded calendar
+dates), so not subject to the CB3 attempt-1 month-boundary trap.
+
+FAIL grounds found: none within CB8's scope.
+
+Beyond-scope observations (not FAIL grounds, backlog candidates):
+1. Numerical-stability characteristic shared with CB3-c's identical
+   formula shape: SumAmount() accumulates plain float64 (no decimal/cents
+   integer type). I independently verified (scratch probe, not part of
+   trends.go) that summing ~500 two-decimal cent amounts in a shuffled
+   (date-interleaved) order that mathematically net to exactly zero
+   produces a nonzero float64 residual (~1e-10 to 1e-12 magnitude) in
+   ~97% of trials, not the exact 0.0 the `historicalDaily != 0` branch
+   assumes for its complement. A ledger whose TRUE net is zero (or very
+   near it) can therefore land in the main division branch with an
+   astronomically large resulting percentage rather than the intended
+   ±100/0 sign-of-change classification. This is inherited verbatim from
+   the CB3-c formula this task was ruled to mirror exactly
+   (CB8-2026-09-03a) and afflicted the pre-CB8 `> 0` guard equally (a
+   tiny positive residual would already explode the old formula) — it is
+   a pre-existing property of the ruled percent-change convention itself,
+   not something this diff introduces or could fix without deviating from
+   the ruling.
+2. `internal/services/mcpsvc/spend/trends.go:80-82`'s velocityRow doc
+   comment ("BurnRateChange is the percent difference between DailyAverage
+   and HistoricalDaily ((window - history) / history * 100)") documents
+   the pre-CB8 unconditional formula and does not mention the new
+   `|historicalDaily|` denominator or zero-base sign rule. The returned
+   VALUE is correct (pure passthrough via round2, single source of
+   truth) — this is a stale comment only, and CB7-RUN-SPEC.md's CB8
+   section does not enumerate this MCP doc site the way CB7's section
+   enumerates its three MCP wording sites, so it is not in CB8's written
+   scope.

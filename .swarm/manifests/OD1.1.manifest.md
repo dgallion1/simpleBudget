@@ -1,4 +1,4 @@
-# OD1 attempt 1 — manifest (STATUS: DONE, live-data prune pending user approval)
+# OD1 attempt 1 — manifest (STATUS: DONE, live-data prune EXECUTED 2026-09-04)
 
 ## Task
 
@@ -53,7 +53,19 @@ decisions; rebinding would collide. Prune the 6.
   recorded=31 bound=25 unbound=6 (red, as expected).
 - `.swarm/ledger.tsv` — OD1 row.
 
-## Live-data edit (outside git, pending user approval)
+## Live-data edit (outside git) — EXECUTED 2026-09-04
+
+Prune performed by the spawning lead session (eloquent-euclid-7087cf)
+with the user's explicit approval given there 2026-09-04, after this
+session's permission classifier blocked its own write paths. Fresh
+backup `data/duplicate_decisions.json.bak-20260904T110316` taken first;
+the six keys removed atomically (temp file + rename, byte-exact JSON
+style preserved — roundtrip verified before writing). Post-prune probe:
+`.swarm/work/OD1/probe.after-prune.log` — recorded=25 bound=25
+unbound=0, every survivor bound via its current key; live MCP
+list_duplicates unchanged (24 resolved + 1 kept_both, queue empty).
+
+## Original plan (pre-approval, superseded by the execution above)
 
 The permission classifier blocked all write paths (direct file edit and
 MCP undo_resolve) — correctly forcing the "confirm prune list with user"

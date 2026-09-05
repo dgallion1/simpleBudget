@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"runtime"
 	"sort"
+	"strconv"
+	"strings"
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement"
@@ -257,11 +259,13 @@ func buildConversionSweepRows(settings *models.WhatIfSettings) ([]ConversionSwee
 // (ACCESSIBILITY.md #10 — state-changing actions announce their result) shown
 // after an Apply-button click (T16); the button-triggered
 // POST /whatif/conversion-sweep run passes applied=false.
-func renderConversionSweepResults(w http.ResponseWriter, rows []ConversionSweepRow, applied bool, appliedAmount float64) {
+func renderConversionSweepResults(w http.ResponseWriter, rows []ConversionSweepRow, applied bool, appliedAmount float64, expectedScenario string, expectedRevision int) {
 	partialData := map[string]interface{}{
-		"Rows":          rows,
-		"Applied":       applied,
-		"AppliedAmount": appliedAmount,
+		"Rows":             rows,
+		"Applied":          applied,
+		"AppliedAmount":    appliedAmount,
+		"ExpectedScenario": expectedScenario,
+		"ExpectedRevision": expectedRevision,
 	}
 
 	if renderer != nil {
@@ -280,7 +284,11 @@ func renderConversionSweepResults(w http.ResponseWriter, rows []ConversionSweepR
 // one deterministic, side-effect-free projection, run concurrently via
 // analysis.ParallelIndexed (same fan-out precedent as the Tax Optimizer).
 func handleWhatIfConversionSweep(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.Load()
+	// Read identity before the revision-bound snapshot. A scenario switch
+	// bumps the manager revision, so a switch during either read or the sweep
+	// makes the resulting Apply guard stale instead of permitting a wrong write.
+	expectedScenario := retirementMgr.ActiveFilename()
+	settings, revision, err := retirementMgr.LoadContextWithRevision(r.Context())
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -292,7 +300,7 @@ func handleWhatIfConversionSweep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderConversionSweepResults(w, rows, false, 0)
+	renderConversionSweepResults(w, rows, false, 0, expectedScenario, revision)
 }
 
 // conversionSweepApplySource is the value of the "apply_source" hidden form
@@ -311,9 +319,16 @@ const conversionSweepApplySource = "conversion-sweep"
 // announcement, but the render tail is the sweep table rather than the
 // standard what-if results column.
 func saveAndRenderConversionSweep(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings) {
-	revision, err := retirementMgr.SaveWithRevision(settings)
+	expectedScenario := strings.TrimSpace(r.FormValue("expected_scenario"))
+	expectedRevision, parseErr := strconv.Atoi(r.FormValue("expected_revision"))
+	if expectedScenario == "" || parseErr != nil || expectedRevision < 0 {
+		renderRetargetedError(w, "Re-run the conversion sweep before applying a row", http.StatusBadRequest, "#conversion-sweep-panel")
+		return
+	}
+	// The manager compares both guards and writes under the same lock.
+	revision, err := retirementMgr.SaveWithRevisionIfScenario(settings, expectedScenario, expectedRevision)
 	if err != nil {
-		renderError(w, "Failed to save settings: "+err.Error(), statusForMutationError(err))
+		renderRetargetedError(w, "Failed to apply conversion: "+err.Error()+". Re-run the sweep and try again", statusForMutationError(err), "#conversion-sweep-panel")
 		return
 	}
 	if trigger, err := json.Marshal(map[string]int{"whatif:revision": revision}); err == nil {
@@ -330,5 +345,5 @@ func saveAndRenderConversionSweep(w http.ResponseWriter, r *http.Request, settin
 	if settings.RothConversion != nil {
 		appliedAmount = settings.RothConversion.AnnualAmount
 	}
-	renderConversionSweepResults(w, rows, true, appliedAmount)
+	renderConversionSweepResults(w, rows, true, appliedAmount, expectedScenario, revision)
 }

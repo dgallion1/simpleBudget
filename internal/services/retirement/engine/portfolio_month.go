@@ -270,6 +270,7 @@ func ExecutePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD fl
 // projection month: cash-flow effects, growth, taxable-income
 // components, taxes/IRMAA paid, and the converged tax snapshot.
 type TaxAwarePortfolioMonthResult struct {
+	OneTimeIncome                    OneTimeExpenseIncome
 	Shortfall                        float64
 	TaxesPaid                        float64
 	IRMAAExpense                     float64
@@ -292,6 +293,9 @@ type TaxAwarePortfolioMonthResult struct {
 // their pointer semantics — ExecuteTaxAwarePortfolioMonth mutates the values
 // they point to, and that contract is preserved.
 type PortfolioMonthInput struct {
+	// OneTimeExpense is already included in TotalExpenses. It identifies
+	// the nonrecurring portion for the income-tax estimator.
+	OneTimeExpense                    float64
 	TotalExpenses                     float64
 	IncomeBreakdown                   MonthlyIncomeBreakdown
 	MonthlyRMD                        float64
@@ -382,6 +386,14 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 		beforeTaxableGrowth := trialTaxable.ApplyGrowth(in.TaxableComponents, growthBeforeFraction)
 
 		trialNeededFromPortfolio := in.TotalExpenses + irmaaExpense + taxesPaid - in.IncomeBreakdown.TotalIncome - beforeTaxableGrowth.QualifiedDividends - beforeTaxableGrowth.NonQualifiedDividends - beforeTaxableGrowth.CapitalGainsDistributions
+		// Compare against the same cash-flow trial without the purchase.
+		// Keep taxes and other needs identical so only the purchase's funding
+		// is classified as nonrecurring, including gains and Roth earnings.
+		var recurringCashFlow PortfolioCashFlowResult
+		if in.OneTimeExpense > 0 {
+			td, taxable, roth, basis := trialTaxDeferred, trialTaxable, trialRoth, trialRothBasis
+			recurringCashFlow = ExecutePortfolioCashFlowWithTaxableState(trialNeededFromPortfolio-in.OneTimeExpense, in.MonthlyRMD, in.AllowTaxDeferredWithdrawal, in.PenaltyRate, &td, &taxable, &roth, &basis)
+		}
 		trialCashFlow := ExecutePortfolioCashFlowWithTaxableState(trialNeededFromPortfolio, in.MonthlyRMD, in.AllowTaxDeferredWithdrawal, in.PenaltyRate, &trialTaxDeferred, &trialTaxable, &trialRoth, &trialRothBasis)
 
 		// Compute taxable Roth earnings: pre-cash-flow portion (from this
@@ -404,7 +416,19 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 		trialNonQualifiedDividends := beforeTaxableGrowth.NonQualifiedDividends + afterTaxableGrowth.NonQualifiedDividends
 		trialCapitalGains := beforeTaxableGrowth.CapitalGainsDistributions + afterTaxableGrowth.CapitalGainsDistributions + trialCashFlow.TaxableRealizedGain
 
+		oneTimeIncome := OneTimeExpenseIncome{}
+		if in.OneTimeExpense > 0 {
+			oneTimeIncome.TaxDeferredWithdrawals = math.Max(0,
+				(trialCashFlow.WithdrawalFromTaxDeferred-trialCashFlow.RMDWithdrawal)-
+					(recurringCashFlow.WithdrawalFromTaxDeferred-recurringCashFlow.RMDWithdrawal))
+			oneTimeIncome.CapitalGains = math.Max(0, trialCashFlow.TaxableRealizedGain-recurringCashFlow.TaxableRealizedGain)
+			if !RothQualifiedDistributionClockSatisfied(in.RothFirstFundedYear, in.CalendarYear) {
+				oneTimeIncome.RothEarnings = math.Max(0, trialCashFlow.WithdrawalFromRothEarnings-recurringCashFlow.WithdrawalFromRothEarnings)
+			}
+		}
+		result.OneTimeIncome = oneTimeIncome
 		recalculatedSnapshot := in.TaxState.EstimateMonthlySnapshot(MonthlyTaxInputs{
+			OneTimeIncome:                 oneTimeIncome,
 			Calculator:                    in.TaxCalculator,
 			YearsFromBase:                 yearsFromTaxBase,
 			MonthInYear:                   in.MonthInYear,

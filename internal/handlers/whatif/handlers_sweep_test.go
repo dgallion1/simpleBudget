@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -772,11 +773,13 @@ func TestConversionSweepApply_ThroughRealRouter(t *testing.T) {
 	defer ts.Close()
 
 	form := url.Values{
-		"apply_source":  {"conversion-sweep"},
-		"annual_amount": {"100000"},
-		"enabled":       {"on"},
-		"start_year":    {"3"},
-		"end_year":      {"12"},
+		"apply_source":      {"conversion-sweep"},
+		"expected_scenario": {rm.ActiveFilename()},
+		"expected_revision": {strconv.Itoa(rm.Revision())},
+		"annual_amount":     {"100000"},
+		"enabled":           {"on"},
+		"start_year":        {"3"},
+		"end_year":          {"12"},
 	}
 	resp, err := http.PostForm(ts.URL+"/whatif/roth-conversion", form)
 	if err != nil {
@@ -857,10 +860,12 @@ func TestConversionSweepApply_ZeroAmountDisablesConversion(t *testing.T) {
 	}
 
 	form := url.Values{
-		"apply_source":  {"conversion-sweep"},
-		"annual_amount": {"0"},
-		"start_year":    {"0"},
-		"end_year":      {"0"},
+		"apply_source":      {"conversion-sweep"},
+		"expected_scenario": {rm.ActiveFilename()},
+		"expected_revision": {strconv.Itoa(rm.Revision())},
+		"annual_amount":     {"0"},
+		"start_year":        {"0"},
+		"end_year":          {"0"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/whatif/roth-conversion", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

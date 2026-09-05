@@ -188,6 +188,7 @@
     {{/* Overview */}}
     <div data-wf-panel="overview" class="space-y-4">
         {{template "whatif-projection-chart" .}}
+        {{template "whatif-expense-summary" .}}
         {{if .AnalysisPending}}{{template "whatif-pending-card" "Failure Thresholds"}}{{else}}{{template "whatif-failure-points" .}}{{end}}
     </div>
 

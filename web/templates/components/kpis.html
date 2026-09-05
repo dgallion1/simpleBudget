@@ -17,9 +17,10 @@
     <div id="sparkline-income" class="h-10 mt-2" data-values="{{toJSON .Metrics.IncomeTrend}}" data-color="#10b981"></div>
     {{template "shared/kpi-tile-close" .}}
 
-    {{/* Total Expenses */}}
+    {{/* Total Expenses — CB7: signed (no abs), sign-aware color; U6 tokens.
+         A refund-dominant range nets a credit and shows text-positive. */}}
     {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-negative bg-negative-soft" "Clickable" true "DetailKey" "expenses" "LabelClass" "text-negative" "Label" "Total Expenses")}}
-                <p class="num text-2xl font-bold text-negative">{{formatMoney (abs .Metrics.TotalExpenses)}}</p>
+                <p class="num text-2xl font-bold {{if gt .Metrics.TotalExpenses 0.0}}text-negative{{else}}text-positive{{end}}">{{formatMoney .Metrics.TotalExpenses}}</p>
                 {{if .PeriodComparison}}
                 {{if .PeriodComparison.HasData}}
                 <p class="num text-sm {{if le .PeriodComparison.ExpensesChange 0.0}}text-positive{{else}}text-negative{{end}}">

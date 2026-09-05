@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -180,17 +181,31 @@ func TestHandleExplorer_EmptyResults(t *testing.T) {
 // must REDUCE TotalExpenses, not be added as an absolute value.
 // Bug symptom: a -$199.78 refund mixed with $549.39 of purchases produced
 // TotalExpenses=$749.17 (refund's magnitude added) instead of $349.61.
+//
+// Ruling CB7-2026-09-03b: this fixture is only 7 rows, below the loader's
+// minSignConventionSample (10) -- the sign-convention auto-detect heuristic
+// never fires on it, so whatever sign convention the CSV is WRITTEN in is
+// the sign convention the app actually computes on. The original fixture
+// used the user's own positive-convention export (purchases positive,
+// refund negative) verbatim, which happened to make this test pass under
+// the OLD math.Abs formula for a reason UNRELATED to the sign-of-the-total
+// bug: math.Abs is sign-convention-agnostic for a spend-dominant set
+// regardless of which native convention is used. It is NOT a mutation
+// killer for CB7's math.Abs->signed fix either way (see the note below).
+// Converted here to the app's own CANONICAL bank convention (purchases
+// negative, refunds positive) so the fixture reflects what the rest of the
+// dashboard/explorer test suite assumes everywhere else.
 func TestHandleTransactionsPartial_RefundReducesTotalExpenses(t *testing.T) {
-	// Amounts mirror the user's reported scenario: positive-convention CSV
-	// where purchases are positive and the refund is negative.
+	// Canonical convention (ruling CB7-2026-09-03b): purchases negative,
+	// the 2026-04-12 Shenandoah Lodging refund positive.
 	csv := `Date,Description,Amount,Category
-2026-04-14,Shenandoahfood&beverag,4.84,Food & Dining
-2026-04-14,Shenandoah Lodging,259.78,Hotel
-2026-04-13,Shenandoahfood&beverag,30.31,Food & Dining
-2026-04-13,Shenandoahfood&beverag,34.68,Food & Dining
-2026-04-13,Shenandoah National Park,20.00,Uncategorized
-2026-04-12,Shenandoah Lodging,-199.78,Hotel
-2026-03-16,Shenandoah Lodging,199.78,Hotel
+2026-04-14,Shenandoahfood&beverag,-4.84,Food & Dining
+2026-04-14,Shenandoah Lodging,-259.78,Hotel
+2026-04-13,Shenandoahfood&beverag,-30.31,Food & Dining
+2026-04-13,Shenandoahfood&beverag,-34.68,Food & Dining
+2026-04-13,Shenandoah National Park,-20.00,Uncategorized
+2026-04-12,Shenandoah Lodging,199.78,Hotel
+2026-03-16,Shenandoah Lodging,-199.78,Hotel
 `
 	setupTestEnv(t, csv)
 
@@ -207,15 +222,111 @@ func TestHandleTransactionsPartial_RefundReducesTotalExpenses(t *testing.T) {
 		t.Fatalf("unmarshal: %v\n%s", err, rec.Body.String())
 	}
 
-	const want = 349.61 // 4.84+259.78+30.31+34.68+20.00+199.78 - 199.78
+	// Canonical sum: -(4.84+259.78+30.31+34.68+20.00) + 199.78 - 199.78 =
+	// -349.61 (net spend, refund already subtracted at the row level).
+	// TotalExpenses = -SumAmount() = 349.61.
+	//
+	// Note (CB7-2026-09-03b): with this canonical fixture,
+	// math.Abs(-349.61) == 349.61 too, so this specific test does NOT kill
+	// a math.Abs mutant at explorer/handlers.go's totalExpenses sites --
+	// TestHandleTransactionsPartial_RefundDominantFilterNegatesTotalExpenses
+	// and TestHandleExplorer_WithRenderer_RefundDominantFilterRendersNegativeExpenses
+	// below are the refund-DOMINANT (net-positive-sum) fixtures that
+	// actually distinguish the two formulas. This test's own job is the
+	// unchanged one from its original bug report: a refund row must
+	// SUBTRACT from the total, not add its magnitude.
+	const want = 349.61
 	gotExpenses, _ := payload["TotalExpenses"].(float64)
 	if diff := gotExpenses - want; diff > 0.01 || diff < -0.01 {
-		t.Errorf("TotalExpenses = %.2f, want %.2f (refund of -199.78 must subtract, not add)", gotExpenses, want)
+		t.Errorf("TotalExpenses = %.2f, want %.2f (refund must subtract, not add)", gotExpenses, want)
 	}
 
 	gotNet, _ := payload["NetAmount"].(float64)
 	if diff := gotNet - (-want); diff > 0.01 || diff < -0.01 {
 		t.Errorf("NetAmount = %.2f, want %.2f", gotNet, -want)
+	}
+}
+
+// TestHandleTransactionsPartial_RefundDominantFilterNegatesTotalExpenses is
+// CB7's required refund-dominant fixture for the partial/HTMX handler
+// (explorer/handlers.go's second totalExpenses site): a filtered Outflow
+// set whose refund/credit rows outweigh its ordinary spend must report a
+// NEGATIVE TotalExpenses (a net credit), not math.Abs'd positive, and
+// NetAmount must derive as income minus that (negative) figure -- ADDING
+// the net refund to income instead of subtracting an absolute value.
+func TestHandleTransactionsPartial_RefundDominantFilterNegatesTotalExpenses(t *testing.T) {
+	csv := `Date,Description,Amount,Category
+2024-01-01,Salary,2000.00,Payroll
+2024-01-05,Grocery Store,-500.00,Food
+2024-01-10,Store Credit Adjustment,900.00,Food
+`
+	setupTestEnv(t, csv)
+
+	// No type filter: `filtered` must retain both the Income row (for
+	// TotalIncome) and the Outflow rows (for TotalExpenses) -- filtering
+	// to type=Outflow here would zero TotalIncome by construction, not
+	// exercise NetAmount's signed-addition contract.
+	req := httptest.NewRequest(http.MethodGet, "/explorer/transactions", nil)
+	rec := httptest.NewRecorder()
+	handleTransactionsPartial(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, rec.Body.String())
+	}
+
+	// Outflow set nets: -500 (grocery) + 900 (credit) = +400 -- a
+	// refund-dominant filter. TotalExpenses is the signed negated net:
+	// -400.
+	gotExpenses, _ := payload["TotalExpenses"].(float64)
+	if diff := gotExpenses - (-400); diff > 0.01 || diff < -0.01 {
+		t.Errorf("TotalExpenses = %.2f, want -400.00 (refund-dominant filter; CB7)", gotExpenses)
+	}
+
+	// NetAmount = income - expenses = 2000 - (-400) = 2400 -- the net
+	// credit is ADDED to income, not subtracted as a magnitude.
+	gotNet, _ := payload["NetAmount"].(float64)
+	if diff := gotNet - 2400; diff > 0.01 || diff < -0.01 {
+		t.Errorf("NetAmount = %.2f, want 2400.00 (income - (-400) expenses)", gotNet)
+	}
+}
+
+// TestHandleTransactionsPartial_ZeroOutflowsNoNegativeZero is CB7-
+// 2026-09-03c's required fixture for the partial/HTMX handler (explorer/
+// handlers.go's second totalExpenses site): a filter with ZERO Outflow
+// rows computes TotalExpenses as SignedNet of an empty set, which must be
+// +0 with Signbit false, never IEEE -0.0 (encoding/json would otherwise
+// serialize the literal token "-0").
+func TestHandleTransactionsPartial_ZeroOutflowsNoNegativeZero(t *testing.T) {
+	csv := `Date,Description,Amount,Category
+2024-01-01,Salary,2000.00,Payroll
+`
+	setupTestEnv(t, csv)
+
+	req := httptest.NewRequest(http.MethodGet, "/explorer/transactions", nil)
+	rec := httptest.NewRecorder()
+	handleTransactionsPartial(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	if strings.Contains(rec.Body.String(), `"-0"`) || strings.Contains(rec.Body.String(), `:-0,`) || strings.Contains(rec.Body.String(), `:-0}`) {
+		t.Errorf("raw JSON body contains a negative-zero token: %s", rec.Body.String())
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, rec.Body.String())
+	}
+
+	gotExpenses, _ := payload["TotalExpenses"].(float64)
+	if gotExpenses != 0 || math.Signbit(gotExpenses) {
+		t.Errorf("TotalExpenses = %v (Signbit=%v), want +0 with Signbit false", gotExpenses, math.Signbit(gotExpenses))
 	}
 }
 
@@ -1352,6 +1463,130 @@ func TestHandleExplorer_WithRenderer_EmptyResults(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+// TestHandleExplorer_WithRenderer_RefundDominantFilterRendersNegativeExpenses
+// is CB7's required refund-dominant fixture for the full page handler
+// (explorer/handlers.go's first totalExpenses site, line ~191), exercised
+// through the REAL renderer/template so it also proves explorer.html's
+// "summary-stats" Expenses chip (previously gated on {{if isPositive
+// .TotalExpenses}}, which HID the chip entirely for a refund-dominant
+// filter) now renders for a nonzero negative TotalExpenses too, using the
+// formatMoney string a negative figure actually produces (pinned, not
+// redesigned).
+func TestHandleExplorer_WithRenderer_RefundDominantFilterRendersNegativeExpenses(t *testing.T) {
+	csv := `Date,Description,Amount,Category
+2024-01-01,Salary,2000.00,Payroll
+2024-01-05,Grocery Store,-500.00,Food
+2024-01-10,Store Credit Adjustment,900.00,Food
+`
+	setupTestEnvWithRenderer(t, csv)
+
+	req := httptest.NewRequest(http.MethodGet, "/explorer", nil)
+	rec := httptest.NewRecorder()
+	handleExplorer(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+
+	// Outflow set nets: -500 (grocery) + 900 (credit) = +400 -- a
+	// refund-dominant filter. TotalExpenses is the signed negated net,
+	// -400, rendered by formatMoney as "-$400.00".
+	if !strings.Contains(body, "-$400.00") {
+		t.Errorf("rendered body missing \"-$400.00\" (signed TotalExpenses); the Expenses chip must render the negative figure, not hide it or show it positive:\n%s", body)
+	}
+	// The Expenses chip must RENDER (not be hidden by the old {{if
+	// isPositive .TotalExpenses}} gate, which excluded any refund-dominant
+	// filter entirely). Match the chip's OWN label span specifically -- the
+	// Type filter <select> unconditionally has an "Expenses" option text
+	// too, so a bare ">Expenses<" substring would pass even if the chip
+	// itself never rendered.
+	if !strings.Contains(body, `text-negative">Expenses<`) {
+		t.Errorf("rendered body missing the Expenses chip label -- must render whenever TotalExpenses is nonzero, not only when positive:\n%s", body)
+	}
+	// checker-tests observation (CB7-2026-09-03c): the chip's VALUE and its
+	// sign-aware COLOR CLASS must be asserted TOGETHER, not just the
+	// figure -- a color-only revert of explorer.html (e.g. hardcoding the
+	// rose class back) would otherwise still pass a figure-only check.
+	// Negative (net credit) -> the emerald class, exactly as kpis.html's
+	// own sign-aware pair.
+	if !strings.Contains(body, `text-positive ml-1">-$400.00`) {
+		t.Errorf("rendered body missing the emerald sign-aware class on the negative Expenses figure:\n%s", body)
+	}
+	if strings.Contains(body, `text-negative ml-1">-$400.00`) {
+		t.Errorf("Expenses chip rendered the ROSE (spend) class on a negative (net-credit) figure:\n%s", body)
+	}
+	// Net = income - expenses = 2000 - (-400) = 2400.
+	if !strings.Contains(body, "$2,400.00") {
+		t.Errorf("rendered body missing \"$2,400.00\" (Net = income - (-400) expenses):\n%s", body)
+	}
+}
+
+// TestHandleExplorer_WithRenderer_OrdinarySpendRendersRoseExpensesClass is
+// the positive-figure counterpart to the refund-dominant test above: an
+// ORDINARY (spend-dominant) filter must render the Expenses chip with the
+// ROSE class, not the sign-aware emerald one, so a revert that always
+// applies emerald (or removes the conditional entirely) fails a test too.
+func TestHandleExplorer_WithRenderer_OrdinarySpendRendersRoseExpensesClass(t *testing.T) {
+	csv := `Date,Description,Amount,Category
+2024-01-01,Salary,2000.00,Payroll
+2024-01-05,Grocery Store,-500.00,Food
+`
+	setupTestEnvWithRenderer(t, csv)
+
+	req := httptest.NewRequest(http.MethodGet, "/explorer", nil)
+	rec := httptest.NewRecorder()
+	handleExplorer(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+
+	if !strings.Contains(body, `text-negative ml-1">$500.00`) {
+		t.Errorf("rendered body missing the rose sign-aware class on the positive (spend) Expenses figure:\n%s", body)
+	}
+	if strings.Contains(body, `text-positive ml-1">$500.00`) {
+		t.Errorf("Expenses chip rendered the EMERALD (credit) class on a positive (ordinary spend) figure:\n%s", body)
+	}
+}
+
+// TestHandleExplorer_WithRenderer_ZeroOutflowsNoNegativeZero is CB7-
+// 2026-09-03c's required fixture for the full page handler (explorer/
+// handlers.go's first totalExpenses site): a filter with ZERO Outflow rows
+// must compute TotalExpenses as SignedNet of an empty set, i.e. +0, never
+// IEEE -0.0. The chip itself is correctly ABSENT here (isPositive and
+// isNegative are both false for exact zero -- there is nothing to show),
+// so this asserts on the ABSENCE of any negative-zero rendering rather
+// than a chip's presence.
+func TestHandleExplorer_WithRenderer_ZeroOutflowsNoNegativeZero(t *testing.T) {
+	csv := `Date,Description,Amount,Category
+2024-01-01,Salary,2000.00,Payroll
+`
+	setupTestEnvWithRenderer(t, csv)
+
+	req := httptest.NewRequest(http.MethodGet, "/explorer", nil)
+	rec := httptest.NewRecorder()
+	handleExplorer(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+
+	if strings.Contains(body, "-$0.00") {
+		t.Errorf("rendered body contains \"-$0.00\" (negative zero); a zero-Outflow filter must never render this:\n%s", body)
+	}
+	// No expenses at all -> the chip must not render (neither isPositive
+	// nor isNegative is true for exact zero). Match the chip's OWN label
+	// span specifically -- the Type filter <select> unconditionally has an
+	// "Expenses" option text too, so a bare ">Expenses<" substring check
+	// would false-positive on that dropdown, not the summary-stats chip.
+	if strings.Contains(body, `text-negative">Expenses<`) {
+		t.Errorf("Expenses chip rendered for a zero-Outflow filter; want absent:\n%s", body)
 	}
 }
 

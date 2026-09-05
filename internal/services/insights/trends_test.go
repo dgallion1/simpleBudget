@@ -1,8 +1,10 @@
 package insights
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"testing"
 	"time"
 
@@ -847,6 +849,120 @@ func TestCalculateSpendingVelocity_RefundDominantPeriodIsNegative(t *testing.T) 
 	if velocity.MonthProjection >= 0 {
 		t.Errorf("MonthProjection = %.2f, want negative for a refund-dominant month-to-date", velocity.MonthProjection)
 	}
+	// CB8: period == allData here, so dailyAvg == historicalDaily exactly
+	// and change == 0 -- pins that IDENTICAL current/historical sets
+	// report a flat 0%, not +-100 (a zero-base-style mutant that ignores
+	// historicalDaily's actual nonzero value would fail this).
+	if velocity.BurnRateChange != 0 {
+		t.Errorf("BurnRateChange = %.4f, want exactly 0 (current period == historical period)", velocity.BurnRateChange)
+	}
+}
+
+// TestCalculateSpendingVelocity_RefundDominantHistoryStillReportsChange is a
+// CB8 regression: CB3-D made historicalDaily signed but left the `> 0` guard
+// on burnRateChange, so a ledger whose ENTIRE HISTORY nets a refund
+// (historicalDaily < 0) silently reported BurnRateChange=0 no matter how
+// fast the current period was spending. allData here is the current
+// period's purchases plus a much larger, much older refund, so the
+// ledger-wide net is negative while the current period is genuinely
+// spending. The old `> 0` guard yields 0 for this fixture; ruling
+// CB8-2026-09-03a's |historicalDaily| formula must report the real,
+// positive change instead.
+func TestCalculateSpendingVelocity_RefundDominantHistoryStillReportsChange(t *testing.T) {
+	now := time.Now()
+	currentTxns := []models.Transaction{
+		{Description: "purchase", Amount: -300, Date: now, TransactionType: models.Outflow},
+	}
+	currentPeriod := &models.TransactionSet{Transactions: currentTxns}
+
+	allTxns := make([]models.Transaction, len(currentTxns))
+	copy(allTxns, currentTxns)
+	allTxns = append(allTxns, models.Transaction{
+		Description:     "large old refund",
+		Amount:          1200,
+		Date:            now.AddDate(0, 0, -65), // 65 days ago: well before the current period
+		TransactionType: models.Outflow,
+	})
+	allData := &models.TransactionSet{Transactions: allTxns}
+
+	velocity := SpendingVelocity(currentPeriod, allData)
+
+	if velocity.HistoricalDaily >= 0 {
+		t.Fatalf("harness error: HistoricalDaily = %.4f, want negative (refund-dominant ledger)", velocity.HistoricalDaily)
+	}
+	if velocity.DailyAverage <= 0 {
+		t.Fatalf("harness error: DailyAverage = %.4f, want positive (current period is spending)", velocity.DailyAverage)
+	}
+
+	want := (velocity.DailyAverage - velocity.HistoricalDaily) / math.Abs(velocity.HistoricalDaily) * 100
+	if math.Abs(velocity.BurnRateChange-want) > 0.01 {
+		t.Errorf("BurnRateChange = %.4f, want %.4f (the old `> 0` guard on historicalDaily would report 0 here)", velocity.BurnRateChange, want)
+	}
+	if velocity.BurnRateChange <= 0 {
+		t.Errorf("BurnRateChange = %.4f, want positive (spending faster than a refund-dominant history is an increase)", velocity.BurnRateChange)
+	}
+}
+
+// TestCalculateSpendingVelocity_ZeroHistoricalBaseSpendingIsPositive100 is a
+// CB8 regression: when historicalDaily is EXACTLY zero (the ledger's
+// outflow-typed rows net to zero), the zero-base case must pick its result
+// by the SIGN OF CHANGE (CB3-c's rule), not call metrics.PercentChange
+// (whose zero-base case is an unconditional +100 regardless of direction).
+// Here change is positive (a spending current period against a flat
+// history), so the sign-of-change rule and PercentChange happen to agree
+// on +100 -- the companion refund-current test below is what actually
+// distinguishes the two implementations.
+func TestCalculateSpendingVelocity_ZeroHistoricalBaseSpendingIsPositive100(t *testing.T) {
+	now := time.Now()
+	allData := &models.TransactionSet{Transactions: []models.Transaction{
+		{Description: "purchase", Amount: -300, Date: now.AddDate(0, 0, -60), TransactionType: models.Outflow},
+		{Description: "refund", Amount: 300, Date: now.AddDate(0, 0, -59), TransactionType: models.Outflow},
+	}}
+	currentPeriod := &models.TransactionSet{Transactions: []models.Transaction{
+		{Description: "purchase", Amount: -100, Date: now, TransactionType: models.Outflow},
+	}}
+
+	velocity := SpendingVelocity(currentPeriod, allData)
+
+	if velocity.HistoricalDaily != 0 {
+		t.Fatalf("harness error: HistoricalDaily = %.4f, want exactly 0", velocity.HistoricalDaily)
+	}
+	if velocity.DailyAverage <= 0 {
+		t.Fatalf("harness error: DailyAverage = %.4f, want positive", velocity.DailyAverage)
+	}
+	if velocity.BurnRateChange != 100 {
+		t.Errorf("BurnRateChange = %.4f, want exactly 100 (zero base, positive change)", velocity.BurnRateChange)
+	}
+}
+
+// TestCalculateSpendingVelocity_ZeroHistoricalBaseRefundIsNegative100 is the
+// CB8 companion to the test above: historicalDaily is exactly zero again,
+// but the CURRENT period is refund-dominant (change is negative). The old
+// `> 0` guard never reached this branch either way (it only ever produced
+// 0), but metrics.PercentChange's zero-base rule of an unconditional +100
+// would WRONGLY report a slowdown as +100% growth; CB3-c's sign-of-change
+// rule must report -100 instead.
+func TestCalculateSpendingVelocity_ZeroHistoricalBaseRefundIsNegative100(t *testing.T) {
+	now := time.Now()
+	allData := &models.TransactionSet{Transactions: []models.Transaction{
+		{Description: "purchase", Amount: -300, Date: now.AddDate(0, 0, -60), TransactionType: models.Outflow},
+		{Description: "refund", Amount: 300, Date: now.AddDate(0, 0, -59), TransactionType: models.Outflow},
+	}}
+	currentPeriod := &models.TransactionSet{Transactions: []models.Transaction{
+		{Description: "refund", Amount: 100, Date: now, TransactionType: models.Outflow},
+	}}
+
+	velocity := SpendingVelocity(currentPeriod, allData)
+
+	if velocity.HistoricalDaily != 0 {
+		t.Fatalf("harness error: HistoricalDaily = %.4f, want exactly 0", velocity.HistoricalDaily)
+	}
+	if velocity.DailyAverage >= 0 {
+		t.Fatalf("harness error: DailyAverage = %.4f, want negative (refund-dominant current period)", velocity.DailyAverage)
+	}
+	if velocity.BurnRateChange != -100 {
+		t.Errorf("BurnRateChange = %.4f, want exactly -100 (zero base, negative change); metrics.PercentChange's unconditional +100 would fail this", velocity.BurnRateChange)
+	}
 }
 
 // TestAnalyzeMajorExpenseTrends_DirectionBandEdges pins the +-5 direction
@@ -1281,4 +1397,34 @@ func TestChangeDisplay_MajorExpenseTrendsFloatNoiseIsNoneStable(t *testing.T) {
 		}
 	}
 	t.Error("expected 'Noise' in trends")
+}
+
+// TestCalculateSpendingVelocity_CancellingWindowIsPositiveZero (CB9): a
+// window whose outflow rows cancel exactly used to yield IEEE -0 for
+// DailyAverage/HistoricalDaily/MonthProjection, which json.Marshal (and
+// the MCP get_trends round2 path) emits as the literal token -0.
+func TestCalculateSpendingVelocity_CancellingWindowIsPositiveZero(t *testing.T) {
+	now := time.Now()
+	txns := []models.Transaction{
+		{Description: "purchase", Amount: -250, Date: now, TransactionType: models.Outflow},
+		{Description: "merchandise credit", Amount: 250, Date: now, TransactionType: models.Outflow},
+	}
+	period := &models.TransactionSet{Transactions: txns}
+
+	v := SpendingVelocity(period, period)
+
+	for name, val := range map[string]float64{
+		"DailyAverage": v.DailyAverage, "HistoricalDaily": v.HistoricalDaily, "MonthProjection": v.MonthProjection, "BurnRateChange": v.BurnRateChange,
+	} {
+		if val != 0 || math.Signbit(val) {
+			t.Errorf("%s = %v (signbit=%v), want +0 for an exactly-cancelling window", name, val, math.Signbit(val))
+		}
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if regexp.MustCompile(`-0(\.0+)?[,}\]]`).Match(raw) {
+		t.Errorf("velocity JSON carries a -0 token: %s", raw)
+	}
 }

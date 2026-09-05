@@ -324,10 +324,12 @@
         <span class="num font-bold text-positive ml-1">{{formatMoney .TotalIncome}}</span>
     </div>
     {{end}}
-    {{if isPositive .TotalExpenses}}
+    {{/* CB7: chip renders for a refund-dominant (negative) total too, and the
+         value color is sign-aware; U6 tokens. */}}
+    {{if or (isPositive .TotalExpenses) (isNegative .TotalExpenses)}}
     <div class="rounded-lg border border-negative bg-negative-soft px-3 py-1.5">
         <span class="text-label uppercase tracking-wide text-negative">Expenses</span>
-        <span class="num font-bold text-negative ml-1">{{formatMoney .TotalExpenses}}</span>
+        <span class="num font-bold {{if gt .TotalExpenses 0.0}}text-negative{{else}}text-positive{{end}} ml-1">{{formatMoney .TotalExpenses}}</span>
     </div>
     {{end}}
     <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-1.5">

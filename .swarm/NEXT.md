@@ -494,6 +494,13 @@ per user decision 2026-08-30).
   attempts 3-4); SY4 only makes the chart walk AGREE with metrics.go, it
   does not fix the shared assumption. Unrecorded in code — needs an issue
   or documented skip so it is not rediscovered a fourth time.
+  RESOLVED by CB7 2026-09-03: metrics.go's range-level totals (totalExpenses,
+  healthcareTotal, livingTotal) are now the signed negated net, matching the
+  per-month walk's own convention exactly, so the per-month signed spends
+  partition the range-level signed total for every range, including a
+  refund-dominant one -- no remaining shared-assumption gap. See
+  models.DashboardMetrics.CombinedCumulativeBalance's doc and
+  metrics_test.go's refund-dominant-range fixture.
 - The chart-vs-metrics walk equality test guards the SPEND term only
   (tiny-target calibration suppresses the pre-existing flat-monthTarget
   vs day-prorated accrual difference, which remains untested).

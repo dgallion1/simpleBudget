@@ -1,0 +1,123 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: CB7
+ATTEMPT: 3
+---
+Method: cp -a scratch copies ("after"=HEAD b1f0f36; "before"=6d6dc41 checked
+out into a scratch copy), both built clean. Read-only throwaway loader
+(dataloader.New+storage.New+LoadData) against the real ./data (1275 txns,
+confirmed untouched via `/usr/bin/find data -newermt <run-time>` = no hits).
+
+1. REAL-DATA SWEEP (fixes attempt-2's FAIL ground). Computed
+   metrics.Calculate (properly FilterByDateRange'd this time, unlike an
+   initial probe bug I caught and fixed) for whole-ledger, YTD, current
+   month, and every calendar month/year present (24 windows), covering
+   TotalExpenses/HealthcareTotal/HealthcareActual/LivingExpensesTotal/
+   NetSavings/SavingsRate/ActualMonthly/PerMonthDelta/CumulativeDelta/
+   HealthcarePerMonthDelta/HealthcareCumulativeDelta/
+   CombinedCumulativeBalance, comparing VALUES and math.Signbit and the
+   raw JSON text for "-0" tokens. Result: 0 field diffs, 0 signbit diffs,
+   0 "-0" tokens across all 24 windows on both live-ledger and metrics_test
+   go's own json.Marshal boundary tests (which I independently re-ran).
+   Several windows have HealthcareTotal==0 with HcSignbit=false (e.g.
+   month-2025-12..2026-03 etc.) — the exact scenario that produced
+   "$-0.00" in attempt 2 is now clean. CONFIRMS the CB7-2026-09-03c fix.
+
+2. Enumerated every other negated-sum site in the repo (metrics.go's own
+   8 SignedNet sites [395,426,446,459,534,540,549,622] + explorer's 2 +
+   dashboard/handlers.go's pre-existing KD-idiom sites + majorexpenses/
+   whatif/mcpsvc-curate accumulator sites + insights/trends.go [CB8,
+   separately accepted]). `grep -n math.Abs` on metrics.go/explorer confirms
+   zero surviving Abs on a range/filter SumAmount() (only comments + the
+   sanctioned PercentChange |previous| denominator, unchanged per CB3-E).
+   `grep SignedNet` confirms all 10 CB7-scoped sites use it and income
+   (`income.SumAmount()`) is never negated.
+
+3. MUTATION TESTS (self-run, not trusting the manifest):
+   - metrics.go: removed SignedNet's `if v==0{return 0}` branch → 4 test
+     functions fail incl. TestSignedNet and the JSON-marshal boundary test
+     (output literally contains `"total_expenses":-0`). Killed.
+   - render.go formatMoney belt removed → TestFormatMoney fails. Killed.
+   - explorer.html Expenses-chip color reverted to flat rose → both
+     TestHandleExplorer_..._RefundDominantFilterRendersNegativeExpenses
+     fails (Ordinary-spend sibling still passes, as expected). Killed.
+   - kpis.html Total-Expenses-tile color+abs reverted →
+     TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative
+     fails. Killed.
+   - explorer/handlers.go handleTransactionsPartial's SignedNet call
+     reverted to inline `-...SumAmount()` →
+     TestHandleTransactionsPartial_ZeroOutflowsNoNegativeZero fails.
+     Killed.
+   - explorer/handlers.go handleExplorer (PAGE handler)'s SignedNet call
+     reverted alone → full `go test ./internal/handlers/explorer/...`
+     STILL PASSES (mutant survives). I independently confirmed the
+     manifest's own honest disclosure (CB7.3.manifest.md row 11): this
+     site's TotalExpenses is consumed ONLY by the isPositive/isNegative
+     OR-gate (false for both +0 and -0, chip absent either way) and by
+     `netAmount := totalIncome - totalExpenses`, where `income - (-0.0)
+     == income - 0.0` bit-for-bit (IEEE754 addition of a signed zero is
+     absorbed). I checked explorer.html's only <script> block (filter-
+     state persistence JS, unrelated) and confirmed no JSON/chart/data-*
+     surface renders this handler's TotalExpenses at all. The sign is
+     mathematically unobservable at this specific site with the current
+     template — a FAIL here would demand a test whose remedy fixes no
+     observable behavior (rule 6b). This was explicitly anticipated by
+     the task brief ("two call sites are consumer-unobservable... try to
+     construct an observation anyway") and I could not construct one.
+     NOT a FAIL ground.
+
+4. SignedNet semantics: exact-zero-only normalization confirmed (`v==0`,
+   not an epsilon check) — a 1e-12 residual is NOT clamped (CB8 residual
+   hazard unchanged, correctly). Never applied to income anywhere.
+
+5. Criterion (d): `grep -rn "always non-negative\|absolute value"` across
+   the repo (excluding .swarm/.claude/worktrees) shows zero remaining
+   "total_expenses is always non-negative" claims; summary.go carries the
+   corrected SIGNED wording.
+
+6. Ruling a/b re-pins: `git diff 6d6dc41 b1f0f36 -- '*_test.go'` shows
+   only the same renamed/re-pinned fixtures from attempt 2 plus the new
+   chip-class assertions — unchanged, as expected.
+
+go build ./..., go vet ./..., go test ./... -count=1: all clean.
+
+OBSERVATIONS (backlog, not FAIL grounds — out of CB7's written scope,
+dashboard/handlers.go untouched by this diff):
+- handleKPIExport's CSV export (internal/handlers/dashboard/handlers.go,
+  classifiedMonthlyTotals + `fmt.Sprintf("%.2f", monthlyHealthcareTotals[m])`,
+  pre-existing KD-2026-08-30d idiom) bypasses formatMoney's belt entirely
+  — it is raw Go fmt, not a template. Verified `fmt.Sprintf("%.2f",
+  math.Copysign(0,-1))` == "-0.00" in Go. On the live ledger, any month
+  with zero Health-Insurance-category rows (the common case, e.g. months
+  with no premium payment) will produce a literal "-0.00" CSV cell when
+  exporting the Healthcare KPI. This means the RUN-SPEC's own ruling text
+  ("[KD's handler] is thereby covered on the rendered surface by the
+  formatMoney belt") is incomplete: it covers the HTML modal but not the
+  CSV export, a second surface fed by the same classifiedMonthlyTotals
+  helper. Not CB7 scope (file untouched by this diff, and the KD handler
+  family was already flagged as backlog in the attempt-2 verdict); flag
+  for the lead to correct the ruling's coverage claim and schedule the
+  CSV-surface fix alongside the already-planned KD source fix.
+- formatPercent (render.go) has no -0 belt (unlike formatMoney): confirmed
+  `formatPercent(math.Copysign(0,-1))` == "-0.0". No CB7-touched figure
+  currently reaches it as literal negative zero (SavingsRate/PercentChange
+  arithmetic on SignedNet-cleaned inputs verified to always yield +0 via
+  IEEE754 subtraction-of-equals and positive-denominator division, and the
+  metrics_test.go json.Marshal boundary test independently confirms zero
+  "-0" tokens across the whole DashboardMetrics struct). Note for backlog
+  parity with formatMoney's belt, not a live defect today.
+- mcpsvc/curate/expenses.go's `total += -t.Amount` accumulators (list_
+  major_expenses MCP tool, JSON-serialized) share the same negative-zero
+  idiom but require EVERY transaction in a group to be exactly $0.00 to
+  produce -0 (accumulator addition of any genuinely cancelling nonzero
+  pair yields +0 per IEEE754) — a much narrower, unobserved-on-real-data
+  edge case, pre-existing, untouched by CB7. Noted for completeness only.
+
+SCOPE: all FAIL-candidate findings investigated either (a) did not
+reproduce (real-data sweep, JSON tokens, mutation kills on every named
+site except the mathematically-unobservable one), or (b) land outside
+CB7's diff (dashboard/handlers.go, mcpsvc/curate/expenses.go, formatPercent
+parity) and are recorded as observations per the lead's scope precedent
+(CB7.2 verdict already treated the same KD-handler family as backlog, not
+FAIL ground).

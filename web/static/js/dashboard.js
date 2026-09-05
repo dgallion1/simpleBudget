@@ -309,9 +309,16 @@ function formatDateLocal(d) {
     return year + '-' + month + '-' + day;
 }
 
-// Shift the date window forward (+1) or backward (-1) by the current window size.
-// If a month-based preset is active, shift by N months (preserves day-of-month).
-// Otherwise, shift by the current span in days. Clamps to the input's min/max.
+// Shift the date window forward (+1) or backward (-1) by exactly one calendar
+// month, regardless of window size. Day-of-month is preserved (clamped to month
+// end). Clamps to the input's min/max.
+function addMonthsClamped(d, months) {
+    const day = d.getDate();
+    const r = new Date(d.getFullYear(), d.getMonth() + months, 1);
+    const last = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+    r.setDate(Math.min(day, last));
+    return r;
+}
 function shiftWindow(direction) {
     const form = document.getElementById('date-filter-form');
     if (!form) return;
@@ -321,23 +328,9 @@ function shiftWindow(direction) {
     const currentEnd = parseDateLocal(endInput.value);
     if (!currentStart || !currentEnd) return;
 
-    const monthMap = { '1m': 1, '2m': 2, '3m': 3, '6m': 6, '12m': 12 };
-    const activePreset = form.dataset.activePreset || '';
-    let newStart, newEnd;
-
-    if (monthMap[activePreset]) {
-        const months = monthMap[activePreset] * direction;
-        newStart = new Date(currentStart);
-        newStart.setMonth(newStart.getMonth() + months);
-        newEnd = new Date(currentEnd);
-        newEnd.setMonth(newEnd.getMonth() + months);
-    } else {
-        const dayMs = 24 * 60 * 60 * 1000;
-        const spanDays = Math.round((currentEnd - currentStart) / dayMs) + 1;
-        const shiftMs = spanDays * direction * dayMs;
-        newStart = new Date(currentStart.getTime() + shiftMs);
-        newEnd = new Date(currentEnd.getTime() + shiftMs);
-    }
+    // Arrows always step by exactly one calendar month, regardless of window size.
+    let newStart = addMonthsClamped(currentStart, direction);
+    let newEnd = addMonthsClamped(currentEnd, direction);
 
     // Clamp to min/max bounds, preserving window size when possible.
     const minDate = parseDateLocal(startInput.min);

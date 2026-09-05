@@ -387,6 +387,49 @@ func TestVerdictRender_NoNegativeZero(t *testing.T) {
 	}
 }
 
+// TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative pins
+// CB7's kpis.html consumer fix: the Total Expenses tile used to read
+// {{formatMoney (abs .Metrics.TotalExpenses)}}, re-flipping a
+// refund-dominant range's now-negative TotalExpenses back to positive. It
+// must render the SIGNED value formatMoney itself produces for a negative
+// number -- "-$1,234.56" for -1234.56, per render.go's formatMoney (pinned
+// here, not reimplemented: negative sign prefix, "$" marker, comma
+// thousands grouping, two decimals) -- and use the sign-aware emerald
+// (net-credit) color, not the rose (spend) color, for that tile.
+func TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t, defaultRows())
+	defer cleanup()
+
+	m := &models.DashboardMetrics{
+		TotalIncome:   5000,
+		TotalExpenses: -1234.56,
+	}
+	v := BuildBudgetVerdict(m)
+
+	out, err := renderer.RenderToString("kpis", map[string]any{"Metrics": m, "BudgetVerdict": v})
+	if err != nil {
+		t.Fatalf("RenderToString(kpis): %v", err)
+	}
+
+	if !strings.Contains(out, "-$1,234.56") {
+		t.Errorf("expected the Expenses tile to render \"-$1,234.56\" (signed, not math.Abs'd); got: %s", trunc(out, 2500))
+	}
+	if strings.Contains(out, ">$1,234.56<") {
+		t.Errorf("Expenses tile rendered the POSITIVE (math.Abs'd) figure instead of the signed negative one: %s", trunc(out, 2500))
+	}
+	// U6 tokenized the sign-aware color: emerald-800 literal -> text-positive
+	// token (net-credit); rose -> text-negative (spend). Reconcile 2026-09-05.
+	// FUSE the color token to THIS tile's figure (RECONCILE checker-second:
+	// a bare Contains("text-positive") is always true from the Income tile,
+	// so it pins nothing) -- a color-only revert to text-negative fails here.
+	if !strings.Contains(out, `text-positive">-$1,234.56`) {
+		t.Errorf("expected the net-credit token (text-positive) fused to the negative Expenses figure; got: %s", trunc(out, 2500))
+	}
+	if strings.Contains(out, `text-negative">-$1,234.56`) {
+		t.Errorf("Expenses tile rendered the SPEND token (text-negative) on a net-credit (negative) figure; got: %s", trunc(out, 2500))
+	}
+}
+
 // bothBucketsMetrics builds DashboardMetrics with both Living and Healthcare
 // configured, given the two per-bucket cumulative deltas, mirroring the
 // tier-3 oracle's fixture shape (2000 living target + 300 healthcare target).

@@ -1,0 +1,129 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: CB7
+ATTEMPT: 2
+---
+GROUNDS FOR FAIL — criterion (e), negative-zero rendering regression at
+sites #2/#3 (healthcareTotal/livingTotal, metrics.go:422/455), live-data
+reachable and NOT refund-dominant.
+
+Method: cp -a the tree twice ("after" = HEAD/working tree as-is; "before"
+= same tree with ONLY the 5 CB7 sites reverted to math.Abs, `go build`
+verified clean in both). Wrote a throwaway cmd/cb7check loader mirroring
+dataloader.New+storage.New+DataLoader.LoadData (read-only; storage.New
+only os.Stat's for a .encrypted marker, confirmed absent) against the
+REAL /home/darrell/bin/ai/budget2/data (13 CSVs, 1275 txns after
+processing — untouched, never opened for write, verified with
+`git diff --stat` before/after = unchanged). Computed metrics.Calculate
+for: the real default dashboard range (YTD Jan-1→maxDate, mirroring
+resolveDateRange in handlers.go exactly), whole-ledger, current calendar
+month, and every calendar year/month present (17 ranges).
+
+Result: TotalExpenses/Living/NetSavings/SavingsRate/CombinedCumulativeDelta
+matched exactly (byte pattern, not just value) between before/after on
+every populated range — the arithmetic itself is correct and CB1's "zero
+refund-dominant ranges" premise holds. BUT `healthcare_total` differs
+between before (`0`) and after (`-0`) on 17 of 17 populated
+calendar years/months in the live ledger (2025 whole year, and every
+2025-02 through 2026-05 month present except the few months with actual
+HI spend) plus the empty current month. Confirmed with `math.Signbit`:
+`math.Abs(healthcareOutflows.SumAmount())` is ALWAYS +0 for a zero input
+(Go's math.Abs unconditionally clears the sign bit — verified with a
+throwaway probe: `math.Abs(-0.0)` → Signbit=false); the new
+`-healthcareOutflows.SumAmount()` (metrics.go:422, one of the 5 CB7-
+converted sites) produces IEEE negative zero whenever that category nets
+to literally zero for the window — the common case for any month with no
+"Health Insurance" transactions.
+
+Consumer impact — traced to `internal/templates/render.go:425 formatMoney`:
+`negative := v < 0` is FALSE for -0.0 (IEEE: -0.0 < 0 is false), so the
+function does NOT take its negate-and-prefix-"-$"-branch; instead it
+falls through with v still -0.0, and `fmt.Sprintf("%.2f", v)` — which DOES
+honor the sign bit — emits "-0.00", producing a literal `"$-0.00"` (dollar
+sign glued to a negative number) instead of `"$0.00"`. Confirmed with a
+standalone reproduction of the exact formatMoney algorithm:
+`formatMoney(negZero) == "$-0.00"`, `formatMoney(posZero) == "$0.00"`.
+
+Reachable render sites (both consume `.Metrics.HealthcareTotal`/
+`.Metrics.HealthcareActual`, which inherits the sign from site #2 with NO
+further correction — `healthcareActual = healthcareTotal / coverageMonths`
+preserves negative zero):
+- `web/templates/components/kpis.html:105` — "Monthly Healthcare" KPI
+  headline, UNCONDITIONAL (no `HasHealthcareTarget` gate on the number
+  itself) — renders "$-0.00" whenever `coverageMonths > 0` and that
+  window's HI category nets to exactly zero, which is true for nearly
+  every month/year in the live ledger per the probe above.
+- `web/templates/components/kpis.html:173` — "Health: $X of $Y" line,
+  gated on `.BudgetVerdict.Healthcare.Configured` (renders whenever a
+  healthcare target is configured in the What-If plan, which this
+  household's plan is per prior CB-series work on exactly this feature).
+
+This is a genuine, in-scope regression: math.Abs (immune to signed zero)
+is exactly what CB7 replaced at these 5 sites per the spec's own mandated
+idiom ("`-set.SumAmount()`... no new helper"); the negative-zero exposure
+is a direct, foreseeable consequence of that specific conversion, not a
+pre-existing or out-of-scope defect. It violates CB7-RUN-SPEC.md
+criterion (e) verbatim: "every current dashboard range... render[s]
+BYTE-IDENTICAL before/after... the live ledger has no refund-dominant
+range" — these 17 ranges are NOT refund-dominant (they are exactly zero,
+not net-positive/credit), so the stated exception does not apply, and the
+rendered string differs ("$0.00" → "$-0.00") on live, currently-reachable
+data. No committed test exercises a healthcare-window (or living/total)
+that nets to exactly zero, so nothing caught it (checker-tests' mutation
+sweep only proves the SIGN is load-bearing, not the zero-boundary).
+
+OTHER CRITERIA CHECKED (no further FAIL grounds found):
+(b) `grep -n "math.Abs" internal/services/metrics/metrics.go
+    internal/handlers/explorer/handlers.go` — the only surviving
+    `math.Abs` is metrics.go:763 inside `PercentChange`'s `|previous|`
+    denominator, which the spec explicitly leaves unchanged (CB3-E). All
+    5 range/filter-level sites confirmed converted to `-...SumAmount()`.
+(1, split-classification) Enumerated every template surface referencing
+    the listed figures (`grep -rn ... web/templates`): kpis.html:36 (sign-
+    aware, `abs` removed, confirmed), explorer.html:755/758 (uses
+    `isPositive`/`isNegative` OR-guard + `gt 0.0` coloring — functionally
+    equivalent to the spec's suggested `ne .TotalExpenses 0.0` and, unlike
+    kpis.html, this guard happens to be SAFE against the negative-zero
+    case: `isPositive`/`isNegative` both use strict `<`/`>` which are
+    FALSE for -0.0, so the chip correctly stays hidden rather than
+    rendering "$-0.00" — no defect here). No JS or CSV-export surface
+    renders these figures. dashboard-verdict-bar.html:60 uses `ge
+    $v.NetSavings 0.0`, unaffected by CB7 (NetSavings not exactly zero on
+    any probed live range). kpi-month-detail.html's own
+    `-sumSigned(...)` pattern is a PRE-EXISTING (KD-2026-08-30d) idiom in
+    a file CB7 never touched (not in CB7.2.files) — same negative-zero
+    hazard class, but out of this task's scope; noted below as an
+    observation, not a FAIL ground.
+(d) `grep -rn "always non-negative\|absolute value" --include=*.go
+    --include=*.md --include=*.html --include=*.js .` (excluding
+    .swarm/ and .claude/worktrees/*, which are separate/foreign trees) —
+    zero hits in the current tree's mcpsvc package; server.go/summary.go/
+    server_test.go all carry the new SIGNED wording, confirmed by direct
+    read.
+    OBSERVATION (not a FAIL ground — outside CB7's file scope): my
+    environment's live/registered budget2 MCP server's cached tool
+    instructions (visible to me via the system-reminder) still quote the
+    OLD "total_expenses is always non-negative" wording verbatim — that
+    text matches the stale copy still present in
+    `.claude/worktrees/{ui-audit,stoic-chebyshev-15ce6e,coverage-label}/
+    internal/services/mcpsvc/{server.go,summary.go}` (separate worktrees,
+    untouched by this task), not this repo's current source. The running
+    MCP process needs a rebuild/restart pointed at this tree; flag for
+    the lead's backlog, does not affect this task's source-code criterion.
+(6, ruling-b sanity) Confirmed the CB7-2026-09-03b premise: the explorer
+    fixture is 7 rows; `grep -n minSignConventionSample
+    internal/services/dataloader/loader.go` shows the threshold is 10,
+    so a 7-row file is below it and the sign-convention auto-detect never
+    fires — ruling's factual premise holds.
+(mutants) Spot-checked metrics.go:391 `-outflows.SumAmount()` →
+    `+outflows.SumAmount()`: `go test ./internal/services/metrics/...`
+    fails on `TestCalculateMetrics_RefundDominantRange_...` as expected
+    (sign flip caught). Reverting kpis.html's `abs` removal alone was not
+    separately re-tested this pass given the decisive finding above; not
+    needed to reach a verdict.
+
+SCOPE: the FAIL ground is squarely inside CB7's five converted sites
+(metrics.go:422 healthcareTotal, consumed unconditionally by
+kpis.html:105) — code this task wrote, with a foreseeable failure mode
+its own tests never exercised (the zero/empty-window boundary).

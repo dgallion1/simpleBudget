@@ -489,6 +489,23 @@ report the first-attempt clean rate verbatim.
   write-only dead code (a second home for the cell text) — remove; (4) a
   "+0.0%" is constructible but not live. Candidates for a follow-up task
   after wave D; none block the row.
+- **RECONCILE-2026-09-05** (merge master→feat/ui-audit; checker-second FAIL
+  CONCEDED then fixed): the branch forked at PR #89, before CB7/CB8/CB9/#90/
+  #91/#92 shipped. Merge kept master's shipped semantics AND the U-run UI
+  (details in the merge commit body). Production code verified correct at
+  render time by checker-second (signed money + tokens, #90 one-month
+  stepping live on explorer+major-expenses, #91/#92 whatif, CB8 velocity,
+  U-run nav/range/net-savings/keyboard). The lead's re-pin of
+  TestKPIsTotalExpensesTile_...SignedNegative was WEAK — a bare
+  Contains("text-positive") is always true from the Income tile; fixed to a
+  fused `text-positive">-$1,234.56` assertion (color tied to the figure,
+  mutation-proven: a color revert now fails), matching the explorer sibling
+  pattern. Backlog (PRE-EXISTING in a61dc08, NOT merge defects, for wave D/
+  U15): range-picker preset buttons dead via Go html/template `ZgotmplZ`
+  attribute-name escaping (sitewide); explorer sort headers not
+  keyboard-operable (U15's div/th-onclick sweep); master's new #91/#92
+  whatif markup not yet U6-tokenized (hue literals in whatif-expense-rows /
+  healthcare bars).
 - **U-2026-09-04m** (catch — checker-a11y, U7 attempt 2, FAIL CONCEDED;
   CONTRACT REWRITE per the two-same-class rule): attempt 2 fixed keyboard
   operability but INTRODUCED a serious nested-interactive violation (axe

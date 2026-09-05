@@ -75,7 +75,7 @@
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                 oninput="onMonthlyLivingExpensesInput(this.value)">
             <span id="monthly_living_expenses_display" class="text-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="monthly_living_expenses" data-quick-adjust-display-format="currency">{{formatDollars .Settings.MonthlyLivingExpenses}}</span>
-            <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">In today's dollars. Inflation is applied during projection.</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">In today's dollars; inflation is applied during projection. Excludes healthcare premiums and property tax — those are entered below and added on top.{{if and .Analysis .Analysis.BudgetFit}} Plan total today: {{formatDollars .Analysis.BudgetFit.MonthlyExpenses}}/mo.{{end}}</p>
             {{if .LivingExpensesPhaseNote.Show}}
             <p id="living-expenses-phase-note" class="text-body-sm text-gray-500 dark:text-gray-400 mt-1" data-phase-multiplier="{{.LivingExpensesPhaseNote.Multiplier}}">Engine spends <span id="living-expenses-phase-amount">{{formatMoney .LivingExpensesPhaseNote.EngineMonth0}}</span>/mo now ({{.LivingExpensesPhaseNote.PhaseName}} ×{{.LivingExpensesPhaseNote.MultiplierText}}){{if .LivingExpensesPhaseNote.NextClause}}; {{.LivingExpensesPhaseNote.NextClause}}{{end}}.</p>
             {{end}}

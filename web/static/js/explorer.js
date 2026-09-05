@@ -99,6 +99,17 @@
     // If a month-based preset is active (1/2/3/6/12), shift by N months
     // preserving day-of-month and keeping the preset highlight. Otherwise,
     // shift by the current span in days. The "All" preset is a no-op.
+    // #90 (merged to master, preserved through the U7 script extraction at
+    // reconcile time): arrows step by exactly ONE calendar month regardless
+    // of window size, preserving day-of-month (clamped to month end). "All"
+    // (activeMonths === 0) is a no-op.
+    function addMonthsClampedExplorer(d, months) {
+        const day = d.getDate();
+        const r = new Date(d.getFullYear(), d.getMonth() + months, 1);
+        const last = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+        r.setDate(Math.min(day, last));
+        return r;
+    }
     function stepDateRange(direction) {
         const form = document.getElementById('explorer-filter-form');
         const startInput = form.querySelector('input[name="start"]');
@@ -109,25 +120,10 @@
         const currentEnd = parseDateLocal(endInput.value);
         if (!currentStart || !currentEnd) return;
 
-        const monthMap = { 1: 1, 2: 2, 3: 3, 6: 6, 12: 12 };
         const activeMonths = parseInt(form.dataset.activeMonths || '-1', 10);
-        let newStart, newEnd;
-
-        if (monthMap[activeMonths]) {
-            const months = monthMap[activeMonths] * direction;
-            newStart = new Date(currentStart);
-            newStart.setMonth(newStart.getMonth() + months);
-            newEnd = new Date(currentEnd);
-            newEnd.setMonth(newEnd.getMonth() + months);
-        } else if (activeMonths === 0) {
-            return;
-        } else {
-            const dayMs = 86400000;
-            const spanDays = Math.round((currentEnd - currentStart) / dayMs) + 1;
-            const shiftMs = spanDays * direction * dayMs;
-            newStart = new Date(currentStart.getTime() + shiftMs);
-            newEnd = new Date(currentEnd.getTime() + shiftMs);
-        }
+        if (activeMonths === 0) return;
+        let newStart = addMonthsClampedExplorer(currentStart, direction);
+        let newEnd = addMonthsClampedExplorer(currentEnd, direction);
 
         const minDate = parseDateLocal(startInput.getAttribute('min'));
         const maxDate = parseDateLocal(endInput.getAttribute('max'));

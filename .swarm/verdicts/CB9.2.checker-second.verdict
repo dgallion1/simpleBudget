@@ -1,0 +1,140 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: CB9
+ATTEMPT: 2
+---
+Method: cp -a scratch copies (cb9_after = CB9.2 working tree, cb9_before =
+same copy with `git stash -u` back to HEAD b1f0f36), throwaway httptest/
+mcp-CallTool probes against copies of real ./data (never the live binary).
+python3 byte-diff (not `diff`, per rtk-falsification hazard). All mutation
+tests done via targeted single-line python3 substitution + go test,
+restored from a `.orig` copy after each run.
+
+1. REAL DATA, BYTE-IDENTICAL, EXTENDED — PASS.
+   Extended attempt-1's sweep to the two new chart endpoints and to MCP
+   get_trends/summarize_spending: 22 windows (default + all 19 populated
+   months Feb-2025..Aug-2026 + both partial years) x 2 chart endpoints
+   (44 pairs) and x 2 MCP tools (44 pairs) = 88 before/after JSON pairs.
+   Result: ALL 88 byte-identical. Zero real populated window in this
+   ledger nets exactly to zero at any granularity CB9 touches, so CB9
+   changes nothing observable on real data at attempt 2 either (0
+   corrected cells on the new surfaces, consistent with attempt 1's 0 on
+   the old surfaces for populated months). Re-confirmed the CB7.3
+   live-claim: month-detail JSON for the out-of-range 2023-01 (empty)
+   month is the ONLY reproduction path -- before: `"ExpenseTotal":-0,
+   "Total":-0"` (expenses)/`"Total":-0` (healthcare/living); after: clean
+   `0`/`0`/`0`. Still out-of-range-only, unchanged from attempt 1.
+
+2. ROUND2 LEAK -- velocity fixed and verified; ONE pre-existing leak found
+   OUTSIDE CB9's named scope (observation, not FAIL):
+   - Marshalled `velocityRowFrom(SpendingVelocity(cancelling, cancelling))`
+     (mcpsvc/spend's actual struct+round2 path, not just insights') on a
+     cancelling current-month fixture: `{"daily_average":0,
+     "historical_daily":0,"burn_rate_change":0}` -- clean, no -0 token.
+   - `grep -rn "= -\|:= -\|round2(-"` across mcpsvc found
+     `internal/services/mcpsvc/spend/summary.go:91,121,144`
+     (byCategoryRows/byMonthRows/byMerchantRows: `round2(-amt)`,
+     `round2(-totals[m])`, `round2(-total)`, all OUTSIDE metrics.SignedNet)
+     with an explicit code comment at line 73-78 already calling this a
+     "Known cosmetic artifact (left as-is) ... Not fixed here" --
+     confirmed committed in CB7 (b1f0f36), untouched by CB9's working-tree
+     diff (`git diff HEAD -- summary.go` is empty). Reproduced live: a
+     cancelling Shopping category/month (-50/+50) marshals
+     `{"category":"Shopping","amount":-0}` and
+     `{"month":"...","amount":-0}` via byCategoryRows/byMonthRows.
+     CB9's contract (.swarm/CB7-RUN-SPEC.md CB9 section) names only
+     handlers.go sites, formatPercent, and the mcpsvc/spend/trends.go doc
+     comment -- it does NOT name summarize_spending. Per the task's own
+     disposition rule ("a leak on a surface the CB9 contract names =
+     FAIL; elsewhere = observation"), this is an observation for backlog,
+     not a CB9 defect: pre-existing, self-documented, out of written
+     scope.
+
+3. MUTANTS -- 9/10 handlers.go sites + dailyAvg/historicalDaily in
+   trends.go + both formatter belts KILLED; two survivors examined:
+   - handlers.go `spend` (line 1160, budget-vs-actual walk): SURVIVES,
+     reconfirmed provably unobservable -- `running += monthTarget - spend`
+     absorbs the sign bit unconditionally (verified in Go:
+     `monthTarget-(+0) == monthTarget-(-0)` bit-for-bit for any nonzero
+     monthTarget, and `spend` has no other consumer in the function).
+     Matches attempt 1's proof; still the CB7 precedent for an accepted
+     unobservable site.
+   - trends.go `spentSoFar` (line 339): mutant SURVIVES the full shipped
+     suite (dailyAvg/historicalDaily's mutants ARE killed by
+     TestCalculateSpendingVelocity_CancellingWindowIsPositiveZero; this
+     one is not, because that test's fixture makes `dailyAvg` (the OTHER
+     addend in `monthProjection := spentSoFar + dailyAvg*daysRemaining`)
+     exactly +0, and +0 always absorbs ±0 regardless of daysRemaining).
+     Investigated whether this is "provably unobservable" like `spend`:
+     it is NOT algebraically guaranteed -- computed in Go that when
+     `dailyAvg` is a genuine negative (refund-dominant) value AND
+     `daysRemaining==0` (last calendar day of a month), `dailyAvg*0` is
+     IEEE -0, and `-0(mutant spentSoFar) + -0 = -0`, which
+     `json.Marshal` renders as literal `-0` in `month_projection`.
+     Traced every consumer of `MonthProjection`: the HTML surfaces
+     (insights.html, insights-verdict-bar.html) route through
+     `formatMoney`, which already has the CB7 -0 belt and clears the sign
+     bit regardless of source -- immune. The one RAW JSON surface,
+     `handleVelocityPartial`'s `else` branch (nil-renderer fallback,
+     internal/handlers/insights/handlers.go:410-441), would leak it
+     verbatim -- but `cmd/server/main.go:112` is the only production call
+     site and always passes a non-nil renderer, so that branch is dead in
+     every shipped binary today; the branch exists purely for the test
+     harness's own "nil renderer triggers fallback paths" convention used
+     throughout this codebase. Deterministically testing the
+     daysRemaining==0 window would require injecting `time.Now()` into
+     `SpendingVelocity` (it is hard-coded today), a refactor beyond CB9's
+     declared scope, not a one-line assertion add. Per the constitution's
+     own instruction to verify a FAIL's remedy actually repairs something
+     real: the shipped SOURCE FIX at spentSoFar is correct and complete;
+     what's missing is regression coverage for a scenario that is both
+     currently dead code and non-trivial to pin without an out-of-scope
+     clock-injection change. Recorded as an observation (coverage gap),
+     not a FAIL ground -- distinct from attempt 1's chart-walk gap, which
+     was a straightforward missing HTTP test on a live, reachable
+     surface.
+   - Both formatNumber/formatPercent -0 belts: mutant (belt removed)
+     KILLED by TestFormatNumber/TestFormatPercent's new `Copysign(0,-1)`
+     cases.
+
+4. TEST STRENGTH -- PASS.
+   `TestHandleChartData_CB9_CancellingMonthHasNoNegativeZero` fixture
+   confirmed non-vacuous by dumping raw response bodies: spending-trend's
+   customdata is `[[0,520]]` (Feb curr=0 real cancelling value, Jan
+   prev=520, not empty); budget-vs-actual carries `"Living":...,"y":
+   [220,0]` and `"Healthcare":...,"y":[300,0]` -- real January figures
+   plus a genuine February 0, both traces present (not short-circuited
+   by the combined-target gate). `negZeroJSON` regex
+   (`-0(\.0+)?[,}\]\s]`) table-tested in scratch against 16 cases
+   including nested-array shapes actually used by this codebase
+   (`[[-0,520]]`, `[520,-0]]`): correctly matches `-0]`, `-0,`, `-0}` in
+   every case tried, including doubly-nested closes; correctly does NOT
+   false-positive on real non-zero negatives (-0.5, -0.05, -0.001, -10).
+   One inapplicable edge (a quoted STRING "-0", e.g. `"-0"` as a label)
+   is not matched, but no numeric field in this codebase's chart/JSON
+   output is ever string-quoted, so it is not exploitable here.
+
+5. SCOPE -- PASS. `git diff --stat` limited to exactly
+   handlers.go/trends.go(insights)/trends_test.go/trends.go(mcpsvc)/
+   render.go/render_helpers_test.go, matching
+   .swarm/manifests/CB9.2.files exactly (plus .swarm/ bookkeeping, no
+   critical.globs path touched). `internal/services/insights/trends.go`
+   diff is exactly the 3 named sites + one new import + comments (full
+   diff reviewed). Full suite `go test ./...` green with only the shipped
+   diff applied (no throwaway test files left in place). CB8's own tests
+   (mcpsvc/spend/plan_exclusions_test.go, insights package) pass
+   unchanged.
+
+Observations for backlog (NOT FAIL grounds):
+- mcpsvc/spend/summary.go byCategoryRows/byMonthRows/byMerchantRows leak
+  literal "-0" for an exactly-cancelling category/month/merchant row
+  (round2(-amt) outside SignedNet) -- pre-existing CB7-era, already
+  self-documented as deliberately deferred, not named by CB9's contract.
+- insights/trends.go spentSoFar (CB9-named site) has no test killing its
+  mutant; the only reachable leak (handleVelocityPartial's nil-renderer
+  JSON branch, month_projection field) is dead code in the current
+  single production entrypoint (cmd/server/main.go always passes a
+  renderer) and would need a time.Now() injection refactor to pin
+  deterministically -- flag for a future clock-injection pass if this
+  handler's dead branch is ever wired live.

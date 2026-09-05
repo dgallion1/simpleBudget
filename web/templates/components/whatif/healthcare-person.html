@@ -257,7 +257,7 @@
         <div class="flex-1 relative">
             <div class="flex">
                 <div class="flex-1 bg-positive-soft rounded-l h-4 flex items-center justify-center text-positive font-medium">
-                    {{if eq .CurrentCoverage "employer"}}Employer{{else}}ACA{{end}} ${{formatNumber .CurrentMonthlyCost}}
+                    {{.CurrentCoverage.Label}} ${{formatNumber .CurrentMonthlyCost}}
                 </div>
                 <div class="flex-1 bg-accent-soft rounded-r h-4 flex items-center justify-center text-accent font-medium">
                     Medicare ${{formatNumber .MedicareMonthlyCost}}

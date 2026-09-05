@@ -1,7 +1,9 @@
 package metrics
 
 import (
+	"encoding/json"
 	"math"
+	"regexp"
 	"testing"
 	"time"
 
@@ -1715,4 +1717,336 @@ func TestComparisonCoverageStartExcludesSuppressedDuplicates(t *testing.T) {
 // comparisons here match what a rendered figure would show.
 func round2(v float64) float64 {
 	return math.Round(v*100) / 100
+}
+
+// TestCalculateMetrics_RefundDominantRange_SignedTotalsAndCombinedInvariantHolds
+// is CB7's required refund-dominant RANGE fixture: two months, Jan
+// ordinary (a Rent charge and a Health Insurance premium, both plain
+// spend) and Feb a pair of refunds -- one non-HI (+6000, exceeding the
+// WHOLE RANGE's ordinary spend, not just Feb's own) and one HI-category
+// (+500, exceeding Jan's own premium) -- so BOTH the living share and the
+// healthcare share independently flip refund-dominant, alongside the
+// combined range total. Before CB7, TotalExpenses/LivingExpensesTotal/
+// HealthcareTotal all ran math.Abs(...SumAmount()), so this range would
+// have reported POSITIVE expenses despite refunds outweighing spend
+// overall -- understating NetSavings/SavingsRate and breaking the
+// CombinedCumulativeBalance partition invariant dashboard.go used to
+// document as out of scope for exactly this shape. A math.Abs mutant at
+// any of metrics.go's three range-level sites (totalExpenses,
+// healthcareTotal, livingTotal) must fail this test.
+func TestCalculateMetrics_RefundDominantRange_SignedTotalsAndCombinedInvariantHolds(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 5000, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+		makeTransaction("Rent", -1000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Premium", -200, time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+		makeTransaction("Cruise Refund", 6000, time.Date(2025, 2, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Misc"),
+		makeTransaction("Premium Refund", 500, time.Date(2025, 2, 11, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+	)
+
+	m := Calculate(ts, start, end, 800, 150, fullCoverage, true, nil)
+	monthsInRange := MonthsBetween(start, end)
+
+	// Whole-range outflow set nets: -1000 (rent) - 200 (premium) + 6000
+	// (refund) + 500 (premium refund) = +5300. TotalExpenses is the
+	// signed negated net: -5300 -- a refund-dominant RANGE (the Feb
+	// refund alone exceeds the range's entire 1200 of ordinary spend).
+	if !floatEqual(m.TotalExpenses, -5300) {
+		t.Fatalf("TotalExpenses = %v, want -5300 (signed negated net; CB7)", m.TotalExpenses)
+	}
+	if !floatEqual(m.NetSavings, m.TotalIncome-m.TotalExpenses) {
+		t.Errorf("NetSavings = %v, want TotalIncome-TotalExpenses = %v", m.NetSavings, m.TotalIncome-m.TotalExpenses)
+	}
+	if !floatEqual(m.NetSavings, 10300) {
+		t.Errorf("NetSavings = %v, want 10300 (5000 income - (-5300) expenses)", m.NetSavings)
+	}
+	if m.NetSavings <= m.TotalIncome {
+		t.Errorf("NetSavings = %v, want > TotalIncome %v (refund exceeds spend, so savings must EXCEED income)", m.NetSavings, m.TotalIncome)
+	}
+
+	// Living (non-HI) outflows: -1000 (rent) + 6000 (refund) = +5000 net
+	// credit -- LivingExpensesTotal is the signed negated net, -5000, and
+	// every figure it feeds (ActualMonthly, PerMonthDelta,
+	// CumulativeDelta) must derive from that signed value directly.
+	if !floatEqual(m.LivingExpensesTotal, -5000) {
+		t.Fatalf("LivingExpensesTotal = %v, want -5000 (signed negated net; CB7)", m.LivingExpensesTotal)
+	}
+	wantActualMonthly := -5000 / monthsInRange
+	if !floatEqual(m.ActualMonthly, wantActualMonthly) {
+		t.Errorf("ActualMonthly = %v, want %v", m.ActualMonthly, wantActualMonthly)
+	}
+	wantPerMonthDelta := wantActualMonthly - 800
+	if !floatEqual(m.PerMonthDelta, wantPerMonthDelta) {
+		t.Errorf("PerMonthDelta = %v, want %v", m.PerMonthDelta, wantPerMonthDelta)
+	}
+	wantCumulativeDelta := -5000 - 800*monthsInRange
+	if !floatEqual(m.CumulativeDelta, wantCumulativeDelta) {
+		t.Errorf("CumulativeDelta = %v, want %v", m.CumulativeDelta, wantCumulativeDelta)
+	}
+
+	// Healthcare (HI-only) outflows: -200 (Jan premium) + 500 (Feb premium
+	// refund) = +300 net credit -- HealthcareTotal is ALSO the signed
+	// negated net, -300, independently of living/range going
+	// refund-dominant, proving the split-classification (living vs.
+	// healthcare vs. whole-range) stays correct when every share flips
+	// sign on its own.
+	if !floatEqual(m.HealthcareTotal, -300) {
+		t.Fatalf("HealthcareTotal = %v, want -300 (signed negated net; CB7)", m.HealthcareTotal)
+	}
+	wantHealthcareActual := -300 / monthsInRange
+	if !floatEqual(m.HealthcareActual, wantHealthcareActual) {
+		t.Errorf("HealthcareActual = %v, want %v", m.HealthcareActual, wantHealthcareActual)
+	}
+	wantHealthcarePerMonthDelta := wantHealthcareActual - 150
+	if !floatEqual(m.HealthcarePerMonthDelta, wantHealthcarePerMonthDelta) {
+		t.Errorf("HealthcarePerMonthDelta = %v, want %v", m.HealthcarePerMonthDelta, wantHealthcarePerMonthDelta)
+	}
+	wantHealthcareCumulativeDelta := -300 - 150*monthsInRange
+	if !floatEqual(m.HealthcareCumulativeDelta, wantHealthcareCumulativeDelta) {
+		t.Errorf("HealthcareCumulativeDelta = %v, want %v", m.HealthcareCumulativeDelta, wantHealthcareCumulativeDelta)
+	}
+
+	// CB7's core claim: the CombinedCumulativeBalance walk's per-month
+	// signed spends now partition the range-level signed total even
+	// though the range as a whole nets outflow-POSITIVE (refund
+	// dominant) -- previously out of scope per dashboard.go's old
+	// invariant doc, which required the range to still net
+	// outflow-negative.
+	if len(m.CombinedCumulativeBalance) == 0 {
+		t.Fatalf("CombinedCumulativeBalance empty; want non-empty (both targets set)")
+	}
+	last := m.CombinedCumulativeBalance[len(m.CombinedCumulativeBalance)-1]
+	if math.Abs(last-(-m.CombinedCumulativeDelta)) > 0.01 {
+		t.Errorf("balance tail %.4f vs -CombinedCumulativeDelta %.4f -- must agree even for a wholly refund-dominant range (CB7)", last, -m.CombinedCumulativeDelta)
+	}
+}
+
+// TestCalculateComparison_ExpensesChangeTracksNegativeComparisonPeriod pins
+// CB7's PeriodComparison surface: ExpensesChange (PercentChange applied to
+// TotalExpenses) must track the sign of the change even when the
+// COMPARISON (previous) period's TotalExpenses is itself negative (a
+// refund-dominant prior period) -- PercentChange's own |previous|
+// denominator (CB3-E) is untouched by CB7, but this proves the composition
+// through Comparison/Calculate produces a genuinely negative
+// Previous.TotalExpenses to feed it, not a math.Abs'd one.
+func TestCalculateComparison_ExpensesChangeTracksNegativeComparisonPeriod(t *testing.T) {
+	ts := makeTransactionSet(
+		// Jan 2025 (previous period): a single refund, no ordinary spend --
+		// nets outflow-positive, so TotalExpenses must be negative.
+		makeTransaction("Big Refund", 3000, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Outflow, "Misc"),
+		// Feb 2025 (current period): ordinary spend.
+		makeTransaction("Rent", -1000, time.Date(2025, 2, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+
+	start := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+
+	result := Comparison(ts, start, end, "previous", nil, nil)
+	if result == nil || !result.HasData {
+		t.Fatalf("Comparison returned nil/no-data: %+v", result)
+	}
+
+	if !floatEqual(result.Previous.TotalExpenses, -3000) {
+		t.Fatalf("Previous.TotalExpenses = %v, want -3000 (refund-dominant prior period; CB7)", result.Previous.TotalExpenses)
+	}
+	if !floatEqual(result.Current.TotalExpenses, 1000) {
+		t.Fatalf("Current.TotalExpenses = %v, want 1000 (ordinary)", result.Current.TotalExpenses)
+	}
+
+	wantExpensesChange := ((1000.0 - (-3000.0)) / math.Abs(-3000.0)) * 100
+	if !floatEqual(result.ExpensesChange, wantExpensesChange) {
+		t.Errorf("ExpensesChange = %v, want %v", result.ExpensesChange, wantExpensesChange)
+	}
+	// Expenses went from a net CREDIT (-3000) to ordinary net spend
+	// (1000): a genuine worsening of $4000, so ExpensesChange must be
+	// POSITIVE, tracking the change's own sign (CB3-E's convention).
+	if result.ExpensesChange <= 0 {
+		t.Errorf("ExpensesChange = %v, want positive (expenses got worse: credit -> spend)", result.ExpensesChange)
+	}
+}
+
+// negZeroJSONPattern matches a JSON-serialized IEEE negative zero token:
+// "-0", "-0.0", "-0.00", etc., immediately followed by a JSON delimiter
+// (comma, closing brace, or closing bracket) -- i.e. the token is a whole
+// number, not a substring of a larger negative number like "-10" or
+// "-0.5". encoding/json serializes float64(math.Copysign(0, -1)) as "-0",
+// which is what this pattern is built to catch (ruling CB7-2026-09-03c).
+var negZeroJSONPattern = regexp.MustCompile(`-0(\.0+)?[,}\]]`)
+
+// TestCalculateMetrics_EmptyHealthcareWindow_NoNegativeZero is CB7-
+// 2026-09-03c's required fixture: a window with ordinary (non-healthcare)
+// spend and a healthcare TARGET configured, but ZERO transactions in
+// HealthInsuranceCategory. Before the fix, healthcareOutflows.SumAmount()
+// is exactly 0.0 (an empty set), and the old `-healthcareOutflows.
+// SumAmount()` negated that to IEEE -0.0 -- HealthcareActual inherited it
+// via division, and kpis.html/formatMoney would render "$-0.00" on the
+// Monthly Healthcare card for every real window with no Health Insurance
+// rows (confirmed true of the live ledger in every month/year).
+func TestCalculateMetrics_EmptyHealthcareWindow_NoNegativeZero(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 5000, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+		makeTransaction("Rent", -1000, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+
+	m := Calculate(ts, start, end, 0, 150, fullCoverage, true, nil)
+
+	if m.HealthcareTotal != 0 || math.Signbit(m.HealthcareTotal) {
+		t.Errorf("HealthcareTotal = %v (Signbit=%v), want +0 with Signbit false", m.HealthcareTotal, math.Signbit(m.HealthcareTotal))
+	}
+	if m.HealthcareActual != 0 || math.Signbit(m.HealthcareActual) {
+		t.Errorf("HealthcareActual = %v (Signbit=%v), want +0 with Signbit false", m.HealthcareActual, math.Signbit(m.HealthcareActual))
+	}
+}
+
+// TestCalculateMetrics_NoOutflowsAtAll_NoNegativeZero is CB7-2026-09-03c's
+// second required fixture: a window with income but NO outflow
+// transactions at all. TotalExpenses/LivingExpensesTotal (and
+// HealthcareTotal, exercised as a bonus since it shares the same defect
+// class) all derive from SignedNet of an empty set and must be +0, never
+// IEEE -0.0. Also asserts the whole struct's json.Marshal output carries
+// no negative-zero token anywhere (encoding/json serializes -0.0 as the
+// literal "-0", so a stray unnormalized site anywhere in DashboardMetrics
+// would show up here even if this test's other explicit checks miss it).
+func TestCalculateMetrics_NoOutflowsAtAll_NoNegativeZero(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 5000, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+	)
+
+	m := Calculate(ts, start, end, 500, 150, fullCoverage, true, nil)
+
+	if m.TotalExpenses != 0 || math.Signbit(m.TotalExpenses) {
+		t.Errorf("TotalExpenses = %v (Signbit=%v), want +0 with Signbit false", m.TotalExpenses, math.Signbit(m.TotalExpenses))
+	}
+	if m.LivingExpensesTotal != 0 || math.Signbit(m.LivingExpensesTotal) {
+		t.Errorf("LivingExpensesTotal = %v (Signbit=%v), want +0 with Signbit false", m.LivingExpensesTotal, math.Signbit(m.LivingExpensesTotal))
+	}
+	if m.HealthcareTotal != 0 || math.Signbit(m.HealthcareTotal) {
+		t.Errorf("HealthcareTotal = %v (Signbit=%v), want +0 with Signbit false", m.HealthcareTotal, math.Signbit(m.HealthcareTotal))
+	}
+
+	b, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if loc := negZeroJSONPattern.FindString(string(b)); loc != "" {
+		t.Errorf("json output contains a negative-zero token %q: %s", loc, b)
+	}
+}
+
+// TestCalculateMetrics_IncomeOnlyMonth_TrendEntriesNoNegativeZero is CB7-
+// 2026-09-03c's third required fixture: a two-month window where the
+// FIRST month has income only (no outflow transactions at all that
+// month) and the second is ordinary. The income-only month's
+// ExpensesTrend/LivingExpensesTrend/HealthcareTrend entries must all be
+// +0 with Signbit false, never IEEE -0.0.
+func TestCalculateMetrics_IncomeOnlyMonth_TrendEntriesNoNegativeZero(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Salary", 5000, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), models.Income, "Payroll"),
+		makeTransaction("Rent", -1000, time.Date(2025, 2, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+	)
+
+	m := Calculate(ts, start, end, 0, 0, fullCoverage, true, nil)
+
+	if len(m.ExpensesTrend) != 2 || len(m.LivingExpensesTrend) != 2 || len(m.HealthcareTrend) != 2 {
+		t.Fatalf("trend lengths = %d/%d/%d, want 2/2/2: expenses=%v living=%v hc=%v",
+			len(m.ExpensesTrend), len(m.LivingExpensesTrend), len(m.HealthcareTrend),
+			m.ExpensesTrend, m.LivingExpensesTrend, m.HealthcareTrend)
+	}
+	if m.ExpensesTrend[0] != 0 || math.Signbit(m.ExpensesTrend[0]) {
+		t.Errorf("ExpensesTrend[Jan] = %v (Signbit=%v), want +0 with Signbit false", m.ExpensesTrend[0], math.Signbit(m.ExpensesTrend[0]))
+	}
+	if m.LivingExpensesTrend[0] != 0 || math.Signbit(m.LivingExpensesTrend[0]) {
+		t.Errorf("LivingExpensesTrend[Jan] = %v (Signbit=%v), want +0 with Signbit false", m.LivingExpensesTrend[0], math.Signbit(m.LivingExpensesTrend[0]))
+	}
+	if m.HealthcareTrend[0] != 0 || math.Signbit(m.HealthcareTrend[0]) {
+		t.Errorf("HealthcareTrend[Jan] = %v (Signbit=%v), want +0 with Signbit false", m.HealthcareTrend[0], math.Signbit(m.HealthcareTrend[0]))
+	}
+}
+
+// TestCalculateMetrics_MonthWithExactlyCancellingOutflows_TrendEntriesNoNegativeZero
+// closes a gap the income-only-month fixture above does NOT cover: expAmt/
+// hcAmt/livingMonth (metrics.go's per-month SignedNet call sites) only run
+// AT ALL when the month has a bucket entry in monthlyOutflows/
+// monthlyHealthcare/monthlyLiving -- an income-only month never looks the
+// key up, so it can never observe a -0.0 from these three sites. This
+// fixture instead gives one month BOTH a Health-Insurance-category charge
+// and an EQUAL, opposite-signed refund (net exactly 0) alongside an
+// ordinary living-category charge and its own equal, opposite-signed
+// refund (also net exactly 0) -- so the whole month's outflow bucket, its
+// living-only bucket, AND its healthcare-only bucket all sum to exactly
+// 0.0, exercising all three per-month SignedNet call sites at once.
+func TestCalculateMetrics_MonthWithExactlyCancellingOutflows_TrendEntriesNoNegativeZero(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+	ts := makeTransactionSet(
+		makeTransaction("Housing Charge", -50, time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Housing Refund", 50, time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		makeTransaction("Premium Charge", -30, time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+		makeTransaction("Premium Refund", 30, time.Date(2025, 1, 11, 0, 0, 0, 0, time.UTC), models.Outflow, "Health Insurance"),
+	)
+
+	m := Calculate(ts, start, end, 0, 0, fullCoverage, true, nil)
+
+	if len(m.ExpensesTrend) != 1 || len(m.LivingExpensesTrend) != 1 || len(m.HealthcareTrend) != 1 {
+		t.Fatalf("trend lengths = %d/%d/%d, want 1/1/1", len(m.ExpensesTrend), len(m.LivingExpensesTrend), len(m.HealthcareTrend))
+	}
+	if m.ExpensesTrend[0] != 0 || math.Signbit(m.ExpensesTrend[0]) {
+		t.Errorf("ExpensesTrend[0] = %v (Signbit=%v), want +0 with Signbit false", m.ExpensesTrend[0], math.Signbit(m.ExpensesTrend[0]))
+	}
+	if m.LivingExpensesTrend[0] != 0 || math.Signbit(m.LivingExpensesTrend[0]) {
+		t.Errorf("LivingExpensesTrend[0] = %v (Signbit=%v), want +0 with Signbit false", m.LivingExpensesTrend[0], math.Signbit(m.LivingExpensesTrend[0]))
+	}
+	if m.HealthcareTrend[0] != 0 || math.Signbit(m.HealthcareTrend[0]) {
+		t.Errorf("HealthcareTrend[0] = %v (Signbit=%v), want +0 with Signbit false", m.HealthcareTrend[0], math.Signbit(m.HealthcareTrend[0]))
+	}
+}
+
+// TestSignedNet is a direct unit test of the helper (CB7-2026-09-03c).
+func TestSignedNet(t *testing.T) {
+	t.Run("empty set", func(t *testing.T) {
+		got := SignedNet(&models.TransactionSet{})
+		if got != 0 || math.Signbit(got) {
+			t.Errorf("SignedNet(empty) = %v (Signbit=%v), want +0 with Signbit false", got, math.Signbit(got))
+		}
+	})
+
+	t.Run("exactly cancelling set", func(t *testing.T) {
+		ts := makeTransactionSet(
+			makeTransaction("Charge", -10, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), models.Outflow, "Misc"),
+			makeTransaction("Refund", 10, time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC), models.Outflow, "Misc"),
+		)
+		got := SignedNet(ts)
+		if got != 0 || math.Signbit(got) {
+			t.Errorf("SignedNet(cancelling) = %v (Signbit=%v), want +0 with Signbit false", got, math.Signbit(got))
+		}
+	})
+
+	t.Run("ordinary spend is positive", func(t *testing.T) {
+		ts := makeTransactionSet(
+			makeTransaction("Rent", -1000, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+		)
+		got := SignedNet(ts)
+		if !floatEqual(got, 1000) {
+			t.Errorf("SignedNet(ordinary) = %v, want 1000", got)
+		}
+	})
+
+	t.Run("refund-dominant is negative", func(t *testing.T) {
+		ts := makeTransactionSet(
+			makeTransaction("Rent", -1000, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), models.Outflow, "Housing"),
+			makeTransaction("Big Refund", 5000, time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC), models.Outflow, "Misc"),
+		)
+		got := SignedNet(ts)
+		if !floatEqual(got, -4000) {
+			t.Errorf("SignedNet(refund-dominant) = %v, want -4000", got)
+		}
+	})
 }

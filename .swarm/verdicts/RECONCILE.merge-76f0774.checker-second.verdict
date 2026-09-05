@@ -1,0 +1,47 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: RECONCILE
+ATTEMPT: 2
+---
+Scope: this attempt confirms ONLY the fix to
+TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative
+(internal/handlers/dashboard/verdict_render_test.go), the sole defect
+from ATTEMPT 1's FAIL. All other criteria previously PASSED and were not
+re-run, per the coordinator's instruction. Work done in a `cp -a` scratch
+copy of the worktree at HEAD 76f0774; real worktree never mutated.
+
+1. Read the updated test (lines 390-431). It now asserts:
+     text-positive">-$1,234.56   MUST be present
+     text-negative">-$1,234.56   MUST be absent
+   fused color+figure substrings scoped to this tile's own rendered `<p>`,
+   with an explanatory comment citing this checker's finding directly
+   ("a bare Contains(\"text-positive\") is always true from the Income
+   tile, so it pins nothing"). This mirrors the explorer sibling pattern
+   (handlers_test.go's `text-positive ml-1">-$400.00`) cited as correct in
+   the prior verdict.
+
+2. Mutation-proved in the scratch copy: reverted kpis.html line 23's
+   Expenses-tile class from
+     {{if gt .Metrics.TotalExpenses 0.0}}text-negative{{else}}text-positive{{end}}
+   to a hardcoded `text-negative` (dropping the conditional entirely --
+   the same color-only revert used in ATTEMPT 1's proof). Reran:
+     go test -count=1 ./internal/handlers/dashboard/... -run TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative -v
+   Result: --- FAIL. The rendered output showed `text-negative">-$1,234.56`
+   and the new assertion caught it correctly (previously, on the
+   unfused test, this same mutation had produced --- PASS -- confirmed
+   again on this attempt before restoring, unmutated run was PASS).
+   File restored; `diff` against the pre-mutation backup confirmed
+   byte-identical.
+
+3. `go test -count=1 ./internal/handlers/dashboard/...` on the actual,
+   unmutated tree: ok budget2/internal/handlers/dashboard 0.840s (full
+   package, not just the one test).
+
+No new defects found in the delta between 3dcc6c3 and 76f0774 (the
+coordinator states, and the diff scope I inspected confirms, this test
+was the only change). The two backlog findings from ATTEMPT 1 (dead
+ZgotmplZ preset-button attributes in shared/range-picker.html; non-
+keyboard-operable explorer sort headers) are unchanged, pre-existing in
+the U-run before either merge attempt, and remain backlog items, not
+FAIL grounds for this task.

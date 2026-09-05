@@ -17,29 +17,7 @@
 
         <!-- Monthly Snapshot -->
         <div class="mb-4 text-sm">
-            <!-- Expenses Section -->
-            <div class="flex justify-between py-1.5 border-b-2 border-gray-300 dark:border-gray-600">
-                <span class="font-semibold text-gray-700 dark:text-gray-200 uppercase text-xs tracking-wide">Expenses</span>
-                <span class="font-semibold text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.MonthlyExpenses}}</span>
-            </div>
-            {{if .Analysis.BudgetFit.ExpenseBreakdown}}
-            {{range .Analysis.BudgetFit.ExpenseBreakdown}}
-            <div class="flex justify-between py-0.5 pl-4 {{if eq .Amount 0.0}}opacity-40{{end}}">
-                <span class="text-gray-600 dark:text-gray-400">
-                    {{.Name}}{{if .Note}} <span class="text-body-sm italic">({{.Note}})</span>{{end}}
-                </span>
-                <span class="text-gray-600 dark:text-gray-300">{{formatMoney .Amount}}/mo</span>
-            </div>
-            {{if .SubItems}}
-            {{range .SubItems}}
-            <div class="flex justify-between py-0.5 pl-8">
-                <span class="text-gray-600 dark:text-gray-300">{{.Name}}</span>
-                <span class="text-gray-600 dark:text-gray-300">{{if and .SignedAmount (ge .Amount 0.0)}}+{{end}}{{formatMoney .Amount}}/mo</span>
-            </div>
-            {{end}}
-            {{end}}
-            {{end}}
-            {{end}}
+            {{template "whatif-expense-rows" .}}
 
             <!-- Income Section -->
             <div class="flex justify-between py-1.5 mt-2 border-b-2 border-gray-300 dark:border-gray-600">
@@ -339,3 +317,37 @@
 </div>
 {{end}}
 {{end}}
+
+{{/* Expense rows shared verbatim between the Cash Flow panel's Monthly
+     Budget Analysis card (above) and the Overview "Monthly Expenses Today"
+     card (expense-summary.html), so the two never drift. Expects the same
+     dot context as whatif-budget-analysis (.Analysis.BudgetFit). The
+     leading/trailing `-` trims keep the call site's own indentation and
+     surrounding blank line as the only whitespace contributed at each call
+     site, so this extraction renders byte-identical output to the inline
+     markup it replaced. */}}
+{{define "whatif-expense-rows" -}}
+<!-- Expenses Section -->
+            <div class="flex justify-between py-1.5 border-b-2 border-gray-300 dark:border-gray-600">
+                <span class="font-semibold text-gray-700 dark:text-gray-200 uppercase text-xs tracking-wide">Expenses</span>
+                <span class="font-semibold text-gray-800 dark:text-gray-200">{{formatMoney .Analysis.BudgetFit.MonthlyExpenses}}</span>
+            </div>
+            {{if .Analysis.BudgetFit.ExpenseBreakdown}}
+            {{range .Analysis.BudgetFit.ExpenseBreakdown}}
+            <div class="flex justify-between py-0.5 pl-4 {{if eq .Amount 0.0}}opacity-40{{end}}">
+                <span class="text-gray-600 dark:text-gray-400">
+                    {{.Name}}{{if .Note}} <span class="text-xs italic">({{.Note}})</span>{{end}}
+                </span>
+                <span class="text-gray-600 dark:text-gray-300">{{formatMoney .Amount}}/mo</span>
+            </div>
+            {{if .SubItems}}
+            {{range .SubItems}}
+            <div class="flex justify-between py-0.5 pl-8">
+                <span class="text-gray-600 dark:text-gray-300">{{.Name}}</span>
+                <span class="text-gray-600 dark:text-gray-300">{{if and .SignedAmount (ge .Amount 0.0)}}+{{end}}{{formatMoney .Amount}}/mo</span>
+            </div>
+            {{end}}
+            {{end}}
+            {{end}}
+            {{end}}
+{{- end}}

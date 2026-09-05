@@ -78,8 +78,12 @@ type velocityRow struct {
 	// means "the window was empty," not "there is no history."
 	HistoricalDaily float64 `json:"historical_daily"`
 	// BurnRateChange is the percent difference between DailyAverage and
-	// HistoricalDaily ((window - history) / history * 100); positive means
-	// the selected window is spending faster than the ledger's own history.
+	// HistoricalDaily: (window - history) / |history| * 100 when history is
+	// non-zero, so the sign always tracks the sign of the change even when
+	// HistoricalDaily is negative (a refund-dominant ledger); when history
+	// is exactly zero it is +100 / -100 / 0 by the sign of the change
+	// (ruling CB8-2026-09-03a). Positive means the selected window is
+	// spending faster than the ledger's own history.
 	// It inherits DailyAverage's inflation risk, since both inputs share
 	// the same span-vs-length caveat.
 	BurnRateChange float64 `json:"burn_rate_change"`

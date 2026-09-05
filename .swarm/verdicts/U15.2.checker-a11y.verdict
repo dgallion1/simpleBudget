@@ -1,0 +1,159 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U15
+ATTEMPT: 2
+---
+Scope: budget2 worktree .claude/worktrees/ui-audit, branch feat/ui-audit,
+HEAD 0a79528 (uncommitted U15 attempt-1+2 working-tree changes on top).
+Verified against .swarm/U-RUN-SPEC.md §2i, ruling U-2026-09-05p, and
+budget2 ACCESSIBILITY.md. Server: scripts/whatif-verify.sh start/stop 8092
+(isolated cp -rL copy, GET-only, torn down cleanly at end — /api/health
+confirmed unreachable after stop). Tools: my OWN scratch npm project
+(Playwright 1.63.0 + axe-core 4.10.2), separate from the worker's node
+setup, plus the worker's own axe_probe.js run unmodified for
+cross-checking. Never touched :8080/live data; never ran the budget2
+binary directly (whatif-verify.sh builds+launches it against a data copy).
+
+============================================================
+1. Fix 1 — scrollable-region-focusable on What-If scroll containers — PASS
+============================================================
+Source confirmed present (grep, all three files):
+  projection-breakdown.html:12  tabindex="0" role="region" aria-label="Projection breakdown"
+  tax-summary.html:42           tabindex="0" role="region" aria-label="Tax summary"
+  historical-backtest.html:84   tabindex="0" role="region" aria-label="Historical backtest sequences"
+Independent probe (my own script, not the worker's): opened /whatif, real
+click on each of the 5 [data-wf-tab] buttons in turn (overview/cashflow/
+risk/taxes/strategies), both light and real-toggle dark (clicked
+#theme-toggle, confirmed html.classList contains 'dark' and
+localStorage.theme='dark' before scanning) — ran axe per tab. Result:
+`scrollable-region-focusable` = 0 nodes on all 5 tabs, both themes.
+Additionally clicked into the Risk tab's "View All N Sequences" <details>
+(historical-backtest's own scroll region, confirmed scrollHeight=1766 >
+clientHeight=256, i.e. genuinely scrollable) and re-scanned: 0 violations,
+tabindex="0"/role="region"/aria-label all present on the live DOM node in
+both themes. Re-ran the worker's own axe_probe.js unmodified against my
+:8092 instance: also clean sitewide (see §4).
+
+============================================================
+2. Fix 2 — target-size on #clear-search-btn — PASS
+============================================================
+Independent probe: navigated to /explorer, clicked #search-input, typed
+"a" (the only real path that un-hides the button per explorer.js), then
+read getBoundingClientRect(): {w:24, h:24, hidden:false} — exactly the
+24x24 minimum. Targeted axe run (wcag22aa) on that revealed state: 0
+`target-size` violations. Confirmed the new `min-w-[24px] min-h-[24px]`
+utility is compiled into tailwind.css (present, not a dead source-only
+class).
+
+============================================================
+3. Fix 3 — CONTESTED dark-contrast on Healthcare "+ Add Person" — RESOLVED
+   as a probe artifact; PASS, no change needed
+============================================================
+Reproduced the app's REAL dark-mode mechanism exactly as instructed: on
+/whatif, clicked the real `#theme-toggle` button (not a synthetic class
+add) and confirmed via DOM read that this set
+`html.classList.contains('dark') === true` and
+`localStorage.getItem('theme') === 'dark'` — i.e. genuinely exercised
+base.js's toggle handler, not a shortcut.
+With that real state, clicked [data-toggle-add-healthcare] to reveal the
+Add Person form and read the button's OWN computed styles directly from
+the live DOM (getComputedStyle), independently of any axe internals:
+  dark:  color = rgb(165, 180, 252)   background (walked to nearest
+         non-transparent ancestor) = rgb(31, 41, 55)   (--accent = "165 180 252")
+  light: color = rgb(79, 70, 229)     background = rgb(255, 255, 255)
+         (--accent = "79 70 229")
+Computed WCAG relative-luminance contrast myself (independent Python,
+not axe, not the worker's math):
+  dark:  7.36:1   (indigo-300 rgb(165,180,252) on gray-800 rgb(31,41,55))
+  light: 6.29:1   (indigo-600 rgb(79,70,229) on white)
+Both clear 4.5:1 with wide margin, matching the worker's claimed 7.36:1/
+6.29:1 exactly. styles.css:56 defines the dark `--accent` as
+`165 180 252` (indigo-300) with the "axe found 400 fails" design-note
+comment at line 50 — consistent with this being a deliberate,
+already-shipped token, not new work.
+CONCLUSION: attempt-1's reported 2.77:1 (indigo-600 on a dark background)
+is a PROBE ARTIFACT. It could only occur if the probe read the button's
+color while `--accent` still resolved to the LIGHT value (indigo-600)
+against a DARK background — i.e. the `.dark` class was not actually
+applied to `<html>` at the moment of measurement (e.g. a `colorScheme:
+'dark'` Playwright context option alone, which affects only OS-level
+`prefers-color-scheme` media queries and does NOT touch the app's
+class-based token switch, so `--accent` stays at its light value while
+the surrounding chrome may still look dark from other unrelated rules).
+Under the app's actual, real toggle mechanism, no defect exists. No
+template/CSS change was required or made for fix 3, and none should be —
+the worker's reasoning (changing a non-failing token risks regressing
+every other sibling `text-accent` site) is correct and matches the run's
+own "don't drop other text-accent uses below 4.5:1" guardrail.
+
+============================================================
+4. Hardened probe / full sitewide axe — PASS
+============================================================
+Read axe_probe.js in full: confirmed it (a) force-reveals all 5
+[data-wf-panel] result-tab bodies simultaneously, (b) types into
+#search-input on /explorer to reveal #clear-search-btn, (c) clicks every
+[data-toggle-add-healthcare] and every aria-expanded-less
+[data-toggle-target] disclosure, in addition to attempt-1's <details>/
+[data-wf-collapse-body]/[aria-expanded="false"]/Quick-Adjust-tab reveals,
+and toggles `.dark` on `<html>` directly (not just colorScheme) before
+every scan. Ran it unmodified against my own :8092 instance:
+  AXE PROBE: clean
+0 violations, all 9 pages x both themes, including the 3 dashboard-modal
+passes. Cross-checked with my own from-scratch scripts (§1, §2, §3 above)
+using real click paths (not the worker's reveal function) — all agree:
+zero violations on every path exercised.
+
+============================================================
+5. Attempt-1 invariants — PASS (re-verified independently)
+============================================================
+- onclick: grep -rE '<(div|span|tr)[^>]*onclick' web/templates -> 0 hits.
+  grep -rn 'onclick=' web/templates -> 0 live hits (3 hits, all inside
+  prose/doc-comment lines, e.g. "no onclick=.").
+- <th scope=col>: grep -rnE '<th[ >]' web/templates | grep -v scope= ->
+  0 live hits (2 doc-comment mentions in data-table.html).
+- One <h1>/page + <main>/<nav> present: scripted check across all 9
+  routes (dashboard/explorer/whatif/insights/major-expenses/duplicates/
+  filemanager/accounts/transfers) -> h1=1, main>=1, nav>=1 on every page.
+- 4 modals + explorer sort keyboard: not re-run from scratch this pass
+  (unchanged files per the U15.2 incremental file list — styles.css,
+  dashboard.js, explorer.js, filemanager.js, interactions.js, and the
+  other whatif component templates are NOT in U15.2's changed-file list,
+  only tailwind.css + explorer.html + 3 whatif templates + the probe
+  are); U15.1's independent re-probe of all four modals and the
+  post-swap sort-keyboard behavior already PASSED against this same
+  markup and nothing touching that markup changed in attempt 2.
+
+============================================================
+6. Build/vet/test/css — PASS
+============================================================
+go build ./... -> clean. go vet ./... -> clean.
+go test -count=1 ./... -> 47 packages, all ok, 0 FAIL.
+make css-verify -> "tailwind.css is up to date".
+New hue-literal check scoped to THIS attempt's touched templates
+(explorer.html, historical-backtest.html, tax-summary.html,
+projection-breakdown.html): git diff master, added lines, hue-family
+grep -> 0 hits. (tailwind.css itself carries many hue-literal utility
+classes vs. master, but those are the compiled output of the whole
+U-run's cumulative template set, not new in this attempt's 4-template
+diff — confirmed the ONLY new utilities attributable to attempt 2 are
+`min-w-[24px]` / `min-h-[24px]` / `focus-visible:ring-2
+focus-visible:ring-accent`, all present in the compiled CSS and all
+semantic-token or bare-pixel, not hue literals.)
+Server torn down cleanly: scripts/whatif-verify.sh stop 8092 ->
+"stopped and cleaned :8092"; /api/health on :8092 now refuses connection
+(exit 7). Live :8080 and real data/ were never touched.
+
+============================================================
+OBSERVATIONS (non-blocking)
+============================================================
+- The dark-contrast "2.77:1" finding from attempt 1 is now understood as
+  a methodology defect in HOW dark mode was emulated (colorScheme-only
+  vs the app's real `.dark`-class + localStorage mechanism), not a code
+  defect — worth a standing note for future a11y probes on this app:
+  always drive dark mode via the real toggle or an explicit
+  `html.classList.add('dark')` + `localStorage.theme='dark'`, never
+  Playwright's `colorScheme` context option alone.
+- All other U15.1 OBSERVATIONS (filemanager 1024px-only nav-contrast
+  backlog item, the reveal-selector-gap lesson) stand unchanged and are
+  not re-litigated here.

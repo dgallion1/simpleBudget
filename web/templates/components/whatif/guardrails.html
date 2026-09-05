@@ -19,15 +19,15 @@
                 <p class="text-body-sm font-medium text-negative mb-2">Floor (cut spending when portfolio drops)</p>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block text-xs text-gray-600 dark:text-gray-400">Drop %</label>
-                        <input type="number" name="floor_drop_pct" value="{{printf "%.0f" .Settings.Guardrails.FloorDropPct}}"
+                        <label for="floor-drop-pct-input" class="block text-xs text-gray-600 dark:text-gray-400">Drop %</label>
+                        <input type="number" id="floor-drop-pct-input" name="floor_drop_pct" value="{{printf "%.0f" .Settings.Guardrails.FloorDropPct}}"
                             min="1" max="50" step="1"
                             class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                         <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-0.5">from peak</p>
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-600 dark:text-gray-400">Cut %</label>
-                        <input type="number" name="floor_cut_pct" value="{{printf "%.0f" .Settings.Guardrails.FloorCutPct}}"
+                        <label for="floor-cut-pct-input" class="block text-xs text-gray-600 dark:text-gray-400">Cut %</label>
+                        <input type="number" id="floor-cut-pct-input" name="floor_cut_pct" value="{{printf "%.0f" .Settings.Guardrails.FloorCutPct}}"
                             min="1" max="50" step="1"
                             class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                         <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-0.5">spending reduction</p>
@@ -39,15 +39,15 @@
                 <p class="text-body-sm font-medium text-positive mb-2">Ceiling (raise spending when portfolio rises)</p>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="block text-xs text-gray-600 dark:text-gray-400">Rise %</label>
-                        <input type="number" name="ceiling_rise_pct" value="{{printf "%.0f" .Settings.Guardrails.CeilingRisePct}}"
+                        <label for="ceiling-rise-pct-input" class="block text-xs text-gray-600 dark:text-gray-400">Rise %</label>
+                        <input type="number" id="ceiling-rise-pct-input" name="ceiling_rise_pct" value="{{printf "%.0f" .Settings.Guardrails.CeilingRisePct}}"
                             min="1" max="100" step="1"
                             class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                         <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-0.5">above baseline</p>
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-600 dark:text-gray-400">Raise %</label>
-                        <input type="number" name="ceiling_raise_pct" value="{{printf "%.0f" .Settings.Guardrails.CeilingRaisePct}}"
+                        <label for="ceiling-raise-pct-input" class="block text-xs text-gray-600 dark:text-gray-400">Raise %</label>
+                        <input type="number" id="ceiling-raise-pct-input" name="ceiling_raise_pct" value="{{printf "%.0f" .Settings.Guardrails.CeilingRaisePct}}"
                             min="1" max="50" step="1"
                             class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                         <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-0.5">spending increase</p>
@@ -57,14 +57,14 @@
 
             <div class="grid grid-cols-2 gap-2">
                 <div>
-                    <label class="block text-xs text-gray-600 dark:text-gray-400">Min spending %</label>
-                    <input type="number" name="min_spending_pct" value="{{printf "%.0f" .Settings.Guardrails.MinSpendingPct}}"
+                    <label for="min-spending-pct-input" class="block text-xs text-gray-600 dark:text-gray-400">Min spending %</label>
+                    <input type="number" id="min-spending-pct-input" name="min_spending_pct" value="{{printf "%.0f" .Settings.Guardrails.MinSpendingPct}}"
                         min="50" max="100" step="1"
                         class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                 </div>
                 <div>
-                    <label class="block text-xs text-gray-600 dark:text-gray-400">Max spending %</label>
-                    <input type="number" name="max_spending_pct" value="{{printf "%.0f" .Settings.Guardrails.MaxSpendingPct}}"
+                    <label for="max-spending-pct-input" class="block text-xs text-gray-600 dark:text-gray-400">Max spending %</label>
+                    <input type="number" id="max-spending-pct-input" name="max_spending_pct" value="{{printf "%.0f" .Settings.Guardrails.MaxSpendingPct}}"
                         min="100" max="200" step="1"
                         class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                 </div>

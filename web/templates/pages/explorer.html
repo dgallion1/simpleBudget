@@ -19,7 +19,7 @@
                             hx-trigger="keyup changed delay:300ms" hx-include="#explorer-filter-form"
                             class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 pr-8 text-sm focus:ring-accent focus:border-accent">
                         <button type="button"
-                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 {{if not .Search}}hidden{{end}}"
+                            class="absolute right-1 top-1/2 -translate-y-1/2 min-w-[24px] min-h-[24px] flex items-center justify-center rounded text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent {{if not .Search}}hidden{{end}}"
                             id="clear-search-btn" title="Clear search" aria-label="Clear search">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -146,96 +146,103 @@
         <table class="w-full table-fixed">
             <thead>
                 <tr>
-                    <th class="w-24 text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        data-sort-key="date">
-                        <div class="flex items-center gap-1">
+                    <th scope="col" class="w-24 text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300"
+                        aria-sort="{{if eq .Sort "date"}}{{if eq .Order "desc"}}descending{{else}}ascending{{end}}{{else}}none{{end}}">
+                        <button type="button" data-sort-key="date"
+                            class="flex items-center gap-1 w-full -m-3 p-3 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent">
                             Date
                             {{if eq .Sort "date"}}
                             <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
-                                stroke="currentColor" viewBox="0 0 24 24">
+                                stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
                                 </path>
                             </svg>
                             {{end}}
-                        </div>
+                        </button>
                     </th>
-                    <th class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        data-sort-key="description">
-                        <div class="flex items-center gap-1">
+                    <th scope="col" class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300"
+                        aria-sort="{{if eq .Sort "description"}}{{if eq .Order "desc"}}descending{{else}}ascending{{end}}{{else}}none{{end}}">
+                        <button type="button" data-sort-key="description"
+                            class="flex items-center gap-1 w-full -m-3 p-3 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent">
                             Description
                             {{if eq .Sort "description"}}
                             <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
-                                stroke="currentColor" viewBox="0 0 24 24">
+                                stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
                                 </path>
                             </svg>
                             {{end}}
-                        </div>
+                        </button>
                     </th>
-                    <th class="hidden md:table-cell w-32 text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        data-sort-key="category">
-                        <div class="flex items-center gap-1">
+                    <th scope="col" class="hidden md:table-cell w-32 text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300"
+                        aria-sort="{{if eq .Sort "category"}}{{if eq .Order "desc"}}descending{{else}}ascending{{end}}{{else}}none{{end}}">
+                        <button type="button" data-sort-key="category"
+                            class="flex items-center gap-1 w-full -m-3 p-3 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent">
                             Category
                             {{if eq .Sort "category"}}
                             <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
-                                stroke="currentColor" viewBox="0 0 24 24">
+                                stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
                                 </path>
                             </svg>
                             {{end}}
-                        </div>
+                        </button>
                     </th>
-                    <th class="hidden md:table-cell w-32 text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        data-sort-key="majorExpense">
-                        <div class="flex items-center gap-1">
+                    <th scope="col" class="hidden md:table-cell w-32 text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300"
+                        aria-sort="{{if eq .Sort "majorExpense"}}{{if eq .Order "desc"}}descending{{else}}ascending{{end}}{{else}}none{{end}}">
+                        <button type="button" data-sort-key="majorExpense"
+                            class="flex items-center gap-1 w-full -m-3 p-3 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent">
                             Major Expense
                             {{if eq .Sort "majorExpense"}}
                             <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
-                                stroke="currentColor" viewBox="0 0 24 24">
+                                stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
                                 </path>
                             </svg>
                             {{end}}
-                        </div>
+                        </button>
                     </th>
-                    <th class="w-28 text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        data-sort-key="amount">
-                        <div class="flex items-center justify-end gap-1">
+                    <th scope="col" class="w-28 text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300"
+                        aria-sort="{{if eq .Sort "amount"}}{{if eq .Order "desc"}}descending{{else}}ascending{{end}}{{else}}none{{end}}">
+                        <button type="button" data-sort-key="amount"
+                            class="flex items-center justify-end gap-1 w-full -m-3 p-3 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent">
                             Amount
                             {{if eq .Sort "amount"}}
                             <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
-                                stroke="currentColor" viewBox="0 0 24 24">
+                                stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
                                 </path>
                             </svg>
                             {{end}}
-                        </div>
+                        </button>
                     </th>
-                    <th class="hidden md:table-cell w-20 text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        data-sort-key="type">
-                        <div class="flex items-center justify-center gap-1">
+                    <th scope="col" class="hidden md:table-cell w-20 text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300"
+                        aria-sort="{{if eq .Sort "type"}}{{if eq .Order "desc"}}descending{{else}}ascending{{end}}{{else}}none{{end}}">
+                        <button type="button" data-sort-key="type"
+                            class="flex items-center justify-center gap-1 w-full -m-3 p-3 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent">
                             Type
                             {{if eq .Sort "type"}}
                             <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
-                                stroke="currentColor" viewBox="0 0 24 24">
+                                stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
                                 </path>
                             </svg>
                             {{end}}
-                        </div>
+                        </button>
                     </th>
-                    <th class="hidden md:table-cell w-36 text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        data-sort-key="source">
-                        <div class="flex items-center justify-center gap-1">
+                    <th scope="col" class="hidden md:table-cell w-36 text-center p-3 text-sm font-medium text-gray-600 dark:text-gray-300"
+                        aria-sort="{{if eq .Sort "source"}}{{if eq .Order "desc"}}descending{{else}}ascending{{end}}{{else}}none{{end}}">
+                        <button type="button" data-sort-key="source"
+                            class="flex items-center justify-center gap-1 w-full -m-3 p-3 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent">
                             Source
                             {{if eq .Sort "source"}}
                             <svg class="w-4 h-4 {{if eq .Order "desc"}}rotate-180{{end}}" fill="none"
-                                stroke="currentColor" viewBox="0 0 24 24">
+                                stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7">
                                 </path>
                             </svg>
                             {{end}}
-                        </div>
+                        </button>
                     </th>
                 </tr>
             </thead>

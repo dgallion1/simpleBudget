@@ -289,6 +289,22 @@
         htmx.trigger(form, 'submit');
     }
 
+    // Wire the column-header sort buttons (U15: real <button>s inside
+    // <th scope="col">, not a bare click handler on the th). #transactions-
+    // container's entire innerHTML (thead included) is replaced on every
+    // sort/filter/page swap, so the buttons are re-created each time and
+    // must be re-bound; the data-sort-bound guard keeps a rebind from ever
+    // double-firing a stale listener on a button that survived a swap.
+    function wireSortButtons() {
+        document.querySelectorAll('#transactions-container [data-sort-key]').forEach(function (btn) {
+            if (btn.dataset.sortBound === '1') return;
+            btn.dataset.sortBound = '1';
+            btn.addEventListener('click', function () {
+                sortBy(btn.dataset.sortKey);
+            });
+        });
+    }
+
     // Go to specific page
     function goToPage(page) {
         const form = document.getElementById('explorer-filter-form');
@@ -335,6 +351,7 @@
     document.body.addEventListener('htmx:afterSwap', function(e) {
         if (e.detail.target.id === 'transactions-container') {
             setupInfiniteScroll();
+            wireSortButtons();
         }
     });
 
@@ -436,11 +453,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    document.querySelectorAll('[data-sort-key]').forEach(function (th) {
-        th.addEventListener('click', function () {
-            sortBy(th.dataset.sortKey);
-        });
-    });
+    wireSortButtons();
 
     var clearFilters = document.getElementById('explorer-clear-filters');
     if (clearFilters) {

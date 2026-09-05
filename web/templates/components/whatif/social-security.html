@@ -10,10 +10,10 @@
         {{if .Settings.SocialSecurity}}{{$claimAge = .Settings.SocialSecurity.ClaimAge}}{{end}}
         {{$alreadyClaimed := and (gt $claimAge 0) (le $claimAge .Settings.CurrentAge)}}
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">{{if $alreadyClaimed}}Your Monthly Benefit{{else}}Monthly Benefit at FRA{{end}}</label>
+            <label for="ss-fra-benefit" class="block text-sm font-medium text-gray-700 dark:text-gray-200">{{if $alreadyClaimed}}Your Monthly Benefit{{else}}Monthly Benefit at FRA{{end}}</label>
             <div class="flex items-center gap-2">
                 <span class="text-gray-600 dark:text-gray-400">$</span>
-                <input type="number" name="fra_benefit" step="1" min="0" max="10000"
+                <input type="number" id="ss-fra-benefit" name="fra_benefit" step="1" min="0" max="10000"
                     value="{{if .Settings.SocialSecurity}}{{printf "%.0f" .Settings.SocialSecurity.FRABenefit}}{{end}}"
                     placeholder="e.g. 2500"
                     class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
@@ -27,8 +27,8 @@
 
         <div class="grid grid-cols-2 gap-3">
             <div>
-                <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">FRA</label>
-                <select name="fra"
+                <label for="ss-fra" class="block text-xs text-gray-600 dark:text-gray-400 mb-1">FRA</label>
+                <select name="fra" id="ss-fra"
                     class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                     {{$fra := 67}}{{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.FRA 0)}}{{$fra = .Settings.SocialSecurity.FRA}}{{end}}
                     <option value="66" {{if eq $fra 66}}selected{{end}}>66</option>
@@ -36,16 +36,16 @@
                 </select>
             </div>
             <div>
-                <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">COLA %/yr</label>
-                <input type="number" name="cola_rate" step="0.1" min="0" max="10"
+                <label for="ss-cola-rate" class="block text-xs text-gray-600 dark:text-gray-400 mb-1">COLA %/yr</label>
+                <input type="number" id="ss-cola-rate" name="cola_rate" step="0.1" min="0" max="10"
                     value="{{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.COLARate 0.0)}}{{printf "%.1f" (mul .Settings.SocialSecurity.COLARate 100)}}{{else}}2.0{{end}}"
                     class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
             </div>
         </div>
 
         <div>
-            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Claim Age</label>
-            <select name="claim_age"
+            <label for="ss-claim-age" class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Claim Age</label>
+            <select name="claim_age" id="ss-claim-age"
                 class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 <option value="" {{if eq $claimAge 0}}selected{{end}}>Analysis only</option>
                 {{range seq 62 70}}
@@ -65,17 +65,17 @@
         <div class="pt-3 border-t border-gray-200 dark:border-gray-700">
             {{$spouseClaimAge := 0}}
             {{if .Settings.SocialSecurity}}{{$spouseClaimAge = .Settings.SocialSecurity.SpouseClaimAge}}{{end}}
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Spouse Monthly Benefit at FRA</label>
+            <label for="ss-spouse-fra-benefit" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Spouse Monthly Benefit at FRA</label>
             <div class="flex items-center gap-2">
                 <span class="text-gray-600 dark:text-gray-400">$</span>
-                <input type="number" name="spouse_fra_benefit" step="1" min="0" max="10000"
+                <input type="number" id="ss-spouse-fra-benefit" name="spouse_fra_benefit" step="1" min="0" max="10000"
                     value="{{if .Settings.SocialSecurity}}{{printf "%.0f" .Settings.SocialSecurity.SpouseFRABenefit}}{{end}}"
                     placeholder="optional"
                     class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
             </div>
             <div class="mt-2">
-                <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Spouse FRA</label>
-                <select name="spouse_fra"
+                <label for="ss-spouse-fra" class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Spouse FRA</label>
+                <select name="spouse_fra" id="ss-spouse-fra"
                     class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                     {{$spouseFRA := 67}}{{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.SpouseFRA 0)}}{{$spouseFRA = .Settings.SocialSecurity.SpouseFRA}}{{end}}
                     <option value="66" {{if eq $spouseFRA 66}}selected{{end}}>66</option>
@@ -83,8 +83,8 @@
                 </select>
             </div>
             <div class="mt-2">
-                <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Spouse Claim Age</label>
-                <select name="spouse_claim_age"
+                <label for="ss-spouse-claim-age" class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Spouse Claim Age</label>
+                <select name="spouse_claim_age" id="ss-spouse-claim-age"
                     class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                     <option value="" {{if eq $spouseClaimAge 0}}selected{{end}}>Analysis only</option>
                     {{range seq 62 70}}
@@ -137,15 +137,15 @@
         <table class="w-full text-sm">
             <thead>
                 <tr class="border-b dark:border-gray-600">
-                    <th class="text-left py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Age</th>
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Monthly</th>
+                    <th scope="col" class="text-left py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Age</th>
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Monthly</th>
                     {{if and .Analysis.SocialSecurity.HasSurvivorAnalysis (not .Analysis.SocialSecurity.SurvivorHigherEarnerIsSpouse)}}
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Survivor</th>
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Survivor</th>
                     {{end}}
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">% PIA</th>
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">By 80</th>
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">By 85</th>
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">By 90</th>
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">% PIA</th>
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">By 80</th>
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">By 85</th>
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">By 90</th>
                 </tr>
             </thead>
             <tbody>
@@ -198,15 +198,15 @@
             <table class="w-full text-sm">
                 <thead>
                     <tr class="border-b dark:border-gray-600">
-                        <th class="text-left py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Age</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Monthly</th>
+                        <th scope="col" class="text-left py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Age</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Monthly</th>
                         {{if and .Analysis.SocialSecurity.HasSurvivorAnalysis .Analysis.SocialSecurity.SurvivorHigherEarnerIsSpouse}}
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Survivor</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Survivor</th>
                         {{end}}
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">% PIA</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">By 80</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">By 85</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">By 90</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">% PIA</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">By 80</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">By 85</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">By 90</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -259,12 +259,12 @@
             <table class="w-full text-sm">
                 <thead>
                     <tr class="border-b dark:border-gray-600">
-                        <th class="text-left py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Age</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Monthly</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Survival</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Median End</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">P10 / P90</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Delta</th>
+                        <th scope="col" class="text-left py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Age</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Monthly</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Survival</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Median End</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">P10 / P90</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Delta</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -296,12 +296,12 @@
             <table class="w-full text-sm">
                 <thead>
                     <tr class="border-b dark:border-gray-600">
-                        <th class="text-left py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Age</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Monthly</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Survival</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Median End</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">P10 / P90</th>
-                        <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Delta</th>
+                        <th scope="col" class="text-left py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Age</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Monthly</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Survival</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Median End</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">P10 / P90</th>
+                        <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">Delta</th>
                     </tr>
                 </thead>
                 <tbody>

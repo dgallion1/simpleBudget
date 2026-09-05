@@ -67,13 +67,24 @@ function openMajorExpenseDrilldown(name) {
     htmx.ajax('GET', `/dashboard/major-expense?name=${encodeURIComponent(name)}&start=${start}&end=${end}`, {
         target: '#major-expense-drilldown-container',
         swap: 'innerHTML'
+    }).then(function () {
+        // U15: move focus in, trap Tab, and remember what had focus (the
+        // donut wedge click doesn't focus anything itself, but the
+        // keyboard-operable "Other"/credits row buttons do) so it can be
+        // restored on close.
+        var backdrop = document.querySelector('#major-expense-drilldown-container [data-modal-backdrop]');
+        if (backdrop && window.ModalA11y) window.ModalA11y.open(backdrop);
     });
 }
 
 function closeMajorExpenseModal(event) {
     if (event && event.target !== event.currentTarget) return;
     const container = document.getElementById('major-expense-drilldown-container');
-    if (container) container.replaceChildren();
+    if (container) {
+        var backdrop = container.querySelector('[data-modal-backdrop]');
+        if (backdrop && window.ModalA11y) window.ModalA11y.close(backdrop);
+        container.replaceChildren();
+    }
 }
 
 // KPI detail functions
@@ -85,6 +96,9 @@ function openKPIDetail(kpiType) {
     htmx.ajax('GET', `/dashboard/kpi/${encodeURIComponent(kpiType)}?start=${start}&end=${end}`, {
         target: '#kpi-detail-container',
         swap: 'innerHTML'
+    }).then(function () {
+        var backdrop = document.querySelector('#kpi-detail-container [data-modal-backdrop]');
+        if (backdrop && window.ModalA11y) window.ModalA11y.open(backdrop);
     });
 }
 
@@ -98,12 +112,18 @@ function openKPIMonthDetail(kpiType, month) {
     htmx.ajax('GET', `/dashboard/kpi/${encodeURIComponent(kpiType)}/month/${encodeURIComponent(month)}?start=${start}&end=${end}`, {
         target: '#kpi-detail-container',
         swap: 'innerHTML'
+    }).then(function () {
+        var backdrop = document.querySelector('#kpi-detail-container [data-modal-backdrop]');
+        if (backdrop && window.ModalA11y) window.ModalA11y.open(backdrop);
     });
 }
 
 function closeKPIModal(event) {
     if (event && event.target !== event.currentTarget) return;
-    document.getElementById('kpi-detail-container').innerHTML = '';
+    var container = document.getElementById('kpi-detail-container');
+    var backdrop = container.querySelector('[data-modal-backdrop]');
+    if (backdrop && window.ModalA11y) window.ModalA11y.close(backdrop);
+    container.innerHTML = '';
 }
 
 // Column sorting for the KPI month-detail transaction table. Client-side and

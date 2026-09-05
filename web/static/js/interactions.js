@@ -42,6 +42,74 @@ document.addEventListener('click', function (e) {
     if (fnName && typeof window[fnName] === 'function') window[fnName]();
 });
 
+// Shared modal dialog contract (U15, ACCESSIBILITY.md point 17): every
+// full-page overlay -- whether HTMX injects it fresh (kpi-detail,
+// kpi-month-detail, major-expense-drilldown) or the page toggles a
+// `.hidden` class on markup already in the DOM (File Manager's plaintext-
+// export "modal") -- calls ModalA11y.open(backdropEl) from its own open
+// function and ModalA11y.close(backdropEl) from its own close function.
+// This one place owns: moving focus into the panel's first focusable
+// control on open, restoring focus to whatever had it before open() ran
+// (the invoking control) on close, and trapping Tab inside the panel
+// while it is the active modal. Esc-to-close stays wired per-modal
+// (each already listens for it) since ModalA11y has no opinion on WHEN a
+// modal should close, only what happens to focus while it is open.
+window.ModalA11y = (function () {
+    var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    var active = null; // { backdrop, panel, previousFocus, trapHandler }
+
+    function isVisible(el) {
+        return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+    }
+
+    function focusableIn(panel) {
+        return Array.prototype.filter.call(panel.querySelectorAll(FOCUSABLE), isVisible);
+    }
+
+    function open(backdrop) {
+        if (!backdrop) return;
+        if (active && active.backdrop === backdrop) return;
+        if (active) close(active.backdrop);
+
+        var panel = backdrop.querySelector('[data-modal-panel]') || backdrop;
+        var previousFocus = document.activeElement;
+        var items = focusableIn(panel);
+        if (items.length) {
+            items[0].focus({ preventScroll: true });
+        } else {
+            if (!panel.hasAttribute('tabindex')) panel.setAttribute('tabindex', '-1');
+            panel.focus({ preventScroll: true });
+        }
+
+        var trapHandler = function (e) {
+            if (e.key !== 'Tab') return;
+            var f = focusableIn(panel);
+            if (f.length === 0) { e.preventDefault(); return; }
+            var idx = f.indexOf(document.activeElement);
+            if (e.shiftKey) {
+                if (idx <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+            } else if (idx === f.length - 1 || idx === -1) {
+                e.preventDefault(); f[0].focus();
+            }
+        };
+        document.addEventListener('keydown', trapHandler, true);
+
+        active = { backdrop: backdrop, panel: panel, previousFocus: previousFocus, trapHandler: trapHandler };
+    }
+
+    function close(backdrop) {
+        if (!active || active.backdrop !== backdrop) return;
+        document.removeEventListener('keydown', active.trapHandler, true);
+        var prev = active.previousFocus;
+        active = null;
+        if (prev && typeof prev.focus === 'function' && document.contains(prev)) {
+            prev.focus({ preventScroll: true });
+        }
+    }
+
+    return { open: open, close: close };
+})();
+
 // Unassigned-files banner (A8, on both dashboard and explorer): dismissal
 // is remembered per count in sessionStorage so it is not re-announced on
 // every page load within the session. The dismiss key used to be built

@@ -10,6 +10,7 @@
             <span class="font-medium text-gray-800 dark:text-gray-200">{{.Name}}</span>
             <span class="text-sm text-gray-600 dark:text-gray-300">Age {{.CurrentAge}}</span>
             <select name="current_coverage"
+                aria-label="{{.Name}} current health coverage"
                 hx-put="/whatif/healthcare/{{.ID}}" hx-target="#whatif-results" hx-trigger="change"
                 data-quick-adjust-key="healthcare:{{.ID}}:current_coverage"
                 class="text-xs px-2 py-0.5 rounded border-0 cursor-pointer
@@ -27,8 +28,8 @@
     <form hx-put="/whatif/healthcare/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms">
         <div class="grid grid-cols-2 gap-2 text-sm mb-2">
             <div class="{{if not .IsLinked}}col-span-2{{end}}">
-                <label class="block text-xs text-gray-600 dark:text-gray-300">Person</label>
-                <select name="person_id"
+                <label for="healthcare-person-id-{{.ID}}" class="block text-xs text-gray-600 dark:text-gray-300">Person</label>
+                <select name="person_id" id="healthcare-person-id-{{.ID}}"
                     class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
                     <option value="">Manual Entry</option>
                     {{range $settings.Persons}}
@@ -58,13 +59,13 @@
         {{else}}
         <div class="grid grid-cols-2 gap-2 text-sm mb-2">
             <div>
-                <label class="block text-xs text-gray-600 dark:text-gray-300">Name</label>
-                <input type="text" name="name" value="{{.Name}}"
+                <label for="healthcare-name-{{.ID}}" class="block text-xs text-gray-600 dark:text-gray-300">Name</label>
+                <input type="text" id="healthcare-name-{{.ID}}" name="name" value="{{.Name}}"
                     class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
             </div>
             <div>
-                <label class="block text-xs text-gray-600 dark:text-gray-300">Age</label>
-                <input type="number" name="current_age" value="{{.CurrentAge}}" min="0" max="120"
+                <label for="healthcare-age-{{.ID}}" class="block text-xs text-gray-600 dark:text-gray-300">Age</label>
+                <input type="number" id="healthcare-age-{{.ID}}" name="current_age" value="{{.CurrentAge}}" min="0" max="120"
                     class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
             </div>
         </div>
@@ -72,10 +73,10 @@
         <div class="grid grid-cols-2 gap-2 text-sm">
             <div>
                 <div class="flex items-center justify-between gap-2">
-                    <label class="text-xs text-gray-600 dark:text-gray-300">Monthly Cost</label>
+                    <label for="healthcare-monthly-cost-{{.ID}}" class="text-xs text-gray-600 dark:text-gray-300">Monthly Cost</label>
                     <span class="text-body-sm text-negative" data-quick-adjust-display="healthcare:{{.ID}}:current_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .CurrentMonthlyCost}}</span>
                 </div>
-                <input type="range" name="current_monthly_cost" value="{{printf "%.0f" .CurrentMonthlyCost}}"
+                <input type="range" id="healthcare-monthly-cost-{{.ID}}" name="current_monthly_cost" value="{{printf "%.0f" .CurrentMonthlyCost}}"
                     min="0" max="3000" step="50"
                     data-quick-adjust-key="healthcare:{{.ID}}:current_monthly_cost"
                     class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
@@ -83,10 +84,10 @@
             {{if eq .CurrentCoverage "employer"}}
             <div>
                 <div class="flex items-center justify-between gap-2">
-                    <label class="text-xs text-gray-600 dark:text-gray-300">Coverage Ends In</label>
+                    <label for="healthcare-coverage-ends-{{.ID}}" class="text-xs text-gray-600 dark:text-gray-300">Coverage Ends In</label>
                     <span class="text-body-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="healthcare:{{.ID}}:employer_coverage_years" data-quick-adjust-display-format="coverage-years">{{if eq .EmployerCoverageYears 0}}Medicare{{else}}{{.EmployerCoverageYears}} yrs{{end}}</span>
                 </div>
-                <input type="range" name="employer_coverage_years" value="{{.EmployerCoverageYears}}"
+                <input type="range" id="healthcare-coverage-ends-{{.ID}}" name="employer_coverage_years" value="{{.EmployerCoverageYears}}"
                     min="0" max="20" step="1"
                     data-quick-adjust-key="healthcare:{{.ID}}:employer_coverage_years"
                     class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
@@ -94,10 +95,10 @@
             {{else if ne .CurrentCoverage "medicare"}}
             <div>
                 <div class="flex items-center justify-between gap-2">
-                    <label class="text-xs text-gray-600 dark:text-gray-300">Pre-Medicare Inflation</label>
+                    <label for="healthcare-pre-medicare-inflation-{{.ID}}" class="text-xs text-gray-600 dark:text-gray-300">Pre-Medicare Inflation</label>
                     <span class="text-body-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
                 </div>
-                <input type="range" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
+                <input type="range" id="healthcare-pre-medicare-inflation-{{.ID}}" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
                     min="0" max="15" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
                     class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
@@ -109,20 +110,20 @@
         <div class="grid grid-cols-2 gap-2 text-sm mt-2">
             <div>
                 <div class="flex items-center justify-between gap-2">
-                    <label class="text-xs text-gray-600 dark:text-gray-300">ACA Cost After Employer</label>
+                    <label for="healthcare-aca-cost-{{.ID}}" class="text-xs text-gray-600 dark:text-gray-300">ACA Cost After Employer</label>
                     <span class="text-body-sm text-negative" data-quick-adjust-display="healthcare:{{.ID}}:aca_cost_after_employer" data-quick-adjust-display-format="currency">${{formatNumber .ACACostAfterEmployer}}</span>
                 </div>
-                <input type="range" name="aca_cost_after_employer" value="{{printf "%.0f" .ACACostAfterEmployer}}"
+                <input type="range" id="healthcare-aca-cost-{{.ID}}" name="aca_cost_after_employer" value="{{printf "%.0f" .ACACostAfterEmployer}}"
                     min="0" max="3000" step="50"
                     data-quick-adjust-key="healthcare:{{.ID}}:aca_cost_after_employer"
                     class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
             </div>
             <div>
                 <div class="flex items-center justify-between gap-2">
-                    <label class="text-xs text-gray-600 dark:text-gray-300">ACA Inflation</label>
+                    <label for="healthcare-pre-medicare-inflation-{{.ID}}" class="text-xs text-gray-600 dark:text-gray-300">ACA Inflation</label>
                     <span class="text-body-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
                 </div>
-                <input type="range" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
+                <input type="range" id="healthcare-pre-medicare-inflation-{{.ID}}" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
                     min="0" max="15" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
                     class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
@@ -134,20 +135,20 @@
         <div class="grid grid-cols-2 gap-2 text-sm mt-2">
             <div>
                 <div class="flex items-center justify-between gap-2">
-                    <label class="text-xs text-gray-600 dark:text-gray-300">Medicare Cost (at 65)</label>
+                    <label for="healthcare-medicare-cost-{{.ID}}" class="text-xs text-gray-600 dark:text-gray-300">Medicare Cost (at 65)</label>
                     <span class="text-body-sm text-negative" data-quick-adjust-display="healthcare:{{.ID}}:medicare_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .MedicareMonthlyCost}}</span>
                 </div>
-                <input type="range" name="medicare_monthly_cost" value="{{printf "%.0f" .MedicareMonthlyCost}}"
+                <input type="range" id="healthcare-medicare-cost-{{.ID}}" name="medicare_monthly_cost" value="{{printf "%.0f" .MedicareMonthlyCost}}"
                     min="0" max="2000" step="50"
                     data-quick-adjust-key="healthcare:{{.ID}}:medicare_monthly_cost"
                     class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
             </div>
             <div>
                 <div class="flex items-center justify-between gap-2">
-                    <label class="text-xs text-gray-600 dark:text-gray-300">Post-Medicare Inflation</label>
+                    <label for="healthcare-post-medicare-inflation-{{.ID}}" class="text-xs text-gray-600 dark:text-gray-300">Post-Medicare Inflation</label>
                     <span class="text-body-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
                 </div>
-                <input type="range" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
+                <input type="range" id="healthcare-post-medicare-inflation-{{.ID}}" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
                     min="0" max="10" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:post_medicare_inflation"
                     class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
@@ -157,10 +158,10 @@
         <div class="text-sm mt-2">
             <div>
                 <div class="flex items-center justify-between gap-2">
-                    <label class="text-xs text-gray-600 dark:text-gray-300">Medicare Inflation</label>
+                    <label for="healthcare-post-medicare-inflation-{{.ID}}" class="text-xs text-gray-600 dark:text-gray-300">Medicare Inflation</label>
                     <span class="text-body-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
                 </div>
-                <input type="range" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
+                <input type="range" id="healthcare-post-medicare-inflation-{{.ID}}" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
                     min="0" max="10" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:post_medicare_inflation"
                     class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">

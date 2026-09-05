@@ -1,0 +1,69 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: U15
+ATTEMPT: 1
+---
+Verified in a `cp -a` scratch of the worktree (branch feat/ui-audit, HEAD
+0a795285); behavior spot-check on the isolated `scripts/whatif-verify.sh
+start 8091` (cp -rL data, isolated backups, own /tmp binary, killme
+teardown — live :8080 never touched, confirmed still up at end). Real
+budget2 binary never run directly.
+
+(a) REGRESSION ORACLE — PASS. In scratch:
+    go build ./...      -> exit 0
+    go vet ./...        -> exit 0
+    go test -count=1 ./... -> exit 0 (cache defeated; templates pkg ok in
+       1.0s = 168 RUN funcs, all handler pkgs ok incl dashboard/explorer/
+       insights/majorexpenses/whatif)
+    staticcheck ./...   -> exit 0
+
+(b) NO RENDER-TEST REGRESSION — PASS. `git diff --name-only HEAD | grep
+    _test.go` = NONE: zero test files modified, so no weakened assertions
+    exist. All render tests over the changed templates pass under
+    -count=1 (templates ok, handlers/dashboard ok, /explorer ok,
+    /insights ok, /majorexpenses ok, /whatif ok).
+
+(c) BEHAVIOR PRESERVED — PASS.
+    - Page status (curl on :8091): /transfers /filemanager /whatif
+      /major-expenses /explorer all -> 200.
+    - Explorer sort fires server-side: /explorer/transactions?sort=amount
+      &order=asc vs &order=desc return clearly different row orderings;
+      sort headers are real `<button type=button data-sort-key>` (6, no
+      `<th data-sort-key>`); server-computed aria-sort = "ascending" on
+      the sorted column, "none" on the other 6.
+    - Post-swap rebind PROVEN by executing explorer.js in jsdom against
+      live :8091 responses (not traced): sort1 (amount) fires; container
+      innerHTML fully replaced; NEW description button gets bound=1 on
+      htmx:afterSwap; sort2 (description) fires -> TOTAL SUBMITS 2,
+      "POST-SWAP REBIND: WORKS". FAIL-END VALIDATED: a mutated explorer.js
+      with the afterSwap `wireSortButtons()` removed yields the new button
+      bound=undefined, sort2 no-op, TOTAL SUBMITS 1, "BROKEN" — so the
+      dormant "sort only worked once" fix is load-bearing.
+    - Modals open with content + dialog contract: /dashboard/kpi/networth
+      returns 13KB with role="dialog" aria-modal="true"
+      aria-labelledby="kpi-detail-title" resolving to `<h3
+      id="kpi-detail-title">`; /dashboard/major-expense?name=Groceries
+      returns 45KB with role="dialog" aria-modal="true" aria-labelledby=
+      "major-expense-drilldown-title" resolving to a matching id.
+    - Server stopped cleanly; :8080 still live.
+
+(d) CSS + SCOPE — PASS. `make css-verify` -> exit 0 ("tailwind.css is up
+    to date"). `git diff --name-only HEAD | grep '\.go$'` = NONE: no Go
+    production logic changed, no handler behavior change. Nothing in
+    .swarm/critical.globs touched (diff grep against those globs = NONE).
+    styles.css diff is a single targeted `.dark .qa-tab-active` contrast
+    override reusing the existing gray-900 rgb(17 24 39) — no new hue
+    literal. All 4 changed JS files pass `node --check`.
+
+(e) LITERAL SWEEPS — PASS. `grep -rn 'onclick=' web/templates` = 2 hits,
+    both comment prose ("not an onclick=)", "no onclick=.") — no live
+    attributes. `grep -rnE 'text-\[1[01]px\]' web/templates web/static/css`
+    = NONE.
+
+SCOPE: every changed file is in .swarm/manifests/U15.1.files (comm -23 of
+diff vs manifest = empty); only web/ files + .swarm/ledger.tsv changed.
+1 `<h1>` on all 10 pages/*.html (comment-stripped). Zero `<th>` without
+scope= outside the data-table.html doc comment. Manifest's flagged
+1024px nav-contrast finding is out of U15's named scope — a backlog
+FINDING, not a fail.

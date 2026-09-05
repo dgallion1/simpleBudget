@@ -84,10 +84,10 @@ is needed. */}}
 <div class="space-y-4">
     <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Portfolio Value</label>
+            <label for="qa-portfolio-value" class="text-xs font-medium text-gray-700 dark:text-gray-300">Portfolio Value</label>
             <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="portfolio_value" data-quick-adjust-display-format="currency">${{formatNumber .Settings.PortfolioValue}}</span>
         </div>
-        <select id="quick-adjust-portfolio-range"
+        <select id="quick-adjust-portfolio-range" aria-label="Portfolio value slider range"
             class="w-full rounded-lg border border-gray-900/10 bg-white px-2 py-1.5 text-xs text-gray-700 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-white/10 dark:bg-white/5 dark:text-gray-200"
             onchange="updatePortfolioRange(this.value, { triggerChange: false })">
             <option value="0,10000,1000" {{if le .Settings.PortfolioValue 10000.0}}selected{{end}}>$0-10K</option>
@@ -98,7 +98,7 @@ is needed. */}}
             <option value="0,5000000,50000" {{if and (gt .Settings.PortfolioValue 1000000.0) (le .Settings.PortfolioValue 5000000.0)}}selected{{end}}>$0-5M</option>
             <option value="0,20000000,100000" {{if gt .Settings.PortfolioValue 5000000.0}}selected{{end}}>$0-20M</option>
         </select>
-        <input type="range"
+        <input type="range" id="qa-portfolio-value"
             value="{{printf "%.0f" .Settings.PortfolioValue}}"
             min="0" max="20000000" step="100000"
             data-quick-adjust-key="portfolio_value"
@@ -108,10 +108,10 @@ is needed. */}}
 
     <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Monthly Living Expenses</label>
+            <label for="qa-monthly-living-expenses" class="text-xs font-medium text-gray-700 dark:text-gray-300">Monthly Living Expenses</label>
             <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="monthly_living_expenses" data-quick-adjust-display-format="currency">{{formatDollars .Settings.MonthlyLivingExpenses}}</span>
         </div>
-        <input type="range"
+        <input type="range" id="qa-monthly-living-expenses"
             value="{{printf "%.0f" .Settings.MonthlyLivingExpenses}}"
             aria-valuetext="{{formatDollars .Settings.MonthlyLivingExpenses}}"
             min="0" max="20000" step="100"
@@ -122,10 +122,10 @@ is needed. */}}
 
     <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Projection Years</label>
+            <label for="qa-projection-years" class="text-xs font-medium text-gray-700 dark:text-gray-300">Projection Years</label>
             <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="projection_years" data-quick-adjust-display-format="years">{{.Settings.ProjectionYears}} years</span>
         </div>
-        <input type="range"
+        <input type="range" id="qa-projection-years"
             value="{{.Settings.ProjectionYears}}"
             min="5" max="50" step="1"
             data-quick-adjust-key="projection_years"
@@ -139,10 +139,10 @@ is needed. */}}
 <div class="space-y-4">
     <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Inflation Rate</label>
+            <label for="qa-inflation-rate" class="text-xs font-medium text-gray-700 dark:text-gray-300">Inflation Rate</label>
             <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="inflation_rate" data-quick-adjust-display-format="percent1">{{printf "%.1f" .Settings.InflationRate}}%</span>
         </div>
-        <input type="range"
+        <input type="range" id="qa-inflation-rate"
             value="{{printf "%.1f" .Settings.InflationRate}}"
             min="0" max="10" step="0.1"
             data-quick-adjust-key="inflation_rate"
@@ -153,10 +153,10 @@ is needed. */}}
     {{if not (and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled)}}
     <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Spending Decline</label>
+            <label for="qa-spending-decline" class="text-xs font-medium text-gray-700 dark:text-gray-300">Spending Decline</label>
             <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="spending_decline_rate" data-quick-adjust-display-format="percent1">{{printf "%.1f" .Settings.SpendingDeclineRate}}%</span>
         </div>
-        <input type="range"
+        <input type="range" id="qa-spending-decline"
             value="{{printf "%.1f" .Settings.SpendingDeclineRate}}"
             min="0" max="5" step="0.25"
             data-quick-adjust-key="spending_decline_rate"
@@ -171,10 +171,10 @@ is needed. */}}
 
     <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-700 dark:text-gray-300">Investment Return Override</label>
+            <label for="qa-investment-return" class="text-xs font-medium text-gray-700 dark:text-gray-300">Investment Return Override</label>
             <span class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">0% uses allocation</span>
         </div>
-        <input type="range"
+        <input type="range" id="qa-investment-return"
             value="{{printf "%.1f" .Settings.InvestmentReturn}}"
             min="0" max="15" step="0.5"
             data-quick-adjust-key="investment_return"
@@ -193,10 +193,10 @@ is needed. */}}
 
     <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
-            <label class="text-xs font-medium text-gray-700 dark:text-gray-300" title="Wait N years before touching 401k/IRA. Expenses are covered from income, taxable, and Roth accounts first. RMDs at 73 still apply.">Delay Tax-Deferred Withdrawals</label>
+            <label for="qa-tax-deferred-delay" class="text-xs font-medium text-gray-700 dark:text-gray-300" title="Wait N years before touching 401k/IRA. Expenses are covered from income, taxable, and Roth accounts first. RMDs at 73 still apply.">Delay Tax-Deferred Withdrawals</label>
             <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="tax_deferred_delay_years" data-quick-adjust-display-format="delay-years">{{if eq .Settings.TaxDeferredDelayYears 0}}No delay{{else}}{{.Settings.TaxDeferredDelayYears}} years{{end}}</span>
         </div>
-        <input type="range"
+        <input type="range" id="qa-tax-deferred-delay"
             value="{{.Settings.TaxDeferredDelayYears}}"
             min="0" max="30" step="1"
             data-quick-adjust-key="tax_deferred_delay_years"
@@ -221,6 +221,7 @@ is needed. */}}
             <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-percent">{{printf "%.0f" (mul $phase.Multiplier 100)}}%</span>
         </div>
         <input type="range"
+            aria-label="{{$phase.Name}} spending multiplier"
             value="{{printf "%.2f" $phase.Multiplier}}"
             min="0.30" max="1.20" step="0.05"
             data-quick-adjust-key="phase:{{$i}}:multiplier"
@@ -250,6 +251,7 @@ is needed. */}}
                 <p class="text-body-sm text-gray-600 dark:text-gray-400">Age {{.CurrentAge}}</p>
             </div>
             <select
+                aria-label="{{.Name}} current health coverage"
                 data-quick-adjust-key="healthcare:{{.ID}}:current_coverage"
                 data-quick-adjust-mirror="true"
                 class="rounded-lg border border-gray-900/10 bg-white px-2 py-1 text-xs text-gray-700 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-white/10 dark:bg-white/5 dark:text-gray-100">
@@ -262,10 +264,10 @@ is needed. */}}
         <div class="space-y-3">
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-label font-medium text-gray-700 dark:text-gray-300">Monthly Cost</label>
+                    <label for="qa-healthcare-monthly-cost-{{.ID}}" class="text-label font-medium text-gray-700 dark:text-gray-300">Monthly Cost</label>
                     <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:current_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .CurrentMonthlyCost}}</span>
                 </div>
-                <input type="range"
+                <input type="range" id="qa-healthcare-monthly-cost-{{.ID}}"
                     value="{{printf "%.0f" .CurrentMonthlyCost}}"
                     min="0" max="3000" step="50"
                     data-quick-adjust-key="healthcare:{{.ID}}:current_monthly_cost"
@@ -276,10 +278,10 @@ is needed. */}}
             {{if eq .CurrentCoverage "employer"}}
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-label font-medium text-gray-700 dark:text-gray-300">Coverage Ends In</label>
+                    <label for="qa-healthcare-coverage-ends-{{.ID}}" class="text-label font-medium text-gray-700 dark:text-gray-300">Coverage Ends In</label>
                     <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:employer_coverage_years" data-quick-adjust-display-format="coverage-years">{{if eq .EmployerCoverageYears 0}}Medicare{{else}}{{.EmployerCoverageYears}} yrs{{end}}</span>
                 </div>
-                <input type="range"
+                <input type="range" id="qa-healthcare-coverage-ends-{{.ID}}"
                     value="{{.EmployerCoverageYears}}"
                     min="0" max="20" step="1"
                     data-quick-adjust-key="healthcare:{{.ID}}:employer_coverage_years"
@@ -290,10 +292,10 @@ is needed. */}}
             {{if gt .EmployerCoverageYears 0}}
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-label font-medium text-gray-700 dark:text-gray-300">ACA Cost After Employer</label>
+                    <label for="qa-healthcare-aca-cost-{{.ID}}" class="text-label font-medium text-gray-700 dark:text-gray-300">ACA Cost After Employer</label>
                     <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:aca_cost_after_employer" data-quick-adjust-display-format="currency">${{formatNumber .ACACostAfterEmployer}}</span>
                 </div>
-                <input type="range"
+                <input type="range" id="qa-healthcare-aca-cost-{{.ID}}"
                     value="{{printf "%.0f" .ACACostAfterEmployer}}"
                     min="0" max="3000" step="50"
                     data-quick-adjust-key="healthcare:{{.ID}}:aca_cost_after_employer"
@@ -303,10 +305,10 @@ is needed. */}}
 
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-label font-medium text-gray-700 dark:text-gray-300">ACA Inflation</label>
+                    <label for="qa-healthcare-pre-medicare-inflation-{{.ID}}" class="text-label font-medium text-gray-700 dark:text-gray-300">ACA Inflation</label>
                     <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
                 </div>
-                <input type="range"
+                <input type="range" id="qa-healthcare-pre-medicare-inflation-{{.ID}}"
                     value="{{printf "%.1f" .PreMedicareInflation}}"
                     min="0" max="15" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
@@ -317,10 +319,10 @@ is needed. */}}
             {{else if ne .CurrentCoverage "medicare"}}
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-label font-medium text-gray-700 dark:text-gray-300">Pre-Medicare Inflation</label>
+                    <label for="qa-healthcare-pre-medicare-inflation-{{.ID}}" class="text-label font-medium text-gray-700 dark:text-gray-300">Pre-Medicare Inflation</label>
                     <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
                 </div>
-                <input type="range"
+                <input type="range" id="qa-healthcare-pre-medicare-inflation-{{.ID}}"
                     value="{{printf "%.1f" .PreMedicareInflation}}"
                     min="0" max="15" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
@@ -332,10 +334,10 @@ is needed. */}}
             {{if ne .CurrentCoverage "medicare"}}
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-label font-medium text-gray-700 dark:text-gray-300">Medicare Cost</label>
+                    <label for="qa-healthcare-medicare-cost-{{.ID}}" class="text-label font-medium text-gray-700 dark:text-gray-300">Medicare Cost</label>
                     <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:medicare_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .MedicareMonthlyCost}}</span>
                 </div>
-                <input type="range"
+                <input type="range" id="qa-healthcare-medicare-cost-{{.ID}}"
                     value="{{printf "%.0f" .MedicareMonthlyCost}}"
                     min="0" max="2000" step="50"
                     data-quick-adjust-key="healthcare:{{.ID}}:medicare_monthly_cost"
@@ -346,10 +348,10 @@ is needed. */}}
 
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-label font-medium text-gray-700 dark:text-gray-300">{{if eq .CurrentCoverage "medicare"}}Medicare Inflation{{else}}Post-Medicare Inflation{{end}}</label>
+                    <label for="qa-healthcare-post-medicare-inflation-{{.ID}}" class="text-label font-medium text-gray-700 dark:text-gray-300">{{if eq .CurrentCoverage "medicare"}}Medicare Inflation{{else}}Post-Medicare Inflation{{end}}</label>
                     <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
                 </div>
-                <input type="range"
+                <input type="range" id="qa-healthcare-post-medicare-inflation-{{.ID}}"
                     value="{{printf "%.1f" .PostMedicareInflation}}"
                     min="0" max="10" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:post_medicare_inflation"

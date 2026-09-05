@@ -52,34 +52,34 @@
         <table class="w-full text-sm">
             <thead>
                 <tr class="border-b dark:border-gray-600">
-                    <th class="text-left py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
+                    <th scope="col" class="text-left py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "Strategy" "Tip" "Roth conversion strategy: which marginal tax bracket to fill with conversions, and over which ages." "Align" "left")}}
                     </th>
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "SS (P/S)" "Tip" "Social Security claim ages — Primary / Spouse. Single-filer scenarios show only the primary age." "Align" "right")}}
                     </th>
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "End Portfolio" "Tip" "Deterministic projection ending balance in today's dollars (real, inflation-adjusted). Uses your expected return — no randomness." "Align" "right")}}
                     </th>
                     {{if gt $to.MonteCarloRuns 0}}
-                    <th class="text-right py-2 px-2 text-accent font-semibold">
+                    <th scope="col" class="text-right py-2 px-2 text-accent font-semibold">
                         {{template "taxopt-th-tooltip" (dict "Label" "MC Median ▼" "Tip" (printf "Monte Carlo median ending balance in today's dollars across %d random return paths. THIS is the ranking metric — strategies are sorted by this column." $to.MonteCarloRuns) "Align" "right" "Accent" "indigo")}}
                     </th>
                     {{end}}
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "Lifetime Tax" "Tip" "Total federal + state + NIIT taxes paid over the full projection, in today's dollars. IRMAA is reported separately as a cost and not included here." "Align" "right")}}
                     </th>
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "Peak Rate" "Tip" "Highest per-year effective marginal rate this candidate reaches over the projection. It is measured, not looked up in a bracket table, so capital-gain stacking and the Social Security taxability phase-in can push it above every statutory bracket. Reporting only — not part of the ranking metric." "Align" "right")}}
                     </th>
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "Roth Conv" "Tip" "Total dollars this candidate actually converted to Roth over the projection, in nominal (not inflation-adjusted) dollars, unlike the real-dollar columns. Reflects what the engine realized, not what was planned. Renders as \"—\" when the candidate never converted." "Align" "right")}}
                     </th>
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "Δ vs Baseline" "Tip" "Change in deterministic End Portfolio vs your current saved scenario. Green = improvement, amber = regression." "Align" "right")}}
                     </th>
                     {{if gt $to.MonteCarloRuns 0}}
-                    <th class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
+                    <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
                         {{template "taxopt-th-tooltip" (dict "Label" "MC Surv%" "Tip" (printf "Monte Carlo survival rate: percent of %d random return paths in which the portfolio lasted the full projection. Not the ranking metric — strategies are ranked by MC Median, not survival." $to.MonteCarloRuns) "Align" "right")}}
                     </th>
                     {{end}}
@@ -125,8 +125,8 @@
                                 <table class="text-body-sm">
                                     <thead>
                                         <tr>
-                                            <th class="text-left pr-4 font-medium">Age</th>
-                                            <th class="text-right font-medium">Conversion</th>
+                                            <th scope="col" class="text-left pr-4 font-medium">Age</th>
+                                            <th scope="col" class="text-right font-medium">Conversion</th>
                                         </tr>
                                     </thead>
                                     <tbody>

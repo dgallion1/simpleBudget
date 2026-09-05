@@ -220,14 +220,24 @@ input:focus, select:focus {
 }
 
 /* Quick Adjust tab strip — active pill.
-   quick-adjust-scripts.html toggles .qa-tab-active; the buttons carry
-   Tailwind text-color utilities. Same source-order reasoning as
-   .wf-tab-active above — no specificity override needed. Same white pill in both
+   quick-adjust-scripts.html toggles .qa-tab-active; the buttons also carry
+   the Tailwind `dark:text-gray-300` utility for their INACTIVE state. That
+   utility compiles to `.dark .dark\:text-gray-300`, a two-class selector
+   (specificity 0,2,0) that OUTRANKS the single-class `.qa-tab-active`
+   (0,1,0) in dark mode regardless of source order, so the active pill's
+   dark gray-900 text lost to gray-300-on-white — 1.5:1, an axe
+   color-contrast failure (U15). `.wf-tab-active` below already solves this
+   the same way: give the dark-mode override its own `.dark .qa-tab-active`
+   rule so its specificity (0,2,0) ties the utility and source order (this
+   rule comes later in the stylesheet) decides. Same white pill in both
    themes. */
 .qa-tab-active {
     background-color: #fff;
     color: rgb(17 24 39);   /* gray-900 */
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.10);
+}
+.dark .qa-tab-active {
+    color: rgb(17 24 39);   /* gray-900 — same pill, same dark text, both themes */
 }
 
 /* Tabular monospace numerals for aligned financial figures */

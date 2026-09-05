@@ -1,0 +1,60 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: U15
+ATTEMPT: 2
+---
+Re-verification of U15 attempt 2 (Tier 2, lane anthropic, PRIMARY) in a `cp -a`
+scratch of worktree ui-audit @ 0a795285 (branch feat/ui-audit). Delta this
+attempt (per U15.2.files): 3 whatif templates + explorer.html + tailwind.css +
+probe. No Go change this attempt (git status shows zero `.go` files modified
+anywhere in the tree).
+
+(a) BUILD/VET/TEST/STATICCHECK — PASS.
+  Cmd: `go build ./... && go vet ./... && go test -count=1 ./... && staticcheck ./...`
+  in scratch → exit 0. Log: "BUILD_OK", "Go vet: No issues found", "Go test:
+  5194 passed in 49 packages", "TEST_OK", "STATICCHECK_OK". Cache defeated with
+  -count=1.
+
+(b) NO TEST FILE CHANGE + RENDER TESTS PASS — PASS.
+  `git status --short | grep '_test.go'` → "NO _test.go modified".
+  `go test -count=1 ./internal/handlers/whatif/ ./internal/templates/` →
+  "ok budget2/internal/handlers/whatif 11.847s", "ok budget2/internal/templates".
+  tax_summary_render_test.go renders "whatif-tax-summary" (parses tax-summary.html)
+  and asserts content; passes with the added tabindex/role/aria-label.
+  MUTATION PROOF: injected invalid `{{ .NonexistentBrokenAction` into
+  projection-breakdown.html → whatif render test FAILs ("template parsing failed
+  with 1 error(s)"); injected break into explorer.html → cmd/server template-
+  validation test FAILs ("template validation failed: template parsing failed").
+  Both restored. So the render/parse tests genuinely guard the 3 whatif
+  components and explorer.html; the additive attributes/classes do not break them.
+
+(c) CSS-VERIFY + SCOPE — PASS.
+  `make css-verify` in scratch → "tailwind.css is up to date", exit 0. New
+  utility classes present in built css: escaped `min-w-\[24px\]`, `min-h-\[24px\]`,
+  `ring-accent` all found in web/static/css/tailwind.css. No Go production change
+  (zero `.go` in git status). Nothing in .swarm/critical.globs touched (all
+  entries are internal/services/**; git status shows NONE). All working-tree
+  modifications fall within U15.1 ∪ U15.2 ∪ {.swarm ledger/spec}; no stray file.
+  LIMITATION: the tree is a cumulative uncommitted U15 diff (attempt 1 + 2); with
+  no attempt-1 snapshot I cannot mechanically isolate the attempt-2-only delta —
+  I rely on the manifest's declared 5-file scope, which is consistent with the
+  observed changes and with nothing outside U15's overall scope being modified.
+
+(d) ATTEMPT-1 INVARIANTS INTACT — PASS.
+  onclick: `grep -rn onclick web/templates` → 3 hits, ALL in comments referencing
+  its absence (transfers.html:18, range-picker.html:17, kpi-tile.html:34); none
+  in the working-tree diff — no real onclick attribute exists.
+  `grep -rn 'text-\[1[01]px\]' web/templates` → 0.
+  Hue literals: `git diff HEAD -- web/templates web/static/css | grep '^+' |
+  grep -E '(bg|text|ring|border|fill|stroke)-\[#?hex\]|rgb\(|hsl\('` → none added.
+  Explorer sort headers: still `<button type="button" data-sort-key=...>` inside
+  `<th scope="col">` at explorer.html:151/165/179/193/207/221/235.
+  Scroll-region fixes present: projection-breakdown.html:12, historical-
+  backtest.html:84, tax-summary.html:42 each carry
+  `tabindex="0" role="region" aria-label="..."`.
+
+VERDICT: PASS. All four criteria met with cited command output. FINDING (backlog,
+not a FAIL): per-attempt scope on a shared cumulative worktree is not mechanically
+isolable without an attempt snapshot — future attempts would benefit from a
+committed or snapshotted per-attempt baseline.

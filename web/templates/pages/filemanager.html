@@ -105,14 +105,16 @@
 
     {{if and .IsEncrypted (not .IsLocked)}}
     <!-- Break-glass plaintext export modal -->
-    <div id="plaintext-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+    <div id="plaintext-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+        data-modal-backdrop data-modal-close="closePlaintextExportModal">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6"
+            data-modal-panel role="dialog" aria-modal="true" aria-labelledby="plaintext-modal-title">
             <div class="flex items-start gap-3 mb-3">
                 <svg class="w-6 h-6 text-negative flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
                 </svg>
                 <div>
-                    <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Plaintext Export</h3>
+                    <h3 id="plaintext-modal-title" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Plaintext Export</h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Break-glass: decrypt all data to a zip</p>
                 </div>
             </div>
@@ -124,7 +126,7 @@
             <form id="plaintext-form" class="space-y-3">
                 {{if eq .AuthMethod "password"}}
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label for="plaintext-password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Re-enter your encryption password
                     </label>
                     <input type="password" name="password" id="plaintext-password" required autocomplete="current-password"
@@ -132,7 +134,7 @@
                 </div>
                 {{else}}
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label for="plaintext-confirm" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         Type <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded font-mono text-xs">EXPORT</code> to confirm
                     </label>
                     <input type="text" name="confirm" id="plaintext-confirm" required autocomplete="off" spellcheck="false"
@@ -403,8 +405,8 @@
                         </label>
                     </div>
                     <div id="age-path-input" class="hidden">
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Identity File Path</label>
-                        <input type="text" name="identity_path" placeholder="~/.config/age/keys.txt"
+                        <label for="age-identity-path" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Identity File Path</label>
+                        <input type="text" id="age-identity-path" name="identity_path" placeholder="~/.config/age/keys.txt"
                             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent focus:border-transparent">
                     </div>
                     <div class="bg-accent-soft border border-accent rounded-lg p-3">

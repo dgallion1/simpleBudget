@@ -81,15 +81,15 @@
         <summary class="cursor-pointer text-sm font-medium text-accent hover:text-accent">
             View All {{len .Analysis.HistoricalBacktest.Results}} Sequences
         </summary>
-        <div class="mt-2 max-h-64 overflow-y-auto">
+        <div class="mt-2 max-h-64 overflow-y-auto" tabindex="0" role="region" aria-label="Historical backtest sequences">
             <table class="min-w-full text-body-sm">
                 <thead class="sticky top-0 bg-gray-50 dark:bg-gray-700">
                     <tr>
-                        <th class="px-2 py-1 text-left text-gray-600 dark:text-gray-300">Start</th>
-                        <th class="px-2 py-1 text-left text-gray-600 dark:text-gray-300">Result</th>
-                        <th class="px-2 py-1 text-right text-gray-600 dark:text-gray-300">Final (Nominal)</th>
-                        <th class="px-2 py-1 text-right text-gray-600 dark:text-gray-300">Final (Real)</th>
-                        <th class="px-2 py-1 text-right text-gray-600 dark:text-gray-300">Max Drawdown</th>
+                        <th scope="col" class="px-2 py-1 text-left text-gray-600 dark:text-gray-300">Start</th>
+                        <th scope="col" class="px-2 py-1 text-left text-gray-600 dark:text-gray-300">Result</th>
+                        <th scope="col" class="px-2 py-1 text-right text-gray-600 dark:text-gray-300">Final (Nominal)</th>
+                        <th scope="col" class="px-2 py-1 text-right text-gray-600 dark:text-gray-300">Final (Real)</th>
+                        <th scope="col" class="px-2 py-1 text-right text-gray-600 dark:text-gray-300">Max Drawdown</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-600">

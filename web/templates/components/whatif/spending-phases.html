@@ -138,17 +138,17 @@
                 <thead>
                     <tr class="text-gray-600 dark:text-gray-400">
                         {{if gt .Settings.SpouseAge 0}}
-                        <th class="text-left py-1">You</th>
-                        <th class="text-left py-1">Spouse</th>
+                        <th scope="col" class="text-left py-1">You</th>
+                        <th scope="col" class="text-left py-1">Spouse</th>
                         {{else}}
-                        <th class="text-left py-1">Age</th>
+                        <th scope="col" class="text-left py-1">Age</th>
                         {{end}}
-                        <th class="text-left py-1">Phase</th>
-                        <th class="text-right py-1" title="Average monthly expenses in the projection">Spend</th>
-                        <th class="text-right py-1" title="Average monthly income in the projection">Income</th>
-                        <th class="text-right py-1" title="Actual monthly portfolio withdrawal in the projection (covers the spending gap, taxes, and any forced RMD)">Draw</th>
-                        <th class="text-right py-1" title="Forced minimum distribution actually taken in the projection">RMD</th>
-                        <th class="text-right py-1" title="Withdrawal Rate: the year's portfolio draw as % of its starting balance">WR%</th>
+                        <th scope="col" class="text-left py-1">Phase</th>
+                        <th scope="col" class="text-right py-1" title="Average monthly expenses in the projection">Spend</th>
+                        <th scope="col" class="text-right py-1" title="Average monthly income in the projection">Income</th>
+                        <th scope="col" class="text-right py-1" title="Actual monthly portfolio withdrawal in the projection (covers the spending gap, taxes, and any forced RMD)">Draw</th>
+                        <th scope="col" class="text-right py-1" title="Forced minimum distribution actually taken in the projection">RMD</th>
+                        <th scope="col" class="text-right py-1" title="Withdrawal Rate: the year's portfolio draw as % of its starting balance">WR%</th>
                     </tr>
                 </thead>
                 <tbody id="phase-preview-body" class="text-gray-700 dark:text-gray-200">

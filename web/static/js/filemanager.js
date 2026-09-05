@@ -400,14 +400,19 @@ function openPlaintextExportModal() {
     var m = document.getElementById('plaintext-modal');
     if (!m) return;
     m.classList.remove('hidden');
-    var first = m.querySelector('input');
-    if (first) { first.value = ''; first.focus(); }
+    m.querySelectorAll('input').forEach(function(i) { i.value = ''; });
     var err = document.getElementById('plaintext-error');
     if (err) { err.textContent = ''; err.classList.add('hidden'); }
+    // U15: ModalA11y.open() moves focus to the first focusable control in
+    // the panel (the password/confirm input, same element the old direct
+    // first.focus() call targeted), traps Tab, and remembers the button
+    // that opened this so closePlaintextExportModal() can restore it.
+    if (window.ModalA11y) window.ModalA11y.open(m);
 }
 function closePlaintextExportModal() {
     var m = document.getElementById('plaintext-modal');
     if (!m) return;
+    if (window.ModalA11y) window.ModalA11y.close(m);
     m.classList.add('hidden');
     m.querySelectorAll('input').forEach(function(i) { i.value = ''; });
     var err = document.getElementById('plaintext-error');

@@ -1,0 +1,242 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U15
+ATTEMPT: 1
+---
+Scope: budget2 worktree .claude/worktrees/ui-audit, branch feat/ui-audit, HEAD
+0a79528. Verified against .swarm/U-RUN-SPEC.md §2i / task table row U15, and
+budget2 ACCESSIBILITY.md (17 points incl. the modal contract, point 17).
+Server: scripts/whatif-verify.sh start/stop 8092 (isolated cp -rL copy;
+GET-only; stopped cleanly at end, /api/health confirms teardown). Tools:
+Playwright 1.63.0 + axe-core 4.10.2 installed to a scratch npm project;
+none of this touched the live :8080 instance or /data.
+
+============================================================
+(a) onclick sweep — PASS
+============================================================
+grep -rE '<(div|span|tr)[^>]*onclick' web/templates -> 0 hits.
+grep -rn 'onclick=' web/templates -> only 2 hits, both inside {{/* */}}
+template-comment blocks (transfers.html:18, kpi-tile.html:34, range-picker
+.html:17 — 3 comment mentions total, all prose, none live). Confirmed by
+reading surrounding context; no live onclick attribute anywhere.
+
+============================================================
+(b) Four modal dialogs — PASS (all four, independently re-probed)
+============================================================
+Ran the worker's own dashboard_modal_contract_probe.js unmodified against
+my own :8092 instance:
+  DASHBOARD MODAL CONTRACT PROBE PASS
+covering kpi-detail, kpi-month-detail (drill-in from kpi-detail), and
+major-expense-drilldown (opened via openMajorExpenseDrilldown('Groceries')):
+role="dialog", aria-modal="true", aria-labelledby resolving to visible
+text, focus moved in on open, Tab last->first wrap and Shift+Tab
+first->last wrap, Esc closes, focus restored to the invoking control.
+
+Plaintext-export (File Manager) modal: the throwaway fixture had been
+deleted per the manifest's own account, so I regenerated it independently
+— rsync'd the worktree (excluding data/.git) to a scratch copy, wrote my
+own throwaway Go test (TestZZU15DumpEncryptedFileManagerPage, package
+explorer) that calls storage.New + store.EnableEncryption on an isolated
+t.TempDir() (no server, no network, real handler/templates via httptest),
+dumped the real HandleFileManagerPage output, served it via
+`python3 -m http.server` with only a symlink to web/static alongside it
+(never touching the actual worktree). Ran the worker's
+plaintext_modal_probe.js unmodified against my fixture:
+  ok light: axe clean with modal open
+  ok dark: axe clean with modal open
+  PLAINTEXT MODAL PROBE PASS
+All four modals independently confirmed to meet ACCESSIBILITY.md point 17
+in full (role, aria-modal, name, focus in/restore, Tab trap both
+directions, Esc). The scratch copy and throwaway test were discarded;
+nothing was written to the project tree.
+
+============================================================
+(c) One <h1> per page, landmarks — PASS
+============================================================
+Independently scripted (not reusing the worker's probe) across all 9
+routes (dashboard, explorer, whatif, insights, major-expenses, duplicates,
+filemanager, accounts, transfers): exactly one <h1> on every page, no
+heading-level skips, <main> and <nav> present on every page, <header>
+present. (Explorer has no <footer> — unrelated to point 1, which only
+requires main/nav/header, and unchanged from master.)
+
+============================================================
+(e) <th scope="col"> + Explorer sort buttons — PASS
+============================================================
+grep -rnE '<th[ >]' web/templates | grep -v scope= -> 0 live hits (2
+doc-comment mentions in shared/data-table.html only). Explorer: all 7
+<th data-sort-key> converted to <th scope="col" aria-sort="...">
+wrapping a real <button data-sort-key>. Independently verified with my
+own script (not the worker's):
+  - Pure keyboard Tab traversal from page top reaches the "date" sort
+    button (32 Tab presses) — genuinely keyboard-reachable, not just
+    programmatically focusable.
+  - focus() + Enter on the Amount button sorts ascending and sets
+    aria-sort="ascending" on its <th>.
+  - A SECOND sort (mouse click, Description) after the first HTMX swap
+    correctly sorts and resets Amount's aria-sort back to "none" —
+    confirms the dead-after-first-sort bug is fixed and wireSortButtons()
+    correctly rebinds via htmx:afterSwap on #transactions-container.
+  - A THIRD sort (keyboard, Date) after the second swap also works —
+    rebinding survives multiple successive swaps, not just one.
+  - All 7 explorer <th> report scope="col".
+
+============================================================
+(d) Sitewide axe, zero violations, both themes — FAIL
+============================================================
+Ran the worker's own axe_probe.js unmodified against my :8092 instance:
+zero violations reported, all 9 pages, both themes, including the two
+dashboard-modal passes. On its own terms this looked clean.
+
+However, per the checker mandate to do my OWN live render/probe rather
+than trust the worker's harness, I built an independent reveal strategy
+and cross-checked specific real (non-hacked) user interactions the
+worker's reveal script does not exercise. This surfaced THREE real,
+axe-confirmed violations, all within the worker's own declared ruleset
+(wcag2a/2aa/21aa/22aa) and all reachable via completely ordinary user
+actions at the standard 1440px viewport — no CSS overrides needed for the
+final confirmation runs:
+
+1. /whatif — 3 of 5 results tabs (Cash Flow, Risk, Taxes & RMD) each
+   contain a `scrollable-region-focusable` violation (serious, WCAG 2.1.1,
+   tag wcag2a), both light and dark. Reached by simply clicking the
+   visible tab buttons ([data-wf-tab="cashflow"|"risk"|"taxes"]) — no
+   disclosure hack. Confirmed structurally: e.g. the Cash Flow
+   projection-breakdown table reports scrollHeight=2416 vs
+   clientHeight=384, tabindex=null — genuinely non-scrollable by keyboard.
+   Root cause: axe_probe.js's reveal step only opens <details>,
+   [data-wf-collapse-body], [aria-expanded="false"], and
+   [data-quick-adjust-tab-panel] — it never clicks the top-level
+   [data-wf-tab] results tabs, so 4 of 5 tab panels on /whatif (Cash Flow,
+   Risk, Taxes & RMD, Strategies) were never shown to axe in the worker's
+   own sitewide run. This is the SAME false-negative failure class the
+   worker explicitly diagnosed and fixed for Quick Adjust in this very
+   task, recurring in a second, larger, un-enumerated surface.
+   git diff master: the scrollable-container markup (`overflow-x-auto` /
+   `max-h-96 overflow-y-auto`, no tabindex) is byte-identical to master in
+   tax-summary.html and projection-breakdown.html — pre-existing, not
+   introduced by this diff. Noted for provenance, but U15's sole
+   acceptance criterion (d) is exactly "axe zero violations sitewide,
+   both themes" — this is a final, sitewide sweep task, not an
+   incidental-touch task, so a real, axe-confirmed, ordinarily-reachable
+   violation on one of the 9 named pages is in scope regardless of when
+   the underlying markup was written.
+
+2. /explorer — `target-size` (serious, WCAG 2.5.8, wcag22aa) on
+   #clear-search-btn: 16x16px, only 16px of clear space to its neighbor
+   (input), both under the 24x24 minimum. Reached by simply typing one
+   character into the search box (the button is `hidden` until
+   `.Search`/input has a value) — again a plain user action the worker's
+   probe never performs. git diff master: this button's classes/icon size
+   are byte-identical to master — pre-existing, but same in-scope
+   reasoning as above.
+
+3. /whatif — Healthcare Costs card's "+ Add Person" form (5 fields:
+   person select, name, age, coverage select, monthly cost): dark mode
+   `color-contrast` (serious) 2.77:1 vs required 4.5:1 (#000000 on
+   #4b5563). Reached via a REAL click on the visible
+   `[data-toggle-add-healthcare]` "+ Add Person" button (confirmed
+   `add-healthcare-form` becomes visible, not a CSS hack). Root cause:
+   this toggle button carries no `aria-expanded` attribute at all (unlike
+   the settings-rail disclosures the probe does handle), so axe_probe.js's
+   reveal selectors never open it. This task's own diff DID touch these
+   exact lines (adding label/id associations, ruling d's own stated goal)
+   but did not add a dark-mode text color to the inputs the way every
+   sibling "Add X" form in the same file set does (income-sources-list.html
+   and expense-sources-list.html's Add forms explicitly carry
+   `dark:bg-gray-700 dark:text-gray-100`; this one carries `dark:bg-gray-600`
+   with no `dark:text-*` at all) — an isolated omission, not a systemic
+   one (checked: only healthcare-card.html uses the
+   `data-toggle-add-*`-without-aria-expanded pattern).
+
+All three were independently re-verified via real click-paths (not my
+brute-force probe) before being counted, to rule out reveal-script
+artifacts; two candidate findings from the brute-force pass (#file-input
+label/contrast, #restore-file-input contrast) were investigated and
+DISCARDED as false positives — both are `class="hidden"` native file
+inputs that are NEVER meant to be visible under any real code path
+(always programmatically `.click()`-triggered by a separate, properly
+labelled visible button); forcing them visible via a global CSS override
+is not a real user-reachable state and axe's findings there don't apply.
+
+The manifest's verification section states "0 violations, all 9 pages,
+both themes" for the sitewide axe pass. That claim is not accurate: real,
+axe-confirmed, ordinarily-reachable violations exist on /whatif (x2
+distinct causes) and /explorer, all inside the worker's own declared
+ruleset, none requiring anything beyond a normal tab click, a keystroke
+in a search box, or a normal disclosure click.
+
+Nav-contrast backlog item (manifest's own disclosure): independently
+re-confirmed at four widths (390/1024/1280/1440) — the /filemanager
+"Setup" nav-group color-contrast finding reproduces ONLY at 1024px and is
+absent at 390, 1280, and 1440. This is correctly out of scope for U15 (not
+one of its named surfaces, and outside the 1440/390 standard viewports) —
+treated as a backlog OBSERVATION, not a FAIL, per the task instructions.
+
+============================================================
+(f) Build/test/css — PASS
+============================================================
+go build ./... && go vet ./... -> clean.
+go test -count=1 ./... -> all 47 packages ok, 0 FAILs.
+staticcheck ./... -> clean, exit 0.
+make css-verify -> "tailwind.css is up to date".
+grep -r 'text-\[1[01]px\]' web/templates -> 0.
+No new hue-literal Tailwind classes in any rendered template diff (the one
+`amber-50` hit in the master-diff is inside a {{/* */}} doc comment in
+accounts.html, not a live class). styles.css: 0 `!important` (U7's bar,
+preserved); the new `.dark .qa-tab-active` rule matches the existing
+`.wf-tab-active` specificity-tie pattern and was independently confirmed
+fixed (Quick Adjust panel axe-clean in both themes when actually forced
+open by either probe).
+
+============================================================
+Summary of the four modals' contract
+============================================================
+kpi-detail: PASS. kpi-month-detail: PASS. major-expense-drilldown: PASS.
+File Manager plaintext-export modal: PASS (via independently regenerated
+fixture). All four meet ACCESSIBILITY.md point 17 in full.
+
+============================================================
+Explorer sort keyboard + post-swap result
+============================================================
+PASS: real <button>s in <th scope="col">, pure-Tab keyboard-reachable,
+Enter activates, and a SECOND (and third) sort after successive HTMX
+swaps correctly re-sorts and resets sibling aria-sort — the dead-listener
+bug is genuinely fixed, verified independently.
+
+============================================================
+Sitewide axe result
+============================================================
+FAIL. The worker's own probe (which I also ran unmodified and got a clean
+result from) has an incomplete reveal set: it never opens the /whatif
+results-tab workspace ([data-wf-tab]/[data-wf-panel], 4 of 5 tabs), never
+types into a search box, and never clicks a toggle lacking
+aria-expanded. Exercising those three ordinary, real interaction paths
+turns up 3 distinct, axe-confirmed violations (all in the wcag2a/2aa/22aa
+ruleset the worker itself scoped to) on 2 of the 9 pages named in
+criterion (d). The underlying markup for all three predates this task
+(git diff master is byte-identical for the failing classes/structure),
+but U15's acceptance criterion (d) is explicitly "axe zero violations
+sitewide, both themes" as the FINAL a11y sweep for this whole run — that
+is this task's entire reason for existing, not an incidental side-effect
+of unrelated work, so a real violation surviving it is a FAIL of this
+task's own stated deliverable, reported with full provenance above.
+
+============================================================
+OBSERVATIONS (non-blocking, for the backlog)
+============================================================
+- /filemanager "Setup" nav-group color-contrast: reproduces ONLY at
+  ~1024px (nav wraps); absent at 390/1280/1440. Confirmed independently.
+  Correctly flagged by the worker as backlog, not a U15 defect.
+- The `axe_probe.js` reveal-selector gap (no [data-wf-tab] handling, no
+  search-box-typing simulation, no generic "click every disclosure that
+  lacks aria-expanded" fallback) is itself worth promoting to a permanent
+  fixture of the sitewide oracle for future runs, not just a one-off
+  fix for Quick Adjust — the same blind spot class recurred twice in this
+  task alone.
+- healthcare-card.html's "+ Add Person" form is the ONLY
+  `data-toggle-add-*`-without-`aria-expanded` disclosure in the app;
+  giving it `aria-expanded` (matching the settings-rail convention
+  elsewhere) would both fix the semantic gap and make it visible to the
+  existing reveal script's `[aria-expanded="false"]` selector.

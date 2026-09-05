@@ -153,10 +153,10 @@
     <table class="w-full text-body-sm mt-1">
         <thead class="text-gray-600 dark:text-gray-400">
             <tr>
-                <th class="text-left px-2 py-1">Name</th>
-                <th class="text-left px-2 py-1">Deleted</th>
-                <th class="text-right px-2 py-1">Pins</th>
-                <th class="text-left px-2 py-1">Actions</th>
+                <th scope="col" class="text-left px-2 py-1">Name</th>
+                <th scope="col" class="text-left px-2 py-1">Deleted</th>
+                <th scope="col" class="text-right px-2 py-1">Pins</th>
+                <th scope="col" class="text-left px-2 py-1">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -197,14 +197,14 @@
 <table id="major-expenses-list" class="w-full text-sm major-expenses-sortable" data-sort-groups="tbody">
     <thead class="text-xs text-gray-600 dark:text-gray-400">
         <tr>
-            <th class="w-6"></th>
-            <th class="text-left py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="name" data-sort-type="text" aria-sort="ascending">
+            <th scope="col" class="w-6"></th>
+            <th scope="col" class="text-left py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="name" data-sort-type="text" aria-sort="ascending">
                 <span class="inline-flex items-center gap-1">Name <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block">▲</span></span>
             </th>
-            <th class="text-right py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="matched" data-sort-type="number" aria-sort="none">
+            <th scope="col" class="text-right py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="matched" data-sort-type="number" aria-sort="none">
                 <span class="inline-flex items-center justify-end gap-1">Matched <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block"></span></span>
             </th>
-            <th class="text-right py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="total" data-sort-type="number" aria-sort="none">
+            <th scope="col" class="text-right py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="total" data-sort-type="number" aria-sort="none">
                 <span class="inline-flex items-center justify-end gap-1">Total <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block"></span></span>
             </th>
         </tr>
@@ -306,7 +306,7 @@
                 </p>
                 <table class="w-full">
                     <thead class="text-gray-500 dark:text-gray-400">
-                        <tr><th class="text-left py-0.5 px-2">Date</th><th class="text-left py-0.5 px-2">Description</th><th class="text-right py-0.5 px-2">Amount</th><th></th></tr>
+                        <tr><th scope="col" class="text-left py-0.5 px-2">Date</th><th scope="col" class="text-left py-0.5 px-2">Description</th><th scope="col" class="text-right py-0.5 px-2">Amount</th><th scope="col"></th></tr>
                     </thead>
                     <tbody>
                         {{$pinned := .PinnedHashes}}
@@ -544,7 +544,7 @@
         <table class="w-full text-body-sm mt-1">
             <thead class="text-gray-600 dark:text-gray-400">
                 <tr>
-                    <th class="px-2 py-1 w-10">
+                    <th scope="col" class="px-2 py-1 w-10">
                         <input type="checkbox"
                                id="major-expenses-pin-check-header-unmatched"
                                class="major-expenses-pin-check-header"
@@ -552,10 +552,10 @@
                                aria-label="Select visible unmatched exceptions"
                                data-stop-row-click>
                     </th>
-                    <th class="text-left px-2 py-1">Date</th>
-                    <th class="text-left px-2 py-1">Description</th>
-                    <th class="text-right px-2 py-1">Amount</th>
-                    {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
+                    <th scope="col" class="text-left px-2 py-1">Date</th>
+                    <th scope="col" class="text-left px-2 py-1">Description</th>
+                    <th scope="col" class="text-right px-2 py-1">Amount</th>
+                    {{if .Expenses}}<th scope="col" class="text-left px-2 py-1">Pin to</th>{{end}}
                 </tr>
             </thead>
             <tbody>
@@ -596,7 +596,7 @@
         <table class="w-full text-body-sm mt-1 major-expenses-sortable" data-default-sort="amount" data-default-dir="desc">
             <thead class="text-gray-600 dark:text-gray-400">
                 <tr>
-                    <th class="px-2 py-1 w-10">
+                    <th scope="col" class="px-2 py-1 w-10">
                         <input type="checkbox"
                                id="major-expenses-pin-check-header-unmatched"
                                class="major-expenses-pin-check-header"
@@ -604,16 +604,16 @@
                                aria-label="Select visible unmatched exceptions"
                                data-stop-row-click>
                     </th>
-                    <th class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="date" data-sort-type="text" aria-sort="none">
+                    <th scope="col" class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="date" data-sort-type="text" aria-sort="none">
                         <span class="inline-flex items-center gap-1">Date <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block"></span></span>
                     </th>
-                    <th class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="desc" data-sort-type="text" aria-sort="none">
+                    <th scope="col" class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="desc" data-sort-type="text" aria-sort="none">
                         <span class="inline-flex items-center gap-1">Description <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block"></span></span>
                     </th>
-                    <th class="text-right px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="amount" data-sort-type="number" aria-sort="descending">
+                    <th scope="col" class="text-right px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="amount" data-sort-type="number" aria-sort="descending">
                         <span class="inline-flex items-center justify-end gap-1">Amount <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block">▼</span></span>
                     </th>
-                    {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
+                    {{if .Expenses}}<th scope="col" class="text-left px-2 py-1">Pin to</th>{{end}}
                 </tr>
             </thead>
             <tbody>
@@ -668,7 +668,7 @@
     <table class="w-full text-body-sm mt-1">
         <thead class="text-gray-600 dark:text-gray-400">
             <tr>
-                <th class="px-2 py-1 w-10">
+                <th scope="col" class="px-2 py-1 w-10">
                     <input type="checkbox"
                            id="major-expenses-pin-check-header-anomalous"
                            class="major-expenses-pin-check-header"
@@ -676,12 +676,12 @@
                            aria-label="Select visible anomalous exceptions"
                            data-stop-row-click>
                 </th>
-                <th class="text-left px-2 py-1">Date</th>
-                <th class="text-left px-2 py-1">Expense</th>
-                <th class="text-left px-2 py-1">Description</th>
-                <th class="text-right px-2 py-1">Amount</th>
-                <th class="text-right px-2 py-1">Expected</th>
-                {{if .Expenses}}<th class="text-left px-2 py-1">Move to</th>{{end}}
+                <th scope="col" class="text-left px-2 py-1">Date</th>
+                <th scope="col" class="text-left px-2 py-1">Expense</th>
+                <th scope="col" class="text-left px-2 py-1">Description</th>
+                <th scope="col" class="text-right px-2 py-1">Amount</th>
+                <th scope="col" class="text-right px-2 py-1">Expected</th>
+                {{if .Expenses}}<th scope="col" class="text-left px-2 py-1">Move to</th>{{end}}
             </tr>
         </thead>
         <tbody>
@@ -741,7 +741,7 @@
     <table class="w-full text-body-sm mt-1">
         <thead class="text-gray-600 dark:text-gray-400">
             <tr>
-                <th class="px-2 py-1 w-10">
+                <th scope="col" class="px-2 py-1 w-10">
                     <input type="checkbox"
                            id="major-expenses-pin-check-header-new-merchants"
                            class="major-expenses-pin-check-header"
@@ -749,10 +749,10 @@
                            aria-label="Select visible new-merchant exceptions"
                            data-stop-row-click>
                 </th>
-                <th class="text-left px-2 py-1">First seen</th>
-                <th class="text-left px-2 py-1">Description</th>
-                <th class="text-right px-2 py-1">Amount</th>
-                {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
+                <th scope="col" class="text-left px-2 py-1">First seen</th>
+                <th scope="col" class="text-left px-2 py-1">Description</th>
+                <th scope="col" class="text-right px-2 py-1">Amount</th>
+                {{if .Expenses}}<th scope="col" class="text-left px-2 py-1">Pin to</th>{{end}}
             </tr>
         </thead>
         <tbody>

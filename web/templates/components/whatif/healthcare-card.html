@@ -24,8 +24,8 @@
     <div id="whatif-add-healthcare-error" class="mb-3"></div>
     <form hx-post="/whatif/healthcare" hx-target="#whatif-results" hx-on::after-request="if(event.detail.successful){this.reset(); toggleHealthcareFormMode(this); toggleAddHealthcare(false);}">
         <div class="mb-3">
-            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">Person</label>
-            <select name="person_id" onchange="toggleHealthcareFormMode(this.form)"
+            <label for="add-healthcare-person-id" class="block text-xs font-medium text-gray-700 dark:text-gray-300">Person</label>
+            <select name="person_id" id="add-healthcare-person-id" onchange="toggleHealthcareFormMode(this.form)"
                 class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-600 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 <option value="">Manual Entry</option>
                 {{range .Settings.Persons}}
@@ -39,20 +39,20 @@
         </div>
         <div class="grid grid-cols-2 gap-3 mb-3" data-manual-healthcare-fields>
             <div>
-                <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">Name</label>
-                <input type="text" name="name" placeholder="Spouse"
+                <label for="add-healthcare-name" class="block text-xs font-medium text-gray-700 dark:text-gray-300">Name</label>
+                <input type="text" id="add-healthcare-name" name="name" placeholder="Spouse"
                     class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-600 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
             </div>
             <div>
-                <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">Age</label>
-                <input type="number" name="current_age" value="54" min="18" max="100"
+                <label for="add-healthcare-age" class="block text-xs font-medium text-gray-700 dark:text-gray-300">Age</label>
+                <input type="number" id="add-healthcare-age" name="current_age" value="54" min="18" max="100"
                     class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-600 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
             </div>
         </div>
         <div class="grid grid-cols-2 gap-3 mb-3">
             <div>
-                <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">Coverage</label>
-                <select name="current_coverage"
+                <label for="add-healthcare-coverage" class="block text-xs font-medium text-gray-700 dark:text-gray-300">Coverage</label>
+                <select name="current_coverage" id="add-healthcare-coverage"
                     class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-600 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                     <option value="aca">ACA/Marketplace</option>
                     <option value="medicare">Medicare</option>
@@ -60,8 +60,8 @@
                 </select>
             </div>
             <div>
-                <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">Monthly Cost</label>
-                <input type="number" name="current_monthly_cost" value="1100" min="0" max="5000" step="1"
+                <label for="add-healthcare-monthly-cost" class="block text-xs font-medium text-gray-700 dark:text-gray-300">Monthly Cost</label>
+                <input type="number" id="add-healthcare-monthly-cost" name="current_monthly_cost" value="1100" min="0" max="5000" step="1"
                     class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-600 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
             </div>
         </div>

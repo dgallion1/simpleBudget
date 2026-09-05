@@ -519,6 +519,22 @@ report the first-attempt clean rate verbatim.
   keyboard-operable (U15's div/th-onclick sweep); master's new #91/#92
   whatif markup not yet U6-tokenized (hue literals in whatif-expense-rows /
   healthcare bars).
+- **U-2026-09-05p** (catch — checker-a11y, U15 attempt 1, FAIL CONCEDED):
+  U15's sole bar is "axe ZERO violations sitewide". The worker's reveal probe
+  never opened the What-If result tabs, never typed in Explorer search, never
+  clicked a disclosure lacking aria-expanded — so 3 real, ordinarily-reachable,
+  axe-confirmed violations survived the sweep (all pre-existing/byte-identical
+  to master, but IN SCOPE for the final sweep): (1) `scrollable-region-focusable`
+  on the What-If tab scroll containers (`projection-breakdown.html:12`,
+  `tax-summary.html:42` — `max-h-96 overflow-y-auto` with no keyboard focus),
+  both themes; (2) `target-size` on Explorer `#clear-search-btn` (<24×24);
+  (3) dark-mode `color-contrast` 2.77:1 on the Healthcare "+ Add Person"
+  button. Attempt-2: fix all three (tabindex=0 + role/aria-label on the scroll
+  regions; min 24×24 on the clear button; a dark-compliant token on Add
+  Person), AND harden the U15 axe probe to open every What-If tab, type in
+  Explorer search, and open the add-person/other forms, so "sitewide clean" is
+  actually exercised. The 1024px-only /filemanager nav-contrast finding stays
+  backlog (off the 1440/390 methodology).
 - **U-2026-09-05o** (catch — checker-a11y, U13 attempt 1, FAIL CONCEDED):
   the Undo toast (`whatif-removed-income-sources`, an hx-swap-oob div emitted
   by the SHARED `renderWhatIfResults`/`renderResultsTemplate` that EVERY

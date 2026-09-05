@@ -1,41 +1,58 @@
 {{define "dashboard-content"}}
 <div class="space-y-6">
-    <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Dashboard</h1>
-    <!-- Unassigned-files banner (A8) -->
-    {{template "unassigned_banner" .}}
-
-    <!-- CSV Drop Zone -->
-    <div id="drop-zone"
-        class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center transition-all duration-200 bg-gray-50 dark:bg-gray-800 hover:border-accent hover:bg-accent-soft cursor-pointer">
-        <input type="file" id="file-input" accept=".csv,.zip" class="hidden">
-        <div id="drop-zone-content" class="flex items-center justify-center space-x-3">
-            <svg class="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Dashboard</h1>
+        {{/* Primary CSV-import affordance moved to a header button (U10 /
+             §2f): a real, keyboard-operable <button>, wired in
+             dashboard.js to the same #file-input the drop-zone used.
+             Whole-page drag-and-drop still imports (dashboard.js listens
+             on document, not just #drop-zone). */}}
+        <button type="button" id="import-csv-btn"
+            class="inline-flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-accent-soft hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
             </svg>
-            <span class="text-gray-600 dark:text-gray-400">Drop CSV or backup ZIP files here or <span class="text-accent font-medium">click to
-                    browse</span></span>
+            Import CSV
+        </button>
+    </div>
+    <!-- Unassigned-files banner (A8) -->
+    {{template "unassigned_banner" .}}
+
+    <!-- CSV Drop Zone: secondary now that Import CSV lives in the header
+         above; shrunk (U10), but the same #file-input/#drop-zone-* ids
+         dashboard.js toggles, and dropping anywhere on the page (not just
+         this box) still imports. -->
+    <div id="drop-zone"
+        class="border border-dashed border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-center transition-all duration-200 bg-gray-50 dark:bg-gray-800 hover:border-accent hover:bg-accent-soft cursor-pointer">
+        <input type="file" id="file-input" accept=".csv,.zip" class="hidden">
+        <div id="drop-zone-content" class="flex items-center justify-center space-x-2">
+            <svg class="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+            </svg>
+            <span class="text-sm text-gray-600 dark:text-gray-400">Or drop CSV or backup ZIP files anywhere on this page, or <span class="text-accent font-medium">click to browse</span></span>
         </div>
-        <div id="drop-zone-uploading" class="hidden flex items-center justify-center space-x-3">
-            <svg class="animate-spin h-6 w-6 text-accent" fill="none" viewBox="0 0 24 24">
+        <div id="drop-zone-uploading" class="hidden flex items-center justify-center space-x-2">
+            <svg class="animate-spin h-5 w-5 text-accent" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor"
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
                 </path>
             </svg>
-            <span class="text-accent font-medium">Uploading...</span>
+            <span class="text-accent font-medium text-sm">Uploading...</span>
         </div>
-        <div id="drop-zone-success" class="hidden flex items-center justify-center space-x-3">
-            <svg class="w-6 h-6 text-positive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div id="drop-zone-success" class="hidden flex items-center justify-center space-x-2">
+            <svg class="w-5 h-5 text-positive" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
             </svg>
-            <span class="text-positive font-medium">Upload complete! Refreshing...</span>
+            <span class="text-positive font-medium text-sm">Upload complete! Refreshing...</span>
         </div>
-        <div id="drop-zone-error" class="hidden flex items-center justify-center space-x-3">
-            <svg class="w-6 h-6 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div id="drop-zone-error" class="hidden flex items-center justify-center space-x-2">
+            <svg class="w-5 h-5 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
             </svg>
-            <span id="drop-zone-error-msg" class="text-negative font-medium">Upload failed</span>
+            <span id="drop-zone-error-msg" class="text-negative font-medium text-sm">Upload failed</span>
         </div>
     </div>
 

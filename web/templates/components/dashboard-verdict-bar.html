@@ -53,12 +53,12 @@
             <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{formatMoney $v.TargetTotal}}</div>
         </div>
         {{end}}
-        <button type="button" data-kpi-detail="savings"
-            class="text-center rounded px-2 py-1 -my-1 hover:bg-black/5 dark:hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-accent"
-            aria-label="Show monthly net savings detail">
-            <span class="block text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Net Savings</span>
-            <span class="num block text-base font-bold {{if ge $v.NetSavings 0.0}}text-positive{{else}}text-negative{{end}}">{{formatMoney $v.NetSavings}}</span>
-        </button>
+        {{/* Net Savings moved to the KPI row (U10, §2f/D1): the verdict band
+             keeps only Spent/Target; the figure now lives in
+             shared/kpi-tile "Net Savings" in kpis.html, same value
+             ($v.NetSavings / .Metrics.NetSavings are the same field, see
+             internal/handlers/dashboard/verdict.go:176 `v.NetSavings =
+             m.NetSavings`), same formatMoney, same sign coloring. */}}
     </div>
 </div>
 {{end}}

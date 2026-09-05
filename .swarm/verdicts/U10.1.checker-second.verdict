@@ -1,0 +1,95 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: U10
+ATTEMPT: 1
+---
+Attack 1 (figure identity, negative/zero/positive/refund windows):
+Rendered dashboard against a `cp -a` pre-U10 copy (uncommitted diff reverted:
+`git checkout -- <U10 files>`) on a second server (:8098) vs the attempt's
+build (:8097), same fixture data, for windows 2025-01 ($0.00, boundary),
+2025-02 (-$4,537.30), 2025-09 ($422.06), 2025-11 ($3,007.98), and
+2023-2025 (-$15,678.44, large negative). `diff` of the verdict-bar HTML
+block showed the ONLY change in every case is removal of the old bespoke
+button; the new KPI tile (fetched separately) rendered the IDENTICAL
+formatMoney string and IDENTICAL sign class (positive/negative) in all
+five cases. Both surfaces use one shared `formatMoney` (render.go:430,
+single FuncMap entry) and the identical `ge $v.NetSavings 0.0` /
+`ge .Metrics.NetSavings 0.0` condition on the same field
+(verdict.go:176: `v.NetSavings = m.NetSavings`) — no dual-formatter risk.
+Refund-dominant case is covered by the still-green
+`TestVerdictBarNetSavings_MatchesSavingsModalTotal` (uses `refundRows()`,
+asserts bar value == modal value and rejects a vacuous $0.00 fixture) —
+`go test ./internal/handlers/dashboard/... -run NetSavings -v` PASS.
+
+Attack 2 (verdict sentence/class drift): `git diff -- 
+web/templates/components/dashboard-verdict-bar.html` shows the change is
+PURELY removal of the Net-Savings button block, replaced with a comment;
+Spent/Target markup and the surrounding sentence/health-class markup are
+untouched lines. Confirmed empirically above — the pre/post diff of the
+verdict-bar block for all 5 windows showed zero difference before the
+removed-button line.
+
+Attack 3 (label truth): `internal/services/metrics/metrics.go:375-379`
+computes `outflows := ts.FilterByType(models.Outflow)`;
+`internal/models/transaction.go:13-26` defines `Transfer` as a TYPE
+DISTINCT from `Outflow` with a doc comment confirming a Transfer row
+"falls out of Total Income and Total Expenses" — so "transfers ... are
+excluded" is true of the type contract. One-time-expense transactions
+carry no separate ledger TransactionType (only Income/Outflow/Transfer
+exist; OneTimeExpense is a What-If projection input) and the
+metrics.go:370-372 comment confirms these three figures come "from the
+FULL outflow set ... regardless of the flag" — so one-time IS included,
+matching "all expenses" with no carve-out claimed. The keyword-inference
+risk (a real transfer mistyped as Outflow) is a pre-existing
+dataloader/classifier concern, not something this presentation-only task
+could fix or that the label overclaims about — the label describes the
+type contract, consistent with prior ruling guidance in the task brief.
+
+Attack 4 (whole-page drop): live Playwright probe (headless Chromium)
+against :8097 confirmed: `#import-csv-btn` is a real `<button>`,
+keyboard-focusable, click triggers `#file-input.click()`; a synthetic
+`DragEvent('drop')` with a real `File`/`DataTransfer` dispatched on
+`document.body` (away from the shrunk `#drop-zone`) made
+`#drop-zone-uploading` become visible AND fired exactly one
+`POST /explorer/upload` request (no double-fire — single fetch/request
+count for one drop); a `dragover` dispatched on `document.body` had
+`defaultPrevented === true`. Confirmed only one page (`dashboard.html`,
+conditionally loaded per `{{if eq .ActiveTab "dashboard"}}` in
+base.html:227) ever loads `dashboard.js`'s document-level drop listener,
+so no cross-page double-binding with `filemanager.js`'s own
+document-level drop listener.
+
+Attack 5 (scope/regression): `go build ./...`, `go vet ./...`,
+`go test ./...` (full suite, 40+ packages) all PASS; `staticcheck ./...`
+clean; `make css` regenerates a byte-identical `tailwind.css` to what's
+staged. Diff confined to exactly the 6 files in
+`.swarm/manifests/U10.1.files` (verified via `git status --porcelain`),
+none matching `.swarm/critical.globs`. Playwright+axe-core (wcag2a/2aa/
+21aa/22aa) at 1440px: dashboard light theme 0 violations both before and
+after; dark theme same 14 target list before AND after MINUS the two
+targets that belonged to the now-removed bespoke Net-Savings button
+(pre-image had 16 contrast violations including
+`.tracking-wide.block.text-label` and `.text-base.text-negative.font-bold`
+inside the old button) — net IMPROVEMENT, no new violation introduced by
+the KPI tile or header button, and the remaining 14 are a pre-existing
+dark-mode contrast debt unrelated to this task. The changed test
+(`TestVerdictBarNetSavings_IsDrillable`) was updated to assert the actual
+rendered `aria-label="Net Savings details"` (mechanical, from the shared
+`shared/kpi-tile-open` partial) rather than weakened; the
+`data-kpi-detail="savings"` assertion is untouched.
+
+Observations (not FAIL grounds — pre-existing/out of scope):
+- `web/static/js/dashboard.js:29` (U7-era comment, untouched by this
+  diff's surrounding lines but now factually stale) still says "does not
+  double-fire on the real <button data-kpi-detail="savings"> in the
+  verdict bar" — that button no longer exists after this task removed it.
+  Cosmetic/comment-accuracy only: the `[role="button"]` scoping in the
+  keydown handler is harmless with or without the old button, and the new
+  KPI tile (role="button", tabindex="0") correctly receives Enter/Space
+  via this same handler (verified: `BTN_FOCUSABLE=true`, native `<button>`
+  Enter-activation also confirmed on the new header button). Worth a
+  one-line comment fix in a follow-up, not a functional defect.
+- Dark-mode color-contrast debt (14 violations) is pre-existing across the
+  dashboard verdict bar (Spent/Target/sentence text), unrelated to and
+  not worsened by this task.

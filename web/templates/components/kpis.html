@@ -86,6 +86,34 @@
          {{if .Metrics.HasHealthcareTarget}}data-target="{{.Metrics.HealthcareTarget}}"{{end}}></div>
     {{template "shared/kpi-tile-close" .}}
 
+    {{/* Net Savings (moved out of the verdict band, U10 / §2f / D1). Label
+         states what the figure IS, derived from the code (not the spec's
+         paraphrase): metrics.Calculate computes
+         netSavings = totalIncome - totalExpenses
+         (internal/services/metrics/metrics.go:377-379), where
+         outflows := ts.FilterByType(models.Outflow) (metrics.go:375).
+         models.Transfer is a DISTINCT TransactionType from models.Outflow
+         (internal/models/transaction.go:13-26: "a Transfer row falls out
+         of Total aggregation"), so FilterByType(Outflow) EXCLUDES
+         transfers -- the spec's candidate wording "including transfers"
+         would be wrong and is not used here. One-time expenses have no
+         distinct TransactionType (models/one_time_expense.go is a
+         What-If projection input, not a ledger TransactionType); an
+         actual one-time-expense transaction is an ordinary
+         Outflow-typed row, and metrics.go's own comment at line 370-372
+         says TotalIncome/TotalExpenses/NetSavings come "from the FULL
+         outflow set ... regardless of the flag" (the plan-exclusion
+         flag), so one-time/major-expense-flagged spending IS included.
+         Figure and sign coloring are unchanged from the verdict band:
+         same .Metrics.NetSavings value (= $v.NetSavings, see
+         verdict.go:176), same formatMoney, positive -> text-positive,
+         negative -> text-negative. */}}
+    {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800" "Clickable" true "DetailKey" "savings" "LabelClass" "text-gray-600 dark:text-gray-400" "Label" "Net Savings")}}
+                <p class="num text-2xl font-bold {{if ge .Metrics.NetSavings 0.0}}text-positive{{else}}text-negative{{end}}">{{formatMoney .Metrics.NetSavings}}</p>
+                <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-1">Income minus all expenses (transfers between your own accounts are excluded)</p>
+    {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-gray-100 dark:bg-gray-700" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path></svg>`))}}
+    {{template "shared/kpi-tile-close" .}}
+
     <!-- Budget (combined cumulative variance: Living + Healthcare for the period) -->
     {{/* Ruling 2026-08-29c: the card's container tint and headline must
          consume the SAME dead-banded classification as the banner

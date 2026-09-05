@@ -39,9 +39,15 @@ document.addEventListener('keydown', function (e) {
 document.addEventListener('DOMContentLoaded', function () {
     var dropZone = document.getElementById('drop-zone');
     var fileInput = document.getElementById('file-input');
+    var importBtn = document.getElementById('import-csv-btn');
     if (dropZone && fileInput) {
         dropZone.addEventListener('click', function () { fileInput.click(); });
         fileInput.addEventListener('change', function () { handleFileSelect(this.files); });
+    }
+    // Page-header "Import CSV" button (U10): same file picker/import path
+    // the drop-zone click always used.
+    if (importBtn && fileInput) {
+        importBtn.addEventListener('click', function () { fileInput.click(); });
     }
 
     document.querySelectorAll('#date-filter-form [data-step]').forEach(function (btn) {
@@ -387,44 +393,51 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Drag and drop file upload
+// Drag and drop file upload. Whole-page (U10): the drop-zone box is now a
+// secondary hint under the header "Import CSV" button, but dropping a file
+// ANYWHERE on the page must still import it, so the actual 'drop' listener
+// is on document (mirroring filemanager.js's document-level restore-drop
+// pattern) rather than scoped to #drop-zone alone; #drop-zone only gets the
+// drag-over highlight when it exists.
 document.addEventListener('DOMContentLoaded', function () {
     const dropZone = document.getElementById('drop-zone');
-    if (!dropZone) return;
 
-    // Prevent default drag behaviors on the whole document
-    // Only use preventDefault - do NOT use stopPropagation as it blocks the dropZone handlers
+    // Prevent default drag behaviors on the whole document (so the browser
+    // never navigates to/opens the dropped file) without stopPropagation,
+    // which would block the listeners below.
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         document.addEventListener(eventName, function (e) {
             e.preventDefault();
         }, false);
     });
 
-    // Highlight drop zone on drag over
-    dropZone.addEventListener('dragenter', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        dropZone.classList.remove('border-gray-300', 'bg-gray-50');
-        dropZone.classList.add('border-indigo-500', 'bg-indigo-100');
-    }, false);
+    if (dropZone) {
+        // Highlight the drop-zone hint on drag-over.
+        dropZone.addEventListener('dragenter', function (e) {
+            e.preventDefault();
+            dropZone.classList.remove('border-gray-300', 'bg-gray-50');
+            dropZone.classList.add('border-indigo-500', 'bg-indigo-100');
+        }, false);
 
-    dropZone.addEventListener('dragover', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        dropZone.classList.remove('border-gray-300', 'bg-gray-50');
-        dropZone.classList.add('border-indigo-500', 'bg-indigo-100');
-    }, false);
+        dropZone.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            dropZone.classList.remove('border-gray-300', 'bg-gray-50');
+            dropZone.classList.add('border-indigo-500', 'bg-indigo-100');
+        }, false);
 
-    dropZone.addEventListener('dragleave', function () {
-        dropZone.classList.remove('border-indigo-500', 'bg-indigo-100');
-        dropZone.classList.add('border-gray-300', 'bg-gray-50');
-    }, false);
+        dropZone.addEventListener('dragleave', function () {
+            dropZone.classList.remove('border-indigo-500', 'bg-indigo-100');
+            dropZone.classList.add('border-gray-300', 'bg-gray-50');
+        }, false);
+    }
 
-    dropZone.addEventListener('drop', function (e) {
+    // The actual import trigger: dropping anywhere on the page.
+    document.addEventListener('drop', function (e) {
         e.preventDefault();
-        e.stopPropagation();
-        dropZone.classList.remove('border-indigo-500', 'bg-indigo-100');
-        dropZone.classList.add('border-gray-300', 'bg-gray-50');
+        if (dropZone) {
+            dropZone.classList.remove('border-indigo-500', 'bg-indigo-100');
+            dropZone.classList.add('border-gray-300', 'bg-gray-50');
+        }
         const files = e.dataTransfer.files;
         handleFileSelect(files);
     }, false);

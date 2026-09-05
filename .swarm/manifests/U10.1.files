@@ -1,0 +1,6 @@
+web/templates/components/dashboard-verdict-bar.html
+web/templates/components/kpis.html
+web/templates/pages/dashboard.html
+web/static/js/dashboard.js
+web/static/css/tailwind.css
+internal/handlers/dashboard/handlers_http_test.go

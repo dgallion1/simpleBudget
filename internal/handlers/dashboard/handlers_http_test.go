@@ -2553,7 +2553,11 @@ func TestVerdictBarNetSavings_MatchesSavingsModalTotal(t *testing.T) {
 	}
 }
 
-// The Net Savings figure is a real, keyboard-reachable control.
+// The Net Savings figure is a real, keyboard-reachable control. U10 (§2f)
+// moved it from a bespoke <button> in the verdict band to the shared
+// shared/kpi-tile partial in the KPI row, which emits a mechanical
+// "<Label> details" aria-label (kpi-tile.html) rather than the old
+// hand-written "Show monthly net savings detail" string.
 func TestVerdictBarNetSavings_IsDrillable(t *testing.T) {
 	router, cleanup := setupTestEnvWithRenderer(t, defaultRows())
 	defer cleanup()
@@ -2562,7 +2566,7 @@ func TestVerdictBarNetSavings_IsDrillable(t *testing.T) {
 	if !strings.Contains(body, `data-kpi-detail="savings"`) {
 		t.Error("Net Savings is not wired to the savings KPI modal")
 	}
-	if want := `aria-label="Show monthly net savings detail"`; !strings.Contains(body, want) {
+	if want := `aria-label="Net Savings details"`; !strings.Contains(body, want) {
 		t.Errorf("body missing %s", want)
 	}
 }

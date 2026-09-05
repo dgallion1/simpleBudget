@@ -119,7 +119,7 @@ U5	3	tests,second	accepted	3	worker-coder	gate-ok-tier3-attempt-3-oracle-pass-du
 U6	3	a11y,tests,second	accepted	4	worker-coder	gate-ok-tier3-attempt-4-dual-lane-PASS-oracle11of11; reopened after worktree-loss recovery (ruling j)
 U7	2	tests,a11y	accepted	3	worker-coder	gate-ok-tier2-attempt-3-dual-lane; a11y FAILs attempts 1(keyboard)+2(nested-interactive) drove contract rewrite ruling m
 U8	2	tests,second	pending	0	-	phase0-draft-awaiting-tier-signoff
-U9	1	a11y	pending	0	-	phase0-draft-awaiting-tier-signoff
+U9	1	a11y	accepted	1	worker-coder	gate-ok-tier1-attempt-1-a11y
 U10	2	content,second	pending	0	-	phase0-draft-awaiting-tier-signoff
 U11	2	tests,a11y	pending	0	-	phase0-draft-awaiting-tier-signoff
 U12	2	tests,a11y	pending	0	-	phase0-draft-awaiting-tier-signoff

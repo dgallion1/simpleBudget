@@ -5,7 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Title}} - Financial Dashboard</title>
+    <title>{{.Title}} - simpleBudget</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 
     <!-- HTMX -->
@@ -69,41 +69,56 @@
             <div class="flex items-center justify-between h-16">
                 <div class="flex items-center space-x-4">
                     <a href="/" class="text-xl md:text-2xl font-light tracking-wide whitespace-nowrap">
-                        Financial Dashboard
+                        simpleBudget
                     </a>
                 </div>
 
-                <div class="hidden md:flex items-center space-x-6">
-                    <a href="/dashboard" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "dashboard"}}bg-white/20{{end}}">
-                        Dashboard
-                    </a>
-                    <a href="/explorer" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "explorer"}}bg-white/20{{end}}">
-                        Explorer
-                    </a>
-                    <a href="/whatif" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "whatif"}}bg-white/20{{end}}">
-                        What-If
-                    </a>
-                    <a href="/insights" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "insights"}}bg-white/20{{end}}">
-                        Insights
-                    </a>
-                    <a href="/major-expenses" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "major-expenses"}}bg-white/20{{end}}">
-                        Major Expenses
-                    </a>
-                    {{if .UnresolvedDuplicateCount}}
-                    <a href="/duplicates" class="relative px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "duplicates"}}bg-white/20{{end}}">
-                        Duplicates
-                        <span class="ml-1 inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold rounded-full bg-warning-strong text-white">{{.UnresolvedDuplicateCount}}</span>
-                    </a>
-                    {{end}}
-                    <a href="/filemanager" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "filemanager"}}bg-white/20{{end}}">
-                        File Manager
-                    </a>
-                    <a href="/accounts" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "accounts"}}bg-white/20{{end}}">
-                        Accounts
-                    </a>
-                    <a href="/transfers" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "transfers"}}bg-white/20{{end}}">
-                        Transfers
-                    </a>
+                <div class="hidden md:flex items-center gap-6">
+                    <div class="flex items-center gap-2" role="group" aria-labelledby="nav-group-money">
+                        <span id="nav-group-money" class="text-label uppercase text-white/60">Money</span>
+                        <a href="/dashboard" {{if eq .ActiveTab "dashboard"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "dashboard"}}bg-white/20{{end}}">
+                            Dashboard
+                        </a>
+                        <a href="/explorer" {{if eq .ActiveTab "explorer"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "explorer"}}bg-white/20{{end}}">
+                            Explorer
+                        </a>
+                        <a href="/insights" {{if eq .ActiveTab "insights"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "insights"}}bg-white/20{{end}}">
+                            Insights
+                        </a>
+                        <a href="/major-expenses" {{if eq .ActiveTab "major-expenses"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "major-expenses"}}bg-white/20{{end}}">
+                            Major Expenses
+                        </a>
+                    </div>
+
+                    <div class="h-6 w-px bg-white/20" aria-hidden="true"></div>
+
+                    <div class="flex items-center gap-2" role="group" aria-labelledby="nav-group-plan">
+                        <span id="nav-group-plan" class="text-label uppercase text-white/60">Plan</span>
+                        <a href="/whatif" {{if eq .ActiveTab "whatif"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "whatif"}}bg-white/20{{end}}">
+                            What-If
+                        </a>
+                    </div>
+
+                    <div class="h-6 w-px bg-white/20" aria-hidden="true"></div>
+
+                    <div class="flex items-center gap-2" role="group" aria-labelledby="nav-group-setup">
+                        <span id="nav-group-setup" class="text-label uppercase text-white/60">Setup</span>
+                        <a href="/accounts" {{if eq .ActiveTab "accounts"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "accounts"}}bg-white/20{{end}}">
+                            Accounts
+                        </a>
+                        <a href="/transfers" {{if eq .ActiveTab "transfers"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "transfers"}}bg-white/20{{end}}">
+                            Transfers
+                        </a>
+                        <a href="/filemanager" {{if eq .ActiveTab "filemanager"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "filemanager"}}bg-white/20{{end}}">
+                            File Manager
+                        </a>
+                        {{if .UnresolvedDuplicateCount}}
+                        <a href="/duplicates" {{if eq .ActiveTab "duplicates"}}aria-current="page"{{end}} class="relative px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "duplicates"}}bg-white/20{{end}}">
+                            Duplicates
+                            <span class="ml-1 inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold rounded-full bg-warning-strong text-white">{{.UnresolvedDuplicateCount}}</span>
+                        </a>
+                        {{end}}
+                    </div>
 
                     <!-- Theme Toggle -->
                     <button id="theme-toggle" class="p-2 rounded-md hover:bg-white/10 transition-colors"
@@ -134,18 +149,33 @@
                 </div>
             </div>
 
-            <div id="mobile-nav" class="hidden md:hidden pb-3 space-y-1">
-                <a href="/dashboard" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "dashboard"}}bg-white/20{{end}}">Dashboard</a>
-                <a href="/explorer" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "explorer"}}bg-white/20{{end}}">Explorer</a>
-                <a href="/whatif" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "whatif"}}bg-white/20{{end}}">What-If</a>
-                <a href="/insights" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "insights"}}bg-white/20{{end}}">Insights</a>
-                <a href="/major-expenses" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "major-expenses"}}bg-white/20{{end}}">Major Expenses</a>
-                {{if .UnresolvedDuplicateCount}}
-                <a href="/duplicates" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "duplicates"}}bg-white/20{{end}}">Duplicates <span class="ml-1 inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold rounded-full bg-warning-strong text-white">{{.UnresolvedDuplicateCount}}</span></a>
-                {{end}}
-                <a href="/filemanager" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "filemanager"}}bg-white/20{{end}}">File Manager</a>
-                <a href="/accounts" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "accounts"}}bg-white/20{{end}}">Accounts</a>
-                <a href="/transfers" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "transfers"}}bg-white/20{{end}}">Transfers</a>
+            <div id="mobile-nav" class="hidden md:hidden pb-3 space-y-4">
+                <div role="group" aria-labelledby="mobile-nav-group-money">
+                    <p id="mobile-nav-group-money" class="px-3 text-label uppercase text-white/60">Money</p>
+                    <div class="mt-1 space-y-1">
+                        <a href="/dashboard" {{if eq .ActiveTab "dashboard"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "dashboard"}}bg-white/20{{end}}">Dashboard</a>
+                        <a href="/explorer" {{if eq .ActiveTab "explorer"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "explorer"}}bg-white/20{{end}}">Explorer</a>
+                        <a href="/insights" {{if eq .ActiveTab "insights"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "insights"}}bg-white/20{{end}}">Insights</a>
+                        <a href="/major-expenses" {{if eq .ActiveTab "major-expenses"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "major-expenses"}}bg-white/20{{end}}">Major Expenses</a>
+                    </div>
+                </div>
+                <div role="group" aria-labelledby="mobile-nav-group-plan">
+                    <p id="mobile-nav-group-plan" class="px-3 text-label uppercase text-white/60">Plan</p>
+                    <div class="mt-1 space-y-1">
+                        <a href="/whatif" {{if eq .ActiveTab "whatif"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "whatif"}}bg-white/20{{end}}">What-If</a>
+                    </div>
+                </div>
+                <div role="group" aria-labelledby="mobile-nav-group-setup">
+                    <p id="mobile-nav-group-setup" class="px-3 text-label uppercase text-white/60">Setup</p>
+                    <div class="mt-1 space-y-1">
+                        <a href="/accounts" {{if eq .ActiveTab "accounts"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "accounts"}}bg-white/20{{end}}">Accounts</a>
+                        <a href="/transfers" {{if eq .ActiveTab "transfers"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "transfers"}}bg-white/20{{end}}">Transfers</a>
+                        <a href="/filemanager" {{if eq .ActiveTab "filemanager"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "filemanager"}}bg-white/20{{end}}">File Manager</a>
+                        {{if .UnresolvedDuplicateCount}}
+                        <a href="/duplicates" {{if eq .ActiveTab "duplicates"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "duplicates"}}bg-white/20{{end}}">Duplicates <span class="ml-1 inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold rounded-full bg-warning-strong text-white">{{.UnresolvedDuplicateCount}}</span></a>
+                        {{end}}
+                    </div>
+                </div>
             </div>
         </div>
     </nav>
@@ -183,7 +213,7 @@
     {{if ne .ActiveTab "explorer"}}
     <footer class="bg-gray-800 dark:bg-gray-950 text-gray-400 py-4 mt-8">
         <div class="container mx-auto px-4 text-center text-sm">
-            Budget Dashboard &copy; {{now.Year}}
+            simpleBudget &copy; {{now.Year}}
         </div>
     </footer>
     {{end}}

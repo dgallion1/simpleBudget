@@ -30,7 +30,12 @@
                        before a separate preset row) or "" (no arrows)
      PresetGroupID   - optional id for the preset-button container
      PresetAttr      - data-* attribute name the preset value is stored
-                       under (e.g. "data-preset" or "data-months")
+                       under: "data-preset" (dashboard/insights) or
+                       "data-months" (explorer/major-expenses). Emitted via a
+                       STATIC-literal conditional below, NOT interpolated as an
+                       attribute name -- html/template replaces a dynamic
+                       attribute name with ZgotmplZ, which silently broke every
+                       preset button (fixed 2026-09-05).
      PresetClass     - CSS class the page's JS selects preset buttons by
      Presets         - []dict{Value, Label, Active bool}
      PresetActiveClass, PresetInactiveClass - class strings
@@ -72,7 +77,7 @@
     </button>
     {{end}}
     {{range .Presets}}
-    <button type="button" {{$.PresetAttr}}="{{.Value}}"
+    <button type="button" {{if eq $.PresetAttr "data-months"}}data-months="{{.Value}}"{{else}}data-preset="{{.Value}}"{{end}}
         class="{{$.PresetClass}} min-w-[24px] min-h-[24px] px-3 py-1 text-sm rounded-md transition-colors {{if .Active}}{{$.PresetActiveClass}}{{else}}{{$.PresetInactiveClass}}{{end}}">{{.Label}}</button>
     {{end}}
     {{if eq .ArrowPosition "wrap"}}
@@ -109,7 +114,7 @@
     </button>
     {{end}}
     {{range .Presets}}
-    <button type="button" {{$.PresetAttr}}="{{.Value}}"
+    <button type="button" {{if eq $.PresetAttr "data-months"}}data-months="{{.Value}}"{{else}}data-preset="{{.Value}}"{{end}}
         class="{{$.PresetClass}} min-w-[2.5rem] px-2 py-1 text-sm rounded-md transition-colors {{if .Active}}{{$.PresetActiveClass}}{{else}}{{$.PresetInactiveClass}}{{end}}">{{.Label}}</button>
     {{end}}
     {{if eq .ArrowPosition "wrap"}}

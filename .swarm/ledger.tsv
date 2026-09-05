@@ -130,3 +130,4 @@ OD1	2	tests,probe	accepted	1	lead	test-only-probe;live-prune-executed-2026-09-04
 CB7	2	tests,second,a11y	accepted	3	worker-coder	gate-ok-tier2-attempt-3-after-second-lane-negzero-catch-at-attempt-2
 CB8	2	tests,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane
 CB9	2	tests,second	accepted	2	lead	gate-ok-tier2-attempt-2-lead-authored-after-dual-lane-attempt1-fail
+U7F	1	a11y	accepted	1	lead	gate-ok-tier1-attempt-1-a11y; live-verified buttons work all 4 pages; mutation-proven test

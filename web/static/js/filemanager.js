@@ -31,6 +31,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var yubikeySetupBtn = document.getElementById('yubikey-setup-btn');
     if (yubikeySetupBtn) yubikeySetupBtn.addEventListener('click', setupNewYubiKey);
+
+    // U14: Data Encryption card is collapsed by default behind a disclosure
+    // button (aria-expanded + a hidden panel); this is the only toggle for
+    // it, so a plain click listener (not delegated) is fine -- the button
+    // is present on first paint and never swapped by htmx.
+    var encDisclosure = document.getElementById('encryption-disclosure-btn');
+    var encPanel = document.getElementById('encryption-panel');
+    var encChevron = document.getElementById('encryption-disclosure-chevron');
+    if (encDisclosure && encPanel) {
+        encDisclosure.addEventListener('click', function () {
+            var expand = encDisclosure.getAttribute('aria-expanded') !== 'true';
+            encDisclosure.setAttribute('aria-expanded', String(expand));
+            encPanel.hidden = !expand;
+            if (encChevron) encChevron.style.transform = expand ? 'rotate(180deg)' : '';
+        });
+    }
 });
 
 document.addEventListener('click', function (e) {

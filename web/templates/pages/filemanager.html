@@ -199,23 +199,29 @@
     <!-- Data Files Card -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
         <!-- Table Header with Quick Actions -->
-        <div class="px-3 py-2 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
+        <div class="px-3 py-2 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between gap-3">
             <h2 class="text-sm font-medium text-gray-700 dark:text-gray-300">Data Files</h2>
             <div class="flex items-center gap-3">
-                <button hx-post="/restore/test-data"
-                    hx-swap="none"
-                    hx-confirm="Load test data? This replaces ALL current data with the bundled test dataset — any file not in it will be deleted. A safety snapshot is taken first."
-                    hx-on::after-request="if(event.detail.successful) { window.location.reload(); }"
-                    class="text-sm text-accent hover:text-accent">
-                    Load Test Data
-                </button>
-                <button hx-delete="/data/all"
-                    hx-swap="none"
-                    hx-confirm="Are you sure you want to delete all data? This cannot be undone."
-                    hx-on::after-request="if(event.detail.successful) { window.location.reload(); }"
-                    class="text-sm text-negative hover:text-negative">
-                    Clear All
-                </button>
+                <div>
+                    <button hx-post="/restore/test-data"
+                        hx-swap="none"
+                        hx-confirm="Load test data? This replaces ALL current data with the bundled test dataset — any file not in it will be deleted. A safety snapshot is taken first."
+                        hx-on::after-request="if(event.detail.successful) { window.location.reload(); }"
+                        class="text-sm text-accent hover:text-accent">
+                        Load Test Data
+                    </button>
+                </div>
+                <!-- Separate container from Load Test Data so a mis-click can't
+                     hit the irreversible Clear All button instead. -->
+                <div class="pl-3 border-l border-gray-200 dark:border-gray-700">
+                    <button type="button" hx-delete="/data/all?expected_count={{.CSVCount}}"
+                        hx-swap="none"
+                        hx-confirm="Delete all {{.CSVCount}} data files? This cannot be undone."
+                        hx-on::after-request="if(event.detail.successful) { window.location.reload(); }"
+                        class="inline-flex items-center min-h-[24px] min-w-[24px] px-2 py-1 text-sm text-negative hover:text-negative border border-negative rounded focus:outline-none focus:ring-2 focus:ring-negative">
+                        Clear All
+                    </button>
+                </div>
             </div>
         </div>
         <div id="file-list" aria-live="polite" tabindex="-1">
@@ -223,9 +229,11 @@
         </div>
     </div>
 
-    <!-- Data Encryption Card -->
+    <!-- Data Encryption Card: collapsed by default behind a disclosure. -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow mt-4">
-        <div class="px-3 py-2 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
+        <button type="button" id="encryption-disclosure-btn"
+            aria-expanded="false" aria-controls="encryption-panel"
+            class="w-full px-3 py-2 border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex items-center justify-between text-left focus:outline-none focus:ring-2 focus:ring-accent">
             <h2 class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                 {{if .IsEncrypted}}
                 {{if .IsLocked}}
@@ -244,11 +252,16 @@
                 {{end}}
                 Data Encryption
             </h2>
-            <span class="text-xs {{if .IsEncrypted}}{{if .IsLocked}}text-warning{{else}}text-positive{{end}}{{else}}text-gray-600 dark:text-gray-400{{end}}">
-                {{if .IsEncrypted}}{{if .IsLocked}}Locked{{else}}Unlocked{{end}}{{else}}Not encrypted{{end}}
+            <span class="flex items-center gap-2">
+                <span class="text-xs {{if .IsEncrypted}}{{if .IsLocked}}text-warning{{else}}text-positive{{end}}{{else}}text-gray-600 dark:text-gray-400{{end}}">
+                    {{if .IsEncrypted}}{{if .IsLocked}}Locked{{else}}Unlocked{{end}}{{else}}Not encrypted{{end}}
+                </span>
+                <svg id="encryption-disclosure-chevron" class="w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
             </span>
-        </div>
-        <div class="p-4">
+        </button>
+        <div class="p-4" id="encryption-panel" hidden>
             {{if .IsLocked}}
             <!-- Unlock form -->
             <form id="unlock-form" class="space-y-3">

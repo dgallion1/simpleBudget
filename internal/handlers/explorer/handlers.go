@@ -21,6 +21,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"budget2/internal/config"
+	"budget2/internal/handlers/backup"
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
 	"budget2/internal/services/majorexpenses"
@@ -800,6 +801,19 @@ func HandleFileManagerPage(w http.ResponseWriter, r *http.Request) {
 		}
 		data["Files"] = files
 	}
+
+	// CSVCount is display-only: it names the count in the Clear All confirm
+	// and travels back as expected_count on the DELETE. Computed the SAME way
+	// HandleDeleteAllData counts (backup.CountDeletableCSVs), so the number
+	// shown can never drift from what the server-side guard actually checks.
+	// 0 when locked (nothing would be counted correctly without decrypting).
+	csvCount := 0
+	if !isLocked {
+		if n, err := backup.CountDeletableCSVs(cfg.DataDirectory, cfg.BackupDir); err == nil {
+			csvCount = n
+		}
+	}
+	data["CSVCount"] = csvCount
 
 	templates.AttachDuplicateCount(data, loader)
 	_ = renderer.Render(w, "base", data)

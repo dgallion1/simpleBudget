@@ -1,0 +1,6 @@
+internal/handlers/backup/handlers.go
+internal/handlers/backup/handlers_test.go
+internal/handlers/explorer/handlers.go
+web/templates/pages/filemanager.html
+web/static/js/filemanager.js
+web/static/css/tailwind.css

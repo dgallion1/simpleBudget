@@ -493,7 +493,7 @@ func TestHandleDeleteAllData(t *testing.T) {
 	os.Mkdir(filepath.Join(tmpDir, "subdir"), 0755)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/delete-all", nil)
+	r := httptest.NewRequest(http.MethodPost, "/delete-all?expected_count=2", nil)
 
 	HandleDeleteAllData(w, r)
 
@@ -523,7 +523,7 @@ func TestHandleDeleteAllDataEmptyDir(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/delete-all", nil)
+	r := httptest.NewRequest(http.MethodPost, "/delete-all?expected_count=0", nil)
 
 	HandleDeleteAllData(w, r)
 
@@ -538,12 +538,136 @@ func TestHandleDeleteAllDataBadDir(t *testing.T) {
 	defer func() { cfg = nil }()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/delete-all", nil)
+	r := httptest.NewRequest(http.MethodPost, "/delete-all?expected_count=0", nil)
 
 	HandleDeleteAllData(w, r)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500, got %d", w.Code)
+	}
+}
+
+func TestHandleDeleteAllData_MissingExpectedCount(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeCSVFile(t, tmpDir, "accounts.csv", "data")
+	writeCSVFile(t, tmpDir, "transactions.csv", "data")
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/data/all", nil)
+	HandleDeleteAllData(w, r)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "accounts.csv")); err != nil {
+		t.Error("accounts.csv should NOT have been deleted")
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "transactions.csv")); err != nil {
+		t.Error("transactions.csv should NOT have been deleted")
+	}
+}
+
+func TestHandleDeleteAllData_NonNumericExpectedCount(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeCSVFile(t, tmpDir, "accounts.csv", "data")
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/data/all?expected_count=abc", nil)
+	HandleDeleteAllData(w, r)
+
+	if w.Code != http.StatusConflict && w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 409 or 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "accounts.csv")); err != nil {
+		t.Error("accounts.csv should NOT have been deleted")
+	}
+}
+
+func TestHandleDeleteAllData_StaleExpectedCount(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeCSVFile(t, tmpDir, "accounts.csv", "data")
+	writeCSVFile(t, tmpDir, "transactions.csv", "data")
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/data/all?expected_count=1", nil)
+	HandleDeleteAllData(w, r)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "accounts.csv")); err != nil {
+		t.Error("accounts.csv should NOT have been deleted")
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "transactions.csv")); err != nil {
+		t.Error("transactions.csv should NOT have been deleted")
+	}
+}
+
+func TestHandleDeleteAllData_MatchingCountThenRepeatIsStale(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeCSVFile(t, tmpDir, "accounts.csv", "data")
+	writeCSVFile(t, tmpDir, "transactions.csv", "data")
+	os.WriteFile(filepath.Join(tmpDir, "keep.txt"), []byte("keep"), 0644)
+	backupDir := filepath.Join(tmpDir, "backups")
+	if err := os.MkdirAll(backupDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, "budget_backup_X.zip"), []byte("dummy"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodDelete, "/data/all?expected_count=2", nil)
+	HandleDeleteAllData(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Deleted 2 files") {
+		t.Errorf("unexpected body: %s", w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "accounts.csv")); err == nil {
+		t.Error("accounts.csv should be deleted")
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "keep.txt")); err != nil {
+		t.Error("keep.txt should still exist")
+	}
+	if _, err := os.Stat(filepath.Join(backupDir, "budget_backup_X.zip")); err != nil {
+		t.Error("backups dir contents should still exist")
+	}
+
+	// Immediately repeating the exact same request (count is now 0, not 2)
+	// must be treated as stale and refused.
+	w2 := httptest.NewRecorder()
+	r2 := httptest.NewRequest(http.MethodDelete, "/data/all?expected_count=2", nil)
+	HandleDeleteAllData(w2, r2)
+	if w2.Code != http.StatusConflict {
+		t.Fatalf("expected 409 on repeat, got %d: %s", w2.Code, w2.Body.String())
+	}
+}
+
+func TestCountDeletableCSVs(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	writeCSVFile(t, tmpDir, "a.csv", "data")
+	writeCSVFile(t, tmpDir, "B.CSV", "data")
+	os.WriteFile(filepath.Join(tmpDir, "keep.json"), []byte("{}"), 0644)
+
+	n, err := CountDeletableCSVs(tmpDir, filepath.Join(tmpDir, "backups"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 CSVs counted, got %d", n)
 	}
 }
 
@@ -2210,7 +2334,7 @@ func TestHandleDeleteAllDataOnlyDeletesCSV(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpDir, ".encrypted"), []byte("marker"), 0644)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/delete-all", nil)
+	r := httptest.NewRequest(http.MethodPost, "/delete-all?expected_count=2", nil)
 	HandleDeleteAllData(w, r)
 
 	respBody := w.Body.String()
@@ -2941,7 +3065,7 @@ func TestHandleDeleteAllDataRemoveError(t *testing.T) {
 	defer os.Chmod(tmpDir, 0755)
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/delete-all", nil)
+	r := httptest.NewRequest(http.MethodPost, "/delete-all?expected_count=1", nil)
 
 	HandleDeleteAllData(w, r)
 
@@ -3577,7 +3701,7 @@ func TestHandleDeleteAllData_DoesNotTouchBackupDir(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodDelete, "/data/all", nil)
+	r := httptest.NewRequest(http.MethodDelete, "/data/all?expected_count=1", nil)
 	HandleDeleteAllData(rec, r)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())

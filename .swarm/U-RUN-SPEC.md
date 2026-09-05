@@ -415,6 +415,8 @@ report the first-attempt clean rate verbatim.
 
 - **[U13.2 obs, backlog]** the toast Undo button lacks `hx-sync`/`hx-disabled-elt`, so hammering many rapid CRUD cycles can double-submit or drop an Undo (both lanes: a client-timing artifact, no server race — server serializes on a private settings copy; also surfaced a pre-existing full-analysis perf pile-up under load). Add hx-sync to the Undo button in a follow-up.
 
+- **[U14.1 obs, backlog]** `HandleDeleteAllData`'s delete loop returns 200 "Deleted 0 files" if os.Remove fails post-guard (e.g. read-only dir) — honest body, refresh re-derives the true count, but a 200 on total remove-failure is a pre-existing gap in code U14 did not touch (checker-second). Backlog.
+
 ## 10. Rulings
 
 - **U-2026-09-03a** (scope ruling, lead, before any checker ran): "axe clean

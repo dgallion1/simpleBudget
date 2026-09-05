@@ -124,7 +124,7 @@ U10	2	content,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane-c
 U11	2	tests,a11y	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane-first-attempt-clean
 U12	2	tests,a11y	accepted	2	worker-coder	gate-ok-tier2-attempt-2-dual-lane; a11y FAIL attempt-1 edit-error-stranding, fixed via ErrorAccountID (ruling n)
 U13	2	tests,a11y	accepted	2	worker-coder	gate-ok-tier2-attempt-2-dual-lane; a11y FAIL attempt-1 stale-toast, fixed via display-only JustRemovedIncome (ruling o)
-U14	3	tests,second	pending	0	-	oracle-revalidated-fail-end-on-current-tree-1f71a64 (checks1-4,13 pass, 5-12 fail feature-absent); worker dispatches when U13 frees the worktree
+U14	3	tests,second	accepted	1	worker-coder	gate-ok-tier3-attempt-1-oracle13of13-dual-lane; irreversible guard adversarially verified
 U15	2	a11y	pending	0	-	phase0-draft-awaiting-tier-signoff
 OD1	2	tests,probe	accepted	1	lead	test-only-probe;live-prune-executed-2026-09-04-user-approved-25of25-bind
 CB7	2	tests,second,a11y	accepted	3	worker-coder	gate-ok-tier2-attempt-3-after-second-lane-negzero-catch-at-attempt-2

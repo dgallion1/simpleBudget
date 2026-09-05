@@ -19,7 +19,7 @@
                 "MinDate" .MinDate
                 "MaxDate" .MaxDate
                 "InputOnInput" "document.querySelector('input[name=preset]').value=''"
-                "InputHxAttrs" (safeHTML `hx-get="/insights" hx-target="#insights-wrapper" hx-select="#insights-wrapper" hx-include="#insights-date-filter" hx-push-url="true" hx-trigger="change" hx-indicator="#insights-loading"`)
+                "InputHxAttrs" (safeHTMLAttr `hx-get="/insights" hx-target="#insights-wrapper" hx-select="#insights-wrapper" hx-include="#insights-date-filter" hx-push-url="true" hx-trigger="change" hx-indicator="#insights-loading"`)
                 "PresetAttr" "data-preset"
                 "PresetClass" "insight-preset-btn"
                 "PresetInactiveClass" "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"

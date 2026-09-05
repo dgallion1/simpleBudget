@@ -102,6 +102,7 @@ func getFuncMap() template.FuncMap {
 		"split":                               strings.Split,
 		"join":                                strings.Join,
 		"safeHTML":                            safeHTML,
+		"safeHTMLAttr":                        safeHTMLAttr,
 		"safeJS":                              safeJS,
 		"now":                                 time.Now,
 		"isNegative":                          func(v interface{}) bool { return toFloat(v) < 0 },
@@ -748,6 +749,17 @@ func jsonMarshal(v interface{}) template.JS {
 
 func safeHTML(s string) template.HTML {
 	return template.HTML(s)
+}
+
+// safeHTMLAttr marks a string as a trusted set of HTML ATTRIBUTES for
+// splicing mid-tag (e.g. a block of hx-* attributes on an <input>). Unlike
+// safeHTML (template.HTML), which html/template only trusts in element-CONTENT
+// context and replaces with the literal "ZgotmplZ" when spliced into a tag's
+// attribute area, template.HTMLAttr is trusted in ATTRIBUTE context and
+// emitted verbatim. Use for author-controlled attribute strings only, never
+// user input.
+func safeHTMLAttr(s string) template.HTMLAttr {
+	return template.HTMLAttr(s)
 }
 
 func safeJS(s string) template.JS {

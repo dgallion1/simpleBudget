@@ -131,3 +131,4 @@ CB7	2	tests,second,a11y	accepted	3	worker-coder	gate-ok-tier2-attempt-3-after-se
 CB8	2	tests,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane
 CB9	2	tests,second	accepted	2	lead	gate-ok-tier2-attempt-2-lead-authored-after-dual-lane-attempt1-fail
 U7F	1	a11y	accepted	1	lead	gate-ok-tier1-attempt-1-a11y; live-verified buttons work all 4 pages; mutation-proven test
+U7F2	1	a11y	accepted	1	lead	gate-ok-tier1-attempt-1-a11y; live date-edit auto-refresh verified

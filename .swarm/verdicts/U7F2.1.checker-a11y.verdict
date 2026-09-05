@@ -1,0 +1,97 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U7F2
+ATTEMPT: 1
+---
+SCOPE (git status, worktree feat/ui-audit, HEAD 5e4e114 + uncommitted):
+  M internal/templates/render.go
+  M web/templates/pages/insights.html
+  ?? internal/templates/render_range_picker_hx_attr_test.go
+  M .swarm/ledger.tsv
+Confined exactly to the declared 4 files. (Untracked data/, .swarm-local/
+are pre-existing gitignored/runtime artifacts, unrelated to this diff —
+not touched.)
+
+1. NO MORE ZgotmplZ, HX ATTRS PRESENT — LIVE RENDER
+   scripts/whatif-verify.sh start 8099; curl'd every page.
+   /insights: `grep -c ZgotmplZ` = 0 (site-wide, all 8 pages checked:
+   dashboard, explorer, major-expenses, whatif, accounts, transfers,
+   duplicates, filemanager — all 0).
+   #insights-date-start / #insights-date-end now render literally:
+     hx-get="/insights" hx-target="#insights-wrapper"
+     hx-select="#insights-wrapper" hx-include="#insights-date-filter"
+     hx-push-url="true" hx-trigger="change" hx-indicator="#insights-loading"
+   All 6 named hx-* attributes present, verbatim, on both inputs. FIXED.
+
+2. BEHAVIOR WORKS — LIVE PLAYWRIGHT TRACE (chromium-1234 headless, npx
+   playwright 1.63.0, throwaway script in scratchpad, discarded after)
+   Traced network requests with header `hx-request` while filling
+   #insights-date-start to 2025-06-01 and blurring (Tab, fires `change`):
+     GET /insights/trends/chart?start=2025-08-27&end=2026-08-27   (initial)
+     GET /insights?preset=12m&start=2025-06-01&end=2026-08-27     <- THE FIX
+     GET /insights/trends/chart?start=2025-06-01&end=2026-08-27   (cascade)
+   The middle request is exactly the hx-get="/insights" + hx-trigger=
+   "change" contract firing on manual date edit. #insights-wrapper
+   innerHTML before != after (CONTENT_CHANGED=true) and the browser URL
+   became /insights?preset=12m&start=2025-06-01&end=2026-08-27 (hx-push-
+   url="true" took effect). Before this fix hx-* was ZgotmplZ'd away and
+   editing a date did nothing — confirmed by the mutation test in #5.
+   Sanity-checked preset buttons (U7F, fixed separately) still fire their
+   own hx-get on click — no regression.
+   Focus check (constitution point 10): after the swap, document.
+   activeElement is still INPUT#insights-date-start — focus not lost.
+
+3. ONLY INSIGHTS AFFECTED
+   `grep -rn InputHxAttrs web/templates/` → exactly two hits: the
+   range-picker.html partial's two `{{if .InputHxAttrs}}{{.InputHxAttrs}}
+   {{end}}` splice points, and insights.html's single dict entry passing
+   it. `grep -rln "shared/range-picker" web/templates/pages/` → dashboard,
+   explorer, major-expenses, insights. Confirmed by grep that dashboard/
+   explorer/major-expenses set no InputHxAttrs key. Live-rendered all
+   three: date inputs present, well-formed, 0 ZgotmplZ, labels intact,
+   values/min/max correct — no regression (dashboard's inputs are JS-
+   driven, not hx-*, unaffected by this change either way).
+
+4. safeHTMLAttr USED SAFELY
+   The only call site (insights.html:22) passes a static backtick-quoted
+   Go template literal — six hx-* attributes hardcoded in the template
+   source, no field/variable/user data interpolated inside the
+   safeHTMLAttr(...) argument. `grep -rn safeHTMLAttr web/templates/`
+   confirms this is the only call site in the whole templates tree. Not
+   an injection vector.
+
+5. REGRESSION TEST — LOAD-BEARING, MUTATION-PROVEN
+   render_range_picker_hx_attr_test.go asserts BOTH: ZgotmplZ absent AND
+   the two hx-* substrings present. Mutation-proof in a scratch `cp -a`
+   (/tmp/.../scratchpad/mutcheck, deleted after): changed the test's
+   `safeHTMLAttr(...)` to `safeHTML(...)` → test FAILED, output showed
+   `ZgotmplZ` re-injected in place of the attrs and the "missing spliced
+   hx-* attributes" assertion also firing. Restored original (not the
+   real worktree — a throwaway copy); real worktree file unmodified,
+   re-ran there: PASS.
+
+6. BUILD/LINT/CSS
+   go build ./... -> clean, exit 0
+   go vet ./...   -> clean, exit 0
+   go test ./internal/templates/... -> ok
+   staticcheck ./internal/templates/... -> clean, exit 0
+   make css-verify -> "tailwind.css is up to date"
+
+ACCESSIBILITY.md: this task is a functional HTMX-wiring bug fix; nearest
+touchpoints are point 4 (labels — unchanged, for/id pairs still match,
+verified in raw HTML) and point 10 (focus after HTMX swap — traced above,
+focus retained, no regression; this is pre-existing hx-target/hx-select
+machinery shared with the already-working preset buttons, not new to
+this diff).
+
+OBSERVATIONS (non-blocking):
+- No other `}}="` / dynamic-attribute-name or template.HTML-in-attribute-
+  context patterns found in the templates searched (range-picker.html's
+  own comment documents the U7F fix for PresetAttr as a STATIC-literal
+  conditional, not dynamic — consistent with this fix's approach).
+- Server start/stop used the isolated whatif-verify.sh harness against a
+  throwaway data copy; no mutation to /data or the live :8080 instance.
+- Playwright script and node_modules were written only under the session
+  scratchpad and deleted; no project files touched, no binary invoked
+  directly (server driven via scripts/whatif-verify.sh per instructions).

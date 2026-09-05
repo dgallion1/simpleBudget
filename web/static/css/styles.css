@@ -176,6 +176,12 @@ input:focus, select:focus {
     display: none;
 }
 
+/* Major Expenses — definitions disclosure chevron (U11): points right when
+   collapsed, down when the toggle button reports it is expanded. */
+#major-expenses-definitions-toggle[aria-expanded="true"] #major-expenses-definitions-toggle-icon {
+    transform: rotate(90deg);
+}
+
 /* Major Expenses — Exceptions bulk-pin checkboxes.
    Sized as button-like targets (~22px) so they're easy to click and visually
    register as actionable controls rather than tiny default inputs. */

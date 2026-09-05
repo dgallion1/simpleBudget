@@ -1,0 +1,124 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U11
+ATTEMPT: 1
+---
+Scope: uncommitted diff on feat/ui-audit (HEAD 14c090a) touching
+web/templates/pages/major-expenses.html, web/static/js/major-expenses.js,
+web/static/css/styles.css. Diffed against HEAD (not master, since master
+diff also contains prior committed U1-U10 work on this branch) to isolate
+U11's own contribution; confirmed the isolated diff matches the manifest's
+description exactly (one-column reorder, definitions <details> disclosure,
+delete moved into expanded detail row, h1 moved above filter, one CSS rule
+for chevron rotation, one JS wiring block for the disclosure + nested-details
+auto-open).
+
+Live render used throughout (scripts/whatif-verify.sh start/stop 8092,
+:8080 untouched, torn down via /killme after). Playwright (local install in
+scratchpad, chromium-1234 cache) + axe-core 4.x driving the real page.
+
+1. Full axe sweep (light + dark, 1440px, wcag2a/2aa/21a/21aa/22aa/best-practice),
+   every <details> opened (6 unique: 3 exceptions buckets, definitions panel,
+   add panel, deleted panel):
+   - Both themes: 1 violation, `empty-table-header` (minor) on
+     `tr > .w-6` — the LEADING chevron `<th class="w-6"></th>` in the
+     definitions table header.
+   - `git show master:web/templates/pages/major-expenses.html` line 1008
+     vs branch line 200: byte-identical. The `<th>` this task removed was
+     the TRAILING (delete-column) header, a second instance of the same
+     defect — net violation-node count went DOWN. PRE-EXISTING, U15-scope
+     (rulings U-2026-09-03a/e already cover this class) — OBSERVATION,
+     not a FAIL.
+   - Additionally expanded EVERY per-row detail (`tbody[data-expense-id]
+     data-open="true"`, not just one — a check beyond what the manifest
+     described) and reran axe: 42 nodes of the SAME `empty-table-header`
+     rule, all but one being `th:nth-child(4)` (empty 4th column) in the
+     "Matched transactions" mini-table inside each expanded detail row.
+     Confirmed byte-identical to master (git show master, same line):
+     `<tr><th>Date</th><th>Description</th><th>Amount</th><th></th></tr>`.
+     Pre-existing, untouched by this task (U11 only changed the outer
+     `<td colspan>` from 5 to 4) — OBSERVATION for U15, not a FAIL.
+   - Zero NEW violations introduced by U11 in either pass, either theme.
+
+2. Disclosure keyboard operability — confirmed live:
+   - `#major-expenses-definitions-toggle` is a real `<button
+     aria-expanded="false" aria-controls="major-expenses-definitions-panel">`
+     (not a div/onclick).
+   - Tab reaches it directly (`.focus()` succeeds); Enter opens the panel
+     (`panel.open` true, `aria-expanded` → "true"); Space on the open
+     panel closes it again (`aria-expanded` → "false") — both keys wired,
+     state stays synced.
+   - Per-row expand chevrons (`button.major-expense-row-toggle`,
+     `aria-expanded`/`aria-controls`) are likewise real buttons, keyboard
+     Enter toggles `tbody[data-open]` and the row's `aria-expanded`.
+
+3. Delete-only-when-expanded, verified against the actual a11y tree (not
+   just CSS), using Playwright's real actionability checks (`isVisible()`,
+   `focus()`, `click()` timeouts) rather than raw `offsetParent` (Chromium's
+   newer `<details>` `::details-content` implementation makes descendant
+   `offsetParent`/`getComputedStyle` unreliable as a hidden-content proxy —
+   confirmed this discrepancy directly, then re-verified with Playwright's
+   real visibility/interactability semantics):
+   - Fresh load (definitions panel collapsed): delete button `isVisible()`
+     = false, not focusable.
+   - Definitions panel opened, individual row still collapsed (default):
+     delete `isVisible()` = false; 60 Tab presses from the definitions
+     toggle never land on it (confirmed by walking `document.activeElement`
+     each press) — matches "collapsed detail row exposes no delete
+     control to keyboard/AT."
+   - Row expanded via its own toggle: delete `isVisible()` = true,
+     `.focus()` succeeds, `aria-label="Delete major expense <name>"`
+     present and descriptive. CSS confirmed:
+     `#major-expenses-list tbody[data-open="false"] > tr.major-expense-detail-row
+     { display: none; }` (pre-existing rule, unchanged) is what removes it
+     from the tab order/AT tree while collapsed.
+
+4. Heading structure — rendered DOM (all `<details>` open): exactly one
+   `<h1>Major Expenses</h1>`, then `<h2>Exceptions</h2>`, `<h2>Your Major
+   Expenses</h2>`, `<h3>Add a major expense</h3>` — no skipped levels.
+   Landmarks: 1 `<main>`, 1 `<nav>`, 1 `<header>`, 1 `<footer>`. The `<h1>`
+   is the first element child of the page's outer `space-y-4` wrapper,
+   above the filter card — matches Explorer's pattern
+   (`explorer.html`: `<h1>` first child, filter card follows).
+
+5. Tokens/type floor: `git diff HEAD` on the three changed files contains
+   no `text-[10px]`/`text-[11px]` and no hue-literal utility class (grep
+   for red-/green-/blue-/indigo-/etc. on the touched lines returns
+   nothing beyond gray/negative/accent tokens already in use); the one new
+   size class introduced is `text-body-sm` on the new Delete button (not a
+   floor regression). The one added CSS rule
+   (`#major-expenses-definitions-toggle[aria-expanded="true"] ...
+   { transform: rotate(90deg); }`) has no `!important`, no hue literal;
+   confirmed zero `!important` remains anywhere in styles.css.
+
+6. Nested-<details> auto-open interaction — verified live, three paths:
+   - Typing "Amazon" into `#major-expenses-search` (a real definitions
+     match): panel flips `open=true`/`aria-expanded="true"` and the
+     matching row becomes visible — no manual expand needed first.
+   - Clicking the `[+]` add-toggle (`aria-controls="major-expenses-add-panel"`):
+     both the add-panel AND its closed ancestor (definitions panel) end up
+     open (`addPanelOpen: true, defPanelOpen: true`) — confirms the fix for
+     "closed ancestor <details> hides nested content regardless of the
+     nested element's own open state"; nothing is left stranded/hidden.
+   - (Per manifest, the jump-to-existing `[data-jump-expense]` path calls
+     the same `openDefinitionsPanel()` helper — same code path as the
+     add-toggle, not independently re-probed beyond code inspection since
+     it shares the identical helper function already exercised above.)
+
+OBSERVATIONS (pre-existing, not U11 FAILs, confirmed via git diff/git show
+against master):
+- `empty-table-header` on the leading chevron `<th class="w-6">` in the
+  definitions table (U15 scope, ruling U-2026-09-03a/e).
+- `empty-table-header` ×41 on the trailing empty `<th></th>` (pin-checkbox
+  column placeholder) in every expanded row's "Matched transactions"
+  mini-table — same rule, same root cause (icon/checkbox-only header cell
+  with no accessible name), byte-identical to master, only newly visible
+  because it requires expanding every row's detail to reach (neither this
+  task's own axe pass nor a plain page-level probe would surface it without
+  deliberately opening every row — noting this for U15's sitewide sweep,
+  which already owns `<th scope="col">`/accessible-name fixes for data
+  tables).
+
+No FAILs. No new violations, no keyboard traps, no regressions in heading
+structure, tokens, or the definitions/add-panel interaction. VERDICT: PASS.

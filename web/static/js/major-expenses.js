@@ -370,6 +370,19 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             if (q !== '' && txnHadMatch) setRowOpen(group, true);
         });
 
+        // The definitions list is collapsed by default (U11); reveal it
+        // when a search actually matches something inside it, so filtering
+        // stays useful without requiring a manual expand first. An empty
+        // query leaves the panel's open/closed state untouched.
+        if (q !== '' && visibleExpenses > 0) {
+            const defPanel = document.getElementById('major-expenses-definitions-panel');
+            const defToggle = document.getElementById('major-expenses-definitions-toggle');
+            if (defPanel && !defPanel.open) {
+                defPanel.open = true;
+                if (defToggle) defToggle.setAttribute('aria-expanded', 'true');
+            }
+        }
+
         // ---- RIGHT CARD: Exceptions ----
         const exRows = document.querySelectorAll('tr.major-expenses-exception-row');
         let visibleExceptions = 0;
@@ -440,7 +453,14 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 
         if (savedOpenDetails) {
             document.querySelectorAll(persistedDetailsSelector()).forEach(function (d) {
-                if (savedOpenDetails.has(d.id)) d.open = true;
+                if (savedOpenDetails.has(d.id)) {
+                    d.open = true;
+                    // Keep any external disclosure button (aria-controls
+                    // pointing at this details' id) in sync — e.g. the
+                    // definitions-panel toggle, add-panel toggle.
+                    const btn = document.querySelector('button[aria-controls="' + CSS.escape(d.id) + '"]');
+                    if (btn) btn.setAttribute('aria-expanded', 'true');
+                }
             });
             savedOpenDetails = null;
         }
@@ -637,6 +657,32 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         input.focus();
     });
 
+    // Definitions disclosure (U11): the "Your Major Expenses" heading is a
+    // real button that flips the surrounding <details> open state (the
+    // list is collapsed by default) and keeps its aria-expanded in sync.
+    // openDefinitionsPanel() is also called whenever something nested
+    // inside it (the add form) is revealed programmatically, since a
+    // closed ancestor <details> hides its contents regardless of the
+    // nested element's own open state.
+    function openDefinitionsPanel() {
+        const panel = document.getElementById('major-expenses-definitions-panel');
+        const toggle = document.getElementById('major-expenses-definitions-toggle');
+        if (panel && !panel.open) {
+            panel.open = true;
+            if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        }
+    }
+    document.addEventListener('click', function (e) {
+        const toggle = e.target && e.target.closest && e.target.closest('#major-expenses-definitions-toggle');
+        if (!toggle) return;
+        e.preventDefault();
+        const panel = document.getElementById('major-expenses-definitions-panel');
+        if (!panel) return;
+        const willOpen = !panel.open;
+        panel.open = willOpen;
+        toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    });
+
     // Add-panel toggle: [+] icon flips <details> open state and aria.
     // Opening from this button is a "blank-slate" create — clear any
     // pin_hash that an earlier "+ Create new from this" might have set.
@@ -650,6 +696,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         panel.open = willOpen;
         toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
         if (willOpen) {
+            openDefinitionsPanel();
             const ph = document.getElementById('major-expenses-add-pin-hash');
             if (ph) ph.value = '';
             const hint = document.getElementById('major-expenses-add-pin-hash-hint');
@@ -671,6 +718,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             panel.open = true;
             if (toggle) toggle.setAttribute('aria-expanded', 'true');
         }
+        openDefinitionsPanel();
         const desc = fillRow.getAttribute('data-fill-name') || '';
         const amount = parseFloat(fillRow.getAttribute('data-fill-amount') || '0');
         const isCheckLike = /\bcheck\b|^\s*#?\d{3,}\s*$/i.test(desc);
@@ -751,6 +799,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             const summary = document.getElementById('major-expense-item-' + id);
             const tbody = summary && summary.closest('tbody[data-expense-id]');
             if (!summary) return;
+            openDefinitionsPanel();
             setRowOpen(tbody, true);
             summary.scrollIntoView({ behavior: 'smooth', block: 'center' });
             summary.classList.add('ring-2', 'ring-warning');

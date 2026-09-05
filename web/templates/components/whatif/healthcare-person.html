@@ -26,7 +26,7 @@
     </div>
     <form hx-put="/whatif/healthcare/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms">
         <div class="grid grid-cols-2 gap-2 text-sm mb-2">
-            <div>
+            <div class="{{if not .IsLinked}}col-span-2{{end}}">
                 <label class="block text-xs text-gray-600 dark:text-gray-300">Person</label>
                 <select name="person_id"
                     class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
@@ -36,26 +36,25 @@
                     {{end}}
                 </select>
             </div>
+            {{/* Source is shown only when the person is linked/derived; a
+            manual entry has no other source to report, so the line is
+            omitted entirely rather than saying "Manual entry". */}}
+            {{if .IsLinked}}
             <div>
                 <label class="block text-xs text-gray-600 dark:text-gray-300">Source</label>
-                <div class="mt-1 rounded-md px-3 py-2 text-sm {{if .IsLinked}}bg-accent-soft text-accent{{else}}bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-100{{end}}">
-                    {{if .IsLinked}}Linked to canonical person{{else}}Manual entry{{end}}
+                <div class="mt-1 rounded-md px-3 py-2 text-sm bg-accent-soft text-accent">
+                    Linked to canonical person
                 </div>
             </div>
+            {{end}}
         </div>
         {{if .IsLinked}}
+        {{/* Name and age are already shown once, in the card header above
+        (line 10-11); the hidden inputs keep them in the PUT form body
+        without rendering a second, duplicate "Linked Person"/"Derived Age"
+        display here. */}}
         <input type="hidden" name="name" value="{{.Name}}">
         <input type="hidden" name="current_age" value="{{.CurrentAge}}">
-        <div class="grid grid-cols-2 gap-2 text-sm mb-2">
-            <div class="rounded-md bg-gray-100 px-3 py-2 text-gray-700 dark:bg-gray-600 dark:text-gray-100">
-                <span class="block text-xs text-gray-600 dark:text-gray-300">Linked Person</span>
-                {{.Name}}
-            </div>
-            <div class="rounded-md bg-gray-100 px-3 py-2 text-gray-700 dark:bg-gray-600 dark:text-gray-100">
-                <span class="block text-xs text-gray-600 dark:text-gray-300">Derived Age</span>
-                {{.CurrentAge}}
-            </div>
-        </div>
         {{else}}
         <div class="grid grid-cols-2 gap-2 text-sm mb-2">
             <div>
@@ -72,39 +71,36 @@
         {{end}}
         <div class="grid grid-cols-2 gap-2 text-sm">
             <div>
-                <label class="block text-xs text-gray-600 dark:text-gray-300">Monthly Cost</label>
-                <div class="flex items-center gap-2">
-                    <input type="range" name="current_monthly_cost" value="{{printf "%.0f" .CurrentMonthlyCost}}"
-                        min="0" max="3000" step="50"
-                        data-quick-adjust-key="healthcare:{{.ID}}:current_monthly_cost"
-                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString('en-US')">
-                    <span class="text-body-sm text-negative w-16" data-quick-adjust-display="healthcare:{{.ID}}:current_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .CurrentMonthlyCost}}</span>
+                <div class="flex items-center justify-between gap-2">
+                    <label class="text-xs text-gray-600 dark:text-gray-300">Monthly Cost</label>
+                    <span class="text-body-sm text-negative" data-quick-adjust-display="healthcare:{{.ID}}:current_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .CurrentMonthlyCost}}</span>
                 </div>
+                <input type="range" name="current_monthly_cost" value="{{printf "%.0f" .CurrentMonthlyCost}}"
+                    min="0" max="3000" step="50"
+                    data-quick-adjust-key="healthcare:{{.ID}}:current_monthly_cost"
+                    class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
             </div>
             {{if eq .CurrentCoverage "employer"}}
             <div>
-                <label class="block text-xs text-gray-600 dark:text-gray-300">Coverage Ends In</label>
-                <div class="flex items-center gap-2">
-                    <input type="range" name="employer_coverage_years" value="{{.EmployerCoverageYears}}"
-                        min="0" max="20" step="1"
-                        data-quick-adjust-key="healthcare:{{.ID}}:employer_coverage_years"
-                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                        oninput="this.nextElementSibling.textContent = this.value == 0 ? 'Medicare' : this.value + ' yrs'">
-                    <span class="text-body-sm text-gray-600 dark:text-gray-300 w-16" data-quick-adjust-display="healthcare:{{.ID}}:employer_coverage_years" data-quick-adjust-display-format="coverage-years">{{if eq .EmployerCoverageYears 0}}Medicare{{else}}{{.EmployerCoverageYears}} yrs{{end}}</span>
+                <div class="flex items-center justify-between gap-2">
+                    <label class="text-xs text-gray-600 dark:text-gray-300">Coverage Ends In</label>
+                    <span class="text-body-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="healthcare:{{.ID}}:employer_coverage_years" data-quick-adjust-display-format="coverage-years">{{if eq .EmployerCoverageYears 0}}Medicare{{else}}{{.EmployerCoverageYears}} yrs{{end}}</span>
                 </div>
+                <input type="range" name="employer_coverage_years" value="{{.EmployerCoverageYears}}"
+                    min="0" max="20" step="1"
+                    data-quick-adjust-key="healthcare:{{.ID}}:employer_coverage_years"
+                    class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
             </div>
             {{else if ne .CurrentCoverage "medicare"}}
             <div>
-                <label class="block text-xs text-gray-600 dark:text-gray-300">Pre-Medicare Inflation</label>
-                <div class="flex items-center gap-2">
-                    <input type="range" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
-                        min="0" max="15" step="0.5"
-                        data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
-                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                        oninput="this.nextElementSibling.textContent = this.value + '%'">
-                    <span class="text-body-sm text-gray-600 dark:text-gray-300 w-10" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
+                <div class="flex items-center justify-between gap-2">
+                    <label class="text-xs text-gray-600 dark:text-gray-300">Pre-Medicare Inflation</label>
+                    <span class="text-body-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
                 </div>
+                <input type="range" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
+                    min="0" max="15" step="0.5"
+                    data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
+                    class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
             </div>
             {{end}}
         </div>
@@ -112,26 +108,24 @@
         {{if gt .EmployerCoverageYears 0}}
         <div class="grid grid-cols-2 gap-2 text-sm mt-2">
             <div>
-                <label class="block text-xs text-gray-600 dark:text-gray-300">ACA Cost After Employer</label>
-                <div class="flex items-center gap-2">
-                    <input type="range" name="aca_cost_after_employer" value="{{printf "%.0f" .ACACostAfterEmployer}}"
-                        min="0" max="3000" step="50"
-                        data-quick-adjust-key="healthcare:{{.ID}}:aca_cost_after_employer"
-                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString('en-US')">
-                    <span class="text-body-sm text-negative w-16" data-quick-adjust-display="healthcare:{{.ID}}:aca_cost_after_employer" data-quick-adjust-display-format="currency">${{formatNumber .ACACostAfterEmployer}}</span>
+                <div class="flex items-center justify-between gap-2">
+                    <label class="text-xs text-gray-600 dark:text-gray-300">ACA Cost After Employer</label>
+                    <span class="text-body-sm text-negative" data-quick-adjust-display="healthcare:{{.ID}}:aca_cost_after_employer" data-quick-adjust-display-format="currency">${{formatNumber .ACACostAfterEmployer}}</span>
                 </div>
+                <input type="range" name="aca_cost_after_employer" value="{{printf "%.0f" .ACACostAfterEmployer}}"
+                    min="0" max="3000" step="50"
+                    data-quick-adjust-key="healthcare:{{.ID}}:aca_cost_after_employer"
+                    class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
             </div>
             <div>
-                <label class="block text-xs text-gray-600 dark:text-gray-300">ACA Inflation</label>
-                <div class="flex items-center gap-2">
-                    <input type="range" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
-                        min="0" max="15" step="0.5"
-                        data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
-                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                        oninput="this.nextElementSibling.textContent = this.value + '%'">
-                    <span class="text-body-sm text-gray-600 dark:text-gray-300 w-10" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
+                <div class="flex items-center justify-between gap-2">
+                    <label class="text-xs text-gray-600 dark:text-gray-300">ACA Inflation</label>
+                    <span class="text-body-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="healthcare:{{.ID}}:pre_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PreMedicareInflation}}%</span>
                 </div>
+                <input type="range" name="pre_medicare_inflation" value="{{printf "%.1f" .PreMedicareInflation}}"
+                    min="0" max="15" step="0.5"
+                    data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
+                    class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
             </div>
         </div>
         {{end}}
@@ -139,40 +133,37 @@
         {{if ne .CurrentCoverage "medicare"}}
         <div class="grid grid-cols-2 gap-2 text-sm mt-2">
             <div>
-                <label class="block text-xs text-gray-600 dark:text-gray-300">Medicare Cost (at 65)</label>
-                <div class="flex items-center gap-2">
-                    <input type="range" name="medicare_monthly_cost" value="{{printf "%.0f" .MedicareMonthlyCost}}"
-                        min="0" max="2000" step="50"
-                        data-quick-adjust-key="healthcare:{{.ID}}:medicare_monthly_cost"
-                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                        oninput="this.nextElementSibling.textContent = '$' + Number(this.value).toLocaleString('en-US')">
-                    <span class="text-body-sm text-negative w-16" data-quick-adjust-display="healthcare:{{.ID}}:medicare_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .MedicareMonthlyCost}}</span>
+                <div class="flex items-center justify-between gap-2">
+                    <label class="text-xs text-gray-600 dark:text-gray-300">Medicare Cost (at 65)</label>
+                    <span class="text-body-sm text-negative" data-quick-adjust-display="healthcare:{{.ID}}:medicare_monthly_cost" data-quick-adjust-display-format="currency">${{formatNumber .MedicareMonthlyCost}}</span>
                 </div>
+                <input type="range" name="medicare_monthly_cost" value="{{printf "%.0f" .MedicareMonthlyCost}}"
+                    min="0" max="2000" step="50"
+                    data-quick-adjust-key="healthcare:{{.ID}}:medicare_monthly_cost"
+                    class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
             </div>
             <div>
-                <label class="block text-xs text-gray-600 dark:text-gray-300">Post-Medicare Inflation</label>
-                <div class="flex items-center gap-2">
-                    <input type="range" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
-                        min="0" max="10" step="0.5"
-                        data-quick-adjust-key="healthcare:{{.ID}}:post_medicare_inflation"
-                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                        oninput="this.nextElementSibling.textContent = this.value + '%'">
-                    <span class="text-body-sm text-gray-600 dark:text-gray-300 w-10" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
+                <div class="flex items-center justify-between gap-2">
+                    <label class="text-xs text-gray-600 dark:text-gray-300">Post-Medicare Inflation</label>
+                    <span class="text-body-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
                 </div>
+                <input type="range" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
+                    min="0" max="10" step="0.5"
+                    data-quick-adjust-key="healthcare:{{.ID}}:post_medicare_inflation"
+                    class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
             </div>
         </div>
         {{else}}
         <div class="text-sm mt-2">
             <div>
-                <label class="block text-xs text-gray-600 dark:text-gray-300">Medicare Inflation</label>
-                <div class="flex items-center gap-2">
-                    <input type="range" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
-                        min="0" max="10" step="0.5"
-                        data-quick-adjust-key="healthcare:{{.ID}}:post_medicare_inflation"
-                        class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                        oninput="this.nextElementSibling.textContent = this.value + '%'">
-                    <span class="text-body-sm text-gray-600 dark:text-gray-300 w-10" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
+                <div class="flex items-center justify-between gap-2">
+                    <label class="text-xs text-gray-600 dark:text-gray-300">Medicare Inflation</label>
+                    <span class="text-body-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="healthcare:{{.ID}}:post_medicare_inflation" data-quick-adjust-display-format="percent1">{{printf "%.1f" .PostMedicareInflation}}%</span>
                 </div>
+                <input type="range" name="post_medicare_inflation" value="{{printf "%.1f" .PostMedicareInflation}}"
+                    min="0" max="10" step="0.5"
+                    data-quick-adjust-key="healthcare:{{.ID}}:post_medicare_inflation"
+                    class="mt-1 w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer">
             </div>
         </div>
         {{end}}

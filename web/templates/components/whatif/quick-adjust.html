@@ -1,6 +1,16 @@
 {{/* Floating quick-adjust panel for high-frequency what-if controls */}}
 
 {{define "whatif-quick-adjust"}}
+{{/* Reserves room, at the very end of the page's normal document flow, for
+the fixed-position FAB below (U13). Without it, scrolling to the bottom of
+the settings rail leaves the last card sitting directly under the FAB's
+fixed bottom-6 position, since a `position: fixed` element claims no space
+in flow and the page would otherwise end flush with the last card. Sized to
+clear the closed toggle button (not the opened panel, which is expected to
+overlay content); "lg" only, matching the FAB's own "hidden lg:block" —
+below that breakpoint the FAB isn't rendered at all, so no reserved space
+is needed. */}}
+<div class="hidden lg:block h-28" aria-hidden="true"></div>
 <div class="hidden lg:block">
     <button id="quick-adjust-toggle"
         type="button"

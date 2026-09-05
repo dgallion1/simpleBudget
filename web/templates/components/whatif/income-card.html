@@ -5,7 +5,12 @@
     <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Income Sources</h2>
 
     {{template "whatif-income-sources-list" .}}
-    {{template "whatif-removed-income-sources" .}}
+    {{/* Empty, hidden placeholder for the Undo toast (U13). The real markup
+    is only ever rendered as an hx-swap-oob fragment by
+    "whatif-removed-income-sources" after a live remove/restore in THIS
+    session -- never on initial page load, so a source removed in a past
+    session can't reappear as a toast on reload (ACCESSIBILITY.md #14). */}}
+    <div id="income-removed-toast" class="hidden" role="status"></div>
     {{template "whatif-add-income-form" .}}
 </div>
 {{end}}

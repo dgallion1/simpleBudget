@@ -1,0 +1,182 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U13
+ATTEMPT: 2
+---
+
+Scope: re-audit of U13 attempt 2 (ruling U-2026-09-05o fix) against
+.swarm/U-RUN-SPEC.md §2g, ACCESSIBILITY.md (esp. #10, #14, #16), WCAG 2.2 AA.
+Standard used: real render of the ui-audit worktree (feat/ui-audit, HEAD
+5bfc4c8), via `scripts/whatif-verify.sh start 8092` (worktree copy, `cp -rL`
+dereferenced data), Playwright (chromium) against localhost:8092, and
+@axe-core (4.x, cached local install) against the live rendered DOM.
+
+PROCESS NOTE (self-correction, recorded for transparency): my first several
+verify-server invocations used the relative path `scripts/whatif-verify.sh`
+after a `cd /home/darrell/bin/ai/budget2` (the MAIN checkout on master, not
+the ui-audit worktree) — the bash tool resets cwd between calls, and I
+re-`cd`'d into the wrong tree. This served pre-U13 (master) markup for a
+while, producing bogus "the toast placeholder doesn't exist" / "unrelated
+mutation re-shows toast" readings that were artifacts of testing the WRONG
+CODE, not the fix. Caught it by diffing served HTML against expected diff
+markers (`bg-accent-soft`, `tabindex="-1"` on `#income-sources-list`) and
+confirming `git branch --show-current` at both paths. All findings below are
+from re-run, verified-correct-tree instances (`cd .../worktrees/ui-audit &&
+git branch --show-current` = `feat/ui-audit` confirmed before each server
+start referenced by absolute path).
+
+Diff reviewed (git diff master): handlers.go, handlers_income_expense.go,
+income-sources-list.html only. healthcare-person.html, quick-adjust.html,
+whatif-income-toast.js untouched since attempt 1 (confirmed via `git diff
+master` — 1-line no-op diff on healthcare-person.html, identical to attempt
+1's already-PASSed state).
+
+## 1. Fresh remove shows only the just-removed source — PASS
+
+curl-level (server truth) and Playwright DOM-level, both confirm: seeding a
+stale removed entry ("Stale Past Removal"/"StaleX"/"StaleDbg2" across
+several runs), then removing a DIFFERENT, later source shows a toast naming
+ONLY the just-removed source, never the stale one. Example (u13_v2_probe.js
+against the correct tree):
+  AFTER SEED REMOVE toast: true "Removed Stale Past Removal"
+  FRESH REMOVE toast: true "Removed Freshly Removed"  (never mentions Stale)
+`role="status"` present; Undo is a native `<button>` with
+`hx-post="/whatif/income/{id}/restore"`, confirmed focusable AND hit-tested
+on top of its own bounding box (no overlay); dismiss button focusable; Esc
+dismiss confirmed (`hidden after Esc: true`, keyboard-driven Esc also
+verified in u13_kbd.js).
+
+## 2. Unrelated mutation shows NO toast — PASS, 2+ distinct action types
+
+Direct server-response check (curl, isolated cookie jar) after a
+seed-delete + healthcare/income mutation, and Playwright live-DOM check
+(u13_debug2.js) both confirm the toast div renders `hidden`, empty, after:
+  - an unrelated ADD of a new income source (`AFTER UNRELATED ADD toast
+    visible (expected false): false`, and DOM class dump shows
+    `... ring-1 ring-white/10 hidden` with empty text)
+  - an unrelated income field PUT (`start_year` edit) —
+    `AFTER INCOME FIELD EDIT toast visible (expected false): false`
+This is the exact attempt-1 failure (stale toast keyed on the persistent
+`RemovedIncomeSources` list resurfacing on any mutation); confirmed gone —
+the toast now keys only on the display-only `JustRemovedIncome`, which
+every non-delete handler leaves unset.
+
+## 3. Initial load / post-Undo — PASS
+
+Fresh page load: `#income-removed-toast` present as the hidden placeholder
+(income-card.html), `cnt=1, visible:false, cls:"hidden"` — never shows a
+past-session removal (ACCESSIBILITY.md #14). After Undo/restore: toast
+returns to hidden with no lingering text (`AFTER UNDO toast hidden: true`;
+restored item's delete-button count = 1, confirmed reappeared in the active
+list). Verified across multiple isolated single-action sessions
+(u13_single_undo.js, u13_realistic_debug.js) — 100% clean every run once
+tested against the correct tree.
+
+## 4. Undo at a realistic human pace — RELIABLE (rapid-fire flakiness is a
+   probe/perf artifact, not an a11y defect; OBSERVATION below)
+
+Ran deliberate, fully-settled add→remove→wait-for-toast→Undo cycles
+(networkidle wait after every step + an explicit ~1.2s human-reading pause
+before clicking Undo — u13_slow_undo.js): 4 consecutive iterations, 100%
+clean (restore POST fires, item reappears, toast hides) before the run was
+cut off by an unrelated server-side slowdown (see Observation 1). Also
+independently reproduced clean 100% on isolated single-cycle scripts. I
+also reproduced a genuine INTERMITTENT miss when hammering 6-8 full CRUD
+cycles back-to-back with only ~300-400ms gaps (u13_realistic_undo.js,
+u13_v2_probe.js) — but traced this to the SERVER, not the click or the
+toast: server log during the tight-loop run shows `/whatif/results-full`
+requests taking 27-45 SECONDS and the server process pinned at ~1100% CPU
+after several rapid mutations pile up background full-analysis jobs
+(Monte Carlo / historical backtest recompute), eventually returning 500s.
+Under that load, ANY request — including the Undo click's POST — can stall
+or appear to not register. This reproduces the worker's own transparency
+note and confirms its self-diagnosis: at a pace a real user would plausibly
+use, Undo is reliable; the flakiness requires firing full mutation cycles
+faster than the backend's background analysis can keep up, which is a
+backend performance/concurrency characteristic pre-dating this diff (attempt
+2 touches only the toast signal, not `analysisFastOrCached` scheduling).
+Treated as OBSERVATION, not a FAIL, per the task's explicit instruction.
+
+## 5. Full axe sweep — PASS, zero NEW violations
+
+@axe-core 4.x against /whatif, disclosures opened, light+dark, 1440x900 and
+390x844 (4 combinations): 2 violations in every combination, identical set
+each time — `label` (28 nodes: portfolio/expenses/projection-years sliders,
+income start/end-year number inputs) and `select-name` (11 nodes:
+portfolio-range, current_coverage, person_id selects). These are the
+pre-existing findings the spec explicitly scopes to U15
+("label/select-name are U15-scope"); none of the violation nodes are inside
+the U13 diff (income-sources-list.html's new toast markup, or the two
+touched Go files) — confirmed by node target inspection, no
+`income-removed-toast`/`data-income-toast-*` nodes flagged in any run.
+
+Person card re-glance (item 5b): healthcare-person.html/quick-adjust.html
+untouched since attempt 1 (`git diff master` confirms only a 1-line no-op
+vs. attempt 1's already-PASSed version) — name-once, conditional `Source:`,
+`{{.CurrentCoverage.Label}}`, slider-adjacent-value, and FAB clearance were
+all independently PASSed in U13.1.checker-a11y.verdict and are unaffected
+by this attempt's diff (handlers.go / handlers_income_expense.go /
+income-sources-list.html only).
+
+## 6. Type floor — PASS
+
+No `text-[10px]`/`text-[11px]` anywhere in the touched files. Toast text is
+`text-sm`; nested labels use `text-body-sm` (the U6 token), consistent with
+the rest of the diff's U6 tokenization pass (bg-accent-soft/text-accent/
+text-negative/text-warning replacing raw indigo/amber/red utility classes
+throughout this file, itself a positive side-effect of this diff, not a
+regression).
+
+## Keyboard / focus (ACCESSIBILITY.md #9, #10)
+
+u13_kbd.js / u13_dismiss_kbd.js: Undo is Tab-reachable and Enter-activates
+(fires the restore POST); after the OOB swap that replaces
+`#income-removed-toast` (the previously-focused element), focus moves to
+`#income-sources-list` (`tabindex="-1"` + `focus:outline-none`, added this
+attempt) — confirmed via `document.activeElement.id === 'income-sources-list'`
+immediately after Undo's swap. Esc dismisses via keyboard
+(`document.dispatchEvent` keydown listener in whatif-income-toast.js).
+Dismiss button is Tab-reachable and Enter-activates, hiding the toast.
+Satisfies ACCESSIBILITY.md #10 (focus restored to a sensible element inside
+the swapped region after a swap that removes focus) and #16 (client-side
+dismiss clears the assistive-tech-visible state, not just the visual one —
+`classList.add('hidden')` removes it from the a11y tree in the same action).
+
+## OBSERVATIONS (non-blocking, for the backlog — not U13 FAILs)
+
+1. **Backend concurrency/perf**: firing several full income add/delete/
+   restore cycles within a few hundred ms of each other causes background
+   full-analysis jobs (behind `analysisFastOrCached`'s pending-hash path) to
+   pile up, driving the verify server to ~1100% CPU and `/whatif/results-
+   full` latencies of 27-45s with occasional 500s. `handleWhatIfResultsFull`
+   does correctly guard against serving STALE content (double hash check
+   against current settings, 204 on mismatch) — so this is a performance/
+   resource-exhaustion risk under rapid repeated mutation, not a
+   correctness or a11y defect, and pre-dates this diff (attempt 2 does not
+   touch `analysisFastOrCached`, `runAnalysisWithCache`, or any concurrency
+   control). Worth a dedicated perf task if rapid-fire interaction (e.g. a
+   user double-clicking, or scripted/automated use) is a realistic concern.
+2. Pre-existing axe findings (`label` on quick-adjust sliders/number inputs,
+   `select-name` on portfolio-range/current_coverage/person_id selects) are
+   confirmed unchanged in every theme/viewport combination and are U15-
+   scoped per the spec — not re-raised as a U13 FAIL.
+
+## Server lifecycle
+
+`scripts/whatif-verify.sh start 8092` (worktree-anchored by absolute path)
+confirmed `/tmp/budget2-whatif-verify-8092/data` is a real directory (not a
+symlink) via `file`/`readlink` before any test traffic. Server stopped
+(`scripts/whatif-verify.sh stop 8092`) at the end; confirmed no orphaned
+`budget2-server` process; confirmed the real `:8080` instance answered
+`/api/health` normally afterward (untouched).
+
+## Verdict
+
+PASS. Ruling U-2026-09-05o's fix holds under fresh-remove, unrelated-
+mutation (2 distinct action types), initial-load, and post-Undo checks, at
+both realistic and stress pacing (with the stress-pacing miss correctly
+attributed to a pre-existing backend perf characteristic, not the toast
+logic or the click handling). Zero new axe violations in any of 4 theme/
+viewport combinations. Keyboard/focus contract (ACCESSIBILITY.md #9/#10/#16)
+holds for Undo, Esc, and dismiss.

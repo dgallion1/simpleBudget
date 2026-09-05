@@ -1,0 +1,65 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: U13
+ATTEMPT: 1
+---
+Verified in a `cp -a` scratch (/tmp/.../u13-scratch); live :8080 never touched;
+verify server run on :8091 with the FIXED `cp -rL` isolated data and stopped.
+
+(a) TOOLCHAIN GREEN. In scratch: `go build ./...` BUILD_EXIT=0; `go vet ./...`
+    VET_EXIT=0; `go test -count=1 ./...` TEST_EXIT=0 (all packages ok, incl
+    `budget2/internal/handlers/whatif 19.037s`); `staticcheck ./...` SC_EXIT=0.
+
+(b) REMOVE->RESTORE LOSSLESS — LOAD-BEARING. `go test -run
+    TestHandleWhatIfDeleteThenRestoreIncome_Lossless -v` -> PASS. Read at
+    handlers_test.go:1240-1300: fixture populates all 8 IncomeSource fields
+    (ID,Name,Amount,Type,StartMonth,EndMonth*ptr,COLARate,InflationAdjusted;
+    struct confirmed at internal/models/income_source.go:16); asserts
+    `reflect.DeepEqual` on the WHOLE struct both after delete
+    (RemovedIncomeSources[0], l.1276) and after restore (IncomeSources[0],
+    l.1297) through real handleWhatIfDeleteIncome->handleWhatIfRestoreIncome
+    HTTP calls. MUTATION: injected `source.COLARate = 0` into
+    RestoreIncomeSource (settings.go:992) in scratch -> test FAILED
+    ("restored source does not deep-equal original ... COLARate:0 want
+    COLARate:0.02"). DeepEqual on the full struct dereferences EndMonth and
+    covers every field.
+
+(c) NO GO HANDLER/PLAN-CALC CHANGE. `git diff --name-only HEAD -- '*.go'`
+    filtered for non-test = NONE; `git diff --name-only HEAD --
+    internal/handlers/whatif/` = handlers_test.go only. No production
+    handlers*.go or plan-calc file in the diff.
+
+(d) LIST GONE, RESTORE REUSED BY TOAST. income-sources-list.html diff: the
+    permanent "Recently Removed" block (id="removed-income-sources" with
+    per-item restore/purge buttons) is deleted; `grep "Recently Removed"
+    web/templates/` finds it only in a comment in income-sources-list.html
+    (the two live hits are expense-sources-list/bigticket-card, out of U13
+    scope). New markup: id="income-removed-toast" role="status" with Undo
+    `hx-post="/whatif/income/{{$last.ID}}/restore"`. On :8091 (isolated
+    /tmp/budget2-whatif-verify-8091/data, real dir not symlink): `curl
+    /whatif` = 200; DELETE /whatif/income/{id} response contained
+    `id="income-removed-toast" ... role="status"`, `Removed <span
+    ...>Christine</span>`, and Undo button
+    `hx-post="/whatif/income/{id}/restore"` + data-income-toast-undo;
+    restore POST -> 200 to leave the isolated plan clean; server stopped
+    (health DOWN after stop).
+
+(e) CSS + SCOPE. `make css-verify` -> "tailwind.css is up to date" EXIT=0.
+    Diff (tracked) = the 7 tracked manifest files + .swarm/ledger.tsv (lead
+    bookkeeping); untracked = web/static/js/whatif-income-toast.js (in
+    manifest) — all 8 manifest files present, nothing beyond. No path in
+    .swarm/critical.globs touched. `grep text-\[10px\]/\[11px\]` across U13
+    files = NONE. `{{.CurrentCoverage.Label}}` preserved at
+    healthcare-person.html:251 (not reverted). healthcare-person: duplicate
+    "Linked Person"/"Derived Age" box removed (hidden name/current_age
+    inputs kept), Source rendered only under {{if .IsLinked}}, slider value
+    moved beside label via flex justify-between (input full-width below);
+    name rendered once in header (line 10). quick-adjust.html adds `hidden
+    lg:block h-28` FAB spacer.
+
+OBSERVATION (not a criterion FAIL): worker's manifest reports a pre-fix
+incident where the OLD `cp -r` verify script mutated live data during their
+own testing; they state they surgically reverted it. Out of my verification
+scope and the script is now fixed (cp -rL); my probes ran only against the
+isolated :8091 copy. Flagging for the lead's awareness only.

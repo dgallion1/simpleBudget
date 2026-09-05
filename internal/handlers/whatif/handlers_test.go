@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"syscall"
@@ -1225,6 +1226,76 @@ func TestHandleWhatIfRestoreIncome(t *testing.T) {
 	handleWhatIfRestoreIncome(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
+	}
+}
+
+// TestHandleWhatIfDeleteThenRestoreIncome_Lossless is the U13 regression
+// oracle for the Undo toast: it replaced the permanent "Recently Removed"
+// list, but the SAME /whatif/income/{id}/restore endpoint and handlers are
+// reused, so a remove -> restore round trip through the actual HTTP handlers
+// must hand back a source that reflect.DeepEqual's the original in every
+// field -- not just a matching ID, which is all the pre-existing coverage
+// (TestHandleWhatIfRestoreIncome, TestIncomeSource_AddRemoveRestoreUpdate)
+// checked.
+func TestHandleWhatIfDeleteThenRestoreIncome_Lossless(t *testing.T) {
+	rm, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	endMonth := 240
+	original := models.IncomeSource{
+		ID:                "u13-roundtrip-inc",
+		Name:              "Pension",
+		Amount:            2345.67,
+		Type:              models.IncomeFixed,
+		StartMonth:        12,
+		EndMonth:          &endMonth,
+		COLARate:          0.02,
+		InflationAdjusted: true,
+	}
+	if _, err := rm.AddIncomeSource(original); err != nil {
+		t.Fatalf("AddIncomeSource: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	delReq := chiRequest("DELETE", "/whatif/income/"+original.ID, nil, map[string]string{"id": original.ID})
+	handleWhatIfDeleteIncome(w, delReq)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	afterDelete, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load after delete: %v", err)
+	}
+	if len(afterDelete.IncomeSources) != 0 {
+		t.Fatalf("expected 0 active income sources after delete, got %+v", afterDelete.IncomeSources)
+	}
+	if len(afterDelete.RemovedIncomeSources) != 1 {
+		t.Fatalf("expected 1 removed income source, got %+v", afterDelete.RemovedIncomeSources)
+	}
+	if !reflect.DeepEqual(afterDelete.RemovedIncomeSources[0], original) {
+		t.Fatalf("removed source does not deep-equal original:\n got  %+v\n want %+v", afterDelete.RemovedIncomeSources[0], original)
+	}
+
+	w = httptest.NewRecorder()
+	restoreReq := chiRequest("POST", "/whatif/income/"+original.ID+"/restore", nil, map[string]string{"id": original.ID})
+	handleWhatIfRestoreIncome(w, restoreReq)
+	if w.Code != http.StatusOK {
+		t.Fatalf("restore status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	afterRestore, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load after restore: %v", err)
+	}
+	if len(afterRestore.RemovedIncomeSources) != 0 {
+		t.Fatalf("expected 0 removed income sources after restore, got %+v", afterRestore.RemovedIncomeSources)
+	}
+	if len(afterRestore.IncomeSources) != 1 {
+		t.Fatalf("expected 1 active income source after restore, got %+v", afterRestore.IncomeSources)
+	}
+	if !reflect.DeepEqual(afterRestore.IncomeSources[0], original) {
+		t.Fatalf("restored source does not deep-equal original:\n got  %+v\n want %+v", afterRestore.IncomeSources[0], original)
 	}
 }
 
@@ -4773,6 +4844,126 @@ func TestHandleWhatIfRestoreIncome_WithRenderer(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String()[:min(w.Body.Len(), 300)])
+	}
+}
+
+// TestHandleWhatIfDeleteIncome_ShowsToastForJustRemoved is the U13 attempt-2
+// regression oracle for ruling U-2026-09-05o: the Undo toast must key on the
+// CURRENT request's JustRemovedIncome signal, not on the persistent
+// RemovedIncomeSources store. Seeds a STALE removed entry (as if left over
+// from a past session) alongside the source under test, so a test that keyed
+// on "the list is non-empty" would pass for the wrong reason; only a toast
+// naming the JUST-removed source proves the fix.
+func TestHandleWhatIfDeleteIncome_ShowsToastForJustRemoved(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	rm.AddIncomeSource(models.IncomeSource{ID: "stale-removed", Name: "Stale Rebuild Payroll", Amount: 500, Type: models.IncomeFixed})
+	if _, err := rm.RemoveIncomeSource("stale-removed"); err != nil {
+		t.Fatalf("seed RemoveIncomeSource: %v", err)
+	}
+
+	rm.AddIncomeSource(models.IncomeSource{ID: "fresh-removed", Name: "Fresh Pension", Amount: 1000, Type: models.IncomeFixed})
+
+	w := httptest.NewRecorder()
+	req := chiRequest("DELETE", "/whatif/income/fresh-removed", nil, map[string]string{"id": "fresh-removed"})
+	handleWhatIfDeleteIncome(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `id="income-removed-toast"`) {
+		t.Fatalf("expected toast markup in body: %s", body)
+	}
+	if idx := strings.Index(body, `id="income-removed-toast"`); idx < 0 || strings.Contains(body[idx:min(len(body), idx+400)], "hidden") {
+		t.Fatalf("toast rendered hidden on a fresh delete: %s", body[idx:min(len(body), idx+400)])
+	}
+	if !strings.Contains(body, "Removed") || !strings.Contains(body, "Fresh Pension") {
+		t.Fatalf("expected toast to name the just-removed source (Fresh Pension), got: %s", body)
+	}
+	if strings.Contains(body, "Stale Rebuild Payroll") {
+		t.Fatalf("toast must not surface the stale past removal: %s", body)
+	}
+	if !strings.Contains(body, `hx-post="/whatif/income/fresh-removed/restore"`) {
+		t.Fatalf("expected Undo to post to the just-removed source's id: %s", body)
+	}
+}
+
+// TestHandleWhatIfUpdateIncome_NoToastForUnrelatedMutation proves the other
+// half of ruling U-2026-09-05o: an unrelated mutation (here, editing an
+// income source) must render the toast HIDDEN even though
+// RemovedIncomeSources is non-empty from an earlier, unrelated removal.
+func TestHandleWhatIfUpdateIncome_NoToastForUnrelatedMutation(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	rm.AddIncomeSource(models.IncomeSource{ID: "stale-removed-2", Name: "Stale Rebuild Payroll", Amount: 500, Type: models.IncomeFixed})
+	if _, err := rm.RemoveIncomeSource("stale-removed-2"); err != nil {
+		t.Fatalf("seed RemoveIncomeSource: %v", err)
+	}
+	rm.AddIncomeSource(models.IncomeSource{ID: "unrelated-update", Name: "Salary", Amount: 2000, Type: models.IncomeFixed})
+
+	form := url.Values{"start_year": {"1"}}
+	w := httptest.NewRecorder()
+	req := chiRequest("PUT", "/whatif/income/unrelated-update", formBody(form), map[string]string{"id": "unrelated-update"})
+	handleWhatIfUpdateIncome(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `id="income-removed-toast"`) {
+		t.Fatalf("expected toast placeholder markup in body: %s", body)
+	}
+	if strings.Contains(body, "Stale Rebuild Payroll") {
+		t.Fatalf("unrelated mutation must not resurface a stale removal in the toast: %s", body)
+	}
+	// The toast div's class list must include "hidden" when no source was
+	// just removed by this request.
+	idx := strings.Index(body, `id="income-removed-toast"`)
+	if idx < 0 || !strings.Contains(body[idx:idx+400], "hidden") {
+		t.Fatalf("expected toast div classed hidden for a non-delete mutation: %s", body[idx:min(len(body), idx+400)])
+	}
+}
+
+// TestHandleWhatIfRestoreIncome_NoToastAfterUndo is the last leg of ruling
+// U-2026-09-05o: the Undo (restore) response itself must never show the
+// toast -- restoring is not a removal. Uses the shared recalcAndRender path
+// (same as every other non-delete handler), so this also stands as the
+// general proof that ANY handler other than handleWhatIfDeleteIncome
+// renders the toast hidden, deterministically -- independent of browser/
+// analysis-latency timing.
+func TestHandleWhatIfRestoreIncome_NoToastAfterUndo(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	rm.AddIncomeSource(models.IncomeSource{ID: "undo-no-toast", Name: "Undo No Toast", Amount: 900, Type: models.IncomeFixed})
+	if _, err := rm.RemoveIncomeSource("undo-no-toast"); err != nil {
+		t.Fatalf("seed RemoveIncomeSource: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req := chiRequest("POST", "/whatif/income/undo-no-toast/restore", nil, map[string]string{"id": "undo-no-toast"})
+	handleWhatIfRestoreIncome(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	idx := strings.Index(body, `id="income-removed-toast"`)
+	if idx < 0 {
+		t.Fatalf("expected toast markup in body: %s", body)
+	}
+	toastSnippet := body[idx:min(len(body), idx+400)]
+	if !strings.Contains(toastSnippet, "hidden") {
+		t.Fatalf("expected toast div classed hidden after restore: %s", toastSnippet)
+	}
+	// "Undo No Toast" is now back in the ACTIVE income-sources-list (that's
+	// correct -- restore succeeded); it must not additionally appear inside
+	// the toast markup itself.
+	if strings.Contains(toastSnippet, "Undo No Toast") {
+		t.Fatalf("restore response must not name the restored source inside the toast: %s", toastSnippet)
 	}
 }
 

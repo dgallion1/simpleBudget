@@ -1,0 +1,10 @@
+internal/handlers/whatif/handlers.go
+internal/handlers/whatif/handlers_income_expense.go
+internal/handlers/whatif/handlers_test.go
+web/static/css/tailwind.css
+web/static/js/whatif-income-toast.js
+web/templates/components/whatif/healthcare-person.html
+web/templates/components/whatif/income-card.html
+web/templates/components/whatif/income-sources-list.html
+web/templates/components/whatif/quick-adjust.html
+web/templates/pages/whatif.html

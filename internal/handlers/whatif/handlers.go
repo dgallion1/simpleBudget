@@ -169,6 +169,16 @@ const revisionUnreported = 0
 // revision must be the revision the caller's own write produced (see
 // SettingsManager.SaveWithRevision), or revisionUnreported.
 func renderRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings, revision int) {
+	renderRecalcWithExtra(w, r, settings, revision, nil)
+}
+
+// renderRecalcWithExtra is renderRecalc plus a display-only extra map merged
+// into the results-partial data for THIS response only (see
+// renderResultsTemplate). It has exactly one caller (handleWhatIfDeleteIncome,
+// for the Undo toast's JustRemovedIncome signal, ruling U-2026-09-05o) —
+// every other mutating handler keeps calling the shared recalcAndRender /
+// renderRecalc unchanged.
+func renderRecalcWithExtra(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings, revision int, extra map[string]interface{}) {
 	analysis, pendingHash, err := analysisFastOrCached(settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
@@ -179,7 +189,7 @@ func renderRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatI
 			w.Header().Set("HX-Trigger", string(trigger))
 		}
 	}
-	renderWhatIfResults(w, settings, analysis, pendingHash)
+	renderResultsTemplate(w, "whatif-results-with-oob", settings, analysis, pendingHash, extra)
 }
 
 // recalcAndRender is the shared tail of a mutating what-if handler: apply
@@ -424,7 +434,7 @@ func buildResultsPartialData(settings *models.WhatIfSettings, analysis *models.W
 // pendingHash is the dep-hash of a RunFast analysis awaiting its async full
 // fetch, or "" when analysis is already the full analysis.
 func renderWhatIfResults(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, pendingHash string) {
-	renderResultsTemplate(w, "whatif-results-with-oob", settings, analysis, pendingHash)
+	renderResultsTemplate(w, "whatif-results-with-oob", settings, analysis, pendingHash, nil)
 }
 
 // renderWhatIfResultsOnly renders the results column alone, with no OOB swaps.
@@ -434,7 +444,7 @@ func renderWhatIfResults(w http.ResponseWriter, settings *models.WhatIfSettings,
 // pendingHash is the dep-hash of a RunFast analysis awaiting its async full
 // fetch, or "" when analysis is already the full analysis.
 func renderWhatIfResultsOnly(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, pendingHash string) {
-	renderResultsTemplate(w, "whatif-results", settings, analysis, pendingHash)
+	renderResultsTemplate(w, "whatif-results", settings, analysis, pendingHash, nil)
 }
 
 // renderResultsTemplate computes the shared results partial data (Completeness
@@ -446,10 +456,18 @@ func renderWhatIfResultsOnly(w http.ResponseWriter, settings *models.WhatIfSetti
 // fetch, or "" when analysis is already the full analysis; it sets
 // AnalysisPending/AsyncHash on the partial data so the template can embed the
 // async loader and skeleton cards.
-func renderResultsTemplate(w http.ResponseWriter, name string, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, pendingHash string) {
+//
+// extra is merged into the partial data AFTER the standard fields, for a
+// single response's own display-only signals (e.g. JustRemovedIncome — see
+// renderRecalcWithExtra). nil for every caller except the one response that
+// needs a signal; it never touches Settings/Analysis or any persisted state.
+func renderResultsTemplate(w http.ResponseWriter, name string, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, pendingHash string, extra map[string]interface{}) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 	partialData["AnalysisPending"] = pendingHash != ""
 	partialData["AsyncHash"] = pendingHash
+	for k, v := range extra {
+		partialData[k] = v
+	}
 	if renderer != nil {
 		_ = renderer.RenderPartial(w, name, partialData)
 	} else {

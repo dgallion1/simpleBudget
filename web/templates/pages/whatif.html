@@ -159,6 +159,7 @@
 {{template "whatif-spending-phases-scripts" .}}
 {{template "whatif-quick-adjust-scripts" .}}
 <script src="/static/js/whatif-poll.js"></script>
+<script src="/static/js/whatif-income-toast.js" defer></script>
 {{end}}
 
 {{define "whatif-results"}}
@@ -270,7 +271,7 @@
         {{template "whatif-quick-adjust-healthcare-content" .}}
     </div>
 
-    <div id="income-sources-list" hx-swap-oob="true" class="space-y-2 mb-4">
+    <div id="income-sources-list" hx-swap-oob="true" tabindex="-1" class="space-y-2 mb-4 focus:outline-none">
         {{$optimizerActive := socialSecurityProjectionActive .Settings}}
         {{if $optimizerActive}}
         {{range projectedSSEntries .Settings}}

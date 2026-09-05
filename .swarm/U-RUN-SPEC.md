@@ -404,6 +404,17 @@ Record every catch in §10 with the mechanism (oracle / primary checker /
 second / judge / gate / worker). At run end: `swarm/gate.sh stats` and
 report the first-attempt clean rate verbatim.
 
+- **[U12.2 obs, backlog]** the anchor-form field's `aria-invalid`/`data-focus-target`
+  gating still keys on `$root.ErrorField` alone (not per-account), so an
+  add-anchor error flags every account's anchor field and focus lands on the
+  alphabetically-first — a real WCAG 3.3.1 mis-focus, but pre-existing
+  (byte-identical to master) and NOT stranding (anchor forms are outside the
+  Edit toggle, always visible). `ErrorAccountID` is now populated on the anchor
+  error paths, so the fix is a one-line template gate — fold into U15 or a
+  follow-up.
+
+- **[U13.2 obs, backlog]** the toast Undo button lacks `hx-sync`/`hx-disabled-elt`, so hammering many rapid CRUD cycles can double-submit or drop an Undo (both lanes: a client-timing artifact, no server race — server serializes on a private settings copy; also surfaced a pre-existing full-analysis perf pile-up under load). Add hx-sync to the Undo button in a follow-up.
+
 ## 10. Rulings
 
 - **U-2026-09-03a** (scope ruling, lead, before any checker ran): "axe clean
@@ -506,6 +517,26 @@ report the first-attempt clean rate verbatim.
   keyboard-operable (U15's div/th-onclick sweep); master's new #91/#92
   whatif markup not yet U6-tokenized (hue literals in whatif-expense-rows /
   healthcare bars).
+- **U-2026-09-05o** (catch — checker-a11y, U13 attempt 1, FAIL CONCEDED):
+  the Undo toast (`whatif-removed-income-sources`, an hx-swap-oob div emitted
+  by the SHARED `renderWhatIfResults`/`renderResultsTemplate` that EVERY
+  mutation calls) keys on `.Settings.RemovedIncomeSources` (the persistent
+  removed-sources store, last entry). So any action — even an unrelated
+  healthcare PUT — re-surfaces a stale "Removed Rebuild Payroll" toast for a
+  past-session removal, violating the task's "a past-session removal must not
+  resurface" bar and ACCESSIBILITY.md #14. Fix (display-only signal, the U12
+  ErrorAccountID precedent — do NOT change plan-calc/remove logic): the toast
+  renders visible content ONLY when an income source was removed in the
+  CURRENT request. `handleWhatIfDeleteIncome` sets a display-only
+  JustRemovedIncome {ID,Name} threaded into the results-partial data; the
+  toast keys on `{{with .JustRemovedIncome}}` and renders hidden/empty
+  otherwise. Every other mutation (add/update/healthcare/sweep/restore) and
+  initial page load render the toast hidden. Restore (Undo) does NOT
+  re-show the toast. Add a render/handler test: a delete sets the signal and
+  shows the toast for the just-removed source; a non-remove mutation shows no
+  toast. The remove→restore lossless test and the toast a11y attributes (role
+  status, focusable Undo/dismiss, Esc, focus restore) already PASS — keep
+  them.
 - **U-2026-09-05n** (catch — checker-a11y, U12 attempt 1, FAIL CONCEDED):
   U12 hid the per-account edit form and the add form behind disclosures. On
   an edit-form validation error the errored account's panel stayed COLLAPSED

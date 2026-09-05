@@ -393,6 +393,7 @@ func RothQualifiedDistributionClockSatisfied(firstFundedYear, calendarYear int) 
 // monthly tax snapshot.
 func ApplyTaxStateMonth(taxState *ProjectionTaxAccumulator, incomeBreakdown MonthlyIncomeBreakdown, monthResult TaxAwarePortfolioMonthResult, rothConversionThisMonth float64) {
 	taxState.ApplyMonth(RealizedMonthIncome{
+		OneTimeIncome:         monthResult.OneTimeIncome,
 		OrdinaryIncome:        incomeBreakdown.OrdinaryIncome + monthResult.TaxableNonQualifiedDividends + monthResult.TaxableRothEarnings,
 		SocialSecurityIncome:  incomeBreakdown.SocialSecurityIncome,
 		TaxableWithdrawals:    monthResult.CashFlow.WithdrawalFromTaxDeferred - monthResult.CashFlow.RMDWithdrawal,

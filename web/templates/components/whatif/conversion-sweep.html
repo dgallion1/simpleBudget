@@ -89,6 +89,8 @@
                               hx-swap="innerHTML"
                               hx-on::after-swap="document.querySelector('#conversion-sweep-panel h2')?.focus()">
                             <input type="hidden" name="apply_source" value="conversion-sweep">
+                            <input type="hidden" name="expected_scenario" value="{{$.ExpectedScenario}}">
+                            <input type="hidden" name="expected_revision" value="{{$.ExpectedRevision}}">
                             <input type="hidden" name="annual_amount" value="{{printf "%.0f" .Amount}}">
                             <input type="hidden" name="enabled" value="{{if gt .Amount 0.0}}on{{end}}">
                             <input type="hidden" name="start_year" value="{{.RothStartYear}}">

@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -116,6 +117,7 @@ func getFuncMap() template.FuncMap {
 		"percentDiff":                         percentDiff,
 		"deref":                               deref,
 		"urlEncode":                           url.PathEscape,
+		"withRange":                           withRange,
 		"socialSecurityProjectionActive":      retirement.SocialSecurityProjectionActive,
 		"ssPortfolioEligible":                 analysis.SSPortfolioEligible,
 		"hasManualSocialSecurityIncomeSource": retirement.HasManualSocialSecurityIncomeSource,
@@ -866,4 +868,63 @@ func deref(v *float64) float64 {
 // isNonNegative returns true if v >= 0
 func isNonNegative(v float64) bool {
 	return v >= 0
+}
+
+// withRange returns href with "?start=<start>&end=<end>" appended when the
+// page data being rendered (pageData, the "." the base layout was executed
+// with) carries a non-empty StartDate/EndDate pair, else the bare href.
+// This is how base.html's Money-group nav links (Dashboard, Explorer,
+// Insights, Major Expenses -- the four range-bearing pages, §2c) propagate
+// the current window: Dashboard -> Explorer keeps the same start/end. The
+// Plan and Setup nav links call this with a page that never sets those
+// keys, so they stay bare (see extractDateRange). Values are query-encoded
+// via url.Values, so no manual escaping is required at the call site.
+func withRange(href string, pageData interface{}) string {
+	start, end := extractDateRange(pageData)
+	if start == "" || end == "" {
+		return href
+	}
+	v := url.Values{}
+	v.Set("start", start)
+	v.Set("end", end)
+	return href + "?" + v.Encode()
+}
+
+// extractDateRange reads a "StartDate"/"EndDate" pair out of a page-data
+// value that may be shaped as map[string]interface{} (most handlers) or a
+// struct (accounts, transfers use their own pageData struct with no such
+// fields). Either shape resolves without a template-execution error: a
+// missing map key or absent struct field simply yields empty strings, which
+// withRange treats as "no range set".
+func extractDateRange(pageData interface{}) (string, string) {
+	if m, ok := pageData.(map[string]interface{}); ok {
+		return stringOrEmpty(m["StartDate"]), stringOrEmpty(m["EndDate"])
+	}
+
+	rv := reflect.ValueOf(pageData)
+	for rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
+			return "", ""
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return "", ""
+	}
+	start := rv.FieldByName("StartDate")
+	end := rv.FieldByName("EndDate")
+	if !start.IsValid() || start.Kind() != reflect.String {
+		return "", ""
+	}
+	if !end.IsValid() || end.Kind() != reflect.String {
+		return "", ""
+	}
+	return start.String(), end.String()
+}
+
+// stringOrEmpty type-asserts v to a string, returning "" for nil or any
+// other type (a missing map key comes back as a nil interface{}).
+func stringOrEmpty(v interface{}) string {
+	s, _ := v.(string)
+	return s
 }

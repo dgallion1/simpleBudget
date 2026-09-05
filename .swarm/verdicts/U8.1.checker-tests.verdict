@@ -1,0 +1,80 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: U8
+ATTEMPT: 1
+---
+Verified in cp -a scratch copy of the ui-audit worktree (HEAD b6b7646). Server
+work done via scripts/whatif-verify.sh on :8093 from the scratch copy; the
+budget2 binary was never invoked directly; server stopped+cleaned after.
+
+(a) TOOLCHAIN — all green in scratch:
+  - `go build ./...` exit 0
+  - `go vet ./...` exit 0
+  - `go test -count=1 ./...` exit 0 (every package `ok`, incl. all mcpsvc
+    subpackages and budget2/internal/templates with the new tests)
+  - `staticcheck ./...` exit 0 (no findings)
+
+(b) NEW TESTS ARE LOAD-BEARING — mutation-proven in scratch (restored after each):
+  - Never append (`withRange` returns bare href): FAIL
+    TestBaseNav_PropagatesRangeOnMoneyGroupLinks + TestWithRange_Unit.
+  - Drop the empty-check (append even when start/end == ""): FAIL
+    TestBaseNav_NoRangeSetRendersBareLinks, TestBaseNav_EmptyRangeStringsRenderBareLinks,
+    TestBaseNav_StructPageDataRendersBareLinks, TestWithRange_Unit.
+  - Naive map-only extractDateRange (unchecked `.(map[...])`, the analogue of a
+    naive `.StartDate` draft): PANICS on the struct case → FAIL
+    TestBaseNav_StructPageDataRendersBareLinks + TestWithRange_Unit. This proves
+    TestBaseNav_StructPageDataRendersBareLinks genuinely guards the struct-vs-map
+    shape (a map-only / field-access impl breaks accounts/transfers), corroborating
+    the manifest's claim. Restored copy re-runs green (`ok budget2/internal/templates`).
+
+(c) LIVE RENDER on :8093:
+  - GET /dashboard?start=2025-03-01&end=2025-06-30: the 4 Money links each render
+    exactly twice (desktop + mobile) = 8 hrefs, every one carrying
+    `start=2025-03-01` AND `end=2025-06-30` (grep -c = 8 for each). The other nav
+    links (/whatif,/accounts,/transfers,/filemanager) render bare. /duplicates
+    absent (UnresolvedDuplicateCount=0), consistent with base.html guard.
+  - Followed propagated links: /explorer and /major-expenses render their own date
+    inputs as value="2025-03-01"/"2025-06-30" (id="explorer-date-start/-end",
+    id="major-expenses-date-start/-end") — identical to the propagated window, no
+    mismatch.
+  - preset/comparison stay page-local: with ?preset=quarter on insights, NO nav
+    href contains `preset=` or `comparison=` (grep returned none); test also asserts
+    `comparison=mom` never appears in rendered nav.
+  - Genuine range-less pages render bare live: /filemanager, /accounts, /transfers
+    (all HTTP 200; struct-page-data accounts/transfers render with no template
+    execution error) all show the 4 Money links bare.
+
+  NOTE on the "GET /dashboard with NO range -> all 4 bare" sub-expectation: NOT
+  literally true, and this is spec-correct, not a defect. The dashboard handler
+  always resolves a DEFAULT window (its own date inputs show
+  value="2026-01-01"/"2026-08-27" with no query), so start/end are "present" in its
+  page data; the nav propagates that SAME window (verified: nav hrefs and the
+  dashboard's own inputs match exactly — no mismatch). Spec §2c requires propagation
+  "when present" and param-drop only on What-If/Accounts/Transfers/File Manager/
+  Duplicates — all satisfied. The bare-when-truly-absent behavior is verified on
+  /filemanager and via TestBaseNav_NoRangeSetRendersBareLinks.
+
+(d) MCP UNTOUCHED: `git diff --stat HEAD -- internal/services/mcpsvc/` empty; all
+  mcpsvc packages `ok` in `go test -count=1 ./...`.
+
+(e) U9 NAV STRUCTURE INTACT: `git diff HEAD -- web/templates/layouts/base.html` is
+  href-only — exactly 8 changed lines, each swapping a bare path for
+  `{{withRange "<path>" .}}`. role="group"/aria-labelledby groups (Money/Plan/Setup,
+  desktop + mobile), aria-current, the mobile toggle (#mobile-nav-toggle,
+  aria-expanded, aria-controls), and the duplicate-count badge are byte-for-byte
+  preserved.
+
+(f) SCOPE: working-tree tracked diff vs HEAD = internal/templates/render.go,
+  web/templates/layouts/base.html, .swarm/ledger.tsv; untracked task files =
+  internal/templates/render_nav_range_test.go + .swarm/manifests/U8.1.*. Matches the
+  manifest's three files. No changed/untracked path matches .swarm/critical.globs
+  (checked each glob). Other untracked entries (.swarm-local/U-run-recovered/*, the
+  `data` symlink -> real data dir, the parallel checker-second verdict) are
+  pre-existing environment/run artifacts, not U8's work.
+
+REFLECT SAFETY: extractDateRange's reflect path is panic-free on unexpected shapes.
+nil interface -> reflect.ValueOf(nil) is Invalid (not Ptr/Struct) -> ""; nil pointer
+is IsNil-checked before Elem(); missing struct field -> invalid Value -> "";
+non-string field -> Kind()!=String -> "". TestWithRange_Unit covers nil,
+*struct-without-field, and a non-string StartDate on a map, all passing with no panic.

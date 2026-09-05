@@ -1,0 +1,113 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: U8
+ATTEMPT: 1
+---
+Diff scope confirmed against manifest U8.1.files: internal/templates/render.go
+(+61 lines: withRange/extractDateRange/stringOrEmpty), web/templates/layouts/base.html
+(8 nav anchors x 2, desktop+mobile), untracked internal/templates/render_nav_range_test.go.
+git diff --stat shows no MCP files touched; `go test ./internal/services/mcpsvc/...`
+all green (cached+fresh).
+
+1. Window mismatch / stale range — NOT REPRODUCED.
+   - Enumerated every page-data shape via full-repo grep for `"StartDate"` in
+     internal/handlers/*.go: it is set in EXACTLY 4 files (dashboard, explorer,
+     insights, majorexpenses handlers.go), each a map[string]interface{} built
+     from that page's OWN resolved start/end (already used elsewhere on the
+     same page for date-input values / hx-get URLs, e.g. dashboard.html:51-52,
+     explorer.html:78-79, insights.html:17-18/317, major-expenses.html:19-20).
+     withRange reads that same field, so the nav link cannot diverge from what
+     the page is already displaying — verified by rendering the real base.html
+     via the embedded FS with StartDate=2025-06-30/EndDate=2025-01-01
+     (start>end): propagated verbatim into both hrefs, matching "propagate
+     current window as-is" (not "validate it") — go test -run TestZZZ_StartAfterEnd PASS.
+   - Round-trip: each of the 4 handlers parses `?start=`/`?end=` with
+     time.Parse("2006-01-02", ...) and formats back with the identical layout,
+     so Dashboard->Explorer via a propagated link reproduces Explorer's own
+     StartDate/EndDate bit-identical to the URL it was given; Explorer then
+     re-propagates its OWN (not Dashboard's) resolved value on its own nav,
+     confirmed by reading explorer/handlers.go:223-224 writing into the same
+     map key withRange reads.
+   - Lone `start` (no `end`): dashboard/insights/majorexpenses's resolveDateRange-
+     style logic always fills the missing side with a default (YTD start or
+     MaxDate) BEFORE writing StartDate/EndDate into the map — so the map field
+     is always either both-populated (mirroring the page's real, fully-resolved
+     window) or both-absent; a genuine half-window key pair into extractDateRange
+     never occurs from a real handler. Confirmed via existing worker test
+     TestBaseNav_EmptyRangeStringsRenderBareLinks (empty-string case) and
+     TestWithRange_Unit's "map with empty-string dates" case — both bare, no
+     `?start=&end=`.
+   - Dates outside data's min/max, or unparseable start (malformed -> zero
+     time.Time): pre-existing dashboard/insights parsing behavior untouched by
+     this diff (resolveDateRange predates U8, only majorexpenses handlers.go
+     was touched by U8's manifest and that touch was in parseRangeFromRequest's
+     unrelated fallback path, not the date-parse logic) — and even so, the
+     nav link mirrors the SAME bad value already shown in the page's own date
+     inputs, so it is not a NEW mismatch introduced by U8. Out of task scope.
+
+2. Injection / unsafe href — NOT REPRODUCED.
+   withRange builds the query via url.Values{}.Encode() (percent-encodes),
+   and the href attribute itself goes through html/template contextual
+   auto-escaping on top. Probed via the real render pipeline
+   (go test ./internal/templates/... -run TestZZZ_XSSInjectionViaStartDate,
+   PASS) with 6 payloads: `"><script>alert(1)</script>`, `" onmouseover=`,
+   `&evil=1`, `#frag`, embedded space, and Japanese unicode — no raw
+   `<script>` tag, no attribute breakout, no verbatim unescaped payload in
+   any href. (Note: in the real handlers this path can't even be reached
+   with attacker strings, since StartDate/EndDate are always
+   time.Parse+Format("2006-01-02") round-tripped before being written to
+   the map — malformed input collapses to a canonical/zero date string, not
+   passed through raw. Tested withRange directly regardless, per instructions.)
+
+3. Reflection shape-handling — NOT REPRODUCED, no panic.
+   Probed extractDateRange/withRange directly (go test -run
+   TestZZZ_ReflectPanicShapes, PASS) with 10 shapes: nil, int, plain string,
+   []int, struct w/ StartDate typed as time.Time (Kind check correctly
+   rejects non-string kind), struct with only an unexported startDate field,
+   map with StartDate=time.Time value, map with StartDate=nil, (*int)(nil),
+   and an unbuffered chan int. All returned bare "/dashboard", zero panics.
+   Enumerated every real page-data shape server-side: 4 maps with resolved
+   string StartDate/EndDate (dashboard/explorer/insights/majorexpenses); 3
+   maps with no StartDate key (whatif, duplicates, filemanager — confirmed
+   by reading each handler's map literal); 2 structs with no StartDate field
+   (accounts' `pageData` struct, transfers' `pageData` struct — confirmed by
+   reading both struct definitions). All 9 render without panic via
+   worker's own TestBaseNav_StructPageDataRendersBareLinks /
+   TestBaseNav_NoRangeSetRendersBareLinks plus my direct probes.
+
+4. Comparison/preset leak — NOT REPRODUCED. withRange only ever reads/writes
+   `start`/`end`; worker's TestBaseNav_PropagatesRangeOnMoneyGroupLinks sets
+   Comparison=mom in pageData and asserts `comparison=mom` never appears in
+   the rendered HTML — PASS. preset is dashboard/insights-page-local by the
+   same mechanism (never read by withRange).
+
+5. Bare-link correctness — CONFIRMED. accounts/transfers use struct pageData
+   types with no StartDate/EndDate field (verified by reading both struct
+   defs in internal/handlers/accounts/handlers.go and
+   internal/handlers/transfers/handlers.go); full-repo grep for `"StartDate"`
+   confirms neither handler ever sets it via any other path. Both render
+   bare via TestBaseNav_StructPageDataRendersBareLinks.
+
+6. Mutant / scope sweep: grepped every remaining `href="/dashboard|/explorer|
+   /insights|/major-expenses"` in web/templates/ for a second, un-migrated nav
+   surface. Found only page-local drilldown links (explorer "clear filters",
+   alerts.html and insights.html/major-expenses.html row deep-links into
+   /explorer with search/type/category filters) — these are pre-existing,
+   untouched by U8's manifest (only render.go/base.html/the new test file were
+   changed), and are explicitly out of the §2c contract's scope ("the four
+   Money-group nav links only"). Not a FAIL; flagged below as an observation.
+   `go build ./...` clean; `go test ./internal/templates/...` clean (worker's
+   6 tests + my throwaway probes, which were deleted after running — tree
+   restored to manifest-only diff, confirmed via `git status --short`).
+
+OBSERVATIONS (not FAIL grounds — pre-existing, outside U8's manifest/contract):
+- Page-local drilldown links from insights/major-expenses/alerts into
+  /explorer?search=...&type=Outflow do not carry the current date range, so a
+  user drilling into a specific transaction from a filtered window lands in
+  Explorer's default (often YTD) window rather than the window they were
+  looking at. This predates U8 and is out of its §2c scope (nav-only).
+- Dashboard/insights's resolveDateRange-family functions silently produce a
+  zero-value (0001-01-01) window on an unparseable `start`/`end` query param;
+  pre-existing, unaffected by this diff, and consistent between display and
+  nav propagation so it is not a mismatch this task introduces.

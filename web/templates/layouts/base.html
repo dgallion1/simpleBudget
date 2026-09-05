@@ -76,16 +76,16 @@
                 <div class="hidden md:flex items-center gap-6">
                     <div class="flex items-center gap-2" role="group" aria-labelledby="nav-group-money">
                         <span id="nav-group-money" class="text-label uppercase text-white/60">Money</span>
-                        <a href="/dashboard" {{if eq .ActiveTab "dashboard"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "dashboard"}}bg-white/20{{end}}">
+                        <a href="{{withRange "/dashboard" .}}" {{if eq .ActiveTab "dashboard"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "dashboard"}}bg-white/20{{end}}">
                             Dashboard
                         </a>
-                        <a href="/explorer" {{if eq .ActiveTab "explorer"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "explorer"}}bg-white/20{{end}}">
+                        <a href="{{withRange "/explorer" .}}" {{if eq .ActiveTab "explorer"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "explorer"}}bg-white/20{{end}}">
                             Explorer
                         </a>
-                        <a href="/insights" {{if eq .ActiveTab "insights"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "insights"}}bg-white/20{{end}}">
+                        <a href="{{withRange "/insights" .}}" {{if eq .ActiveTab "insights"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "insights"}}bg-white/20{{end}}">
                             Insights
                         </a>
-                        <a href="/major-expenses" {{if eq .ActiveTab "major-expenses"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "major-expenses"}}bg-white/20{{end}}">
+                        <a href="{{withRange "/major-expenses" .}}" {{if eq .ActiveTab "major-expenses"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "major-expenses"}}bg-white/20{{end}}">
                             Major Expenses
                         </a>
                     </div>
@@ -153,10 +153,10 @@
                 <div role="group" aria-labelledby="mobile-nav-group-money">
                     <p id="mobile-nav-group-money" class="px-3 text-label uppercase text-white/60">Money</p>
                     <div class="mt-1 space-y-1">
-                        <a href="/dashboard" {{if eq .ActiveTab "dashboard"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "dashboard"}}bg-white/20{{end}}">Dashboard</a>
-                        <a href="/explorer" {{if eq .ActiveTab "explorer"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "explorer"}}bg-white/20{{end}}">Explorer</a>
-                        <a href="/insights" {{if eq .ActiveTab "insights"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "insights"}}bg-white/20{{end}}">Insights</a>
-                        <a href="/major-expenses" {{if eq .ActiveTab "major-expenses"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "major-expenses"}}bg-white/20{{end}}">Major Expenses</a>
+                        <a href="{{withRange "/dashboard" .}}" {{if eq .ActiveTab "dashboard"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "dashboard"}}bg-white/20{{end}}">Dashboard</a>
+                        <a href="{{withRange "/explorer" .}}" {{if eq .ActiveTab "explorer"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "explorer"}}bg-white/20{{end}}">Explorer</a>
+                        <a href="{{withRange "/insights" .}}" {{if eq .ActiveTab "insights"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "insights"}}bg-white/20{{end}}">Insights</a>
+                        <a href="{{withRange "/major-expenses" .}}" {{if eq .ActiveTab "major-expenses"}}aria-current="page"{{end}} class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 {{if eq .ActiveTab "major-expenses"}}bg-white/20{{end}}">Major Expenses</a>
                     </div>
                 </div>
                 <div role="group" aria-labelledby="mobile-nav-group-plan">

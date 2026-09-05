@@ -1,0 +1,3 @@
+web/templates/pages/accounts.html
+web/static/js/accounts.js
+.swarm/tier2/U12/accounts_probe.js

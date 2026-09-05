@@ -1,7 +1,43 @@
 // Accounts page: add/edit-account form toggling and anchor-balance
-// helpers. Extracted from pages/accounts.html (U7).
+// helpers. Extracted from pages/accounts.html (U7). U12 added the
+// disclosure toggles (Add an account, per-account Edit).
 
     (function () {
+        // U12: generic disclosure toggle for [data-toggle-target="<id>"]
+        // buttons (the "Add an account" button and each account card's
+        // "Edit" button). Delegated on document.body -- not bound per
+        // button -- because every one of these buttons lives inside
+        // #accounts-list, which hx-swap="innerHTML" destroys and recreates
+        // on every mutation; a direct addEventListener would stop firing
+        // after the first swap. A fresh swap always renders panels closed
+        // (aria-expanded="false", hidden), which is an acceptable reset of
+        // open/closed state across a page-changing action, not a bug.
+        document.body.addEventListener('click', function (evt) {
+            var btn = evt.target.closest('[data-toggle-target]');
+            if (!btn) return;
+            var panel = document.getElementById(btn.getAttribute('data-toggle-target'));
+            if (!panel) return;
+            var expand = btn.getAttribute('aria-expanded') !== 'true';
+            btn.setAttribute('aria-expanded', String(expand));
+            panel.hidden = !expand;
+        });
+
+        // U12: a validation error can land on a field inside a panel that
+        // renders `hidden` by default (the Add-account form, or a
+        // per-account Edit form). A hidden element cannot take focus, so
+        // without this the ACCESSIBILITY.md point 5 focus-on-error contract
+        // (see the htmx:afterSwap handler below) would silently stop
+        // working the moment U12 put these forms behind a disclosure.
+        // Reveals the ancestor panel and flips its toggle button back to
+        // aria-expanded="true" before the caller calls .focus().
+        function revealAncestorPanel(field) {
+            var panel = field.closest('[data-toggle-panel]');
+            if (!panel || !panel.hidden) return;
+            panel.hidden = false;
+            var toggle = document.querySelector('[data-toggle-target="' + panel.id + '"]');
+            if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        }
+
         // Tracks the last text actually written into the live region by
         // syncWarnings, so the same-text guard a few lines down compares
         // against what an assistive-technology user was last told, not
@@ -196,6 +232,7 @@
             var focusable = target.querySelector('[data-focus-target]')
                 || target.querySelector('[aria-invalid="true"]');
             if (focusable) {
+                revealAncestorPanel(focusable);
                 try { focusable.focus(); } catch (e) {}
                 return;
             }

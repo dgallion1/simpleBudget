@@ -1,0 +1,185 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U12
+ATTEMPT: 1
+---
+
+METHOD: Live render only. Started `scripts/whatif-verify.sh start 8092`
+(throwaway data copy), rendered the REAL running /accounts page with
+Playwright + chromium (installed to scratchpad, not vendored), ran
+@axe-core/playwright against it in light and `class="dark"` (the exact
+mechanism base.html's own theme bootstrap uses — confirmed by reading
+layouts/base.html:24-26). Every `<details>`-equivalent disclosure (the
+Add-account panel and all per-account Edit panels) was opened via real
+button clicks before each axe pass, per U-RUN-SPEC's rendered-bar
+contract. Stopped the verify server on :8092 afterward (script's own
+teardown). Diff attribution used `git diff HEAD` (this attempt's
+uncommitted changes are the only diff on these two files; `git status`
+confirmed no other uncommitted files) and `git show master:...` for the
+focus-handler comparison.
+
+CHECK 1 — Full axe sweep, both themes, all panels open: PASS
+  0 violations in light, 0 violations in dark (axe full ruleset, not just
+  color-contrast). Evidence: /tmp/.../a11y-u12/audit-opened.json — both
+  `"violations": []`.
+
+CHECK 2 — Disclosures are real buttons, keyboard-operable, ids match:  PASS
+  - `[data-toggle-target="accounts-new-form-panel"]` and every
+    `[data-toggle-target^="acct-edit-panel-"]` are `<BUTTON>` tags (not
+    div-onclick), each carries `aria-expanded`/`aria-controls`, and the
+    `aria-controls` value matches the controlled panel's real `id`
+    (accounts.html:242-249 add button ↔ #accounts-new-form-panel;
+    :375-381 edit button ↔ #acct-edit-panel-{{.ID}}).
+  - Tab reaches the Add button and each Edit button (native `<button>`,
+    no tabindex override).
+  - Enter toggles `aria-expanded` false→true and un-hides the panel;
+    Space toggles it back true→false and re-hides it (verified on the
+    Add button; same delegated handler drives every Edit button
+    identically — accounts.js:23-31).
+  - While collapsed, `#acct-new-id` inside the Add panel is NOT
+    reachable (`tabIndex >= 0 && offsetParent !== null` is false); once
+    opened it becomes focusable and was actually focused via `.focus()`.
+  Evidence: /tmp/.../a11y-u12/keyboard.js output — all fields true as
+  expected (addBtnTag=BUTTON, editIdsMatch=true, idFieldTabbableWhileHidden
+  =false, idFieldReachableAfterOpen=true, editBtnTag=BUTTON, etc).
+
+CHECK 3 — revealAncestorPanel / stranded-error recovery: FAIL (see below)
+
+CHECK 4 — Exactly one <h1>, clean heading order: PASS
+  h1 "Accounts" → h2 "Add an account" → h2 "Your accounts" → h3 (per
+  account name, e.g. "USAA Checking") → h4 "Matched files" → h4 "Balance
+  anchors" (×3 accounts) → h2 "Unassigned files". No skipped levels, one
+  h1, confirmed live in both themes (audit-opened.json headingOrder) and
+  by source grep (web/templates/pages/accounts.html:69,241,347,362,474,
+  488,614).
+
+CHECK 5 — Latest-anchor / matched-file semantics: PASS
+  All three seeded accounts have anchors (rendered as
+  "Sep 3, 2026 · $25,211.62" etc, text form, not color-coded). To exercise
+  the zero-anchor path I created a throwaway account via a real POST
+  (`id=test-noanchor-acct`) on the same verify server: its card rendered
+  `<dd>No anchor set</dd>` — text, never a bare $0 (ACCESSIBILITY.md point
+  13 intent). Matched-file count ("Matched files: 0/5/7/1") is plain
+  `<dd>` text, not color-only.
+
+CHECK 6 — Tokens/type floor: PASS
+  `git diff HEAD` on the two changed files contains zero hue-literal
+  classes (grep for indigo/red-/amber-/emerald-/rose-/purple-/orange-/
+  yellow-/cyan-/sky-/green-/blue- families = no matches) and zero
+  `text-[10px]`/`text-[11px]`. `make css-verify` → "tailwind.css is up to
+  date". `go test ./internal/handlers/accounts/...` → ok.
+
+=== FAILURE — CHECK 3 detail ===
+
+ACCESSIBILITY.md point 5 / WCAG 2.2 3.3.1 (Error Identification):
+web/static/js/accounts.js:225-236 (htmx:afterSwap handler), interacting
+with web/templates/pages/accounts.html's disclosure panels added by this
+task (accounts.html:242 `#accounts-new-form-panel`, :381
+`#acct-edit-panel-{{.ID}}`).
+
+The focus-picking line is:
+    var focusable = target.querySelector('[data-focus-target]')
+                  || target.querySelector('[aria-invalid="true"]');
+This picks the FIRST element in DOCUMENT ORDER carrying a
+`data-focus-target` attribute — not the field matching the actual
+`ErrorField`. The Add-account form's `id` and `name` inputs
+(accounts.html:261 `data-focus-target="id"`, :280
+`data-focus-target="name"`) carry that attribute UNCONDITIONALLY
+(regardless of ErrorField), and the Add form is the first thing in
+document order, before the per-account cards. This selector logic is
+byte-identical to master's inline script (`git show
+master:web/templates/pages/accounts.html` lines 320-321) — the root
+cause is PRE-EXISTING, carried over verbatim by the U7 JS-extraction, not
+authored by U12.
+
+Before U12, this mis-selection was harmless-ish: every form was always
+visible, so a misdirected focus still landed on an on-screen field while
+the real error (marked `aria-invalid="true"`, still visible) sat in
+plain sight a scroll away. U12 changed the ground truth by wrapping the
+edit forms in `hidden` panels, and its own manifest claims the new
+`revealAncestorPanel()` (accounts.js) makes this safe: "a validation
+error on a hidden Add/Edit form still gets focus and is visible." That
+claim is FALSE for edit-form errors — reproduced live:
+
+  1. Opened the Edit panel for "USAA Checking"
+     (`#acct-edit-panel-usaa-checking`).
+  2. Cleared its `name` field via the DOM (bypassing the browser's native
+     `required` popup with `form.noValidate = true`, exactly reproducing
+     what a user who clears a pre-filled name and submits would trigger
+     server-side) and submitted.
+  3. Server correctly returned `ErrorField="name"`, banner text "account
+     name is required" (role="alert", accounts.html:155 — announced to
+     AT correctly).
+  4. After the htmx swap: `#acct-edit-panel-usaa-checking` is REHIDDEN
+     (fresh swap renders every panel closed) and `aria-expanded="false"`
+     on its Edit button — i.e. NOT revealed, even though it contains the
+     one input server-marked `aria-invalid="true"` for this exact error.
+  5. Focus instead landed on `#acct-new-id` (the Add form's unrelated ID
+     field, which has no error, no `aria-invalid`), and its ancestor —
+     the ADD panel, not the edit panel — is the one `revealAncestorPanel`
+     opened.
+
+  Reproduction script/output: /tmp/.../a11y-u12/reveal2.js,
+  /tmp/.../a11y-u12/reveal2 output:
+    "panelId": "acct-edit-panel-usaa-checking",
+    "errorText": "account name is required",
+    "panelHiddenAfterError": true,
+    "toggleBtnExpandedAfterError": "false",
+    "activeElementId": "acct-new-id",
+    "activeElementVisible": true
+
+Net effect: a keyboard/AT user editing an account, hitting a real
+validation error, is left with focus sitting in the "Add an account" ID
+field — an invitation to create a NEW account — while the actual erroring
+edit form remains collapsed and undiscoverable except by re-reading the
+generic banner text and manually reopening the correct card's Edit
+disclosure by trial. That is exactly the "stranded" failure mode task
+instruction #3 named and asked me to verify against — and it reproduces
+on the FIRST account tried, not an edge case.
+
+Scope attribution: the underlying `querySelector` mis-match is
+pre-existing (OBSERVATION, not this FAIL's basis by itself). The FAIL is
+that U12 wrapped previously-always-visible forms in `hidden` panels
+without correcting (or working around) that pre-existing selector, so
+the emergent, task-introduced consequence is a real error becoming
+inaccessible by focus. U12's own manifest asserts this exact path was
+verified working; it was not (the manifest's probe apparently exercised
+only the Add-form's OWN errors, where the bug is inert because Add's `id`
+field happens to be both the wrongly-selected target AND inside the
+correct panel).
+
+Minimal fix for the worker: match on ErrorField, not "first
+data-focus-target in the document" — e.g.
+`target.querySelector('[data-focus-target="' + errorField + '"]')`
+using a data attribute carrying the server's ErrorField (or scope the
+query to `[aria-invalid="true"]` first, which IS correctly conditional
+per-field, ahead of the unconditional `data-focus-target` fallback).
+
+=== OBSERVATIONS (not FAILs) ===
+
+- O1 (pre-existing, master-identical): the `data-focus-target="id"` /
+  `data-focus-target="name"` attributes on the Add form's `id`/`name`
+  inputs are unconditional (present regardless of ErrorField), which is
+  what makes the document-order mis-selection possible at all. Present
+  verbatim in master; not introduced here.
+- O2 (pre-existing): `acct-edit-name-{{.ID}}` has no `aria-describedby`
+  linking it to any error text (ACCESSIBILITY.md point 5's other clause),
+  same on master — U12 did not touch this field's markup beyond moving
+  it into the new hidden wrapper.
+- O3: the per-account "add anchor" form (anchor_date/anchor_amount) was
+  correctly left OUTSIDE any disclosure by this task (per the manifest's
+  stated scope), so its own pre-existing focus/reveal behavior is
+  unaffected by U12 either way.
+- O4: `make css` produced a byte-identical `tailwind.css` (no new classes
+  needed); confirmed via `git status` showing no diff on that file,
+  consistent with the manifest's claim.
+
+=== SUMMARY OF EVIDENCE FILES ===
+/tmp/claude-1000/-home-darrell-work-agents2/fdc3d3ad-6feb-42fa-95ef-64e528e5cac8/scratchpad/a11y-u12/audit.js
+/tmp/claude-1000/-home-darrell-work-agents2/fdc3d3ad-6feb-42fa-95ef-64e528e5cac8/scratchpad/a11y-u12/audit-opened.json
+/tmp/claude-1000/-home-darrell-work-agents2/fdc3d3ad-6feb-42fa-95ef-64e528e5cac8/scratchpad/a11y-u12/keyboard.js
+/tmp/claude-1000/-home-darrell-work-agents2/fdc3d3ad-6feb-42fa-95ef-64e528e5cac8/scratchpad/a11y-u12/reveal2.js
+/tmp/claude-1000/-home-darrell-work-agents2/fdc3d3ad-6feb-42fa-95ef-64e528e5cac8/scratchpad/noanchor.html
+/tmp/claude-1000/-home-darrell-work-agents2/fdc3d3ad-6feb-42fa-95ef-64e528e5cac8/scratchpad/u12.diff (isolated
+  `git diff HEAD` for the two changed files — the actual U12 change set)

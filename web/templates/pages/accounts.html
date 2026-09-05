@@ -47,6 +47,21 @@
      - Full keyboard operability: every action is a real <button> or
        <input type="submit">; the confirm step is a second submit, not a
        click handler on a div.
+     - U12 (2026-09-05): each account renders as a summary card (name,
+       kind, matched-file count from len(MatchedFiles), latest anchor —
+       the last element of Account.Anchors, which the accounts service
+       keeps sorted ascending by date, or "No anchor set"). The existing
+       per-account edit form and the "Add an account" form are unchanged
+       markup/hx wiring, each moved behind a real
+       <button type="button" aria-expanded aria-controls> disclosure,
+       hidden by default via the `hidden` attribute (the markup is still
+       present in every response, so no existing handler test that scans
+       response text for field ids/labels/help copy is affected). Toggle
+       behavior lives in accounts.js via a delegated click listener keyed
+       on [data-toggle-target], so it survives every hx-swap of
+       #accounts-list. The htmx:afterSwap focus handler below (point 5)
+       reveals a panel before focusing a field inside it, so a validation
+       error on a hidden Add/Edit form still gets focus and is visible.
 */}}
 {{define "accounts-content"}}
 <div class="space-y-4">
@@ -212,10 +227,34 @@
         data-warnings-text="{{if .Warnings}}Pattern overlap warning: {{range $i, $w := .Warnings}}{{if $i}}; {{end}}{{$w}}{{end}}{{end}}"
         data-warnings-key="{{.WarningsKey}}"></span>
 
-    {{/* Create form. Always visible so the user can add an account. */}}
+    {{/* Create form (U12): behind a disclosure button so the page opens on
+         the task the user came to do (review existing accounts), not a
+         setup form. Hidden by default via the `hidden` attribute (markup
+         stays in the response either way, so every existing handler test
+         that scans the response body for field ids/labels/help text is
+         unaffected); revealed by accounts.js's delegated toggle handler,
+         which also un-hides this panel and flips the button back to
+         aria-expanded="true" if a failed submit needs to focus a field
+         inside it (ACCESSIBILITY.md point 5). */}}
     <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" aria-labelledby="accounts-new-heading">
-        <h2 id="accounts-new-heading" class="text-lg font-medium text-gray-800 dark:text-gray-100">Add an account</h2>
-        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="accounts-new-heading" class="text-lg font-medium text-gray-800 dark:text-gray-100">Add an account</h2>
+            {{/* U12 attempt 2 (ruling U-2026-09-05n): aria-expanded and
+                 the panel's `hidden` attribute both derive from whether
+                 THIS form (ErrorAccountID == "") is the one that errored,
+                 so a failed add-account submit opens this panel server-side
+                 -- accounts.js's revealAncestorPanel is then a no-op, not
+                 the only thing standing between the error and visibility. */}}
+            <button type="button"
+                data-toggle-target="accounts-new-form-panel"
+                aria-expanded="{{if and .ErrorField (eq .ErrorAccountID "")}}true{{else}}false{{end}}"
+                aria-controls="accounts-new-form-panel"
+                class="inline-flex items-center px-3 py-1.5 bg-accent-strong text-white rounded-md hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent">
+                Add an account
+            </button>
+        </div>
+        <div id="accounts-new-form-panel" data-toggle-panel {{if not (and .ErrorField (eq .ErrorAccountID ""))}}hidden{{end}} class="mt-4">
+        <p class="text-sm text-gray-600 dark:text-gray-400">
             Required fields are marked with an asterisk (*).
         </p>
         <form hx-post="/accounts" hx-target="#accounts-list" hx-swap="innerHTML" class="mt-4 space-y-4">
@@ -227,9 +266,8 @@
                     </label>
                     <input type="text" id="acct-new-id" name="id" required
                         autocomplete="off"
-                        data-focus-target="id"
                         aria-describedby="acct-new-id-help"
-                        {{if eq .ErrorField "id"}}aria-invalid="true"{{end}}
+                        {{if and (eq .ErrorField "id") (eq .ErrorAccountID "")}}data-focus-target="id" aria-invalid="true"{{end}}
                         class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
                     <p id="acct-new-id-help" class="mt-1 text-body-sm text-gray-600 dark:text-gray-400">
                         A stable slug, e.g. <code>usaa-checking</code>. Transactions and
@@ -244,8 +282,7 @@
                     </label>
                     <input type="text" id="acct-new-name" name="name" required
                         autocomplete="off"
-                        data-focus-target="name"
-                        {{if eq .ErrorField "name"}}aria-invalid="true"{{end}}
+                        {{if and (eq .ErrorField "name") (eq .ErrorAccountID "")}}data-focus-target="name" aria-invalid="true"{{end}}
                         class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
                 </div>
                 <div>
@@ -291,7 +328,7 @@
                 <input type="number" id="acct-new-threshold" name="low_balance_threshold"
                     step="0.01" min="0"
                     aria-describedby="acct-new-threshold-help"
-                    {{if eq .ErrorField "low_balance_threshold"}}data-focus-target="low_balance_threshold" aria-invalid="true"{{end}}
+                    {{if and (eq .ErrorField "low_balance_threshold") (eq .ErrorAccountID "")}}data-focus-target="low_balance_threshold" aria-invalid="true"{{end}}
                     class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
                 <p id="acct-new-threshold-help" class="mt-1 text-body-sm text-gray-600 dark:text-gray-400">
                     Enter a dollar amount, e.g. <code>500</code>. Leave blank or enter
@@ -306,6 +343,7 @@
                 </button>
             </div>
         </form>
+        </div>
     </section>
 
     {{/* Existing accounts. */}}
@@ -317,9 +355,14 @@
         <ul class="mt-3 space-y-4">
             {{$root := .}}
             {{range $acct := .Accounts}}
+            {{/* Summary card (U12): name, kind, matched-file count and
+                 latest anchor up front; the full edit form (name,
+                 institution, kind, threshold, patterns) is the existing
+                 form from before U12, unchanged, just moved behind the
+                 Edit toggle below. */}}
             <li class="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
                 <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
+                    <div class="min-w-0">
                         <h3 class="text-base font-medium text-gray-800 dark:text-gray-100">
                             {{$acct.Account.Name}}
                             {{if $acct.IsFirst}}
@@ -331,10 +374,60 @@
                             {{if $acct.Account.Institution}}&middot; {{$acct.Account.Institution}}{{end}}
                             &middot; <span class="font-mono">{{$acct.Account.Kind}}</span>
                         </p>
+                        <dl class="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-body-sm text-gray-600 dark:text-gray-400">
+                            <div class="flex gap-1">
+                                <dt class="font-medium text-gray-700 dark:text-gray-300">Matched files:</dt>
+                                <dd>{{len $acct.MatchedFiles}}</dd>
+                            </div>
+                            <div class="flex gap-1">
+                                <dt class="font-medium text-gray-700 dark:text-gray-300">Latest anchor:</dt>
+                                {{if $acct.Account.Anchors}}
+                                {{/* Account.Anchors is kept sorted ascending
+                                     by Date (internal/models/account.go), so
+                                     the last one visited by this range is
+                                     the latest. Reassigning a var across a
+                                     range (not `index`+`sub`, whose float64
+                                     result `index` cannot use to subscript a
+                                     slice) is the safe way to grab it. */}}
+                                {{$latestAnchor := index $acct.Account.Anchors 0}}
+                                {{range $acct.Account.Anchors}}{{$latestAnchor = .}}{{end}}
+                                <dd>{{formatDate $latestAnchor.Date}} &middot; {{formatMoney $latestAnchor.Amount}}</dd>
+                                {{else}}
+                                <dd>No anchor set</dd>
+                                {{end}}
+                            </div>
+                        </dl>
                     </div>
+                    {{/* U12 attempt 2 (ruling U-2026-09-05n): aria-expanded
+                         and the panel's `hidden` attribute below both derive
+                         from whether THIS account's EDIT-SETTINGS form (not
+                         its always-visible anchor form, which sets
+                         ErrorAccountID too via handleAddAnchor but errors on
+                         "anchor_date"/"anchor_amount", fields that live
+                         outside this panel) is the one that errored, so a
+                         failed edit submit for account X opens X's panel
+                         server-side -- every OTHER account's panel stays
+                         collapsed, an anchor-form error does not pop this
+                         panel open for nothing, and accounts.js's
+                         revealAncestorPanel is a no-op rather than the only
+                         thing standing between the error and visibility. */}}
+                    {{$editErrored := and (eq $root.ErrorAccountID $acct.Account.ID) (or (eq $root.ErrorField "name") (eq $root.ErrorField "low_balance_threshold"))}}
+                    <button type="button"
+                        data-toggle-target="acct-edit-panel-{{$acct.Account.ID}}"
+                        aria-expanded="{{if $editErrored}}true{{else}}false{{end}}"
+                        aria-controls="acct-edit-panel-{{$acct.Account.ID}}"
+                        class="flex-shrink-0 inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-accent">
+                        Edit<span class="sr-only"> {{$acct.Account.Name}}</span>
+                    </button>
                 </div>
 
-                {{/* Edit form. */}}
+                {{/* Edit form, hidden by default behind the Edit toggle
+                     above (U12). Markup and hx wiring are unchanged from
+                     before U12; accounts.js's delegated toggle handler
+                     reveals this panel (and re-reveals it, flipping the
+                     button back to aria-expanded="true", if a failed
+                     submit needs to focus a field inside it). */}}
+                <div id="acct-edit-panel-{{$acct.Account.ID}}" data-toggle-panel {{if not $editErrored}}hidden{{end}}>
                 <form hx-post="/accounts/{{$acct.Account.ID}}" hx-target="#accounts-list" hx-swap="innerHTML" class="mt-3 space-y-4">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -343,7 +436,7 @@
                                 <span class="sr-only">(required)</span>
                             </label>
                             <input type="text" id="acct-edit-name-{{$acct.Account.ID}}" name="name" value="{{$acct.Account.Name}}" required
-                                {{if and (eq $root.ErrorField "name") (eq $root.ConfirmDeleteID "")}}data-focus-target="name" aria-invalid="true"{{end}}
+                                {{if and (eq $root.ErrorField "name") (eq $root.ErrorAccountID $acct.Account.ID)}}data-focus-target="name" aria-invalid="true"{{end}}
                                 class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
                         </div>
                         <div>
@@ -392,6 +485,7 @@
                         </button>
                     </div>
                 </form>
+                </div>
 
                 {{/* Pattern editor: live matches for THIS account. */}}
                 <div class="mt-4">

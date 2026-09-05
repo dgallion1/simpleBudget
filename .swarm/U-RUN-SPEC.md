@@ -506,6 +506,36 @@ report the first-attempt clean rate verbatim.
   keyboard-operable (U15's div/th-onclick sweep); master's new #91/#92
   whatif markup not yet U6-tokenized (hue literals in whatif-expense-rows /
   healthcare bars).
+- **U-2026-09-05n** (catch — checker-a11y, U12 attempt 1, FAIL CONCEDED):
+  U12 hid the per-account edit form and the add form behind disclosures. On
+  an edit-form validation error the errored account's panel stayed COLLAPSED
+  and focus landed on the unrelated Add form, stranding the error
+  (contradicting the task's own ask #3). Root cause (pre-existing, exposed by
+  the hiding): the accounts error model has NO account scoping —
+  handleUpdate's error path sets neither ErrorField nor an account id, and the
+  Add form's `data-focus-target` is UNCONDITIONAL, so it is always the first
+  (and only) match. A correct focus/reveal is impossible without scoping.
+  Ruling: "handlers untouched" bends to a DISPLAY-ONLY error-scope addition
+  (not a CRUD change). Attempt-2 contract:
+  1. Add `ErrorAccountID string` to the accounts page-data struct.
+  2. handleUpdate error path: capture formData and set BOTH
+     `data.ErrorField = formData.errorField` and `data.ErrorAccountID = id`;
+     the add-anchor error paths set `ErrorAccountID` to that account too;
+     handleCreate leaves it "" (the add form).
+  3. Add-form fields: gate `data-focus-target` on
+     `{{if and (eq .ErrorField "<f>") (eq .ErrorAccountID "")}}` — only when
+     the ADD form errored.
+  4. Edit-form field: gate on
+     `{{if and (eq $root.ErrorField "name") (eq $root.ErrorAccountID $acct.Account.ID)}}`
+     — only the erroring account.
+  5. Reveal the erroring form's panel server-side: render `#acct-edit-panel-{id}`
+     WITHOUT `hidden` when `eq $root.ErrorAccountID $acct.Account.ID` (and the
+     add panel open when ErrorField set && ErrorAccountID==""), so exactly one
+     field carries data-focus-target and the JS reveal+focus lands on it.
+  Re-verify: submit an edit error → THAT account's panel opens and its field
+  is focused; submit an add error → add panel opens, add field focused; other
+  panels stay collapsed. Handler CRUD tests stay green + a new handler test
+  for ErrorAccountID scoping.
 - **U-2026-09-04m** (catch — checker-a11y, U7 attempt 2, FAIL CONCEDED;
   CONTRACT REWRITE per the two-same-class rule): attempt 2 fixed keyboard
   operability but INTRODUCED a serious nested-interactive violation (axe

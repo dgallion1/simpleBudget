@@ -122,7 +122,7 @@ U8	2	tests,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane
 U9	1	a11y	accepted	1	worker-coder	gate-ok-tier1-attempt-1-a11y
 U10	2	content,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane-content+second
 U11	2	tests,a11y	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane-first-attempt-clean
-U12	2	tests,a11y	pending	0	-	phase0-draft-awaiting-tier-signoff
+U12	2	tests,a11y	accepted	2	worker-coder	gate-ok-tier2-attempt-2-dual-lane; a11y FAIL attempt-1 edit-error-stranding, fixed via ErrorAccountID (ruling n)
 U13	2	tests,a11y	pending	0	-	phase0-draft-awaiting-tier-signoff
 U14	3	tests,second	pending	0	-	phase0-draft-awaiting-tier-signoff
 U15	2	a11y	pending	0	-	phase0-draft-awaiting-tier-signoff

@@ -1382,6 +1382,229 @@ func TestHandleAddAnchor_RendererMode_AnchorShownInPartial(t *testing.T) {
 	}
 }
 
+// TestHandleUpdate_EmptyNameSurfaced_SetsErrorAccountID: U12 attempt 2
+// (ruling U-2026-09-05n) added ErrorAccountID so the template can tell
+// WHICH account's edit form errored, not just that some form did. An
+// update validation error must carry both ErrorField and the account ID
+// that was being edited.
+func TestHandleUpdate_EmptyNameSurfaced_SetsErrorAccountID(t *testing.T) {
+	_, store, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "edit-me", Name: "Old", Kind: models.AccountKindOther},
+	})
+
+	form := url.Values{"name": {"   "}, "kind": {"other"}}
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts/edit-me", form))
+
+	accts := loadAccounts(t, store)
+	if len(accts) != 1 || accts[0].Name != "Old" {
+		t.Fatalf("store should be unchanged, got %+v", accts)
+	}
+	body := readJSON(t, w.Result())
+	if field, _ := body["ErrorField"].(string); field != "name" {
+		t.Errorf("ErrorField = %q, want %q", field, "name")
+	}
+	if acctID, _ := body["ErrorAccountID"].(string); acctID != "edit-me" {
+		t.Errorf("ErrorAccountID = %q, want %q", acctID, "edit-me")
+	}
+}
+
+// TestHandleCreate_EmptyNameSurfaced_ErrorAccountIDEmpty: a create-form
+// error must leave ErrorAccountID empty -- "" is the Add form's scope, not
+// any particular account's edit form (U-2026-09-05n).
+func TestHandleCreate_EmptyNameSurfaced_ErrorAccountIDEmpty(t *testing.T) {
+	_, _, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	form := url.Values{"id": {"no-name"}, "name": {"   "}, "kind": {"other"}}
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts", form))
+
+	body := readJSON(t, w.Result())
+	if acctID, _ := body["ErrorAccountID"].(string); acctID != "" {
+		t.Errorf("ErrorAccountID = %q, want empty (create-form error)", acctID)
+	}
+}
+
+// TestHandleAddAnchor_InvalidDate_SetsErrorAccountID: the add-anchor error
+// paths scope ErrorAccountID to the account whose anchor form errored
+// (U-2026-09-05n), same as the update path.
+func TestHandleAddAnchor_InvalidDate_SetsErrorAccountID(t *testing.T) {
+	_, store, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "anch-err", Name: "Anchors", Kind: models.AccountKindChecking},
+	})
+
+	form := url.Values{"anchor_date": {"not-a-date"}, "anchor_amount": {"100"}}
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts/anch-err/anchor", form))
+
+	body := readJSON(t, w.Result())
+	if field, _ := body["ErrorField"].(string); field != "anchor_date" {
+		t.Errorf("ErrorField = %q, want %q", field, "anchor_date")
+	}
+	if acctID, _ := body["ErrorAccountID"].(string); acctID != "anch-err" {
+		t.Errorf("ErrorAccountID = %q, want %q", acctID, "anch-err")
+	}
+}
+
+// TestHandleUpdate_RendererMode_ErrorRevealsOnlyErroringAccountsPanel:
+// the U-2026-09-05n regression the checker caught -- a validation error on
+// one account's edit form must open THAT account's disclosure panel
+// (hidden attribute absent, aria-expanded="true") while every other
+// account's panel stays collapsed, and the Add-account panel stays
+// collapsed too. This is the end-to-end proof that scoping ErrorAccountID
+// through to the template actually fixes the stranded-error defect, not
+// just that the field round-trips in JSON mode.
+func TestHandleUpdate_RendererMode_ErrorRevealsOnlyErroringAccountsPanel(t *testing.T) {
+	_, store, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "acct-a", Name: "Account A", Kind: models.AccountKindChecking},
+		{ID: "acct-b", Name: "Account B", Kind: models.AccountKindSavings},
+	})
+
+	form := url.Values{"name": {"   "}, "kind": {"checking"}}
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts/acct-a", form))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+
+	// The erroring account's panel is open: no `hidden` on its wrapper div,
+	// aria-expanded="true" on its toggle button, and its name field carries
+	// the focus target.
+	if !strings.Contains(body, `id="acct-edit-panel-acct-a" data-toggle-panel >`) {
+		t.Errorf("acct-a's edit panel should render WITHOUT hidden; got:\n%s", body)
+	}
+	if !strings.Contains(body, `data-toggle-target="acct-edit-panel-acct-a"`+"\n"+`                        aria-expanded="true"`) {
+		t.Errorf("acct-a's Edit toggle should be aria-expanded=true; got:\n%s", body)
+	}
+	if !strings.Contains(body, `id="acct-edit-name-acct-a"`) || !strings.Contains(body, `data-focus-target="name" aria-invalid="true"`) {
+		t.Errorf("acct-a's name field should carry data-focus-target and aria-invalid; got:\n%s", body)
+	}
+
+	// The OTHER account's panel stays collapsed.
+	if !strings.Contains(body, `id="acct-edit-panel-acct-b" data-toggle-panel hidden>`) {
+		t.Errorf("acct-b's edit panel should stay hidden; got:\n%s", body)
+	}
+	if !strings.Contains(body, `data-toggle-target="acct-edit-panel-acct-b"`+"\n"+`                        aria-expanded="false"`) {
+		t.Errorf("acct-b's Edit toggle should stay aria-expanded=false; got:\n%s", body)
+	}
+
+	// The unrelated Add-account panel stays collapsed too.
+	if !strings.Contains(body, `id="accounts-new-form-panel" data-toggle-panel hidden`) {
+		t.Errorf("Add-account panel should stay hidden on an edit-form error; got:\n%s", body)
+	}
+}
+
+// TestHandleCreate_RendererMode_ErrorRevealsOnlyAddPanel: the mirror case
+// -- a failed create leaves the Add panel open and every account's Edit
+// panel collapsed (U-2026-09-05n).
+func TestHandleCreate_RendererMode_ErrorRevealsOnlyAddPanel(t *testing.T) {
+	_, store, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "acct-a", Name: "Account A", Kind: models.AccountKindChecking},
+	})
+
+	form := url.Values{"id": {"no-name"}, "name": {"   "}, "kind": {"other"}}
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts", form))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+
+	if !strings.Contains(body, `id="accounts-new-form-panel" data-toggle-panel  class="mt-4">`) {
+		t.Errorf("Add-account panel should render WITHOUT hidden; got:\n%s", body)
+	}
+	if !strings.Contains(body, `id="acct-edit-panel-acct-a" data-toggle-panel hidden>`) {
+		t.Errorf("acct-a's edit panel should stay hidden on an add-form error; got:\n%s", body)
+	}
+}
+
+// TestHandleAddAnchor_InvalidDate_RendererMode_DoesNotOpenEditPanel: an
+// anchor-form error sets ErrorAccountID to the account (so the anchor
+// field itself, which is NOT behind a disclosure, can eventually be
+// scoped correctly too), but must NOT pop that account's Edit-settings
+// panel open -- the erroring field (anchor_date) lives outside it, and
+// forcing the panel open would announce an expansion with nothing inside
+// it to focus.
+func TestHandleAddAnchor_InvalidDate_RendererMode_DoesNotOpenEditPanel(t *testing.T) {
+	_, store, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "anch-err", Name: "Anchors", Kind: models.AccountKindChecking},
+	})
+
+	form := url.Values{"anchor_date": {"not-a-date"}, "anchor_amount": {"100"}}
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, formPost("POST", "/accounts/anch-err/anchor", form))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+
+	if !strings.Contains(body, `id="acct-edit-panel-anch-err" data-toggle-panel hidden>`) {
+		t.Errorf("an anchor-form error must not open the Edit-settings panel; got:\n%s", body)
+	}
+	if !strings.Contains(body, `data-focus-target="anchor_date" aria-invalid="true"`) {
+		t.Errorf("the anchor_date field itself must still carry the focus target; got:\n%s", body)
+	}
+}
+
+// TestHandlePage_RendererMode_SummaryCard_ZeroAnchorAccount: U12's card
+// summary renders "No anchor set" (never a bare $0.00 -- a zero balance
+// and an unknown one are different facts) for an account with NO anchors,
+// runtime-exercised alongside a sibling account that DOES have one, so the
+// branch is proven live rather than only present in the template source.
+func TestHandlePage_RendererMode_SummaryCard_ZeroAnchorAccount(t *testing.T) {
+	_, store, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	saveAccounts(t, store, []models.Account{
+		{ID: "no-anchor", Name: "No Anchor Yet", Kind: models.AccountKindChecking},
+		{
+			ID: "has-anchor", Name: "Has Anchor", Kind: models.AccountKindSavings,
+			Anchors: []models.BalanceAnchor{{Date: mustParseDate(t, "2026-08-01"), Amount: 4210.55}},
+		},
+	})
+
+	req := httptest.NewRequest("GET", "/accounts", nil)
+	w := httptest.NewRecorder()
+	newRouter().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "No anchor set") {
+		t.Errorf("zero-anchor account must render \"No anchor set\"; got:\n%s", body)
+	}
+	if !strings.Contains(body, "$4,210.55") {
+		t.Errorf("the anchored account's latest-anchor amount must still render; got:\n%s", body)
+	}
+}
+
+// mustParseDate parses a YYYY-MM-DD date for test fixtures.
+func mustParseDate(t *testing.T, s string) time.Time {
+	t.Helper()
+	d, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		t.Fatalf("mustParseDate(%q): %v", s, err)
+	}
+	return d
+}
+
 // equalStrings is a small helper for order-equal slice comparison.
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {

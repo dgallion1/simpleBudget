@@ -1,0 +1,88 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: U12
+ATTEMPT: 2
+---
+Verified in a `cp -a` scratch of the ui-audit worktree (branch feat/ui-audit,
+HEAD 8be5995). Raw diffs pulled via `rtk proxy git diff` (rtk falsifies plain
+diff output). Server work via scripts/whatif-verify.sh on :8091 (isolated data
+copy, killme teardown); the budget2 binary was never run directly.
+
+(a) BUILD/VET/TEST/STATICCHECK — PASS.
+  `go build ./...` BUILD_EXIT=0; `go vet ./...` VET_EXIT=0;
+  `go test -count=1 ./...` TEST_EXIT=0 (all packages ok, incl.
+  budget2/internal/handlers/accounts 0.817s); `staticcheck ./...`
+  STATIC_ALL_EXIT=0.
+
+(b) HANDLER CHANGE IS DISPLAY-ONLY — PASS.
+  `rtk proxy git diff HEAD -- internal/handlers/accounts/handlers.go`:
+  +14/-1. The ONLY changes are (1) adding `ErrorAccountID string` to the
+  pageData struct, (2) handleUpdate error path now captures `fd` and sets
+  `data.ErrorField = fd.errorField` + `data.ErrorAccountID = id`, (3) the
+  four handleAddAnchor error paths set `data.ErrorAccountID = id`. No change
+  to applyForm (lines 479+, absent from diff), save/create/delete, or any
+  mutation logic. handleCreate (line 148) uses the pre-existing
+  formData.errorField and does NOT set ErrorAccountID, so create leaves it ""
+  (confirmed live: add-error response ErrorAccountID scope is the add form).
+  Pre-existing CRUD tests are UNMODIFIED: the handlers_test.go diff is purely
+  additive (new block at L1382); `git show HEAD:...handlers_test.go | grep -c
+  '^func Test'` = 33 pre-existing funcs, all unchanged, and the full accounts
+  package tests PASS (ok).
+
+(c) THE NEW TESTS ARE LOAD-BEARING — PASS.
+  7 new Test funcs added (brief said "6"; the extra is a superset — see
+  FINDINGS), 33->40, all PASS individually (-v run: all --- PASS). They
+  assert the required scoping:
+    - Update error on X: ErrorField="name" AND ErrorAccountID="edit-me"
+      (TestHandleUpdate_EmptyNameSurfaced_SetsErrorAccountID).
+    - Create error: ErrorAccountID=="" (TestHandleCreate_...IDEmpty).
+    - Anchor error: ErrorField="anchor_date"+ErrorAccountID="anch-err".
+    - Reveal isolation: edit error opens only X's panel, others + Add panel
+      stay hidden (TestHandleUpdate_RendererMode_ErrorRevealsOnly...).
+    - Anchor error does NOT open the Edit-settings panel
+      (TestHandleAddAnchor_..._DoesNotOpenEditPanel).
+    - Zero-anchor runtime "No anchor set" alongside an anchored sibling
+      ($4,210.55) (TestHandlePage_..._ZeroAnchorAccount) — the case the
+      attempt-1 verdict flagged as inspection-only is now runtime-exercised.
+  Mutation (i): removing `data.ErrorAccountID = id` from handleUpdate ->
+  FAIL: TestHandleUpdate_EmptyNameSurfaced_SetsErrorAccountID AND
+  ...RevealsOnly... (EXIT=1). Load-bearing, confirmed.
+  Mutation (ii): making the Add-form name field's data-focus-target
+  unconditional -> all isolation tests still PASS (EXIT=0). As the brief
+  anticipated, the add-form data-focus-target isolation is NOT covered by a
+  Go test; it is covered only by the a11y probe. I confirmed it holds live
+  in (d).
+
+(d) TEMPLATE SCOPING RENDERS CORRECTLY (live :8091) — PASS.
+  Baseline GET /accounts: all edit panels + Add panel `hidden`.
+  POST /accounts/usaa-checking name="   ": only
+  `id="acct-edit-panel-usaa-checking" data-toggle-panel >` opens; probe-acct
+  and usaa-credit-card panels stay `hidden`; `accounts-new-form-panel`
+  stays `hidden`; erroring field carries
+  `data-focus-target="name" aria-invalid="true"`; add-form name field has NO
+  data-focus-target; whole response contains exactly ONE data-focus-target.
+  Mirror POST /accounts (add error): Add panel opens (no hidden), edit panel
+  stays hidden, exactly one data-focus-target (in the add form). "No anchor
+  set" renders (count=2 on GET). Server stopped and cleaned.
+
+(e) CSS + SCOPE — PASS.
+  `make css-verify` CSS_EXIT=0 ("tailwind.css is up to date").
+  `git diff --name-only HEAD`: the 4 authorized files (handlers.go,
+  handlers_test.go, web/static/js/accounts.js, web/templates/pages/
+  accounts.html) plus .swarm/U-RUN-SPEC.md and .swarm/ledger.tsv
+  (bookkeeping). Untracked: .swarm/manifests, .swarm/verdicts, .swarm/tier2,
+  plus environmental .swarm-local/ and data/ (pre-existing untracked, not
+  worker source, not in critical.globs). NOTHING changed matches
+  .swarm/critical.globs — note internal/services/accounts/accounts.go is
+  critical but the changed file is internal/HANDLERS/accounts/handlers.go, a
+  different path.
+
+FINDINGS (non-blocking):
+  - Brief said "6 new tests / 38 pre-existing"; actual is 7 new Test funcs
+    (+mustParseDate helper) over 33 pre-existing top-level funcs. Coverage is
+    a superset of the required assertions; every named requirement is met.
+  - Add-form data-focus-target add-vs-edit isolation has no Go test
+    (mutation ii survives); it is guarded only by the a11y probe. Verified
+    live in (d). If a Go guard is wanted, that is a backlog item, not a
+    defect in this attempt.

@@ -116,6 +116,13 @@ type pageData struct {
 	WarningsKey     string
 	Error           string // validation / save error to surface
 	ErrorField      string // the field the error pertains to (for focus)
+	// ErrorAccountID scopes Error/ErrorField to one form: "" means the
+	// Add-account form errored (or no account-specific form is at fault);
+	// a non-empty account ID means that account's Edit form (or its
+	// anchor form) errored. Added U12 attempt 2 (ruling U-2026-09-05n):
+	// without this, the template cannot tell WHICH form to reveal/focus
+	// once the Edit and Add forms are both hidden behind disclosures.
+	ErrorAccountID  string
 	ConfirmDeleteID string // account whose delete-confirm panel is open
 	// UnresolvedDuplicateCount is read by the base layout's nav badge. The
 	// accounts page does not own that count; it stays zero here so the
@@ -160,9 +167,11 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Missing account id", http.StatusBadRequest)
 		return
 	}
-	if _, _, saveErr := applyForm(r, id); saveErr != nil {
+	if _, fd, saveErr := applyForm(r, id); saveErr != nil {
 		data, _ := buildPageData(r)
 		data.Error = saveErr.Error()
+		data.ErrorField = fd.errorField
+		data.ErrorAccountID = id
 		renderList(w, r, data)
 		return
 	}
@@ -250,6 +259,7 @@ func handleAddAnchor(w http.ResponseWriter, r *http.Request) {
 		data, _ := buildPageData(r)
 		data.Error = "Anchor date and amount are required."
 		data.ErrorField = "anchor_date"
+		data.ErrorAccountID = id
 		renderList(w, r, data)
 		return
 	}
@@ -258,6 +268,7 @@ func handleAddAnchor(w http.ResponseWriter, r *http.Request) {
 		data, _ := buildPageData(r)
 		data.Error = "Anchor date must be in YYYY-MM-DD format."
 		data.ErrorField = "anchor_date"
+		data.ErrorAccountID = id
 		renderList(w, r, data)
 		return
 	}
@@ -266,6 +277,7 @@ func handleAddAnchor(w http.ResponseWriter, r *http.Request) {
 		data, _ := buildPageData(r)
 		data.Error = "Anchor amount must be a number, e.g. 4210.55."
 		data.ErrorField = "anchor_amount"
+		data.ErrorAccountID = id
 		renderList(w, r, data)
 		return
 	}
@@ -315,6 +327,7 @@ func handleAddAnchor(w http.ResponseWriter, r *http.Request) {
 		}
 		data, _ := buildPageData(r)
 		data.Error = err.Error()
+		data.ErrorAccountID = id
 		renderList(w, r, data)
 		return
 	}

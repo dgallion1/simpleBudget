@@ -508,6 +508,29 @@ func projectionValueAtYear(projection *models.ProjectionResult, year float64, di
 	return month.PortfolioBalance
 }
 
+// guardrailEventHoverText builds the Plotly hover string for one
+// models.GuardrailEvent marker on the projection chart. The percentage
+// arithmetic mirrors web/templates/components/whatif/guardrails.html's
+// "whatif-guardrail-events" block exactly: the single-year change is
+// |Multiplier-PreviousMultiplier|/PreviousMultiplier*100 (omitted when
+// PreviousMultiplier <= 0, matching that template's fallback to a bare
+// "Cut"/"Raise"), and "(NN% of plan)" is always Multiplier*100. Money is
+// only appended when both spending figures are > 0, and is nominal
+// (that year's dollars) -- never converted to today's dollars, matching
+// the list's own money line.
+func guardrailEventHoverText(e models.GuardrailEvent) string {
+	text := fmt.Sprintf("Year %d: %s", e.Year, e.Type)
+	if e.PreviousMultiplier > 0 {
+		pctChange := math.Abs(e.Multiplier-e.PreviousMultiplier) / e.PreviousMultiplier * 100
+		text += fmt.Sprintf(" %.0f%%", pctChange)
+	}
+	text += fmt.Sprintf(" (%.0f%% of plan)", e.Multiplier*100)
+	if e.MonthlySpendingBefore > 0 && e.MonthlySpendingAfter > 0 {
+		text += fmt.Sprintf("<br>%s/mo → %s/mo", templates.FormatMoney(e.MonthlySpendingBefore), templates.FormatMoney(e.MonthlySpendingAfter))
+	}
+	return text
+}
+
 func humanizeScenarioFilename(filename string) string {
 	name := strings.TrimSuffix(filename, ".json")
 	name = strings.NewReplacer("-", " ", "_", " ").Replace(name)
@@ -674,6 +697,52 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 		})
 	}
 
+	if len(projection.GuardrailEvents) > 0 {
+		gEvents := projection.GuardrailEvents
+		guardrailX := make([]float64, 0, len(gEvents))
+		guardrailY := make([]float64, 0, len(gEvents))
+		guardrailText := make([]string, 0, len(gEvents))
+		guardrailSymbol := make([]string, 0, len(gEvents))
+		guardrailColor := make([]string, 0, len(gEvents))
+		for _, ge := range gEvents {
+			x := float64(ge.Year)
+			y := projectionValueAtYear(projection, x, displayDollars)
+			if y <= 0 {
+				y = maxBalance * 0.05
+			}
+			guardrailX = append(guardrailX, x)
+			guardrailY = append(guardrailY, y)
+			guardrailText = append(guardrailText, guardrailEventHoverText(ge))
+			if ge.Type == "cut" {
+				guardrailSymbol = append(guardrailSymbol, "triangle-down")
+				guardrailColor = append(guardrailColor, "#ef4444")
+			} else {
+				guardrailSymbol = append(guardrailSymbol, "triangle-up")
+				guardrailColor = append(guardrailColor, "#22c55e")
+			}
+		}
+
+		traces = append(traces, map[string]interface{}{
+			"type":      "scatter",
+			"mode":      "markers",
+			"name":      "Guardrail cuts / raises",
+			"x":         guardrailX,
+			"y":         guardrailY,
+			"text":      guardrailText,
+			"hoverinfo": "text",
+			"marker": map[string]interface{}{
+				"symbol": guardrailSymbol,
+				"color":  guardrailColor,
+				"size":   11,
+				"line": map[string]interface{}{
+					"color": "#ffffff",
+					"width": 1,
+				},
+			},
+			"cliponaxis": false,
+		})
+	}
+
 	dtick := 5
 	if settings != nil && settings.ProjectionYears <= 12 {
 		dtick = 1
@@ -692,7 +761,7 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 		"title":      yAxisTitle,
 		"tickformat": "$,.0f",
 	}
-	if len(events) > 0 && maxBalance > 0 {
+	if (len(events) > 0 || len(projection.GuardrailEvents) > 0) && maxBalance > 0 {
 		// Headroom so top-of-curve event labels don't clip at the plot edge.
 		yaxis["range"] = []float64{0, maxBalance * 1.18}
 	}

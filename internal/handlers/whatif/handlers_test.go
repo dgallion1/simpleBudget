@@ -427,6 +427,346 @@ func TestBuildProjectionChartData_NilSettings(t *testing.T) {
 	}
 }
 
+// ── Guardrail cut/raise markers (GM1) ──────────────────────────────────────
+
+// longProjectionForGuardrailMarkers builds a 31-year (373 month) projection
+// with distinct, strictly-decreasing nominal and real balance series so
+// nominal vs. real y-values are distinguishable at any test year, and long
+// enough to cover Year 29 and Year 15 marker fixtures.
+func longProjectionForGuardrailMarkers() *models.ProjectionResult {
+	months := make([]models.ProjectionMonth, 0, 373)
+	for m := 0; m < 373; m++ {
+		months = append(months, models.ProjectionMonth{
+			Month:                m,
+			Year:                 float64(m) / 12.0,
+			PortfolioBalance:     2_000_000 - float64(m)*1_000,
+			PortfolioBalanceReal: 1_800_000 - float64(m)*900,
+		})
+	}
+	return &models.ProjectionResult{
+		Months:       months,
+		FinalBalance: months[len(months)-1].PortfolioBalance,
+		Survives:     true,
+	}
+}
+
+func findTraceByName(traces []map[string]interface{}, name string) map[string]interface{} {
+	for _, tr := range traces {
+		if tr["name"] == name {
+			return tr
+		}
+	}
+	return nil
+}
+
+func TestBuildProjectionChartData_NoGuardrailEvents_NoTrace(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	projection := sampleProjectionForChart()
+	projection.GuardrailEvents = nil
+
+	withoutGuardrails := buildProjectionChartData(settings, projection, "nominal")
+	withoutTraces := withoutGuardrails["data"].([]map[string]interface{})
+
+	if findTraceByName(withoutTraces, "Guardrail cuts / raises") != nil {
+		t.Fatal("expected no 'Guardrail cuts / raises' trace when GuardrailEvents is empty")
+	}
+
+	balanceTrace := findTraceByName(withoutTraces, "Portfolio Balance")
+	if balanceTrace == nil {
+		t.Fatal("expected 'Portfolio Balance' trace present")
+	}
+	balanceY, ok := balanceTrace["y"].([]float64)
+	if !ok || len(balanceY) != len(projection.Months) {
+		t.Fatalf("Portfolio Balance trace y length changed: got %d, want %d", len(balanceY), len(projection.Months))
+	}
+
+	// Same call with a non-nil-but-empty GuardrailEvents slice must produce
+	// the identical trace set -- zero events, either nil or empty, means no marker trace.
+	projection.GuardrailEvents = []models.GuardrailEvent{}
+	stillNoGuardrails := buildProjectionChartData(settings, projection, "nominal")
+	stillTraces := stillNoGuardrails["data"].([]map[string]interface{})
+	if len(stillTraces) != len(withoutTraces) {
+		t.Fatalf("trace count changed for empty (non-nil) GuardrailEvents: %d vs %d", len(stillTraces), len(withoutTraces))
+	}
+	if findTraceByName(stillTraces, "Guardrail cuts / raises") != nil {
+		t.Fatal("expected no 'Guardrail cuts / raises' trace for empty (non-nil) GuardrailEvents")
+	}
+}
+
+func TestBuildProjectionChartData_GuardrailMarkers_CutAndRaise(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	projection := longProjectionForGuardrailMarkers()
+	projection.GuardrailEvents = []models.GuardrailEvent{
+		{
+			Year:                  29,
+			Type:                  "cut",
+			Multiplier:            0.99,
+			PreviousMultiplier:    1.10,
+			MonthlySpendingBefore: 26722.44,
+			MonthlySpendingAfter:  24050.19,
+		},
+		{
+			Year:                  15,
+			Type:                  "raise",
+			Multiplier:            1.1,
+			PreviousMultiplier:    1.0,
+			MonthlySpendingBefore: 15008.83,
+			MonthlySpendingAfter:  16509.71,
+		},
+	}
+
+	data := buildProjectionChartData(settings, projection, "nominal")
+	traces := data["data"].([]map[string]interface{})
+	tr := findTraceByName(traces, "Guardrail cuts / raises")
+	if tr == nil {
+		t.Fatal("expected 'Guardrail cuts / raises' trace")
+	}
+
+	x, ok := tr["x"].([]float64)
+	if !ok || len(x) != 2 {
+		t.Fatalf("expected 2 x values, got %#v", tr["x"])
+	}
+	if x[0] != 29 || x[1] != 15 {
+		t.Fatalf("expected x = [29, 15] in event order, got %v", x)
+	}
+
+	marker, ok := tr["marker"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected marker map, got %#v", tr["marker"])
+	}
+	symbols, ok := marker["symbol"].([]string)
+	if !ok || len(symbols) != 2 {
+		t.Fatalf("expected 2 symbols, got %#v", marker["symbol"])
+	}
+	if symbols[0] != "triangle-down" || symbols[1] != "triangle-up" {
+		t.Fatalf("expected symbols [triangle-down, triangle-up], got %v", symbols)
+	}
+	colors, ok := marker["color"].([]string)
+	if !ok || len(colors) != 2 {
+		t.Fatalf("expected 2 colors, got %#v", marker["color"])
+	}
+	if colors[0] != "#ef4444" || colors[1] != "#22c55e" {
+		t.Fatalf("expected colors [#ef4444, #22c55e], got %v", colors)
+	}
+	if marker["size"] != 11 {
+		t.Fatalf("expected marker size 11, got %v", marker["size"])
+	}
+	line, ok := marker["line"].(map[string]interface{})
+	if !ok || line["color"] != "#ffffff" || line["width"] != 1 {
+		t.Fatalf("expected marker line {#ffffff, 1}, got %#v", marker["line"])
+	}
+
+	if tr["hoverinfo"] != "text" {
+		t.Fatalf("expected hoverinfo=text, got %v", tr["hoverinfo"])
+	}
+	if clip, ok := tr["cliponaxis"].(bool); !ok || clip {
+		t.Fatalf("expected cliponaxis=false, got %v", tr["cliponaxis"])
+	}
+
+	text, ok := tr["text"].([]string)
+	if !ok || len(text) != 2 {
+		t.Fatalf("expected 2 hover strings, got %#v", tr["text"])
+	}
+	wantCut := "Year 29: cut 10% (99% of plan)<br>$26,722.44/mo → $24,050.19/mo"
+	wantRaise := "Year 15: raise 10% (110% of plan)<br>$15,008.83/mo → $16,509.71/mo"
+	if text[0] != wantCut {
+		t.Errorf("cut hover text = %q, want %q", text[0], wantCut)
+	}
+	if text[1] != wantRaise {
+		t.Errorf("raise hover text = %q, want %q", text[1], wantRaise)
+	}
+}
+
+func TestBuildProjectionChartData_GuardrailMarkerY_FollowsDisplayMode(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	projection := longProjectionForGuardrailMarkers()
+	projection.GuardrailEvents = []models.GuardrailEvent{
+		{Year: 10, Type: "cut", Multiplier: 0.9, PreviousMultiplier: 1.0},
+	}
+
+	nominalData := buildProjectionChartData(settings, projection, "nominal")
+	nominalTraces := nominalData["data"].([]map[string]interface{})
+	nominalTr := findTraceByName(nominalTraces, "Guardrail cuts / raises")
+	nominalY := nominalTr["y"].([]float64)
+
+	realData := buildProjectionChartData(settings, projection, "real")
+	realTraces := realData["data"].([]map[string]interface{})
+	realTr := findTraceByName(realTraces, "Guardrail cuts / raises")
+	realY := realTr["y"].([]float64)
+
+	wantNominal := projectionValueAtYear(projection, 10, "nominal")
+	wantReal := projectionValueAtYear(projection, 10, "real")
+
+	if nominalY[0] != wantNominal {
+		t.Errorf("nominal marker y = %v, want %v", nominalY[0], wantNominal)
+	}
+	if realY[0] != wantReal {
+		t.Errorf("real marker y = %v, want %v", realY[0], wantReal)
+	}
+	if nominalY[0] == realY[0] {
+		t.Fatalf("nominal and real marker y unexpectedly equal (fixture not distinguishing modes): %v", nominalY[0])
+	}
+}
+
+func TestBuildProjectionChartData_GuardrailMarker_NoPreviousMultiplier_NoMoneyLine(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	projection := longProjectionForGuardrailMarkers()
+	projection.GuardrailEvents = []models.GuardrailEvent{
+		{
+			Year:                  3,
+			Type:                  "cut",
+			Multiplier:            0.9,
+			PreviousMultiplier:    0,
+			MonthlySpendingBefore: 0,
+			MonthlySpendingAfter:  0,
+		},
+	}
+
+	data := buildProjectionChartData(settings, projection, "nominal")
+	traces := data["data"].([]map[string]interface{})
+	tr := findTraceByName(traces, "Guardrail cuts / raises")
+	if tr == nil {
+		t.Fatal("expected 'Guardrail cuts / raises' trace")
+	}
+	text := tr["text"].([]string)
+	want := "Year 3: cut (90% of plan)"
+	if text[0] != want {
+		t.Errorf("hover text = %q, want %q", text[0], want)
+	}
+}
+
+func TestBuildProjectionChartData_GuardrailEventsOnly_GetHeadroom(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	// No key events: strip scenario chain / income sources / healthcare /
+	// RMD triggers exactly as TestBuildProjectionChartData_NoEventsMeansAutoRange does.
+	settings.IncomeSources = nil
+	settings.HealthcarePersons = nil
+	settings.ScenarioChain = nil
+	settings.CurrentAge = 80
+	settings.Persons[0].BirthMonth = models.BirthMonthForAge(settings.StartDate, 80)
+
+	projection := longProjectionForGuardrailMarkers()
+	projection.GuardrailEvents = []models.GuardrailEvent{
+		{Year: 5, Type: "raise", Multiplier: 1.1, PreviousMultiplier: 1.0},
+	}
+
+	data := buildProjectionChartData(settings, projection, "nominal")
+	layout := data["layout"].(map[string]interface{})
+	yaxis := layout["yaxis"].(map[string]interface{})
+	rng, ok := yaxis["range"].([]float64)
+	if !ok || len(rng) != 2 {
+		t.Fatalf("expected y-axis range headroom with guardrail-only events, got %#v", yaxis["range"])
+	}
+
+	maxBalance := 0.0
+	for _, m := range projection.Months {
+		if m.PortfolioBalance > maxBalance {
+			maxBalance = m.PortfolioBalance
+		}
+	}
+	if rng[0] != 0 || rng[1] != maxBalance*1.18 {
+		t.Errorf("y range = %v, want [0, %v]", rng, maxBalance*1.18)
+	}
+}
+
+// TestHandleWhatIfProjectionChart_GuardrailMarkersReachJSON proves the
+// "Guardrail cuts / raises" trace reaches the HTTP JSON response when the
+// fixture guardrail settings are guaranteed to fire (same recipe as
+// TestHandleWhatIf_BreakdownShowsGuardrailEffect: floor_drop_pct 1 /
+// floor_cut_pct 10 with InvestmentReturn=0 so the portfolio only declines).
+func TestHandleWhatIfProjectionChart_GuardrailMarkersReachJSON(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	settings.PortfolioValue = 1_000_000
+	settings.InvestmentReturn = 0
+	settings.MonthlyLivingExpenses = 8000
+	settings.Guardrails = &models.GuardrailConfig{
+		Enabled: true, FloorDropPct: 1, FloorCutPct: 10,
+		CeilingRisePct: 500, CeilingRaisePct: 10,
+		MinSpendingPct: 50, MaxSpendingPct: 150,
+	}
+	if err := retirementMgr.Save(settings); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	cache.mu.Lock()
+	cache.hash = ""
+	cache.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/whatif/chart/projection?display_dollars=nominal", nil)
+	handleWhatIfProjectionChart(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	traces, ok := data["data"].([]interface{})
+	if !ok {
+		t.Fatalf("expected trace array, got %#v", data["data"])
+	}
+	var guardrailTrace map[string]interface{}
+	for _, raw := range traces {
+		tr, ok := raw.(map[string]interface{})
+		if ok && tr["name"] == "Guardrail cuts / raises" {
+			guardrailTrace = tr
+			break
+		}
+	}
+	if guardrailTrace == nil {
+		t.Fatalf("expected 'Guardrail cuts / raises' trace in JSON response, traces: %#v", traces)
+	}
+	x, ok := guardrailTrace["x"].([]interface{})
+	if !ok || len(x) == 0 {
+		t.Fatalf("expected at least one guardrail marker point, got %#v", guardrailTrace["x"])
+	}
+}
+
+// TestHandleWhatIfProjectionChartNoGuardrails_NoGuardrailMarkerTrace proves
+// the no-guardrails comparison endpoint (Guardrails=nil, so its projection
+// has no GuardrailEvents) never emits the marker trace.
+func TestHandleWhatIfProjectionChartNoGuardrails_NoGuardrailMarkerTrace(t *testing.T) {
+	_, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	settings, err := retirementMgr.Load()
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	settings.PortfolioValue = 1_000_000
+	settings.InvestmentReturn = 0
+	settings.MonthlyLivingExpenses = 8000
+	settings.Guardrails = &models.GuardrailConfig{
+		Enabled: true, FloorDropPct: 1, FloorCutPct: 10,
+		CeilingRisePct: 500, CeilingRaisePct: 10,
+		MinSpendingPct: 50, MaxSpendingPct: 150,
+	}
+	if err := retirementMgr.Save(settings); err != nil {
+		t.Fatalf("save settings: %v", err)
+	}
+	cache.mu.Lock()
+	cache.hash = ""
+	cache.mu.Unlock()
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/whatif/chart/projection/no-guardrails?display_dollars=nominal", nil)
+	handleWhatIfProjectionChartNoGuardrails(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	if strings.Contains(w.Body.String(), "Guardrail cuts / raises") {
+		t.Fatal("no-guardrails response must not contain a 'Guardrail cuts / raises' trace")
+	}
+}
+
 // ── renderError ─────────────────────────────────────────────────────────────
 
 func TestRenderError(t *testing.T) {

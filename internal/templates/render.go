@@ -470,6 +470,9 @@ func formatMoney(v float64) string {
 	return "$" + result.String()
 }
 
+// FormatMoney exposes the template money formatter to Go callers that render the same figure a template renders (What-If chart hover text). Keep it a pure wrapper so there is exactly one money formatter.
+func FormatMoney(v float64) string { return formatMoney(v) }
+
 // conversionSummary formats a one-line Avg/Min/Max/Total summary for a
 // slice of Roth conversion amounts. Avg/Min/Max use whole-dollar
 // comma-separated formatting (no cents) because conversion amounts are

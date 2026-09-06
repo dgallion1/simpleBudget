@@ -1,0 +1,48 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: UIF1
+ATTEMPT: 1
+---
+FAILURES: None. Scoped Insights badge and flex repair only.
+Read .swarm/UIF-RUN-SPEC.md and ACCESSIBILITY.md.
+
+Actual independent commands/evidence:
+rtk proxy git diff master -- web/templates/pages/insights.html internal/templates/render_insights_subscription_test.go
+Four template edits only: initial uses printf %.1s, two flex-1 wrappers, amount whitespace-nowrap. New untracked renderer test inspected separately with sed -n 1,180p internal/templates/render_insights_subscription_test.go.
+rtk go test ./internal/templates -run TestRenderInsightsSubscriptionInitial -v
+PASS seven cases: major label, description, Unicode major/description, emoji, empty ?, long label; full label and amount text assertions pass.
+rtk go test ./internal/templates
+PASS.
+
+Actual renderer audit:
+rtk proxy cp -a /home/darrell/bin/ai/budget2/internal /home/darrell/bin/ai/budget2/web /home/darrell/bin/ai/budget2/go.mod /home/darrell/bin/ai/budget2/go.sum /tmp/UIF1-a11y.QQP8eH/
+In that temporary copy: rtk go test ./internal/templates -run TestUIFDump -v
+PASS. Temporary harness uses NewFromFS and RenderToString insights-content with Travel & Hobbies and 360-character label. Actual rendered bytes wrapped in light/dark documents loading project real built tailwind.css and styles.css.
+rtk proxy npx --no-install @axe-core/cli file:///tmp/UIF1-a11y.QQP8eH/light.html file:///tmp/UIF1-a11y.QQP8eH/dark.html --include "[aria-label=\"Subscriptions list\"]" --chrome-path /usr/bin/google-chrome --chrome-options="--no-sandbox,--allow-file-access-from-files" --dir /tmp/UIF1-a11y.QQP8eH --save axe.json --exit
+Exit 0; zero violations both themes. Evidence /tmp/UIF1-a11y.QQP8eH/axe.json. Initial report-save path error corrected by --dir invocation above.
+rtk proxy node /tmp/UIF1-a11y.QQP8eH/check.cjs
+Exit 0. Both themes at window widths 1440, 500, 320: 32px badges; ellipsis labels; full label DOM text; no label/amount overlap; focus-visible true and 2px inset theme-aware ring. Programmatic focus plus native-link markup trace, not end-to-end Tab/Enter navigation. No application JS behavior exercised.
+rtk proxy bash -lc 'curl -s http://localhost:8081/insights | rg "font-bold text-negative.*</span>" | head -3'
+After lead restart actual demo returns T, A, H. Earlier stale embedded-demo issue resolved.
+
+Constitution numbered checks, scoped to introduced changes:
+1: Existing h2 and page structure unchanged; no new landmark/heading violation.
+2: No tables changed; not applicable.
+3: PASS native href explorer links and original query semantics retained (insights.html:134).
+4,5,6: No inputs, validation, required fields changed; not applicable individually.
+7: PASS scoped axe contrast in both themes. Badge light rgb(190,18,60) on rgb(255,241,242); dark rgb(253,164,175) on rgb(41,23,42).
+8: PASS full textual label, initial, frequency, amounts preserved; no color-only meaning introduced.
+9: PASS native link keyboard reachability and DOM order unchanged; visible focus ring measured both themes. Behavior traced, not application JS tested.
+10: No swap/action changes; not applicable.
+11: No chart changes; not applicable.
+12: PASS both themes contrast and sizing parity.
+13: Currency text and logic unchanged; rendered test amounts preserved.
+14: No banner changes; not applicable.
+15: No animation introduced; existing transition classes byte-identical to master, no scoped motion regression.
+16: PASS no new suppressed accessible content or injected screen-reader-only junk. Full label accessible despite visual ellipsis (insights.html:141).
+17: No modal changes; not applicable.
+Alt/decorative images: no new images; SVG markup byte-identical to master.
+WCAG scoped review: 1.3.1, 1.4.3, 1.4.10, 1.4.11, 2.1.1, 2.4.3, 2.4.4, 2.4.7, 4.1.2: no introduced violation found.
+
+OBSERVATIONS: Scoped verdict, not whole-site certification. Unrelated Bills overflow excluded. Lead owns desktop/mobile screenshots and build/red-phase evidence; not claimed as independently executed here. No source edits or server restarts. No FAIL diffs required.

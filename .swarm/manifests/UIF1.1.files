@@ -1,0 +1,5 @@
+web/templates/pages/insights.html
+internal/templates/render_insights_subscription_test.go
+.swarm/UIF-RUN-SPEC.md
+.swarm/ledger.tsv
+.swarm/manifests/UIF1.1.files

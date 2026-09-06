@@ -2,8 +2,8 @@
 {{define "whatif-guardrails"}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Drop/rise guardrails (simple)</h2>
-    <p class="text-body-sm text-gray-600 dark:text-gray-400 mb-3">Automatically adjust spending based on portfolio performance.</p>
-    <p class="text-body-sm text-gray-500 dark:text-gray-400 mb-3">Cuts withdrawal when portfolio drops from peak; raises withdrawal when portfolio rises above baseline. This is a simplified guardrail — not the four-rule Guyton-Klinger (2006) model.</p>
+    <p class="text-body-sm text-gray-600 dark:text-gray-400 mb-3">These rules adjust your living-expense budget. Healthcare, property tax, and other expense lines are not automatically cut. This does not separately protect essential expenses.</p>
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 mb-3">Cuts the living-expense budget when the portfolio drops from peak; raises it when the portfolio rises above baseline. This is a simplified guardrail — not the four-rule Guyton-Klinger (2006) model.</p>
 
     <form hx-post="/whatif/guardrails" hx-target="#whatif-results" class="space-y-3">
         <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
@@ -69,7 +69,7 @@
                         class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                 </div>
             </div>
-            <p class="text-body-sm text-gray-500 dark:text-gray-400">Spending never drops below {{printf "%.0f" .Settings.Guardrails.MinSpendingPct}}% or exceeds {{printf "%.0f" .Settings.Guardrails.MaxSpendingPct}}% of original.</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400">The living-expense budget multiplier never drops below {{printf "%.0f" .Settings.Guardrails.MinSpendingPct}}% or exceeds {{printf "%.0f" .Settings.Guardrails.MaxSpendingPct}}% of the planned living-expense budget. This multiplier does not ensure spending can be funded.</p>
 
             <button type="submit"
                 class="w-full text-xs px-3 py-1.5 rounded-md bg-accent-strong hover:bg-accent-strong text-white transition-colors">

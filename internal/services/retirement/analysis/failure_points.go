@@ -8,8 +8,8 @@ import (
 	"budget2/internal/services/retirement/engine"
 )
 
-// FailurePointsWithBaseline finds exact thresholds where the portfolio
-// fails by running a binary search over each parameter (return,
+// FailurePointsWithBaseline searches for approximate transitions where the
+// portfolio changes from surviving to depleting for each parameter (return,
 // inflation, expenses, portfolio value), reusing an already-computed
 // baseline projection so orchestrators that just ran the baseline don't
 // pay for a redundant full projection. Returns BaselineSurvives=false
@@ -89,12 +89,19 @@ func findReturnThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoi
 	if current == 0 {
 		return nil
 	}
+	const searchFloor = -5.0
+	if current < searchFloor {
+		// The fixed floor is already more favorable than the current setting,
+		// so no adverse return interval was searched.
+		return nil
+	}
 
-	// Binary search between 0% and current value
-	low, high := -5.0, current
+	// Binary search between -5% and the current value.
+	searchMin, searchMax := searchFloor, current
+	low, high := searchMin, searchMax
 	precision := 0.1
 
-	// First check if 0% return survives
+	// First check whether the searched return floor survives.
 	modSettings := *s
 	modSettings.IncomeSources = append([]models.IncomeSource{}, s.IncomeSources...)
 	modSettings.ExpenseSources = append([]models.ExpenseSource{}, s.ExpenseSources...)
@@ -102,13 +109,16 @@ func findReturnThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoi
 	if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain, Hooks: in.Hooks}).Survives {
 		// Survives even at -5%, no meaningful threshold
 		return &models.FailurePoint{
-			ParamName:    "investment_return",
-			ParamLabel:   "Investment Return",
-			CurrentValue: current,
-			Threshold:    -5.0,
-			Direction:    "below",
-			Margin:       current + 5.0,
-			SafetyLevel:  "safe",
+			ParamName:      "investment_return",
+			ParamLabel:     "Investment Return",
+			CurrentValue:   current,
+			Threshold:      searchMin,
+			SearchMin:      searchMin,
+			SearchMax:      searchMax,
+			ThresholdFound: false,
+			Direction:      "below",
+			Margin:         current + 5.0,
+			SafetyLevel:    "safe",
 		}
 	}
 
@@ -133,13 +143,16 @@ func findReturnThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoi
 	}
 
 	return &models.FailurePoint{
-		ParamName:    "investment_return",
-		ParamLabel:   "Investment Return",
-		CurrentValue: current,
-		Threshold:    threshold,
-		Direction:    "below",
-		Margin:       margin,
-		SafetyLevel:  safetyLevel,
+		ParamName:      "investment_return",
+		ParamLabel:     "Investment Return",
+		CurrentValue:   current,
+		Threshold:      threshold,
+		SearchMin:      searchMin,
+		SearchMax:      searchMax,
+		ThresholdFound: true,
+		Direction:      "below",
+		Margin:         margin,
+		SafetyLevel:    safetyLevel,
 	}
 }
 
@@ -147,9 +160,16 @@ func findReturnThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoi
 func findInflationThreshold(eng *engine.Engine, in engine.Input) *models.FailurePoint {
 	s := in.Prepared.Settings()
 	current := s.InflationRate
+	const searchCeiling = 15.0
+	if current > searchCeiling {
+		// The fixed ceiling is already more favorable than the current setting,
+		// so no adverse inflation interval was searched.
+		return nil
+	}
 
-	// Binary search between current and 15%
-	low, high := current, 15.0
+	// Binary search between the current value and 15%.
+	searchMin, searchMax := current, searchCeiling
+	low, high := searchMin, searchMax
 	precision := 0.1
 
 	// First check if 15% inflation fails
@@ -160,13 +180,16 @@ func findInflationThreshold(eng *engine.Engine, in engine.Input) *models.Failure
 	if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain, Hooks: in.Hooks}).Survives {
 		// Survives even at 15%, very robust
 		return &models.FailurePoint{
-			ParamName:    "inflation_rate",
-			ParamLabel:   "Inflation Rate",
-			CurrentValue: current,
-			Threshold:    15.0,
-			Direction:    "above",
-			Margin:       15.0 - current,
-			SafetyLevel:  "safe",
+			ParamName:      "inflation_rate",
+			ParamLabel:     "Inflation Rate",
+			CurrentValue:   current,
+			Threshold:      searchMax,
+			SearchMin:      searchMin,
+			SearchMax:      searchMax,
+			ThresholdFound: false,
+			Direction:      "above",
+			Margin:         15.0 - current,
+			SafetyLevel:    "safe",
 		}
 	}
 
@@ -191,13 +214,16 @@ func findInflationThreshold(eng *engine.Engine, in engine.Input) *models.Failure
 	}
 
 	return &models.FailurePoint{
-		ParamName:    "inflation_rate",
-		ParamLabel:   "Inflation Rate",
-		CurrentValue: current,
-		Threshold:    threshold,
-		Direction:    "above",
-		Margin:       margin,
-		SafetyLevel:  safetyLevel,
+		ParamName:      "inflation_rate",
+		ParamLabel:     "Inflation Rate",
+		CurrentValue:   current,
+		Threshold:      threshold,
+		SearchMin:      searchMin,
+		SearchMax:      searchMax,
+		ThresholdFound: true,
+		Direction:      "above",
+		Margin:         margin,
+		SafetyLevel:    safetyLevel,
 	}
 }
 
@@ -209,8 +235,9 @@ func findExpensesThreshold(eng *engine.Engine, in engine.Input) *models.FailureP
 		return nil
 	}
 
-	// Binary search between current and 3x current
-	low, high := current, current*3
+	// Binary search between current expenses and three times that amount.
+	searchMin, searchMax := current, current*3
+	low, high := searchMin, searchMax
 	precision := 50.0 // $50 precision
 
 	// First check if 3x expenses fails
@@ -222,13 +249,16 @@ func findExpensesThreshold(eng *engine.Engine, in engine.Input) *models.FailureP
 		// Survives even at 3x expenses
 		margin := ((high / current) - 1) * 100
 		return &models.FailurePoint{
-			ParamName:    "monthly_expenses",
-			ParamLabel:   "Monthly Expenses",
-			CurrentValue: current,
-			Threshold:    high,
-			Direction:    "above",
-			Margin:       margin,
-			SafetyLevel:  "safe",
+			ParamName:      "monthly_expenses",
+			ParamLabel:     "Monthly Expenses",
+			CurrentValue:   current,
+			Threshold:      searchMax,
+			SearchMin:      searchMin,
+			SearchMax:      searchMax,
+			ThresholdFound: false,
+			Direction:      "above",
+			Margin:         margin,
+			SafetyLevel:    "safe",
 		}
 	}
 
@@ -253,13 +283,16 @@ func findExpensesThreshold(eng *engine.Engine, in engine.Input) *models.FailureP
 	}
 
 	return &models.FailurePoint{
-		ParamName:    "monthly_expenses",
-		ParamLabel:   "Monthly Expenses",
-		CurrentValue: current,
-		Threshold:    threshold,
-		Direction:    "above",
-		Margin:       margin,
-		SafetyLevel:  safetyLevel,
+		ParamName:      "monthly_expenses",
+		ParamLabel:     "Monthly Expenses",
+		CurrentValue:   current,
+		Threshold:      threshold,
+		SearchMin:      searchMin,
+		SearchMax:      searchMax,
+		ThresholdFound: true,
+		Direction:      "above",
+		Margin:         margin,
+		SafetyLevel:    safetyLevel,
 	}
 }
 
@@ -271,8 +304,9 @@ func findPortfolioThreshold(eng *engine.Engine, in engine.Input) *models.Failure
 		return nil
 	}
 
-	// Binary search between 0 and current
-	low, high := 0.0, current
+	// Binary search between zero and the current portfolio value.
+	searchMin, searchMax := 0.0, current
+	low, high := searchMin, searchMax
 	precision := 1000.0 // $1000 precision
 
 	// First check if $0 survives (e.g., income covers all expenses)
@@ -282,13 +316,16 @@ func findPortfolioThreshold(eng *engine.Engine, in engine.Input) *models.Failure
 	modSettings.PortfolioValue = low
 	if eng.Run(engine.Input{Prepared: perturbAndPrepare(&modSettings), Chain: in.Chain, Hooks: in.Hooks}).Survives {
 		return &models.FailurePoint{
-			ParamName:    "portfolio_value",
-			ParamLabel:   "Portfolio Value",
-			CurrentValue: current,
-			Threshold:    0,
-			Direction:    "below",
-			Margin:       100, // 100% buffer
-			SafetyLevel:  "safe",
+			ParamName:      "portfolio_value",
+			ParamLabel:     "Portfolio Value",
+			CurrentValue:   current,
+			Threshold:      searchMin,
+			SearchMin:      searchMin,
+			SearchMax:      searchMax,
+			ThresholdFound: false,
+			Direction:      "below",
+			Margin:         100,
+			SafetyLevel:    "safe",
 		}
 	}
 
@@ -313,12 +350,15 @@ func findPortfolioThreshold(eng *engine.Engine, in engine.Input) *models.Failure
 	}
 
 	return &models.FailurePoint{
-		ParamName:    "portfolio_value",
-		ParamLabel:   "Portfolio Value",
-		CurrentValue: current,
-		Threshold:    threshold,
-		Direction:    "below",
-		Margin:       margin,
-		SafetyLevel:  safetyLevel,
+		ParamName:      "portfolio_value",
+		ParamLabel:     "Portfolio Value",
+		CurrentValue:   current,
+		Threshold:      threshold,
+		SearchMin:      searchMin,
+		SearchMax:      searchMax,
+		ThresholdFound: true,
+		Direction:      "below",
+		Margin:         margin,
+		SafetyLevel:    safetyLevel,
 	}
 }

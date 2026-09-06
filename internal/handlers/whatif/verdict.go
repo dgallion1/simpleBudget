@@ -6,24 +6,22 @@ import (
 	"budget2/internal/models"
 )
 
-// mcStrongThreshold is the Monte Carlo success rate (0-100) at or above which a
-// fully-funded plan is considered green rather than amber.
-const mcStrongThreshold = 70.0
-
-// earlyDepletionYears: depleting within this many years is "red", later is "amber".
-const earlyDepletionYears = 10
-
 // VerdictView is the precomputed model the sticky verdict bar renders.
 type VerdictView struct {
-	Health         models.Health
-	Headline       string  // e.g. "Funded through 2064" / "Funds run out in 2032"
-	Detail         string  // e.g. "spending covered for all 38 years"
-	YearsCovered   int     // full horizon if survives, else years to depletion
-	MonthlyGap     float64 // gap shown in the bar (>0 = shortfall)
-	GapIsShortfall bool
-	RequiredRate   float64
-	SuccessRate    float64 // 0-100
-	HasMonteCarlo  bool
+	Health              models.Health
+	Headline            string  // Calendar month and year of the actual endpoint.
+	Detail              string  // Conditional description of the observed base projection.
+	YearsCovered        int     // full horizon if survives, else years to depletion
+	MonthlyGap          float64 // selected gap (>0 = additional funding need)
+	GapIsShortfall      bool
+	RequiredRate        float64
+	SuccessRate         float64 // 0-100
+	HasMonteCarlo       bool
+	HasBudgetFit        bool
+	CurrentMonthlyGap   float64
+	CurrentRequiredRate float64
+	HasFirstYearOutflow bool
+	FirstYearOutflow    float64
 
 	// Strip extras: lifetime income tax and projected end balance shown in
 	// the sticky bar so the Overview tab needs no duplicate KPI row.
@@ -42,74 +40,86 @@ type VerdictView struct {
 // BuildVerdict derives the verdict bar model from analysis already computed by
 // the engine. It performs no projection math of its own.
 func BuildVerdict(a *models.WhatIfAnalysis, s *models.WhatIfSettings) VerdictView {
-	v := VerdictView{Health: models.HealthAmber}
+	v := VerdictView{Health: models.HealthNeutral, Headline: "Projection unavailable", Detail: "Base projection results are unavailable"}
 	if a == nil || s == nil {
 		return v
 	}
-
-	startYear := 0
-	if t, err := models.ParseYearMonth(s.StartDate); err == nil {
-		startYear = t.Year()
-	}
-
+	start, dateErr := models.ParseYearMonth(s.StartDate)
 	if a.BudgetFit != nil {
-		// Default to today's gap/rate. When a steady-state year is in view
-		// (the budget slider sets BudgetFit.SteadyStateYear), report that
-		// year's figures instead so the verdict bar tracks the slider.
-		gap := a.BudgetFit.MonthlyGap
-		rate := a.BudgetFit.RequiredRate
-		if a.BudgetFit.HasSteadyState {
-			gap = a.BudgetFit.SteadyStateGap
-			rate = a.BudgetFit.SteadyStateRate
-			v.GapAtSteadyState = true
-			v.GapYear = int(a.BudgetFit.SteadyStateYear)
+		b := a.BudgetFit
+		v.HasBudgetFit = true
+		v.CurrentMonthlyGap, v.CurrentRequiredRate = b.MonthlyGap, b.RequiredRate
+		v.MonthlyGap, v.RequiredRate = b.MonthlyGap, b.RequiredRate
+		if b.HasSteadyState {
+			v.MonthlyGap, v.RequiredRate = b.SteadyStateGap, b.SteadyStateRate
+			v.GapAtSteadyState, v.GapYear = true, int(b.SteadyStateYear)
 		}
-		v.MonthlyGap = gap
-		v.GapIsShortfall = gap > 0
-		v.RequiredRate = rate
+		v.GapIsShortfall = v.MonthlyGap > 0
 	}
-	if a.MonteCarlo != nil && a.MonteCarlo.Stats != nil {
-		v.HasMonteCarlo = true
-		v.SuccessRate = a.MonteCarlo.Stats.SuccessRate
+	if a.MonteCarlo != nil && a.MonteCarlo.Stats != nil && a.MonteCarlo.Stats.Runs > 0 {
+		v.HasMonteCarlo, v.SuccessRate = true, a.MonteCarlo.Stats.SuccessRate
 	}
-
 	if a.Tax != nil {
-		v.HasTaxes = true
-		v.TotalTaxes = a.Tax.TotalTaxPaid
+		v.HasTaxes, v.TotalTaxes = true, a.Tax.TotalTaxPaid
 	}
-	if a.Projection != nil {
-		v.HasEndBalance = true
-		v.EndBalance = a.Projection.FinalBalance
+	p := a.Projection
+	if p == nil {
+		return v
 	}
-
-	survives := a.Projection != nil && a.Projection.Survives
-	if survives {
-		v.YearsCovered = s.ProjectionYears
-		v.Headline = fmt.Sprintf("Funded through %d", startYear+s.ProjectionYears)
-		v.Detail = fmt.Sprintf("spending covered for all %d years", s.ProjectionYears)
-		if !v.HasMonteCarlo || v.SuccessRate >= mcStrongThreshold {
-			v.Health = models.HealthGreen
-		} else {
-			// Median path survives but a material share of simulations fail.
-			// The words must not out-promise the health band.
-			v.Health = models.HealthAmber
-			v.Detail = fmt.Sprintf("covers the median path — %.0f%% of market simulations fall short", 100-v.SuccessRate)
+	v.HasEndBalance, v.EndBalance = true, p.FinalBalance
+	if len(p.YearlySummaries) > 0 {
+		year := p.YearlySummaries[0]
+		v.HasFirstYearOutflow, v.FirstYearOutflow = true, year.Withdrawals
+	}
+	unpaid := false
+	for _, month := range p.Months {
+		if month.FundingShortfall > 1e-7 {
+			unpaid = true
+			break
+		}
+	}
+	if !p.Survives || unpaid {
+		v.Health = models.HealthRed
+		v.Headline = "Base projection has a funding shortfall"
+		v.Detail = "Base projection has a funding shortfall"
+		if s.Guardrails != nil && s.Guardrails.Enabled {
+			v.Detail += " despite configured guardrails"
+		}
+		if unpaid {
+			v.Detail += "; some spending is unpaid"
+		}
+		if !p.Survives && p.DepletionMonth != nil && *p.DepletionMonth >= 0 {
+			v.YearsCovered = *p.DepletionMonth / 12
+			if dateErr == nil {
+				v.Headline = "Funds run out in " + start.AddDate(0, *p.DepletionMonth, 0).Format("Jan 2006")
+			}
 		}
 		return v
 	}
-
-	// Depletes within the horizon.
-	depletionYears := s.ProjectionYears
-	if a.Projection != nil && a.Projection.DepletionMonth != nil {
-		depletionYears = *a.Projection.DepletionMonth / 12
+	v.YearsCovered = s.ProjectionYears
+	v.Headline = "Base projection funds spending"
+	if dateErr == nil && s.ProjectionYears > 0 {
+		v.Headline = "Funded through " + start.AddDate(0, s.ProjectionYears*12-1, 0).Format("Jan 2006")
 	}
-	v.YearsCovered = depletionYears
-	v.Headline = fmt.Sprintf("Funds run out in %d", startYear+depletionYears)
-	v.Detail = fmt.Sprintf("covered for %d of %d years", depletionYears, s.ProjectionYears)
-	if depletionYears < earlyDepletionYears {
-		v.Health = models.HealthRed
-	} else {
+	v.Detail = fmt.Sprintf("Base projection funds your planned lifestyle under these assumptions for %d years", s.ProjectionYears)
+	if projectionHasLivingCuts(p) {
 		v.Health = models.HealthAmber
+		v.Detail = "Base projection funds spending with circuit-breaker cuts under these assumptions"
 	}
 	return v
+}
+
+// projectionHasLivingCuts compares observed living spending with its planned
+// baseline, including phase schedules. Legacy months without a baseline cannot
+// establish a cut; a zero multiplier with a positive baseline is a full cut.
+func projectionHasLivingCuts(p *models.ProjectionResult) bool {
+	if p == nil {
+		return false
+	}
+	for _, month := range p.Months {
+		if month.PlannedLivingExpenses > 0 && month.GuardrailMultiplier < 1-1e-9 {
+			return true
+		}
+	}
+	return false
 }

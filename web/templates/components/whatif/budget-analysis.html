@@ -3,7 +3,7 @@
 {{define "whatif-budget-analysis"}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Monthly Budget Analysis</h2>
-    <p class="text-body-sm text-gray-600 dark:text-gray-300 -mt-2 mb-4">After-tax monthly cash flow. Steady-state values are shown in nominal dollars at the selected future year.</p>
+    <p class="text-body-sm text-gray-600 dark:text-gray-300 -mt-2 mb-4">A positive gap is a funding need after income, estimated taxes and RMDs; it is not necessarily unpaid spending. RMDs are portfolio distributions. Steady-state values are shown in nominal dollars at the selected future year.</p>
 
     {{if .Settings.ScenarioChain}}
     <p class="text-body-sm text-warning mb-2 italic">Scenario chain is not yet applied to this panel.</p>
@@ -39,7 +39,7 @@
             <!-- Taxes & Deductions Section -->
             <div class="flex justify-between py-1.5 mt-2 border-b-2 border-gray-300 dark:border-gray-600">
                 <span class="font-semibold text-gray-700 dark:text-gray-200 uppercase text-xs tracking-wide">Taxes &amp; Deductions</span>
-                <span class="font-semibold text-negative">{{formatMoney (add .Analysis.BudgetFit.MonthlyTaxes .Analysis.BudgetFit.MonthlyIRMAA)}}</span>
+                <span class="font-semibold text-negative">{{formatMoney .Analysis.BudgetFit.MonthlyTaxes}}</span>
             </div>
             {{end}}
             {{if gt .Analysis.BudgetFit.MonthlyRMD 0.0}}
@@ -68,7 +68,7 @@
             {{end}}
             {{if gt .Analysis.BudgetFit.MonthlyIRMAA 0.0}}
             <div class="flex justify-between py-0.5 pl-4">
-                <span class="text-gray-600 dark:text-gray-400">Estimated IRMAA</span>
+                <span class="text-gray-600 dark:text-gray-400">Included in Monthly Expenses: IRMAA</span>
                 <span class="text-negative">{{formatMoney .Analysis.BudgetFit.MonthlyIRMAA}}/mo</span>
             </div>
             {{end}}
@@ -79,25 +79,32 @@
             </div>
             {{end}}
 
+            {{with budgetGapRoundingAdjustment .Analysis.BudgetFit.MonthlyGap .Analysis.BudgetFit.MonthlyExpenses .Analysis.BudgetFit.MonthlyIncome .Analysis.BudgetFit.MonthlyRMD .Analysis.BudgetFit.MonthlyTaxes}}
+            <div class="flex justify-between py-1 text-gray-600 dark:text-gray-300">
+                <span>Rounding adjustment</span>
+                <span aria-label="{{if lt . 0.0}}Subtract{{else}}Add{{end}} {{formatMoney (abs .)}} {{if lt . 0.0}}from{{else}}to{{end}} the displayed cash-flow total">{{if gt . 0.0}}+{{end}}{{formatMoney .}}/mo</span>
+            </div>
+            {{end}}
+
         </div>
 
         <div class="grid grid-cols-2 gap-4 text-center">
             <div>
-                <p class="text-sm text-gray-600 dark:text-gray-300">Monthly Gap</p>
+                <p class="text-sm text-gray-600 dark:text-gray-300">Needed from portfolio after estimated taxes and RMDs</p>
                 <p
                     class="text-2xl font-bold {{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}text-positive{{else if eq .Analysis.BudgetFit.MonthlyGap 0.0}}text-gray-600 dark:text-gray-300{{else}}text-negative{{end}}">
                     {{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}+{{formatMoney (abs
                     .Analysis.BudgetFit.MonthlyGap)}}{{else}}{{formatMoney .Analysis.BudgetFit.MonthlyGap}}{{end}}
                 </p>
-                <p class="text-body-sm text-gray-500 dark:text-gray-400">{{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}Surplus{{else}}Shortfall{{end}}</p>
+                <p class="text-body-sm text-gray-500 dark:text-gray-400">{{if lt .Analysis.BudgetFit.MonthlyGap 0.0}}Surplus{{else if gt .Analysis.BudgetFit.MonthlyGap 0.0}}Funding need{{else}}Balanced cash flow{{end}}</p>
             </div>
             <div>
-                <p class="text-sm text-gray-600 dark:text-gray-300">Required Rate</p>
+                <p class="text-sm text-gray-600 dark:text-gray-300">Additional withdrawal rate after RMDs</p>
                 <p
                     class="text-2xl font-bold {{if le .Analysis.BudgetFit.RequiredRate 4.0}}text-positive{{else if le .Analysis.BudgetFit.RequiredRate 6.0}}text-warning{{else}}text-negative{{end}}">
                     {{printf "%.1f" .Analysis.BudgetFit.RequiredRate}}%
                 </p>
-                <p class="text-body-sm text-gray-500 dark:text-gray-400">Additional withdrawal</p>
+                <p class="text-body-sm text-gray-500 dark:text-gray-400">Share of portfolio, beyond RMDs</p>
             </div>
         </div>
     </div>
@@ -170,7 +177,7 @@
         {{end}}
         {{if gt .Analysis.BudgetFit.SteadyStateIRMAA 0.0}}
         <div class="flex justify-between py-1 border-b border-gray-200 dark:border-gray-700">
-            <span class="text-gray-600 dark:text-gray-300">Estimated IRMAA</span>
+            <span class="text-gray-600 dark:text-gray-300">Included in Monthly Expenses: IRMAA</span>
             <span class="font-medium text-negative">{{formatMoney .Analysis.BudgetFit.SteadyStateIRMAA}}/mo</span>
         </div>
         {{end}}
@@ -180,11 +187,17 @@
             <span class="font-medium text-gray-800 dark:text-gray-200">{{printf "%.0f%%" .Analysis.BudgetFit.SteadyStateTaxableSocialSecurityPct}}</span>
         </div>
         {{end}}
+        {{with budgetGapRoundingAdjustment .Analysis.BudgetFit.SteadyStateGap .Analysis.BudgetFit.SteadyStateExpenses .Analysis.BudgetFit.SteadyStateIncome .Analysis.BudgetFit.SteadyStateRMD .Analysis.BudgetFit.SteadyStateTaxes}}
+            <div class="flex justify-between py-1 text-gray-600 dark:text-gray-300">
+                <span>Rounding adjustment</span>
+                <span aria-label="{{if lt . 0.0}}Subtract{{else}}Add{{end}} {{formatMoney (abs .)}} {{if lt . 0.0}}from{{else}}to{{end}} the displayed cash-flow total">{{if gt . 0.0}}+{{end}}{{formatMoney .}}/mo</span>
+            </div>
+            {{end}}
     </div>
 
     <div class="grid grid-cols-2 gap-4 text-center">
         <div>
-            <p class="text-sm text-gray-600 dark:text-gray-300">Monthly Gap</p>
+            <p class="text-sm text-gray-600 dark:text-gray-300">Needed from portfolio after estimated taxes and RMDs</p>
             <p
                 class="text-2xl font-bold {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}text-positive{{else if eq .Analysis.BudgetFit.SteadyStateGap 0.0}}text-gray-600 dark:text-gray-300{{else}}text-negative{{end}}">
                 {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}+{{formatMoney (abs
@@ -192,16 +205,16 @@
             </p>
             <p class="text-body-sm text-gray-500 dark:text-gray-400"
                 {{if and (le .Analysis.BudgetFit.SteadyStateGap 0.0) (gt .Analysis.BudgetFit.SteadyStateRMD 0.0)}}title="Surplus driven by mandatory RMD. The IRS forces a withdrawal larger than you spend at this age. The after-tax excess is automatically reinvested in your taxable brokerage account, where it continues to grow — the projection chart already reflects this longevity benefit."{{end}}>
-                {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}Surplus{{else}}Shortfall{{end}}
+                {{if lt .Analysis.BudgetFit.SteadyStateGap 0.0}}Surplus{{else if gt .Analysis.BudgetFit.SteadyStateGap 0.0}}Funding need{{else}}Balanced cash flow{{end}}
             </p>
         </div>
         <div>
-            <p class="text-sm text-gray-600 dark:text-gray-300">Required Rate</p>
+            <p class="text-sm text-gray-600 dark:text-gray-300">Additional withdrawal rate after RMDs</p>
             <p
                 class="text-2xl font-bold {{if le .Analysis.BudgetFit.SteadyStateRate 4.0}}text-positive{{else if le .Analysis.BudgetFit.SteadyStateRate 6.0}}text-warning{{else}}text-negative{{end}}">
                 {{printf "%.1f" .Analysis.BudgetFit.SteadyStateRate}}%
             </p>
-            <p class="text-body-sm text-gray-500 dark:text-gray-400">Additional withdrawal</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400">Share of portfolio, beyond RMDs</p>
         </div>
     </div>
     <p class="text-body-sm text-gray-600 dark:text-gray-300 mt-2 text-center">

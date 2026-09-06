@@ -23,18 +23,20 @@
             </span>
         </button>
     </div>
-    <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">{{.Analysis.MonteCarlo.Stats.Runs}} scenarios with year-by-year market volatility, crashes, spending shocks & longevity variation:</p>
+    {{if and .Analysis .Analysis.MonteCarlo .Analysis.MonteCarlo.Stats (gt .Analysis.MonteCarlo.Stats.Runs 0)}}
+    <p class="text-sm text-gray-600 dark:text-gray-300 mb-1">{{.Analysis.MonteCarlo.Stats.Runs}} scenarios with year-by-year market volatility, crashes, spending shocks, and longevity variation.</p>
+    <p class="text-body-sm text-gray-600 dark:text-gray-300 mb-4">Success means avoiding modeled portfolio depletion through each run's horizon; longevity varies from 5 years shorter to 5 years longer than the base projection, and configured guardrail rules remain in effect. Avoiding depletion does not necessarily mean all spending was paid; see the lifestyle outcomes above.</p>
 
     <!-- Risk Events Summary -->
     <div class="grid grid-cols-3 gap-2 mb-4 text-center">
-        <div class="p-2 bg-negative-soft rounded">
+        <div class="p-2 bg-gray-50 dark:bg-gray-900 rounded">
             <p class="text-body-sm text-gray-600 dark:text-gray-300">Market Crashes</p>
-            <p class="text-sm font-medium text-negative">{{printf "%.1f" (percentOf .Analysis.MonteCarlo.Stats.MarketCrashCount .Analysis.MonteCarlo.Stats.Runs)}}% of runs</p>
+            <p class="text-sm font-medium text-gray-800 dark:text-gray-200">{{printf "%.1f" (percentOf .Analysis.MonteCarlo.Stats.MarketCrashCount .Analysis.MonteCarlo.Stats.Runs)}}% of runs</p>
             <p class="text-body-sm text-gray-600 dark:text-gray-400">avg {{printf "%.1f" .Analysis.MonteCarlo.Stats.AvgCrashesPerRun}} each</p>
         </div>
-        <div class="p-2 bg-warning-soft rounded">
+        <div class="p-2 bg-gray-50 dark:bg-gray-900 rounded">
             <p class="text-body-sm text-gray-600 dark:text-gray-300">Spending Shocks</p>
-            <p class="text-sm font-medium text-warning">{{printf "%.1f" (percentOf .Analysis.MonteCarlo.Stats.SpendingShockCount .Analysis.MonteCarlo.Stats.Runs)}}% of runs</p>
+            <p class="text-sm font-medium text-gray-800 dark:text-gray-200">{{printf "%.1f" (percentOf .Analysis.MonteCarlo.Stats.SpendingShockCount .Analysis.MonteCarlo.Stats.Runs)}}% of runs</p>
         </div>
         <div class="p-2 bg-accent-soft rounded">
             <p class="text-body-sm text-gray-600 dark:text-gray-300">Health Events</p>
@@ -45,7 +47,7 @@
     <!-- Success Rate -->
     <div class="mb-6">
         <div class="flex items-center justify-between mb-2">
-            <span class="text-gray-700 dark:text-gray-300">Success Rate</span>
+            <span class="text-gray-700 dark:text-gray-300">Avoiding modeled depletion</span>
             <span class="text-2xl font-bold {{successRateTextClass .Analysis.MonteCarlo.Stats.SuccessRate}}">
                 {{printf "%.1f" .Analysis.MonteCarlo.Stats.SuccessRate}}%
             </span>
@@ -58,7 +60,7 @@
     <!-- Stats Grid -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded">
-            <p class="text-body-sm text-gray-600 dark:text-gray-300">Worst Case</p>
+            <p class="text-body-sm text-gray-600 dark:text-gray-300">Lowest simulated ending balance</p>
             <p class="text-lg font-semibold text-negative">{{formatMoney .Analysis.MonteCarlo.Stats.WorstCase}}</p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded">
@@ -74,9 +76,10 @@
             <p class="text-lg font-semibold text-positive">{{formatMoney .Analysis.MonteCarlo.Stats.Percentile90}}</p>
         </div>
     </div>
+    <p class="text-body-sm text-gray-600 dark:text-gray-400 mb-4">Ending balances are nominal dollars at each run's simulated endpoint.</p>
 
     <!-- Distribution -->
-    {{if .Analysis.MonteCarlo.Distribution.Buckets}}
+    {{if and .Analysis.MonteCarlo.Distribution .Analysis.MonteCarlo.Distribution.Buckets}}
     <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Final Balance Distribution</h3>
     <div class="space-y-2">
         {{range .Analysis.MonteCarlo.Distribution.Buckets}}
@@ -112,21 +115,24 @@
             <span>Longevity: +/-5 years</span>
         </div>
     </details>
+{{else}}
+    <p class="text-sm text-gray-600 dark:text-gray-300">Risk results unavailable. Run simulations to see outcomes.</p>
+{{end}}
 </div>
 {{end}}
 
 {{/* Sequence Risk Analysis Section */}}
 {{define "whatif-sequence-risk"}}
 {{if and .Analysis.MonteCarlo.Stats.SequenceRisk (gt .Analysis.MonteCarlo.Stats.SequenceRiskImpact 5.0)}}
-<div class="mt-4 p-4 bg-warning-soft rounded-lg border border-warning">
+<div class="mt-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
     <div class="flex items-start gap-2">
-        <svg class="w-5 h-5 text-warning flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-5 h-5 text-gray-700 dark:text-gray-300 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
         </svg>
         <div class="flex-1">
-            <h3 class="text-sm font-semibold text-warning">Sequence Risk Analysis</h3>
-            <p class="text-sm text-warning mt-1">
-                When market crashes occur matters significantly for your retirement success.
+            <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Sequence Risk Analysis</h3>
+            <p class="text-sm text-gray-700 dark:text-gray-300 mt-1">
+                Observed rates of avoiding modeled depletion, grouped by crash timing. Groups may differ in other ways; this comparison does not isolate a crash effect.
             </p>
         </div>
     </div>
@@ -135,22 +141,22 @@
     <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
         {{with .Analysis.MonteCarlo.Stats.SequenceRisk}}
         <div class="bg-white dark:bg-gray-800 rounded-lg p-3 text-center">
-            <div class="text-2xl font-bold text-positive">{{printf "%.0f" .NoCrashSurvival}}%</div>
+            <div class="text-2xl font-bold {{successRateTextClass .NoCrashSurvival}}">{{printf "%.0f" .NoCrashSurvival}}%</div>
             <div class="text-xs text-gray-600 dark:text-gray-300">No Crashes</div>
             <div class="text-body-sm text-gray-500 dark:text-gray-400">({{.NoCrashCount}} runs)</div>
         </div>
         <div class="bg-white dark:bg-gray-800 rounded-lg p-3 text-center">
-            <div class="text-2xl font-bold text-negative">{{printf "%.0f" .EarlyCrashSurvival}}%</div>
+            <div class="text-2xl font-bold {{successRateTextClass .EarlyCrashSurvival}}">{{printf "%.0f" .EarlyCrashSurvival}}%</div>
             <div class="text-xs text-gray-600 dark:text-gray-300">Early Crash</div>
             <div class="text-body-sm text-gray-500 dark:text-gray-400">Years 1-5 ({{.EarlyCrashCount}})</div>
         </div>
         <div class="bg-white dark:bg-gray-800 rounded-lg p-3 text-center">
-            <div class="text-2xl font-bold text-warning">{{printf "%.0f" .MidCrashSurvival}}%</div>
+            <div class="text-2xl font-bold {{successRateTextClass .MidCrashSurvival}}">{{printf "%.0f" .MidCrashSurvival}}%</div>
             <div class="text-xs text-gray-600 dark:text-gray-300">Mid Crash</div>
             <div class="text-body-sm text-gray-500 dark:text-gray-400">Years 6-15 ({{.MidCrashCount}})</div>
         </div>
         <div class="bg-white dark:bg-gray-800 rounded-lg p-3 text-center">
-            <div class="text-2xl font-bold text-accent">{{printf "%.0f" .LateCrashSurvival}}%</div>
+            <div class="text-2xl font-bold {{successRateTextClass .LateCrashSurvival}}">{{printf "%.0f" .LateCrashSurvival}}%</div>
             <div class="text-xs text-gray-600 dark:text-gray-300">Late Crash</div>
             <div class="text-body-sm text-gray-500 dark:text-gray-400">Years 16+ ({{.LateCrashCount}})</div>
         </div>
@@ -160,11 +166,11 @@
     {{template "whatif-sequence-risk-details" .}}
 </div>
 {{else if gt .Analysis.MonteCarlo.Stats.SequenceRiskImpact 5.0}}
-<p class="mt-2 text-sm text-warning">
+<p class="mt-2 text-sm text-gray-700 dark:text-gray-300">
     <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
     </svg>
-    Sequence risk detected: Market crashes reduced survival by {{printf "%.0f" .Analysis.MonteCarlo.Stats.SequenceRiskImpact}}%
+    Observed difference in avoiding modeled depletion between crash groups: {{printf "%.0f" .Analysis.MonteCarlo.Stats.SequenceRiskImpact}} percentage points
 </p>
 {{end}}
 {{end}}
@@ -176,138 +182,131 @@
 <div class="mt-4 space-y-2">
     {{if gt .EarlyVsNoneImpact 0.0}}
     <div class="flex items-center justify-between text-sm">
-        <span class="text-gray-600 dark:text-gray-300">Early crash impact vs no crash:</span>
-        <span class="font-semibold text-negative">-{{printf "%.0f" .EarlyVsNoneImpact}}% survival</span>
+        <span class="text-gray-600 dark:text-gray-300">Early crash vs no crash difference:</span>
+        <span class="font-semibold text-gray-700 dark:text-gray-300">{{printf "%.0f" .EarlyVsNoneImpact}} percentage points lower</span>
     </div>
     {{end}}
     {{if gt .EarlyVsLateImpact 0.0}}
     <div class="flex items-center justify-between text-sm">
         <span class="text-gray-600 dark:text-gray-300">Early vs late crash difference:</span>
-        <span class="font-semibold text-warning">{{printf "%.0f" .EarlyVsLateImpact}}% worse</span>
+        <span class="font-semibold text-gray-700 dark:text-gray-300">{{printf "%.0f" .EarlyVsLateImpact}} percentage points lower</span>
     </div>
     {{end}}
     {{if gt .EarlyCrashCount 0}}
     <div class="flex items-center justify-between text-sm">
         <span class="text-gray-600 dark:text-gray-300">Recovery rate after early crash:</span>
-        <span class="font-semibold {{if gt .RecoveryRate 50.0}}text-positive{{else}}text-negative{{end}}">{{printf "%.0f" .RecoveryRate}}% survived</span>
+        <span class="font-semibold {{successRateTextClass .RecoveryRate}}">{{printf "%.0f" .RecoveryRate}}% survived</span>
     </div>
     {{end}}
 </div>
 
-<!-- Buffer Recommendation -->
-<div class="mt-4 p-3 bg-accent-soft rounded-lg border border-accent">
-    <div class="flex items-start gap-2">
-        <svg class="w-5 h-5 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
-        </svg>
-        <div class="flex-1">
-            <div class="text-sm font-semibold text-accent">
-                Recommended Buffer: {{.RecommendedBuffer}} years of expenses
-            </div>
-            <div class="text-body-sm text-accent mt-1">
-                {{.BufferRationale}}
-            </div>
-            {{if gt .BufferAmount 0.0}}
-            <div class="mt-3 pt-3 border-t border-accent space-y-2">
-                <div class="flex items-center justify-between text-sm">
-                    <span class="text-accent">Buffer amount:</span>
-                    <span class="font-bold text-accent">{{formatMoney .BufferAmount}}</span>
-                </div>
-                <div class="flex items-center justify-between text-body-sm text-accent">
-                    <span>Based on {{formatMoney .AnnualExpenses}}/year expenses</span>
-                </div>
+<!-- Buffer arithmetic illustration -->
+<details class="mt-4 p-3 bg-accent-soft rounded-lg border border-accent">
+    <summary class="cursor-pointer text-sm font-semibold text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">Buffer illustration — not simulation-tested</summary>
+    <div class="text-body-sm text-accent mt-2 space-y-1">
+        <p>This illustration uses total expenses and fixed withdrawal assumptions.</p>
+        <p>It does not account for outside income, withdrawal taxes, or a separate cash allocation.</p>
+        <p>{{.BufferRationale}}</p>
+    </div>
+    {{if gt .BufferAmount 0.0}}
+    <div class="mt-3 pt-3 border-t border-accent space-y-2">
+        <div class="flex items-center justify-between text-sm">
+            <span class="text-accent">Illustrative amount:</span>
+            <span class="font-bold text-accent">{{formatMoney .BufferAmount}}</span>
+        </div>
+        <div class="flex items-center justify-between text-body-sm text-accent">
+            <span>Based on {{formatMoney .AnnualExpenses}}/year expenses</span>
+        </div>
 
-                <!-- Buffer Calculation Breakdown -->
-                {{if gt .AnnualShortfall 0.0}}
-                <div class="mt-2 p-2 bg-accent-soft rounded text-body-sm space-y-1">
-                    <div class="text-accent font-medium mb-2">How we calculated this:</div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-accent">If market drops {{.CrashDrawdownPercent | printf "%.0f"}}%, portfolio becomes:</span>
-                        <span class="text-accent">{{formatMoney .CrashedPortfolioValue}}</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-accent">Safe 3% withdrawal from crashed portfolio:</span>
-                        <span class="text-accent">{{formatMoney .SafeWithdrawalDuringCrash}}/yr</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-accent">Expense shortfall to cover:</span>
-                        <span class="font-semibold text-accent">{{formatMoney .AnnualShortfall}}/yr</span>
-                    </div>
-                    <div class="flex items-center justify-between pt-1 border-t border-accent">
-                        <span class="text-accent">{{.RecommendedBuffer}} years x shortfall:</span>
-                        <span class="font-bold text-accent">{{formatMoney .BufferAmount}}</span>
-                    </div>
-                    {{if gt .NaiveBufferAmount .BufferAmount}}
-                    <div class="flex items-center justify-between text-positive pt-1">
-                        <span>Savings vs. naive calculation:</span>
-                        <span class="font-semibold">{{formatMoney (sub .NaiveBufferAmount .BufferAmount)}} less</span>
-                    </div>
-                    {{end}}
-                </div>
-                {{end}}
-
-                {{if gt .AdjustedSpending 0.0}}
-                <div class="mt-2 p-2 bg-accent-soft rounded text-body-sm">
-                    <div class="text-accent font-medium mb-1">If buffer is held in safe assets:</div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-accent">Safe monthly spending (4% rule on remaining):</span>
-                        <span class="font-bold text-accent">{{formatMoney .AdjustedSpending}}/mo</span>
-                    </div>
-                </div>
-                {{end}}
+        <!-- Buffer Calculation Breakdown -->
+        {{if gt .AnnualShortfall 0.0}}
+        <div class="mt-2 p-2 bg-accent-soft rounded text-body-sm space-y-1">
+            <div class="text-accent font-medium mb-2">How we calculated this:</div>
+            <div class="flex items-center justify-between">
+                <span class="text-accent">If market drops {{.CrashDrawdownPercent | printf "%.0f"}}%, portfolio becomes:</span>
+                <span class="text-accent">{{formatMoney .CrashedPortfolioValue}}</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-accent">Illustrative withdrawal at 3%:</span>
+                <span class="text-accent">{{formatMoney .SafeWithdrawalDuringCrash}}/yr</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-accent">Expenses less illustrative withdrawal:</span>
+                <span class="font-semibold text-accent">{{formatMoney .AnnualShortfall}}/yr</span>
+            </div>
+            <div class="flex items-center justify-between pt-1 border-t border-accent">
+                <span class="text-accent">{{.RecommendedBuffer}} years x shortfall:</span>
+                <span class="font-bold text-accent">{{formatMoney .BufferAmount}}</span>
+            </div>
+            {{if gt .NaiveBufferAmount .BufferAmount}}
+            <div class="flex items-center justify-between text-accent pt-1">
+                <span>Difference from full-expense calculation:</span>
+                <span class="font-semibold">{{formatMoney (sub .NaiveBufferAmount .BufferAmount)}} less</span>
             </div>
             {{end}}
         </div>
+        {{end}}
+
+        {{if gt .AdjustedSpending 0.0}}
+        <div class="mt-2 p-2 bg-accent-soft rounded text-body-sm">
+            <div class="text-accent font-medium mb-1">If this amount is set aside:</div>
+            <div class="flex items-center justify-between">
+                <span class="text-accent">Illustrative monthly withdrawal at 4%:</span>
+                <span class="font-bold text-accent">{{formatMoney .AdjustedSpending}}/mo</span>
+            </div>
+        </div>
+        {{end}}
     </div>
-</div>
+    {{end}}
+</details>
 
 <!-- Adaptive Spending Analysis -->
 {{if .HasDiscretionary}}
-<div class="mt-4 p-3 bg-positive-soft rounded-lg border border-positive">
+<div class="mt-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
     <div class="flex items-start gap-2">
-        <svg class="w-5 h-5 text-positive flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-5 h-5 text-gray-700 dark:text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
         </svg>
         <div class="flex-1">
-            <div class="text-sm font-semibold text-positive">
-                Spending Flexibility Analysis
+            <div class="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                Separate discretionary-expense experiment
             </div>
-            <div class="text-body-sm text-positive mt-1">
-                You have {{formatMoney .MonthlyDiscretionary}}/mo in discretionary expenses that can be reduced during market downturns.
+            <div class="text-body-sm text-gray-700 dark:text-gray-300 mt-1">
+                This separate experiment reduces expense lines marked discretionary ({{formatMoney .MonthlyDiscretionary}}/mo). It is not the configured living-budget guardrail strategy and does not define protected essentials.
             </div>
 
-            <div class="mt-3 pt-3 border-t border-positive space-y-2">
+            <div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 space-y-2">
                 <div class="flex items-center justify-between text-sm">
-                    <span class="text-positive">Essential expenses:</span>
-                    <span class="font-bold text-positive">{{formatMoney .MonthlyEssential}}/mo</span>
+                    <span class="text-gray-700 dark:text-gray-300">Expenses not marked discretionary:</span>
+                    <span class="font-bold text-gray-700 dark:text-gray-300">{{formatMoney .MonthlyEssential}}/mo</span>
                 </div>
                 <div class="flex items-center justify-between text-sm">
-                    <span class="text-positive">Discretionary expenses:</span>
-                    <span class="font-bold text-warning">{{formatMoney .MonthlyDiscretionary}}/mo</span>
+                    <span class="text-gray-700 dark:text-gray-300">Discretionary expenses:</span>
+                    <span class="font-bold text-gray-700 dark:text-gray-300">{{formatMoney .MonthlyDiscretionary}}/mo</span>
                 </div>
 
                 {{if gt .AdaptationBoost 0.0}}
-                <div class="mt-2 p-2 bg-positive-soft rounded text-body-sm">
-                    <div class="text-positive font-medium mb-2">If you cut discretionary by {{printf "%.0f" .DiscretionaryCutPercent}}% during crashes:</div>
+                <div class="mt-2 p-2 bg-gray-50 dark:bg-gray-900 rounded text-body-sm">
+                    <div class="text-gray-700 dark:text-gray-300 font-medium mb-2">If you cut discretionary by {{printf "%.0f" .DiscretionaryCutPercent}}% during crashes:</div>
                     <div class="flex items-center justify-between mb-1">
-                        <span class="text-positive">Early crash survival (without adaptation):</span>
-                        <span class="font-bold text-negative">{{printf "%.0f" .EarlyCrashSurvival}}%</span>
+                        <span class="text-gray-700 dark:text-gray-300">Avoiding depletion (original sample):</span>
+                        <span class="font-bold {{successRateTextClass .EarlyCrashSurvival}}">{{printf "%.0f" .EarlyCrashSurvival}}%</span>
                     </div>
                     <div class="flex items-center justify-between mb-1">
-                        <span class="text-positive">Early crash survival (with adaptation):</span>
-                        <span class="font-bold text-positive">{{printf "%.0f" .EarlyCrashSurvivalAdapted}}%</span>
+                        <span class="text-gray-700 dark:text-gray-300">Avoiding depletion (separate experiment):</span>
+                        <span class="font-bold {{successRateTextClass .EarlyCrashSurvivalAdapted}}">{{printf "%.0f" .EarlyCrashSurvivalAdapted}}%</span>
                     </div>
-                    <div class="flex items-center justify-between pt-2 border-t border-positive">
-                        <span class="text-positive font-medium">Survival improvement:</span>
-                        <span class="font-bold text-positive">+{{printf "%.0f" .AdaptationBoost}}%</span>
+                    <div class="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <span class="text-gray-700 dark:text-gray-300 font-medium">Observed difference:</span>
+                        <span class="font-bold text-gray-700 dark:text-gray-300">+{{printf "%.0f" .AdaptationBoost}} percentage points</span>
                     </div>
                 </div>
-                <div class="text-body-sm text-positive mt-2 italic">
-                    {{.AdaptationRationale}}
+                <div class="text-body-sm text-gray-700 dark:text-gray-300 mt-2 italic">
+                    These are outcomes from separate samples, not a paired causal estimate of the benefit of cuts.
                 </div>
                 {{else if gt .EarlyCrashSurvivalAdapted 0.0}}
-                <div class="text-body-sm text-positive mt-2">
-                    {{.AdaptationRationale}}
+                <div class="text-body-sm text-gray-700 dark:text-gray-300 mt-2">
+                    These are outcomes from separate samples, not a paired causal estimate of the benefit of cuts.
                 </div>
                 {{end}}
             </div>

@@ -9,6 +9,8 @@ import (
 	"budget2/internal/models"
 )
 
+const successRateDefinition = "Percentage of runs avoiding modeled portfolio depletion; unpaid spending during withdrawal delays can still occur."
+
 // round0 rounds a currency amount to whole dollars. The engine's sub-cent
 // precision is meaningful internally and noise in a conversation.
 func round0(v float64) float64 { return math.Round(v) }
@@ -74,7 +76,16 @@ type TaxView struct {
 
 // MonteCarloView carries stats only, never the full distribution.
 type MonteCarloView struct {
-	SuccessRate float64 `json:"success_rate"`
+	SuccessRate           float64        `json:"success_rate"`
+	SuccessRateDefinition string         `json:"success_rate_definition"`
+	Lifestyle             *LifestyleView `json:"lifestyle,omitempty"`
+}
+
+type LifestyleView struct {
+	Runs              int `json:"runs"`
+	FundedWithoutCuts int `json:"funded_without_cuts"`
+	FundedWithCuts    int `json:"funded_with_cuts"`
+	Shortfall         int `json:"shortfall"`
 }
 
 // ShapeAnalysis converts a full analysis into its compact view.
@@ -142,7 +153,19 @@ func ShapeAnalysis(a *models.WhatIfAnalysis, includeMonteCarlo bool) AnalysisVie
 		}
 	}
 	if includeMonteCarlo && a.MonteCarlo != nil && a.MonteCarlo.Stats != nil {
-		v.MonteCarlo = &MonteCarloView{SuccessRate: a.MonteCarlo.Stats.SuccessRate}
+		stats := a.MonteCarlo.Stats
+		v.MonteCarlo = &MonteCarloView{
+			SuccessRate:           stats.SuccessRate,
+			SuccessRateDefinition: successRateDefinition,
+		}
+		if stats.Lifestyle != nil {
+			v.MonteCarlo.Lifestyle = &LifestyleView{
+				Runs:              stats.Lifestyle.Runs,
+				FundedWithoutCuts: stats.Lifestyle.FundedWithoutCuts,
+				FundedWithCuts:    stats.Lifestyle.FundedWithCuts,
+				Shortfall:         stats.Lifestyle.Shortfall,
+			}
+		}
 	}
 	return v
 }

@@ -72,14 +72,14 @@
 
         {{/* Group: Money In / Out */}}
         <div data-wf-collapse="money" class="bg-white dark:bg-gray-800 rounded-lg shadow">
-            <button type="button" data-wf-collapse-toggle
+            <button type="button" id="wf-collapse-money-toggle" aria-expanded="true" aria-controls="wf-collapse-money-body" data-wf-collapse-toggle
                 class="w-full flex items-center justify-between px-4 py-3 text-left">
                 <span class="text-xs font-semibold tracking-widest uppercase text-gray-600 dark:text-gray-400">Money In / Out</span>
                 <svg data-wf-chevron class="w-4 h-4 text-gray-400 transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
             </button>
-            <div data-wf-collapse-body class="px-1 pb-2 space-y-4">
+            <div id="wf-collapse-money-body" role="region" aria-labelledby="wf-collapse-money-toggle" data-wf-collapse-body class="px-1 pb-2 space-y-4">
                 <div id="whatif-portfolio-settings-card">{{template "whatif-portfolio-settings" .}}</div>
                 {{template "whatif-income-card" .}}
                 {{template "whatif-healthcare-card" .}}
@@ -91,14 +91,14 @@
 
         {{/* Group: Assumptions */}}
         <div data-wf-collapse="assumptions" class="bg-white dark:bg-gray-800 rounded-lg shadow">
-            <button type="button" data-wf-collapse-toggle
+            <button type="button" id="wf-collapse-assumptions-toggle" aria-expanded="true" aria-controls="wf-collapse-assumptions-body" data-wf-collapse-toggle
                 class="w-full flex items-center justify-between px-4 py-3 text-left">
                 <span class="text-xs font-semibold tracking-widest uppercase text-gray-600 dark:text-gray-400">Assumptions</span>
                 <svg data-wf-chevron class="w-4 h-4 text-gray-400 transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
             </button>
-            <div data-wf-collapse-body class="px-1 pb-2 space-y-4">
+            <div id="wf-collapse-assumptions-body" role="region" aria-labelledby="wf-collapse-assumptions-toggle" data-wf-collapse-body class="px-1 pb-2 space-y-4">
                 <div id="whatif-rate-assumptions-card">{{template "whatif-rate-assumptions" .}}</div>
                 <div id="whatif-spending-phases-card">{{template "whatif-spending-phases" .}}</div>
             </div>
@@ -106,14 +106,14 @@
 
         {{/* Group: Strategies */}}
         <div data-wf-collapse="strategies" class="bg-white dark:bg-gray-800 rounded-lg shadow">
-            <button type="button" data-wf-collapse-toggle
+            <button type="button" id="wf-collapse-strategies-toggle" aria-expanded="true" aria-controls="wf-collapse-strategies-body" data-wf-collapse-toggle
                 class="w-full flex items-center justify-between px-4 py-3 text-left">
                 <span class="text-xs font-semibold tracking-widest uppercase text-gray-600 dark:text-gray-400">Strategies</span>
                 <svg data-wf-chevron class="w-4 h-4 text-gray-400 transition-transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                 </svg>
             </button>
-            <div data-wf-collapse-body class="px-1 pb-2 space-y-4">
+            <div id="wf-collapse-strategies-body" role="region" aria-labelledby="wf-collapse-strategies-toggle" data-wf-collapse-body class="px-1 pb-2 space-y-4">
                 {{template "whatif-guardrails" .}}
                 {{template "whatif-roth-conversion" .}}
                 {{template "whatif-scenario-chain" .}}
@@ -175,26 +175,27 @@
 </div>
 {{/* Sticky verdict bar — always visible above the tabs */}}
 {{template "whatif-verdict-bar" .}}
+{{template "whatif-lifestyle-outcomes" .}}
 
 {{/* Tabbed results workspace */}}
 <div id="whatif-tabs" data-scenario="{{.ActiveFilename}}">
-    <div role="tablist" class="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-700 mb-4">
-        <button type="button" role="tab" data-wf-tab="overview" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Overview</button>
-        <button type="button" role="tab" data-wf-tab="cashflow" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Cash Flow</button>
-        <button type="button" role="tab" data-wf-tab="risk" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Risk</button>
-        <button type="button" role="tab" data-wf-tab="taxes" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Taxes &amp; RMD</button>
-        <button type="button" role="tab" data-wf-tab="strategies" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Strategies</button>
+    <div role="tablist" aria-label="What-if results" class="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-700 mb-4">
+        <button type="button" id="wf-tab-overview" role="tab" aria-controls="wf-panel-overview" aria-selected="true" tabindex="0" data-wf-tab="overview" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Overview</button>
+        <button type="button" id="wf-tab-cashflow" role="tab" aria-controls="wf-panel-cashflow" aria-selected="false" tabindex="-1" data-wf-tab="cashflow" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Cash Flow</button>
+        <button type="button" id="wf-tab-risk" role="tab" aria-controls="wf-panel-risk" aria-selected="false" tabindex="-1" data-wf-tab="risk" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Risk</button>
+        <button type="button" id="wf-tab-taxes" role="tab" aria-controls="wf-panel-taxes" aria-selected="false" tabindex="-1" data-wf-tab="taxes" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Taxes &amp; RMD</button>
+        <button type="button" id="wf-tab-strategies" role="tab" aria-controls="wf-panel-strategies" aria-selected="false" tabindex="-1" data-wf-tab="strategies" class="wf-tab px-4 py-2 -mb-px text-sm font-medium text-gray-600 dark:text-gray-400 border-b-2 border-transparent hover:text-gray-800 dark:hover:text-gray-200">Strategies</button>
     </div>
 
     {{/* Overview */}}
-    <div data-wf-panel="overview" class="space-y-4">
+    <div id="wf-panel-overview" role="tabpanel" aria-labelledby="wf-tab-overview" data-wf-panel="overview" class="space-y-4">
         {{template "whatif-projection-chart" .}}
         {{template "whatif-expense-summary" .}}
         {{if .AnalysisPending}}{{template "whatif-pending-card" "Failure Thresholds"}}{{else}}{{template "whatif-failure-points" .}}{{end}}
     </div>
 
     {{/* Cash Flow */}}
-    <div data-wf-panel="cashflow" class="space-y-4 hidden">
+    <div id="wf-panel-cashflow" role="tabpanel" aria-labelledby="wf-tab-cashflow" data-wf-panel="cashflow" class="space-y-4 hidden">
         {{template "whatif-budget-analysis" .}}
         {{template "whatif-present-value" .}}
         {{template "whatif-income-chart" .}}
@@ -202,7 +203,7 @@
     </div>
 
     {{/* Risk */}}
-    <div data-wf-panel="risk" class="space-y-4 hidden">
+    <div id="wf-panel-risk" role="tabpanel" aria-labelledby="wf-tab-risk" data-wf-panel="risk" class="space-y-4 hidden">
         {{if .AnalysisPending}}{{template "whatif-pending-card" "Sensitivity Analysis"}}{{else}}{{template "whatif-sensitivity" .}}{{end}}
         {{if .AnalysisPending}}{{template "whatif-pending-card" "Monte Carlo Simulation"}}{{else}}{{template "whatif-monte-carlo" .}}{{end}}
         {{if .AnalysisPending}}{{template "whatif-pending-card" "Historical Backtesting"}}{{else}}{{template "whatif-historical-backtest" .}}{{end}}
@@ -210,13 +211,13 @@
     </div>
 
     {{/* Taxes & RMD */}}
-    <div data-wf-panel="taxes" class="space-y-4 hidden">
+    <div id="wf-panel-taxes" role="tabpanel" aria-labelledby="wf-tab-taxes" data-wf-panel="taxes" class="space-y-4 hidden">
         {{template "whatif-tax-summary" .}}
         {{template "whatif-rmd" .}}
     </div>
 
     {{/* Strategies */}}
-    <div data-wf-panel="strategies" class="space-y-4 hidden">
+    <div id="wf-panel-strategies" role="tabpanel" aria-labelledby="wf-tab-strategies" data-wf-panel="strategies" class="space-y-4 hidden">
         {{if .AnalysisPending}}
           {{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.FRABenefit 0.0)}}
           {{template "whatif-pending-card" "Social Security Claiming Comparison"}}

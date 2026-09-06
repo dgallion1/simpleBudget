@@ -72,6 +72,7 @@ func NewFromFS(fsys fs.FS, debug bool) (*Renderer, error) {
 func getFuncMap() template.FuncMap {
 	return template.FuncMap{
 		"formatMoney":                         formatMoney,
+		"budgetGapRoundingAdjustment":         budgetGapRoundingAdjustment,
 		"formatDollars":                       formatWholeDollars,
 		"conversionSummary":                   conversionSummary,
 		"formatNumber":                        formatNumber,
@@ -779,29 +780,8 @@ func colorClass(v float64) string {
 	return "text-neutral"
 }
 
-// successRateTextClass maps a Monte-Carlo / historical success rate (0-100)
-// to a Tailwind text-color class. The five tiers track common retirement
-// planning thresholds: ≥90 very safe, ≥80 good, ≥70 marginal, ≥60 concerning,
-// <60 at risk. Replaces the older 90/75 binary that painted everything below
-// 75 the same red as a near-failure plan.
-func successRateTextClass(v float64) string {
-	switch {
-	case v >= 90:
-		return "text-green-700 dark:text-green-400"
-	case v >= 80:
-		// lime-600 is 3.09:1 on white (fails WCAG AA 4.5:1); lime-700 is
-		// 4.99:1. dark:lime-400 is measured on a dark ground and passes.
-		return "text-lime-700 dark:text-lime-400"
-	case v >= 70:
-		// yellow-600 is 2.94:1 on white (fails); yellow-700 is 4.92:1.
-		return "text-yellow-700 dark:text-yellow-400"
-	case v >= 60:
-		// orange-600 is 3.56:1 on white (fails); orange-700 is 5.18:1.
-		return "text-orange-700 dark:text-orange-400"
-	default:
-		return "text-red-600 dark:text-red-400"
-	}
-}
+// successRateTextClass keeps aggregate outcomes neutral until a risk target is chosen.
+func successRateTextClass(_ float64) string { return "text-gray-800 dark:text-gray-200" }
 
 // verdictClasses maps each models.Health verdict value to the shared Tailwind
 // classes for the three verdict band surfaces: the band container
@@ -853,22 +833,8 @@ func verdictLabelClass(h models.Health) string { return verdictClassesFor(h).lab
 // health-colored numeric tile value inside a verdict band.
 func verdictValueClass(h models.Health) string { return verdictClassesFor(h).value }
 
-// successRateBarClass returns the Tailwind bg color for a progress bar fill,
-// using the same five-tier mapping as successRateTextClass.
-func successRateBarClass(v float64) string {
-	switch {
-	case v >= 90:
-		return "bg-green-500"
-	case v >= 80:
-		return "bg-lime-500"
-	case v >= 70:
-		return "bg-yellow-500"
-	case v >= 60:
-		return "bg-orange-500"
-	default:
-		return "bg-red-500"
-	}
-}
+// successRateBarClass shares the neutral policy used by successRateTextClass.
+func successRateBarClass(_ float64) string { return "bg-accent-strong" }
 
 func percentOf(part, whole interface{}) float64 {
 	w := toFloat(whole)

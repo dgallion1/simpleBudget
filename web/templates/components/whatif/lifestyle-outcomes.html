@@ -1,0 +1,56 @@
+{{/* Observed Monte Carlo lifestyle partition; deliberately independent of legacy depletion success. */}}
+{{define "whatif-lifestyle-outcomes"}}
+<section id="whatif-lifestyle-outcomes" aria-labelledby="whatif-lifestyle-heading" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4 text-gray-800 dark:text-gray-200">
+    <h2 id="whatif-lifestyle-heading" class="text-lg font-semibold mb-2">Simulated lifestyle outcomes</h2>
+    {{if .AnalysisPending}}
+    <p class="text-sm text-gray-600 dark:text-gray-300">Risk results pending. Lifestyle outcomes will appear when simulations finish.</p>
+    {{else if not .Analysis}}
+    <p class="text-sm text-gray-600 dark:text-gray-300">Risk results unavailable.</p>
+    {{else if not .Analysis.MonteCarlo}}
+    <p class="text-sm text-gray-600 dark:text-gray-300">Risk results unavailable.</p>
+    {{else if not .Analysis.MonteCarlo.Stats}}
+    <p class="text-sm text-gray-600 dark:text-gray-300">Risk results unavailable.</p>
+    {{else if le .Analysis.MonteCarlo.Stats.Runs 0}}
+    <p class="text-sm text-gray-600 dark:text-gray-300">Risk results unavailable. No completed simulation runs.</p>
+    {{else if not .Analysis.MonteCarlo.Stats.Lifestyle}}
+    <p class="text-sm text-gray-600 dark:text-gray-300">Lifestyle outcomes unavailable for these simulation results.</p>
+    {{else if le .Analysis.MonteCarlo.Stats.Lifestyle.Runs 0}}
+    <p class="text-sm text-gray-600 dark:text-gray-300">Lifestyle outcomes unavailable. No classified simulation runs.</p>
+    {{else}}
+    {{with .Analysis.MonteCarlo.Stats.Lifestyle}}
+    <p class="text-body-sm text-gray-600 dark:text-gray-300 mb-3">Observed outcomes under your configured spending plan and guardrails, across each run's modeled horizon; these are conditional model results, not guarantees.</p>
+    <dl class="text-sm divide-y divide-gray-200 dark:divide-gray-700">
+        <div class="flex flex-wrap justify-between gap-x-4 gap-y-1 py-2">
+            <dt>Funded without living-budget cuts</dt>
+            <dd class="num"><strong>{{printf "%.1f" (percentOf .FundedWithoutCuts .Runs)}}%</strong> <span class="text-gray-600 dark:text-gray-300">· {{.FundedWithoutCuts}} / {{.Runs}} runs</span></dd>
+        </div>
+        <div class="flex flex-wrap justify-between gap-x-4 gap-y-1 py-2">
+            <dt>Funded with living-budget cuts</dt>
+            <dd class="num"><strong>{{printf "%.1f" (percentOf .FundedWithCuts .Runs)}}%</strong> <span class="text-gray-600 dark:text-gray-300">· {{.FundedWithCuts}} / {{.Runs}} runs</span></dd>
+        </div>
+        <div class="flex flex-wrap justify-between gap-x-4 gap-y-1 py-2">
+            <dt>Funding shortfall</dt>
+            <dd class="num"><strong>{{printf "%.1f" (percentOf .Shortfall .Runs)}}%</strong> <span class="text-gray-600 dark:text-gray-300">· {{.Shortfall}} / {{.Runs}} runs</span></dd>
+        </div>
+    </dl>
+    <p class="text-body-sm text-gray-600 dark:text-gray-300 mt-2">Funding shortfall means some spending went unpaid or the portfolio depleted. Avoiding depletion alone can include unpaid spending, so the depletion-avoidance rate may differ. Scheduled spending phases are part of the plan, not circuit-breaker cuts.</p>
+    {{if gt .RunsWithCuts 0}}
+    <h3 class="text-sm font-medium mt-3">Among runs with cuts · {{.RunsWithCuts}} / {{.Runs}} runs ({{printf "%.1f" (percentOf .RunsWithCuts .Runs)}}%)</h3>
+    <p class="text-sm mt-1">Median largest living-budget cut: {{printf "%.1f" .MedianMaxLivingCutPct}}%; median total time below plan: {{printf "%.1f" (div .MedianCutMonths 12.0)}} years.</p>
+    <details class="mt-3">
+        <summary class="cursor-pointer text-sm font-medium text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">More cut depth and duration details</summary>
+        <div class="mt-3 text-sm space-y-2">
+            <p>Largest living-budget reduction per run: median {{printf "%.1f" .MedianMaxLivingCutPct}}%; 90th percentile {{printf "%.1f" .P90MaxLivingCutPct}}%. The 90th-percentile largest monthly reduction is {{formatDollars .P90MaxMonthlyLivingCutReal}} in today's dollars. Percent and dollar percentiles are ranked separately.</p>
+            <p>Total time below plan: median {{printf "%.1f" (div .MedianCutMonths 12.0)}} years; 90th percentile {{printf "%.1f" (div .P90CutMonths 12.0)}} years. Longest continuous cut: 90th percentile {{printf "%.1f" (div .P90LongestCutMonths 12.0)}} years.</p>
+            <p>{{.CutRunsEndingBelowPlan}} / {{.RunsWithCuts}} runs with cuts were still below plan at the stopping point. Ongoing cuts have incomplete observed durations; observation ends at depletion or the run's horizon.</p>
+            <p>These summaries include all runs with cuts, including those with a funding shortfall. They show what happened with the rules, not whether the cuts caused the outcome.</p>
+        </div>
+    </details>
+    {{else}}
+    <p class="text-body-sm text-gray-600 dark:text-gray-300 mt-3">No below-plan living-budget cuts were observed.</p>
+    {{end}}
+    <p class="text-body-sm text-gray-600 dark:text-gray-300 mt-3">Guardrails adjust the living-expense budget. Healthcare, property tax, and other expense lines are not automatically cut. This does not separately protect essential expenses.</p>
+    {{end}}
+    {{end}}
+</section>
+{{end}}

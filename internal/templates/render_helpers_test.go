@@ -377,29 +377,12 @@ func TestColorClass(t *testing.T) {
 }
 
 func TestSuccessRateClasses(t *testing.T) {
-	cases := []struct {
-		v        float64
-		wantText string // substring expected in text class
-		wantBar  string // substring expected in bar class
-	}{
-		{100, "green", "green"},
-		{90, "green", "green"},
-		{89.9, "lime", "lime"},
-		{80, "lime", "lime"},
-		{79.9, "yellow", "yellow"},
-		{72.6, "yellow", "yellow"}, // the user's reported value — must NOT be red
-		{70, "yellow", "yellow"},
-		{69.9, "orange", "orange"},
-		{60, "orange", "orange"},
-		{59.9, "red", "red"},
-		{0, "red", "red"},
-	}
-	for _, tc := range cases {
-		if got := successRateTextClass(tc.v); !strings.Contains(got, tc.wantText) {
-			t.Errorf("successRateTextClass(%v) = %q, want substring %q", tc.v, got, tc.wantText)
+	for _, rate := range []float64{0, 59.9, 60, 69.9, 70, 79.9, 80, 89.9, 90, 100} {
+		if got := successRateTextClass(rate); got != "text-gray-800 dark:text-gray-200" {
+			t.Errorf("rate %v text = %q", rate, got)
 		}
-		if got := successRateBarClass(tc.v); !strings.Contains(got, tc.wantBar) {
-			t.Errorf("successRateBarClass(%v) = %q, want substring %q", tc.v, got, tc.wantBar)
+		if got := successRateBarClass(rate); got != "bg-accent-strong" {
+			t.Errorf("rate %v bar = %q", rate, got)
 		}
 	}
 }

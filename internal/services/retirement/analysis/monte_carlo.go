@@ -259,6 +259,7 @@ func monteCarloCoreStats(results []models.MonteCarloResult) (*models.MonteCarloS
 		Percentile90:  balances[runs*9/10],
 		WorstCase:     balances[0],
 		BestCase:      balances[runs-1],
+		Lifestyle:     aggregateLifestyleOutcomes(results),
 
 		// Enhanced stats
 		MarketCrashCount:   runsWithCrashes,
@@ -366,6 +367,7 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 	healthShocks := 0
 	lastCrashYear := -999 // Track for recovery boost
 	var totalIRMAA float64
+	var guardrailImpact guardrailImpactTracker
 
 	// Annual variation multipliers (redrawn at year boundaries) and
 	// current-month shock expenses.
@@ -404,12 +406,12 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 			shockExpenses = 0
 			if rng.Float64() < config.SpendingShockProb {
 				shockAmount := config.SpendingShockMin + rng.Float64()*(config.SpendingShockMax-config.SpendingShockMin)
-				shockExpenses += shockAmount / 12
+				shockExpenses += shockAmount
 				spendingShocks++
 			}
 			if rng.Float64() < config.HealthShockProb {
 				healthShockAmount := config.HealthShockMin + rng.Float64()*(config.HealthShockMax-config.HealthShockMin)
-				shockExpenses += healthShockAmount / 12
+				shockExpenses += healthShockAmount
 				healthShocks++
 			}
 		} else {
@@ -454,6 +456,8 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 		}
 
 		out := st.StepMonth(m, mcReturns)
+		guardrailImpact.observe(out.LivingExpenses, out.GuardrailMultiplier, st.CumulativeInflation)
+		guardrailImpact.observeFundingGap(out.Result.Shortfall)
 		totalIRMAA += out.Result.IRMAAExpense
 
 		// Check for depletion
@@ -471,6 +475,7 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 	if finalBalance < 0 {
 		finalBalance = 0
 	}
+	observedGuardrailImpact := guardrailImpact.result()
 
 	return models.MonteCarloResult{
 		FinalBalance:    finalBalance,
@@ -481,6 +486,7 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 		SpendingShocks:  spendingShocks,
 		HealthShocks:    healthShocks,
 		ProjectionYears: projectionYears,
+		GuardrailImpact: &observedGuardrailImpact,
 		EarlyCrashes:    crashTiming.EarlyCrashes,
 		MidCrashes:      crashTiming.MidCrashes,
 		LateCrashes:     crashTiming.LateCrashes,
@@ -669,50 +675,50 @@ func calculateSequenceRiskBreakdown(s *models.WhatIfSettings, results []models.M
 		avgRecoveryYears = totalFirstCrashYears / float64(firstCrashCount)
 	}
 
-	// Buffer recommendation based on impact
+	// Legacy arithmetic illustration: duration selected from observed crash-group differences.
 	recommendedBuffer := 2 // Default minimum
-	rationale := "Standard 2-year buffer for moderate sequence risk"
+	rationale := "Illustration uses 2 years of the calculated expense gap"
 
 	if earlyVsNoneImpact > 30 {
 		recommendedBuffer = 5
-		rationale = "High sequence risk: 5-year buffer to weather early crashes"
+		rationale = "Illustration uses 5 years of the calculated expense gap"
 	} else if earlyVsNoneImpact > 20 {
 		recommendedBuffer = 4
-		rationale = "Significant sequence risk: 4-year buffer recommended"
+		rationale = "Illustration uses 4 years of the calculated expense gap"
 	} else if earlyVsNoneImpact > 10 {
 		recommendedBuffer = 3
-		rationale = "Moderate sequence risk: 3-year buffer provides good protection"
+		rationale = "Illustration uses 3 years of the calculated expense gap"
 	} else if earlyVsNoneImpact <= 5 {
 		recommendedBuffer = 2
-		rationale = "Low sequence risk: 2-year buffer is sufficient"
+		rationale = "Illustration uses 2 years of the calculated expense gap"
 	}
 
 	// Calculate buffer amount accounting for partial portfolio value during crash
 	// Key insight: Even during a 30% crash, portfolio still has 70% of its value
-	// You can still safely withdraw from the reduced portfolio (at a conservative rate)
-	// The buffer only needs to cover the SHORTFALL, not full expenses
+	// The assumed 3% withdrawal is arithmetic, not a tested sustainable policy.
+	// This legacy formula excludes outside income, taxes, and allocation effects.
 	crashDrawdownPercent := 30.0                                        // Expected crash severity (from DefaultMonteCarloConfig)
 	crashedPortfolio := portfolioValue * (1 - crashDrawdownPercent/100) // Portfolio after crash
-	safeWithdrawalRate := 0.03                                          // Conservative 3% during crash years
-	safeWithdrawalDuringCrash := crashedPortfolio * safeWithdrawalRate  // Annual safe withdrawal from crashed portfolio
-	annualShortfall := annualExpenses - safeWithdrawalDuringCrash       // Gap that buffer must cover
+	safeWithdrawalRate := 0.03                                          // Illustrative 3% assumption
+	safeWithdrawalDuringCrash := crashedPortfolio * safeWithdrawalRate  // Illustrative annual withdrawal
+	annualShortfall := annualExpenses - safeWithdrawalDuringCrash       // Arithmetic expense gap
 	if annualShortfall < 0 {
-		annualShortfall = 0 // No shortfall if safe withdrawal covers expenses
+		annualShortfall = 0 // No positive arithmetic gap
 	}
 
-	// Calculate both naive and improved buffer amounts
+	// Calculate both full-expense and gap-based illustrations
 	naiveBufferAmount := float64(recommendedBuffer) * annualExpenses
 	bufferAmount := float64(recommendedBuffer) * annualShortfall
 
-	// Update rationale to explain the improved calculation
+	// Describe the arithmetic difference without implying an optimized reserve.
 	if annualShortfall > 0 && annualShortfall < annualExpenses {
 		savingsPercent := (1 - annualShortfall/annualExpenses) * 100
-		rationale = fmt.Sprintf("%s (%.0f%% less than naive calculation because crashed portfolio still provides $%.0f/yr)",
+		rationale = fmt.Sprintf("%s (%.0f%% below the full-expense calculation, assuming $%.0f/yr withdrawn from the reduced portfolio)",
 			rationale, savingsPercent, safeWithdrawalDuringCrash)
 	}
 
 	// Calculate adjusted monthly spending if buffer is set aside from portfolio
-	// Uses a 4% safe withdrawal rate on the remaining portfolio after buffer
+	// Uses an illustrative 4% withdrawal on the remaining portfolio.
 	adjustedSpending := 0.0
 	remainingPortfolio := portfolioValue - bufferAmount
 	if remainingPortfolio > 0 {

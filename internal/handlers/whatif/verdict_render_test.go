@@ -11,19 +11,19 @@ func TestVerdictBar_Render(t *testing.T) {
 	_, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
 
-	t.Run("green funded plan shows headline and figures", func(t *testing.T) {
+	t.Run("neutral funded plan shows headline and figures", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
 			"Verdict": VerdictView{
-				Health: models.HealthGreen, Headline: "Funded through 2064",
-				Detail:     "spending covered for all 38 years",
-				MonthlyGap: -200, GapIsShortfall: false,
+				Health: models.HealthNeutral, Headline: "Funded through Dec 2063",
+				Detail:       "Base projection funds your planned lifestyle under these assumptions",
+				HasBudgetFit: true, CurrentMonthlyGap: -200, MonthlyGap: -200, GapIsShortfall: false,
 				RequiredRate: 0, SuccessRate: 85, HasMonteCarlo: true,
 			},
 		})
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		for _, want := range []string{"Funded through 2064", "spending covered for all 38 years", "85.0%", "verdict-green"} {
+		for _, want := range []string{"Funded through Dec 2063", "Base projection funds your planned lifestyle under these assumptions", "85.0%", "verdict-neutral"} {
 			if !strings.Contains(out, want) {
 				t.Errorf("expected %q in output; got: %s", want, truncate(out, 600))
 			}
@@ -33,16 +33,16 @@ func TestVerdictBar_Render(t *testing.T) {
 	t.Run("red plan shows shortfall styling and run-out headline", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
 			"Verdict": VerdictView{
-				Health: models.HealthRed, Headline: "Funds run out in 2032",
-				Detail:     "covered for 6 of 38 years",
-				MonthlyGap: 1601.38, GapIsShortfall: true,
+				Health: models.HealthRed, Headline: "Funds run out in Jan 2032",
+				Detail:       "covered for 6 of 38 years",
+				HasBudgetFit: true, CurrentMonthlyGap: 1601.38, MonthlyGap: 1601.38, GapIsShortfall: true,
 				RequiredRate: 3.1, SuccessRate: 12, HasMonteCarlo: true,
 			},
 		})
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		for _, want := range []string{"Funds run out in 2032", "verdict-red", "1,601"} {
+		for _, want := range []string{"Funds run out in Jan 2032", "verdict-red", "1,601"} {
 			if !strings.Contains(out, want) {
 				t.Errorf("expected %q in output; got: %s", want, truncate(out, 600))
 			}
@@ -52,16 +52,16 @@ func TestVerdictBar_Render(t *testing.T) {
 	t.Run("steady-state gap is labeled with the selected year", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
 			"Verdict": VerdictView{
-				Health: models.HealthAmber, Headline: "Funded through 2064",
-				Detail:     "spending covered for all 38 years",
-				MonthlyGap: 3400, GapIsShortfall: true, RequiredRate: 4.2,
+				Health: models.HealthAmber, Headline: "Funded through Dec 2063",
+				Detail:       "Base projection funds your planned lifestyle under these assumptions",
+				HasBudgetFit: true, CurrentMonthlyGap: 1601.38, MonthlyGap: 3400, GapIsShortfall: true, RequiredRate: 4.2,
 				GapAtSteadyState: true, GapYear: 12,
 			},
 		})
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		if !strings.Contains(out, "Gap @ Yr 12") {
+		if !strings.Contains(out, "Selected year 12") {
 			t.Errorf("expected gap labeled with selected year; got: %s", truncate(out, 600))
 		}
 	})
@@ -69,18 +69,18 @@ func TestVerdictBar_Render(t *testing.T) {
 	t.Run("today's gap keeps the plain label", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
 			"Verdict": VerdictView{
-				Health: models.HealthGreen, Headline: "Funded through 2064",
-				Detail:     "spending covered for all 38 years",
-				MonthlyGap: -200, GapIsShortfall: false, GapAtSteadyState: false,
+				Health: models.HealthNeutral, Headline: "Funded through Dec 2063",
+				Detail:       "Base projection funds your planned lifestyle under these assumptions",
+				HasBudgetFit: true, CurrentMonthlyGap: -200, MonthlyGap: -200, GapIsShortfall: false, GapAtSteadyState: false,
 			},
 		})
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		if !strings.Contains(out, "Monthly Gap") {
-			t.Errorf("expected plain 'Monthly Gap' label; got: %s", truncate(out, 600))
+		if !strings.Contains(out, "Needed from portfolio after estimated taxes and RMDs") {
+			t.Errorf("expected plain 'Needed from portfolio after estimated taxes and RMDs' label; got: %s", truncate(out, 600))
 		}
-		if strings.Contains(out, "Gap @ Yr") {
+		if strings.Contains(out, "Selected year") {
 			t.Errorf("did not expect a year label when GapAtSteadyState is false")
 		}
 	})
@@ -88,7 +88,7 @@ func TestVerdictBar_Render(t *testing.T) {
 	t.Run("no monte carlo hides the MC figure", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
 			"Verdict": VerdictView{
-				Health: models.HealthGreen, Headline: "Funded through 2046",
+				Health: models.HealthNeutral, Headline: "Funded through Dec 2045",
 				Detail: "spending covered for all 20 years", HasMonteCarlo: false,
 			},
 		})
@@ -103,8 +103,8 @@ func TestVerdictBar_Render(t *testing.T) {
 	t.Run("strip shows lifetime taxes and end balance in whole dollars", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
 			"Verdict": VerdictView{
-				Health: models.HealthAmber, Headline: "Funded through 2074",
-				Detail:     "covers the median path — 38% of market simulations fall short",
+				Health: models.HealthAmber, Headline: "Funded through Dec 2073",
+				Detail:     "Base projection funds spending with circuit-breaker cuts",
 				MonthlyGap: 6435.53, GapIsShortfall: true, RequiredRate: 3.1,
 				SuccessRate: 62.2, HasMonteCarlo: true,
 				TotalTaxes: 1624993.75, HasTaxes: true,
@@ -128,7 +128,7 @@ func TestVerdictBar_Render(t *testing.T) {
 	})
 	t.Run("strip omits taxes and end balance when unavailable", func(t *testing.T) {
 		out, err := renderer.RenderToString("whatif-verdict-bar", map[string]any{
-			"Verdict": VerdictView{Health: models.HealthGreen, Headline: "Funded through 2046", Detail: "spending covered for all 20 years"},
+			"Verdict": VerdictView{Health: models.HealthNeutral, Headline: "Funded through Dec 2045", Detail: "spending covered for all 20 years"},
 		})
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)

@@ -1,18 +1,18 @@
 {{define "kpi-detail"}}
 <div class="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50" id="kpi-modal"
-    onclick="closeKPIModal(event)">
+    data-modal-backdrop data-modal-close="closeKPIModal">
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden"
-        onclick="event.stopPropagation()">
+        data-modal-panel role="dialog" aria-modal="true" aria-labelledby="kpi-detail-title">
         <div class="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
-            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{.Title}} Details</h3>
+            <h3 id="kpi-detail-title" class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{.Title}} Details</h3>
             <div class="flex items-center space-x-2">
-                <button onclick="exportKPIToCSV('{{.Type}}')" class="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400">
+                <button data-export-kpi="{{.Type}}" class="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-400 hover:text-accent">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
                     <span>Export CSV</span>
                 </button>
-                <button onclick="closeKPIModal()" class="text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                <button data-modal-close-btn="closeKPIModal" class="text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" aria-label="Close">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
                         </path>
@@ -25,15 +25,15 @@
                 {{if .IsRate}}
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Average</p>
-                    <p class="text-xl font-bold text-indigo-600 dark:text-indigo-400">{{printf "%.1f" .Average}}%</p>
+                    <p class="text-xl font-bold text-accent">{{printf "%.1f" .Average}}%</p>
                 </div>
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Low ({{.MinMonth}})</p>
-                    <p class="text-xl font-bold text-red-600 dark:text-red-400">{{printf "%.1f" .Min}}%</p>
+                    <p class="text-xl font-bold text-negative">{{printf "%.1f" .Min}}%</p>
                 </div>
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">High ({{.MaxMonth}})</p>
-                    <p class="text-xl font-bold text-green-700 dark:text-green-400">{{printf "%.1f" .Max}}%</p>
+                    <p class="text-xl font-bold text-positive">{{printf "%.1f" .Max}}%</p>
                 </div>
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Months</p>
@@ -42,24 +42,24 @@
                 {{else}}
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Total</p>
-                    <p class="text-xl font-bold {{if eq .Type "income"}}text-green-700 dark:text-green-400{{else if eq .Type "expenses"}}text-red-600 dark:text-red-400{{else}}text-indigo-600 dark:text-indigo-400{{end}}">{{formatMoney .Total}}</p>
+                    <p class="text-xl font-bold {{if eq .Type "income"}}text-positive{{else if eq .Type "expenses"}}text-negative{{else}}text-accent{{end}}">{{formatMoney .Total}}</p>
                 </div>
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Per Month</p>
                     {{if and (eq .Type "healthcare") .HealthcareNoCoverageInRange -}}
                     <p class="text-xl font-bold text-gray-800 dark:text-gray-100">&mdash;</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-300">no coverage in this range</p>
+                    <p class="text-body-sm text-gray-500 dark:text-gray-300">no coverage in this range</p>
                     {{- else -}}
                     <p class="text-xl font-bold text-gray-800 dark:text-gray-100">{{formatMoney .Average}}</p>
                     {{- end}}
                 </div>
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">Low ({{.MinMonth}})</p>
-                    <p class="text-xl font-bold {{if .IsSavings}}text-red-600 dark:text-red-400{{else}}text-gray-600 dark:text-gray-400{{end}}">{{formatMoney .Min}}</p>
+                    <p class="text-xl font-bold {{if .IsSavings}}text-negative{{else}}text-gray-600 dark:text-gray-400{{end}}">{{formatMoney .Min}}</p>
                 </div>
                 <div>
                     <p class="text-sm text-gray-600 dark:text-gray-400">High ({{.MaxMonth}})</p>
-                    <p class="text-xl font-bold {{if .IsSavings}}text-green-700 dark:text-green-400{{else}}text-gray-600 dark:text-gray-400{{end}}">{{formatMoney .Max}}</p>
+                    <p class="text-xl font-bold {{if .IsSavings}}text-positive{{else}}text-gray-600 dark:text-gray-400{{end}}">{{formatMoney .Max}}</p>
                 </div>
                 {{end}}
             </div>
@@ -68,21 +68,21 @@
             <table class="w-full">
                 <thead class="bg-gray-100 dark:bg-gray-900 sticky top-0">
                     <tr>
-                        <th class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Month</th>
+                        <th scope="col" class="text-left p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Month</th>
                         {{if .IsRate}}
-                        <th class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Rate</th>
-                        <th class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Income</th>
-                        <th class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Expenses</th>
+                        <th scope="col" class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Rate</th>
+                        <th scope="col" class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Income</th>
+                        <th scope="col" class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Expenses</th>
                         {{else if eq .Type "savings"}}
-                        <th class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Savings</th>
-                        <th class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Income</th>
-                        <th class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Expenses</th>
+                        <th scope="col" class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Savings</th>
+                        <th scope="col" class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Income</th>
+                        <th scope="col" class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Expenses</th>
                         {{else if eq .Type "income"}}
-                        <th class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Income</th>
-                        <th class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">vs Avg</th>
+                        <th scope="col" class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">Income</th>
+                        <th scope="col" class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">vs Avg</th>
                         {{else}}
-                        <th class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">{{if eq .Type "living"}}Living Expenses{{else if eq .Type "healthcare"}}Healthcare{{else}}Expenses{{end}}</th>
-                        <th class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">vs Avg</th>
+                        <th scope="col" class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">{{if eq .Type "living"}}Living Expenses{{else if eq .Type "healthcare"}}Healthcare{{else}}Expenses{{end}}</th>
+                        <th scope="col" class="text-right p-3 text-sm font-medium text-gray-600 dark:text-gray-300">vs Avg</th>
                         {{end}}
                     </tr>
                 </thead>
@@ -92,29 +92,29 @@
                     {{$isRate := .IsRate}}
                     {{$noCoverage := and (eq .Type "healthcare") .HealthcareNoCoverageInRange -}}
                     {{range .Monthly}}
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer" onclick="openKPIMonthDetail('{{$type}}', '{{.Month}}')">
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer" data-kpi-month-detail="{{$type}}|{{.Month}}">
                         <td class="p-3 text-sm text-gray-800 dark:text-gray-200">
-                            <button type="button" onclick="event.stopPropagation(); openKPIMonthDetail('{{$type}}', '{{.Month}}')"
-                                class="underline decoration-dotted underline-offset-2 hover:text-indigo-600 dark:hover:text-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
+                            <button type="button" data-kpi-month-detail="{{$type}}|{{.Month}}"
+                                class="underline decoration-dotted underline-offset-2 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent rounded"
                                 aria-label="Show {{.Month}} transactions">{{.Month}}</button>
                         </td>
                         {{if $isRate}}
-                        <td class="p-3 text-sm text-right {{if ge .Rate 20.0}}text-green-700 dark:text-green-400{{else if ge .Rate 10.0}}text-yellow-600 dark:text-yellow-400{{else}}text-red-600 dark:text-red-400{{end}}">{{printf "%.1f" .Rate}}%</td>
-                        <td class="p-3 text-sm text-right text-green-700 dark:text-green-400">{{formatMoney .Income}}</td>
-                        <td class="p-3 text-sm text-right text-red-600 dark:text-red-400">{{formatMoney .Expenses}}</td>
+                        <td class="p-3 text-sm text-right {{if ge .Rate 20.0}}text-positive{{else if ge .Rate 10.0}}text-warning{{else}}text-negative{{end}}">{{printf "%.1f" .Rate}}%</td>
+                        <td class="p-3 text-sm text-right text-positive">{{formatMoney .Income}}</td>
+                        <td class="p-3 text-sm text-right text-negative">{{formatMoney .Expenses}}</td>
                         {{else if eq $type "savings"}}
-                        <td class="p-3 text-sm text-right {{if ge .Savings 0.0}}text-green-700 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">{{formatMoney .Savings}}</td>
-                        <td class="p-3 text-sm text-right text-green-700 dark:text-green-400">{{formatMoney .Income}}</td>
-                        <td class="p-3 text-sm text-right text-red-600 dark:text-red-400">{{formatMoney .Expenses}}</td>
+                        <td class="p-3 text-sm text-right {{if ge .Savings 0.0}}text-positive{{else}}text-negative{{end}}">{{formatMoney .Savings}}</td>
+                        <td class="p-3 text-sm text-right text-positive">{{formatMoney .Income}}</td>
+                        <td class="p-3 text-sm text-right text-negative">{{formatMoney .Expenses}}</td>
                         {{else if eq $type "income"}}
-                        <td class="p-3 text-sm text-right text-green-700 dark:text-green-400">{{formatMoney .Income}}</td>
-                        <td class="p-3 text-sm text-right {{if ge .Income $avg}}text-green-700 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">{{formatPercent (percentDiff .Income $avg)}}%</td>
+                        <td class="p-3 text-sm text-right text-positive">{{formatMoney .Income}}</td>
+                        <td class="p-3 text-sm text-right {{if ge .Income $avg}}text-positive{{else}}text-negative{{end}}">{{formatPercent (percentDiff .Income $avg)}}%</td>
                         {{else}}
-                        <td class="p-3 text-sm text-right text-red-600 dark:text-red-400">{{formatMoney .Value}}</td>
+                        <td class="p-3 text-sm text-right text-negative">{{formatMoney .Value}}</td>
                         {{if $noCoverage -}}
                         <td class="p-3 text-sm text-right text-gray-500 dark:text-gray-300">&mdash;</td>
                         {{- else -}}
-                        <td class="p-3 text-sm text-right {{if le .Value $avg}}text-green-700 dark:text-green-400{{else}}text-red-600 dark:text-red-400{{end}}">{{formatPercent (percentDiff .Value $avg)}}%</td>
+                        <td class="p-3 text-sm text-right {{if le .Value $avg}}text-positive{{else}}text-negative{{end}}">{{formatPercent (percentDiff .Value $avg)}}%</td>
                         {{- end}}
                         {{end}}
                     </tr>

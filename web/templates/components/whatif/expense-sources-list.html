@@ -17,10 +17,10 @@
     <div class="flex items-center justify-between mb-2">
         <div>
             <span class="font-medium dark:text-gray-200">{{.Name}}</span>
-            <span class="text-red-600 dark:text-red-400">- ${{printf "%.0f" .Amount}}/mo</span>
+            <span class="text-negative">- ${{printf "%.0f" .Amount}}/mo</span>
         </div>
         <button type="button" hx-delete="/whatif/expense/{{.ID}}" hx-target="#whatif-results"
-            class="text-red-500 hover:text-red-700" aria-label="Delete expense {{.Name}}">
+            class="text-negative hover:text-negative" aria-label="Delete expense {{.Name}}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
             </svg>
@@ -41,13 +41,13 @@
         </label>
         <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
             <input type="checkbox" name="inflation" {{if .Inflation}}checked{{end}}
-                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600">
+                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-accent">
             Inflation
         </label>
-        <label class="flex items-center gap-1 text-amber-600 dark:text-amber-400"
+        <label class="flex items-center gap-1 text-warning"
             title="Can be reduced during market downturns">
             <input type="checkbox" name="discretionary" {{if .Discretionary}}checked{{end}}
-                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-amber-500">
+                class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-warning">
             Discretionary
         </label>
     </div>
@@ -58,24 +58,24 @@
 {{define "whatif-removed-expense-sources"}}
 <div id="removed-expense-sources" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedExpenseSources}}hidden{{end}}">
     {{if .Settings.RemovedExpenseSources}}
-    <p class="text-xs text-gray-500 dark:text-gray-400 font-medium">Recently Removed</p>
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 font-medium">Recently Removed</p>
     {{range .Settings.RemovedExpenseSources}}
-    <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
+    <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm">
         <div>
             <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
-            <span class="text-gray-500 dark:text-gray-300">- ${{printf "%.0f" .Amount}}/mo</span>
+            <span class="text-gray-600 dark:text-gray-300">- ${{printf "%.0f" .Amount}}/mo</span>
         </div>
         <div class="flex items-center gap-1">
-            <button hx-post="/whatif/expense/{{.ID}}/restore" hx-target="#whatif-results"
-                class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore" aria-label="Restore expense source {{.Name}}">
+            <button type="button" hx-post="/whatif/expense/{{.ID}}/restore" hx-target="#whatif-results"
+                class="p-1 rounded text-positive hover:text-positive focus:outline-none focus-visible:ring-2 focus-visible:ring-accent" title="Restore" aria-label="Restore expense source {{.Name}}">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
                 </svg>
             </button>
-            <button hx-delete="/whatif/expense/{{.ID}}/purge" hx-target="#whatif-results"
+            <button type="button" hx-delete="/whatif/expense/{{.ID}}/purge" hx-target="#whatif-results"
                 hx-confirm="Permanently delete {{.Name}}?"
-                class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" title="Permanently delete" aria-label="Permanently delete expense source {{.Name}}">
+                class="p-1 rounded text-negative hover:text-negative focus:outline-none focus-visible:ring-2 focus-visible:ring-accent" title="Permanently delete" aria-label="Permanently delete expense source {{.Name}}">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                 </svg>
@@ -102,14 +102,14 @@
     </div>
     <div class="grid grid-cols-2 gap-2">
         <div>
-            <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Starts yr (0=now)</label>
-            <input type="number" name="start_year"
+            <label for="add-expense-start-year" class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Starts yr (0=now)</label>
+            <input type="number" id="add-expense-start-year" name="start_year"
                 class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2"
                 value="0" min="0">
         </div>
         <div>
-            <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Ends yr (blank=never)</label>
-            <input type="number" name="end_year"
+            <label for="add-expense-end-year" class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Ends yr (blank=never)</label>
+            <input type="number" id="add-expense-end-year" name="end_year"
                 class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2"
                 value="" min="0">
         </div>
@@ -118,17 +118,17 @@
         <div class="flex items-center gap-4">
             <label class="flex items-center text-sm dark:text-gray-300">
                 <input type="checkbox" name="inflation"
-                    class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-indigo-600 mr-2" checked>
+                    class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-accent mr-2" checked>
                 Inflation
             </label>
-            <label class="flex items-center text-sm text-amber-600 dark:text-amber-400"
+            <label class="flex items-center text-sm text-warning"
                 title="Can be reduced during market downturns">
                 <input type="checkbox" name="discretionary"
-                    class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-amber-500 mr-2">
+                    class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-warning mr-2">
                 Discretionary
             </label>
         </div>
-        <button type="submit" class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+        <button type="submit" class="px-3 py-1 bg-accent-strong text-white text-sm rounded hover:bg-accent-strong">
             Add Expense
         </button>
     </div>

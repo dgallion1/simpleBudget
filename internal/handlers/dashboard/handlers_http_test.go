@@ -2431,7 +2431,7 @@ func TestHandleKPIMonthDetail_WithRenderer(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Rent", "Groceries", "January 2025", "openKPIDetail('expenses')"} {
+	for _, want := range []string{"Rent", "Groceries", "January 2025", `data-kpi-detail="expenses"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("body missing %q", want)
 		}
@@ -2449,7 +2449,7 @@ func TestHandleKPIDetail_MonthRowsAreDrillable(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "openKPIMonthDetail('expenses', '2025-01')") {
+	if !strings.Contains(body, `data-kpi-month-detail="expenses|2025-01"`) {
 		t.Error("month row is not wired to openKPIMonthDetail")
 	}
 	if want := `aria-label="Show 2025-01 transactions"`; !strings.Contains(body, want) {
@@ -2553,16 +2553,20 @@ func TestVerdictBarNetSavings_MatchesSavingsModalTotal(t *testing.T) {
 	}
 }
 
-// The Net Savings figure is a real, keyboard-reachable control.
+// The Net Savings figure is a real, keyboard-reachable control. U10 (§2f)
+// moved it from a bespoke <button> in the verdict band to the shared
+// shared/kpi-tile partial in the KPI row, which emits a mechanical
+// "<Label> details" aria-label (kpi-tile.html) rather than the old
+// hand-written "Show monthly net savings detail" string.
 func TestVerdictBarNetSavings_IsDrillable(t *testing.T) {
 	router, cleanup := setupTestEnvWithRenderer(t, defaultRows())
 	defer cleanup()
 
 	body := doGet(t, router, "/dashboard?start=2025-01-01&end=2025-03-31").Body.String()
-	if !strings.Contains(body, "openKPIDetail('savings')") {
+	if !strings.Contains(body, `data-kpi-detail="savings"`) {
 		t.Error("Net Savings is not wired to the savings KPI modal")
 	}
-	if want := `aria-label="Show monthly net savings detail"`; !strings.Contains(body, want) {
+	if want := `aria-label="Net Savings details"`; !strings.Contains(body, want) {
 		t.Errorf("body missing %s", want)
 	}
 }
@@ -2687,10 +2691,10 @@ func TestDashboardKPIs_LivingHealthcareCardsWiredToOwnKinds(t *testing.T) {
 	defer cleanup()
 
 	body := doGet(t, router, "/dashboard?start=2025-01-01&end=2025-03-31").Body.String()
-	if !strings.Contains(body, "openKPIDetail('living')") {
+	if !strings.Contains(body, `data-kpi-detail="living"`) {
 		t.Error("Monthly Living Expenses card is not wired to the living KPI modal")
 	}
-	if !strings.Contains(body, "openKPIDetail('healthcare')") {
+	if !strings.Contains(body, `data-kpi-detail="healthcare"`) {
 		t.Error("Monthly Healthcare card is not wired to the healthcare KPI modal")
 	}
 }

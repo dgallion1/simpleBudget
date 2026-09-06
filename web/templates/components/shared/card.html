@@ -1,0 +1,33 @@
+{{/* shared/card.html — generic card shell (U7).
+   Go's html/template can't dispatch {{template}} to a name chosen at
+   runtime, so this shell is an OPEN/CLOSE pair rather than a single
+   call: callers write their own body markup (which may need arbitrary
+   page-specific template actions) between the two.
+
+   shared/card-open dict fields:
+     ID           - optional element id for the outer <div>
+     Class        - extra classes appended to the default shell classes
+                    (e.g. "lg:col-span-2" for a wide card)
+     Title        - heading text (rendered in an <h2>); omit for a
+                    title-less shell
+     TitleID      - optional id for the <h2> (for aria-labelledby)
+     Actions      - optional template.HTML rendered top-right of the
+                    header, beside the title (buttons, links, badges)
+
+   Usage:
+     {{template "shared/card-open" (dict "Title" "Spending Trend")}}
+     ...body markup...
+     {{template "shared/card-close" .}}
+*/}}
+{{define "shared/card-open"}}
+<div{{if .ID}} id="{{.ID}}"{{end}} class="bg-white dark:bg-gray-800 rounded-lg shadow p-4{{if .Class}} {{.Class}}{{end}}">
+    {{if .Title}}
+    <div class="flex items-center justify-between mb-4">
+        <h2{{if .TitleID}} id="{{.TitleID}}"{{end}} class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{.Title}}</h2>
+        {{if .Actions}}<div class="flex items-center gap-2">{{.Actions}}</div>{{end}}
+    </div>
+    {{end}}
+{{end}}
+{{define "shared/card-close"}}
+</div>
+{{end}}

@@ -47,6 +47,21 @@
      - Full keyboard operability: every action is a real <button> or
        <input type="submit">; the confirm step is a second submit, not a
        click handler on a div.
+     - U12 (2026-09-05): each account renders as a summary card (name,
+       kind, matched-file count from len(MatchedFiles), latest anchor —
+       the last element of Account.Anchors, which the accounts service
+       keeps sorted ascending by date, or "No anchor set"). The existing
+       per-account edit form and the "Add an account" form are unchanged
+       markup/hx wiring, each moved behind a real
+       <button type="button" aria-expanded aria-controls> disclosure,
+       hidden by default via the `hidden` attribute (the markup is still
+       present in every response, so no existing handler test that scans
+       response text for field ids/labels/help copy is affected). Toggle
+       behavior lives in accounts.js via a delegated click listener keyed
+       on [data-toggle-target], so it survives every hx-swap of
+       #accounts-list. The htmx:afterSwap focus handler below (point 5)
+       reveals a panel before focusing a field inside it, so a validation
+       error on a hidden Add/Edit form still gets focus and is visible.
 */}}
 {{define "accounts-content"}}
 <div class="space-y-4">
@@ -92,14 +107,14 @@
 
     {{/* Visible error banner, kept in sync with the live region. */}}
     {{if .Error}}
-    <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
+    <div class="bg-negative-soft border border-negative rounded-lg p-4">
         <div class="flex items-center gap-2">
-            <svg class="w-5 h-5 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <svg class="w-5 h-5 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
-            <span class="font-medium text-red-700 dark:text-red-300">There&rsquo;s a problem with your submission</span>
+            <span class="font-medium text-negative">There&rsquo;s a problem with your submission</span>
         </div>
-        <p class="mt-2 text-sm text-red-600 dark:text-red-400" id="accounts-error-text">{{.Error}}</p>
+        <p class="mt-2 text-sm text-negative" id="accounts-error-text">{{.Error}}</p>
     </div>
     {{end}}
 
@@ -124,213 +139,7 @@
      warnings the same way. This is progressive enhancement — HTMX itself
      requires JS for any mutation to happen at all, so there is no separate
      no-JS path to preserve here. */}}
-<script>
-    (function () {
-        // Tracks the last text actually written into the live region by
-        // syncWarnings, so the same-text guard a few lines down compares
-        // against what an assistive-technology user was last told, not
-        // against whatever the region's raw markup happens to contain.
-        // Seeded from #accounts-warnings-data's data-warnings-text (the
-        // SAME attribute syncWarnings itself reads below), not from
-        // region.textContent: the region's own markup is indented onto its
-        // own line by hand-formatted HTML in some editors, which text/html
-        // renders faithfully including surrounding whitespace, while the
-        // data attribute never carries that padding. Seeding from
-        // region.textContent made the two representations of the identical
-        // warning content compare unequal on every single full page load,
-        // defeating the guard entirely (see the comment on the region div
-        // above). Seeding from the same attribute the guard itself
-        // consults keeps the two comparable from the very first call.
-        var region = document.getElementById('accounts-warnings-region');
-        var initialWarningsData = document.getElementById('accounts-warnings-data');
-        var lastWarningsText = initialWarningsData
-            ? (initialWarningsData.getAttribute('data-warnings-text') || '')
-            : '';
-
-        // ACCESSIBILITY.md point 16: whatever suppresses the visible
-        // banner must, in the SAME action, leave the assistive-technology
-        // channel consistent with it. syncWarnings is that one action for
-        // every response shape (the initial full-page load, and every
-        // HTMX swap of #accounts-list): it decides ONCE, per call, whether
-        // the CURRENT warning set (identified by .WarningsKey) is the one
-        // already dismissed this session, and then drives both the banner
-        // and the live region off that single decision. The previous
-        // version decided the region's content first, independently of
-        // dismissal, and only afterward decided the banner's visibility --
-        // so a warning could be announced with no banner to show for it
-        // (dismiss, resolve, then recreate the identical overlap), or a
-        // dismissed warning could keep asserting itself to AT on every
-        // reload while the banner that would let a user dismiss it again
-        // stayed gone (dismiss, then reload with the set unchanged). Both
-        // were reproduced in a real browser -- see
-        // .swarm/verdicts/S4.3.judge-claude.verdict.
-        //
-        // For the reload case specifically: the choice made here is that
-        // the CLIENT is authoritative for "is this exact warning content
-        // already dismissed", and it reasserts that suppression on every
-        // load, including the live region -- not that the dismissal is
-        // reflected server-side. Teaching the server about a client-only,
-        // session-scoped dismissal would need a new request field (or a
-        // cookie) round-tripped on every GET, which is a bigger, session-
-        // vs-request plumbing change than a suppression-parity bug fix
-        // calls for, and it would fight the existing sessionStorage
-        // design's premise (no server or persisted-file state for
-        // dismissal at all). Reusing the same key comparison the banner
-        // already performs, and applying it to the region too, is the
-        // smallest change that removes the inconsistency.
-        //
-        // Reads the freshly-rendered payload that accounts-list-partial
-        // always includes (#accounts-warnings-data, inside the swap
-        // target) and applies it to the two things that live OUTSIDE the
-        // swap target and therefore are not replaced by
-        // hx-swap="innerHTML": the stable live region (only written to
-        // when the underlying announced state actually changed, which is
-        // what makes this "state change" rather than "every swap" per
-        // ACCESSIBILITY.md point 14) and the visible banner's
-        // session-scoped dismissal (keyed on WarningsKey, a fingerprint of
-        // the warning content, so a changed warning set is never mistaken
-        // for one already dismissed). Runs once immediately for the
-        // initial full-page load and again after every HTMX swap.
-        function syncWarnings() {
-            var data = document.getElementById('accounts-warnings-data');
-            if (!data) return;
-            var text = data.getAttribute('data-warnings-text') || '';
-            var key = data.getAttribute('data-warnings-key') || '';
-
-            // Decide dismissal FIRST, before touching the region, so the
-            // region write below can reflect it rather than race ahead of
-            // it. `key` fingerprints the CURRENT warning content;
-            // sessionStorage holds the key of the last content the user
-            // dismissed (there is only ever one banner, so only one
-            // dismissal to remember at a time).
-            var dismissed = false;
-            try {
-                var storedKey = sessionStorage.getItem('accounts-warnings-dismissed');
-                if (key && storedKey === key) {
-                    dismissed = true;
-                } else if (!key && storedKey) {
-                    // No warning is showing right now (a mutation resolved
-                    // the last overlap, or there simply is none on this
-                    // load), so the stored key no longer names anything
-                    // real. Clear it here, in the SAME action that clears
-                    // the live region just below: this is the root-cause
-                    // fix from the S4 dispute. The old code returned at
-                    // `if (!banner) return` before ever reaching the
-                    // dismissal key when there was no banner to check
-                    // against, so a resolve-then-recreate of the identical
-                    // warning silently inherited the stale key -- the
-                    // banner (and its dismiss control) stayed suppressed
-                    // on the recreate, while the region had already
-                    // re-announced the reappeared warning moments earlier
-                    // in this same function. The template's own comment on
-                    // #accounts-warnings-data already promised this: the
-                    // empty data carrier "can clear the live region and
-                    // the dismissal key too."
-                    try { sessionStorage.removeItem('accounts-warnings-dismissed'); } catch (e) {}
-                }
-            } catch (e) { /* sessionStorage may be unavailable; treat as not dismissed */ }
-
-            // What the AT channel should say right now. A dismissal
-            // suppresses the SAME content for an AT user as it does for a
-            // sighted one (ACCESSIBILITY.md point 16): when the current
-            // warning set is exactly the one already dismissed this
-            // session, the live region carries nothing -- on the very
-            // first load of a session exactly as much as on any later
-            // swap, which is what makes the reload case above hold.
-            var effectiveText = dismissed ? '' : text;
-            if (region && effectiveText !== lastWarningsText) {
-                region.textContent = effectiveText;
-                lastWarningsText = effectiveText;
-            }
-
-            var banner = document.getElementById('accounts-warnings-banner');
-            if (!banner) return;
-            if (dismissed) {
-                banner.remove();
-                return;
-            }
-            var dismissBtn = banner.querySelector('[data-dismiss-warnings]');
-            if (dismissBtn) {
-                dismissBtn.addEventListener('click', function () {
-                    try { sessionStorage.setItem('accounts-warnings-dismissed', key); } catch (e) {}
-
-                    // ACCESSIBILITY.md point 10: dismissing is a
-                    // state-changing action and must announce its own
-                    // result, and must not leave a live region asserting a
-                    // warning that is no longer visible. Re-use the same
-                    // region the warning itself was announced from (a
-                    // second sr-only region would just be one more thing to
-                    // keep in sync) and overwrite the stale warning text
-                    // with a short confirmation phrased to match the
-                    // banner ("Pattern overlap warning") and its dismiss
-                    // button ("Dismiss pattern overlap warning") -- earlier
-                    // this said "Account overlap warning dismissed.",
-                    // wording used nowhere else in the UI, chosen only to
-                    // dodge a test that string-scanned the whole response
-                    // body including the always-served <script> block; the
-                    // test is scoped correctly now (see
-                    // TestHandlePage_RendererMode_NoOverlapRendersNoWarningBlock),
-                    // so the natural, consistent wording is used instead.
-                    // lastWarningsText is updated to '' here too (matching
-                    // effectiveText for a now-dismissed set), not left
-                    // pointing at the dismissed warning's text: a later
-                    // syncWarnings() call for this same still-dismissed key
-                    // must keep computing effectiveText === '' and see "no
-                    // change" against a lastWarningsText that also already
-                    // reads ''.
-                    if (region) {
-                        region.textContent = 'Pattern overlap warning dismissed.';
-                        lastWarningsText = '';
-                    }
-
-                    // Move focus to the heading of the section that sits
-                    // immediately after the banner in the document (see
-                    // accounts-list-partial: the "Add an account" section
-                    // follows directly after #accounts-warnings-banner /
-                    // #accounts-warnings-data). The banner itself is about
-                    // to be removed, so it can no longer hold focus;
-                    // without this, focus would fall back to <body> and the
-                    // next Tab would restart from the top of the document
-                    // instead of continuing from where the banner was.
-                    // Chosen over the page's own <h1> (too far back, undoes
-                    // more of the user's position than necessary) and over
-                    // the dismiss button itself (about to be detached).
-                    // Mirrors the existing htmx:afterSwap fallback below,
-                    // which does the same tabindex="-1" + focus() dance for
-                    // #accounts-list-heading.
-                    var next = document.getElementById('accounts-new-heading');
-                    if (next) {
-                        next.setAttribute('tabindex', '-1');
-                        try { next.focus(); } catch (e) {}
-                    }
-
-                    banner.remove();
-                });
-            }
-        }
-        syncWarnings();
-
-        document.body.addEventListener('htmx:afterSwap', function (evt) {
-            var target = evt.detail && evt.detail.target;
-            if (!target || target.id !== 'accounts-list') return;
-            syncWarnings();
-            // Prefer the field flagged for the error (data-focus-target
-            // mirrors ErrorField); fall back to any aria-invalid field;
-            // otherwise land on the list heading.
-            var focusable = target.querySelector('[data-focus-target]')
-                || target.querySelector('[aria-invalid="true"]');
-            if (focusable) {
-                try { focusable.focus(); } catch (e) {}
-                return;
-            }
-            var heading = target.querySelector('#accounts-list-heading');
-            if (heading) {
-                heading.setAttribute('tabindex', '-1');
-                try { heading.focus(); } catch (e) {}
-            }
-        });
-    })();
-</script>
+<script src="/static/js/accounts.js" defer></script>
 {{end}}
 
 {{/* accounts-list-partial is the HTMX swap target for every mutation.
@@ -343,14 +152,14 @@
     {{/* Re-announce errors inside the swapped region too, so a mutation
          that fails validation surfaces the message in-place. */}}
     {{if .Error}}
-    <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4" role="alert">
+    <div class="bg-negative-soft border border-negative rounded-lg p-4" role="alert">
         <div class="flex items-center gap-2">
-            <svg class="w-5 h-5 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <svg class="w-5 h-5 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
-            <span class="font-medium text-red-700 dark:text-red-300">There&rsquo;s a problem with your submission</span>
+            <span class="font-medium text-negative">There&rsquo;s a problem with your submission</span>
         </div>
-        <p class="mt-2 text-sm text-red-600 dark:text-red-400">{{.Error}}</p>
+        <p class="mt-2 text-sm text-negative">{{.Error}}</p>
     </div>
     {{end}}
 
@@ -376,28 +185,28 @@
          the session and only for this exact set of warnings; a changed
          warning set is a state change and reappears/re-announces. */}}
     {{if .Warnings}}
-    <div id="accounts-warnings-banner" class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+    <div id="accounts-warnings-banner" class="bg-warning-soft border border-warning rounded-lg p-4">
         <div class="flex items-start gap-3">
-            <svg class="w-5 h-5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <svg class="w-5 h-5 text-warning flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"></path>
             </svg>
             <div class="flex-1 min-w-0">
-                <span class="font-medium text-amber-700 dark:text-amber-300">Pattern overlap warning</span>
-                <ul class="mt-2 text-sm text-amber-700 dark:text-amber-300 list-disc list-inside">
+                <span class="font-medium text-warning">Pattern overlap warning</span>
+                <ul class="mt-2 text-sm text-warning list-disc list-inside">
                     {{range .Warnings}}<li>{{.}}</li>{{end}}
                 </ul>
-                {{/* text-amber-700 (not -600): -600 on amber-50 measures
+                {{/* text-warning (not -600): -600 on amber-50 measures
                      3.07:1, below point 7's 4.5:1 body-text floor. -700
                      measures 4.84:1, matching the list text above it.
                      Dark theme is unchanged (-400 on the dark amber
                      background measures 9.25:1, already passing). */}}
-                <p class="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                <p class="mt-2 text-body-sm text-warning">
                     First match still wins by account-ID order, so loading is deterministic.
                     Tighten the patterns if this is unintended.
                 </p>
             </div>
             <button type="button" data-dismiss-warnings
-                class="flex-shrink-0 text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200 rounded p-1 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                class="flex-shrink-0 text-warning hover:text-warning rounded p-1 focus:outline-none focus:ring-2 focus:ring-warning"
                 aria-label="Dismiss pattern overlap warning">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -418,26 +227,49 @@
         data-warnings-text="{{if .Warnings}}Pattern overlap warning: {{range $i, $w := .Warnings}}{{if $i}}; {{end}}{{$w}}{{end}}{{end}}"
         data-warnings-key="{{.WarningsKey}}"></span>
 
-    {{/* Create form. Always visible so the user can add an account. */}}
+    {{/* Create form (U12): behind a disclosure button so the page opens on
+         the task the user came to do (review existing accounts), not a
+         setup form. Hidden by default via the `hidden` attribute (markup
+         stays in the response either way, so every existing handler test
+         that scans the response body for field ids/labels/help text is
+         unaffected); revealed by accounts.js's delegated toggle handler,
+         which also un-hides this panel and flips the button back to
+         aria-expanded="true" if a failed submit needs to focus a field
+         inside it (ACCESSIBILITY.md point 5). */}}
     <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4" aria-labelledby="accounts-new-heading">
-        <h2 id="accounts-new-heading" class="text-lg font-medium text-gray-800 dark:text-gray-100">Add an account</h2>
-        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="accounts-new-heading" class="text-lg font-medium text-gray-800 dark:text-gray-100">Add an account</h2>
+            {{/* U12 attempt 2 (ruling U-2026-09-05n): aria-expanded and
+                 the panel's `hidden` attribute both derive from whether
+                 THIS form (ErrorAccountID == "") is the one that errored,
+                 so a failed add-account submit opens this panel server-side
+                 -- accounts.js's revealAncestorPanel is then a no-op, not
+                 the only thing standing between the error and visibility. */}}
+            <button type="button"
+                data-toggle-target="accounts-new-form-panel"
+                aria-expanded="{{if and .ErrorField (eq .ErrorAccountID "")}}true{{else}}false{{end}}"
+                aria-controls="accounts-new-form-panel"
+                class="inline-flex items-center px-3 py-1.5 bg-accent-strong text-white rounded-md hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent">
+                Add an account
+            </button>
+        </div>
+        <div id="accounts-new-form-panel" data-toggle-panel {{if not (and .ErrorField (eq .ErrorAccountID ""))}}hidden{{end}} class="mt-4">
+        <p class="text-sm text-gray-600 dark:text-gray-400">
             Required fields are marked with an asterisk (*).
         </p>
         <form hx-post="/accounts" hx-target="#accounts-list" hx-swap="innerHTML" class="mt-4 space-y-4">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label for="acct-new-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Account ID <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                        Account ID <span aria-hidden="true" class="text-negative">*</span>
                         <span class="sr-only">(required)</span>
                     </label>
                     <input type="text" id="acct-new-id" name="id" required
                         autocomplete="off"
-                        data-focus-target="id"
                         aria-describedby="acct-new-id-help"
-                        {{if eq .ErrorField "id"}}aria-invalid="true"{{end}}
-                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                    <p id="acct-new-id-help" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                        {{if and (eq .ErrorField "id") (eq .ErrorAccountID "")}}data-focus-target="id" aria-invalid="true"{{end}}
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
+                    <p id="acct-new-id-help" class="mt-1 text-body-sm text-gray-600 dark:text-gray-400">
                         A stable slug, e.g. <code>usaa-checking</code>. Transactions and
                         your saved decisions reference it, so it must be unique and should
                         not be renamed casually.
@@ -445,30 +277,29 @@
                 </div>
                 <div>
                     <label for="acct-new-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Name <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                        Name <span aria-hidden="true" class="text-negative">*</span>
                         <span class="sr-only">(required)</span>
                     </label>
                     <input type="text" id="acct-new-name" name="name" required
                         autocomplete="off"
-                        data-focus-target="name"
-                        {{if eq .ErrorField "name"}}aria-invalid="true"{{end}}
-                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        {{if and (eq .ErrorField "name") (eq .ErrorAccountID "")}}data-focus-target="name" aria-invalid="true"{{end}}
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
                 </div>
                 <div>
                     <label for="acct-new-institution" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Institution</label>
                     <input type="text" id="acct-new-institution" name="institution"
                         autocomplete="off"
-                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
                 </div>
                 <div>
                     <label for="acct-new-kind" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Kind</label>
                     <select id="acct-new-kind" name="kind"
-                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
                         {{range .AccountKinds}}
                         <option value="{{.}}">{{title (printf "%s" .)}}</option>
                         {{end}}
                     </select>
-                    <p class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                    <p class="mt-1 text-body-sm text-gray-600 dark:text-gray-400">
                         <code>credit</code> forces the credit-card sign convention
                         for this account&rsquo;s files, overriding the &ge;70%-positive
                         heuristic. Other kinds leave the heuristic alone.
@@ -481,9 +312,9 @@
                 </label>
                 <textarea id="acct-new-patterns" name="file_patterns" rows="3"
                     aria-describedby="acct-new-patterns-help"
-                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent"
                     placeholder="usaa-checking*.csv&#10;usaa"></textarea>
-                <p id="acct-new-patterns-help" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                <p id="acct-new-patterns-help" class="mt-1 text-body-sm text-gray-600 dark:text-gray-400">
                     One pattern per line. Patterns are matched case-insensitively
                     against the CSV filename: a glob first (<code>path.Match</code>),
                     then a plain substring as a fallback. A pattern like
@@ -497,9 +328,9 @@
                 <input type="number" id="acct-new-threshold" name="low_balance_threshold"
                     step="0.01" min="0"
                     aria-describedby="acct-new-threshold-help"
-                    {{if eq .ErrorField "low_balance_threshold"}}data-focus-target="low_balance_threshold" aria-invalid="true"{{end}}
-                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                <p id="acct-new-threshold-help" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                    {{if and (eq .ErrorField "low_balance_threshold") (eq .ErrorAccountID "")}}data-focus-target="low_balance_threshold" aria-invalid="true"{{end}}
+                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
+                <p id="acct-new-threshold-help" class="mt-1 text-body-sm text-gray-600 dark:text-gray-400">
                     Enter a dollar amount, e.g. <code>500</code>. Leave blank or enter
                     <code>0</code> to use the default of ${{printf "%.0f" .DefaultThreshold}}.
                     Only meaningful for checking and savings accounts.
@@ -507,11 +338,12 @@
             </div>
             <div>
                 <button type="submit"
-                    class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                    class="inline-flex items-center px-4 py-2 bg-accent-strong text-white rounded-md hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent">
                     Add account
                 </button>
             </div>
         </form>
+        </div>
     </section>
 
     {{/* Existing accounts. */}}
@@ -523,13 +355,18 @@
         <ul class="mt-3 space-y-4">
             {{$root := .}}
             {{range $acct := .Accounts}}
+            {{/* Summary card (U12): name, kind, matched-file count and
+                 latest anchor up front; the full edit form (name,
+                 institution, kind, threshold, patterns) is the existing
+                 form from before U12, unchanged, just moved behind the
+                 Edit toggle below. */}}
             <li class="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
                 <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
+                    <div class="min-w-0">
                         <h3 class="text-base font-medium text-gray-800 dark:text-gray-100">
                             {{$acct.Account.Name}}
                             {{if $acct.IsFirst}}
-                            <span class="ml-2 text-xs text-gray-600 dark:text-gray-400">(first match wins)</span>
+                            <span class="ml-2 text-body-sm text-gray-600 dark:text-gray-400">(first match wins)</span>
                             {{end}}
                         </h3>
                         <p class="text-sm text-gray-600 dark:text-gray-400">
@@ -537,30 +374,80 @@
                             {{if $acct.Account.Institution}}&middot; {{$acct.Account.Institution}}{{end}}
                             &middot; <span class="font-mono">{{$acct.Account.Kind}}</span>
                         </p>
+                        <dl class="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-body-sm text-gray-600 dark:text-gray-400">
+                            <div class="flex gap-1">
+                                <dt class="font-medium text-gray-700 dark:text-gray-300">Matched files:</dt>
+                                <dd>{{len $acct.MatchedFiles}}</dd>
+                            </div>
+                            <div class="flex gap-1">
+                                <dt class="font-medium text-gray-700 dark:text-gray-300">Latest anchor:</dt>
+                                {{if $acct.Account.Anchors}}
+                                {{/* Account.Anchors is kept sorted ascending
+                                     by Date (internal/models/account.go), so
+                                     the last one visited by this range is
+                                     the latest. Reassigning a var across a
+                                     range (not `index`+`sub`, whose float64
+                                     result `index` cannot use to subscript a
+                                     slice) is the safe way to grab it. */}}
+                                {{$latestAnchor := index $acct.Account.Anchors 0}}
+                                {{range $acct.Account.Anchors}}{{$latestAnchor = .}}{{end}}
+                                <dd>{{formatDate $latestAnchor.Date}} &middot; {{formatMoney $latestAnchor.Amount}}</dd>
+                                {{else}}
+                                <dd>No anchor set</dd>
+                                {{end}}
+                            </div>
+                        </dl>
                     </div>
+                    {{/* U12 attempt 2 (ruling U-2026-09-05n): aria-expanded
+                         and the panel's `hidden` attribute below both derive
+                         from whether THIS account's EDIT-SETTINGS form (not
+                         its always-visible anchor form, which sets
+                         ErrorAccountID too via handleAddAnchor but errors on
+                         "anchor_date"/"anchor_amount", fields that live
+                         outside this panel) is the one that errored, so a
+                         failed edit submit for account X opens X's panel
+                         server-side -- every OTHER account's panel stays
+                         collapsed, an anchor-form error does not pop this
+                         panel open for nothing, and accounts.js's
+                         revealAncestorPanel is a no-op rather than the only
+                         thing standing between the error and visibility. */}}
+                    {{$editErrored := and (eq $root.ErrorAccountID $acct.Account.ID) (or (eq $root.ErrorField "name") (eq $root.ErrorField "low_balance_threshold"))}}
+                    <button type="button"
+                        data-toggle-target="acct-edit-panel-{{$acct.Account.ID}}"
+                        aria-expanded="{{if $editErrored}}true{{else}}false{{end}}"
+                        aria-controls="acct-edit-panel-{{$acct.Account.ID}}"
+                        class="flex-shrink-0 inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-accent">
+                        Edit<span class="sr-only"> {{$acct.Account.Name}}</span>
+                    </button>
                 </div>
 
-                {{/* Edit form. */}}
+                {{/* Edit form, hidden by default behind the Edit toggle
+                     above (U12). Markup and hx wiring are unchanged from
+                     before U12; accounts.js's delegated toggle handler
+                     reveals this panel (and re-reveals it, flipping the
+                     button back to aria-expanded="true", if a failed
+                     submit needs to focus a field inside it). */}}
+                <div id="acct-edit-panel-{{$acct.Account.ID}}" data-toggle-panel {{if not $editErrored}}hidden{{end}}>
                 <form hx-post="/accounts/{{$acct.Account.ID}}" hx-target="#accounts-list" hx-swap="innerHTML" class="mt-3 space-y-4">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label for="acct-edit-name-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Name <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                                Name <span aria-hidden="true" class="text-negative">*</span>
                                 <span class="sr-only">(required)</span>
                             </label>
                             <input type="text" id="acct-edit-name-{{$acct.Account.ID}}" name="name" value="{{$acct.Account.Name}}" required
-                                {{if and (eq $root.ErrorField "name") (eq $root.ConfirmDeleteID "")}}data-focus-target="name" aria-invalid="true"{{end}}
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                {{if and (eq $root.ErrorField "name") (eq $root.ErrorAccountID $acct.Account.ID)}}data-focus-target="name" aria-invalid="true"{{end}}
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
                         </div>
                         <div>
                             <label for="acct-edit-institution-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Institution</label>
                             <input type="text" id="acct-edit-institution-{{$acct.Account.ID}}" name="institution" value="{{$acct.Account.Institution}}"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
                         </div>
                         <div>
                             <label for="acct-edit-kind-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Kind</label>
                             <select id="acct-edit-kind-{{$acct.Account.ID}}" name="kind"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
                                 {{range $root.AccountKinds}}
                                 <option value="{{.}}" {{if eq . $acct.Account.Kind}}selected{{end}}>{{title (printf "%s" .)}}</option>
                                 {{end}}
@@ -574,8 +461,8 @@
                                 step="0.01" min="0"
                                 value="{{if gt $acct.Account.LowBalanceThreshold 0.0}}{{printf "%.2f" $acct.Account.LowBalanceThreshold}}{{end}}"
                                 aria-describedby="acct-edit-threshold-help-{{$acct.Account.ID}}"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                            <p id="acct-edit-threshold-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
+                            <p id="acct-edit-threshold-help-{{$acct.Account.ID}}" class="mt-1 text-body-sm text-gray-600 dark:text-gray-400">
                                 Blank or <code>0</code> uses the default (${{printf "%.0f" $root.DefaultThreshold}}).
                             </p>
                         </div>
@@ -586,18 +473,19 @@
                         </label>
                         <textarea id="acct-edit-patterns-{{$acct.Account.ID}}" name="file_patterns" rows="3"
                             aria-describedby="acct-edit-patterns-help-{{$acct.Account.ID}}"
-                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">{{range $acct.Account.FilePatterns}}{{.}}&#10;{{end}}</textarea>
-                        <p id="acct-edit-patterns-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">{{range $acct.Account.FilePatterns}}{{.}}&#10;{{end}}</textarea>
+                        <p id="acct-edit-patterns-help-{{$acct.Account.ID}}" class="mt-1 text-body-sm text-gray-600 dark:text-gray-400">
                             One per line. Glob (<code>path.Match</code>) first, substring fallback.
                         </p>
                     </div>
                     <div class="flex items-center gap-2">
                         <button type="submit"
-                            class="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                            class="inline-flex items-center px-3 py-1.5 bg-accent-strong text-white rounded-md hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent">
                             Save changes
                         </button>
                     </div>
                 </form>
+                </div>
 
                 {{/* Pattern editor: live matches for THIS account. */}}
                 <div class="mt-4">
@@ -616,7 +504,7 @@
                 {{/* Anchors. */}}
                 <div class="mt-4">
                     <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">Balance anchors</h4>
-                    <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-1">
                         An anchor records the balance at the <strong>end</strong> of the
                         anchor day. A transaction dated on the anchor day is already
                         reflected in the amount and is not added again when rolling the
@@ -643,7 +531,7 @@
                                     <form hx-post="/accounts/{{$acct.Account.ID}}/anchor/{{.Date.Format "2006-01-02"}}/delete" hx-target="#accounts-list" hx-swap="innerHTML" class="inline">
                                         <button type="submit"
                                             aria-label="Delete anchor dated {{formatDate .Date}}"
-                                            class="text-xs text-red-600 dark:text-red-400 hover:underline focus:outline-none focus:ring-2 focus:ring-red-400 rounded">
+                                            class="text-xs text-negative hover:underline focus:outline-none focus:ring-2 focus:ring-negative rounded">
                                             Delete
                                         </button>
                                     </form>
@@ -659,40 +547,40 @@
                     <form hx-post="/accounts/{{$acct.Account.ID}}/anchor" hx-target="#accounts-list" hx-swap="innerHTML" class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
                         <div class="md:col-span-1">
                             <label for="acct-anchor-date-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Anchor date <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                                Anchor date <span aria-hidden="true" class="text-negative">*</span>
                                 <span class="sr-only">(required)</span>
                             </label>
                             <input type="date" id="acct-anchor-date-{{$acct.Account.ID}}" name="anchor_date" required
                                 pattern="\d{4}-\d{2}-\d{2}"
                                 aria-describedby="acct-anchor-date-help-{{$acct.Account.ID}}"
                                 {{if eq $root.ErrorField "anchor_date"}}data-focus-target="anchor_date" aria-invalid="true"{{end}}
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                            <p id="acct-anchor-date-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
+                            <p id="acct-anchor-date-help-{{$acct.Account.ID}}" class="mt-1 text-body-sm text-gray-600 dark:text-gray-400">
                                 Format: YYYY-MM-DD.
                             </p>
                         </div>
                         <div class="md:col-span-1">
                             <label for="acct-anchor-amount-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Amount <span aria-hidden="true" class="text-red-600 dark:text-red-400">*</span>
+                                Amount <span aria-hidden="true" class="text-negative">*</span>
                                 <span class="sr-only">(required)</span>
                             </label>
                             <input type="number" id="acct-anchor-amount-{{$acct.Account.ID}}" name="anchor_amount" required
                                 step="0.01"
                                 aria-describedby="acct-anchor-amount-help-{{$acct.Account.ID}}"
                                 {{if eq $root.ErrorField "anchor_amount"}}data-focus-target="anchor_amount" aria-invalid="true"{{end}}
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
-                            <p id="acct-anchor-amount-help-{{$acct.Account.ID}}" class="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
+                            <p id="acct-anchor-amount-help-{{$acct.Account.ID}}" class="mt-1 text-body-sm text-gray-600 dark:text-gray-400">
                                 Dollars, bank convention (positive = money you have), e.g. <code>4210.55</code>.
                             </p>
                         </div>
                         <div class="md:col-span-1">
                             <label for="acct-anchor-note-{{$acct.Account.ID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Note (optional)</label>
                             <input type="text" id="acct-anchor-note-{{$acct.Account.ID}}" name="anchor_note"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:ring-accent focus:border-accent">
                         </div>
                         <div class="md:col-span-1">
                             <button type="submit"
-                                class="inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                class="inline-flex items-center px-3 py-1.5 bg-accent-strong text-white rounded-md hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent">
                                 Add anchor
                             </button>
                         </div>
@@ -702,8 +590,8 @@
                 {{/* Delete flow with explicit confirm. */}}
                 <div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
                     {{if eq $root.ConfirmDeleteID $acct.Account.ID}}
-                    <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-3" role="alert">
-                        <p class="text-sm font-medium text-red-700 dark:text-red-300">
+                    <div class="bg-negative-soft border border-negative rounded-lg p-3" role="alert">
+                        <p class="text-sm font-medium text-negative">
                             Deleting an account is destructive: its transactions become
                             unassigned. This cannot be undone.
                         </p>
@@ -711,13 +599,13 @@
                             <form hx-post="/accounts/{{$acct.Account.ID}}/delete" hx-target="#accounts-list" hx-swap="innerHTML" class="inline">
                                 <input type="hidden" name="confirm" value="yes">
                                 <button type="submit"
-                                    class="inline-flex items-center px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-400">
+                                    class="inline-flex items-center px-3 py-1.5 bg-negative-strong text-white rounded-md hover:bg-negative-strong focus:outline-none focus:ring-2 focus:ring-negative">
                                     Yes, delete &ldquo;{{$acct.Account.Name}}&rdquo;
                                 </button>
                             </form>
                             <form hx-post="/accounts/{{$acct.Account.ID}}/delete" hx-target="#accounts-list" hx-swap="innerHTML" class="inline">
                                 <button type="submit"
-                                    class="inline-flex items-center px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                                    class="inline-flex items-center px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-accent">
                                     Cancel
                                 </button>
                             </form>
@@ -727,7 +615,7 @@
                     <form hx-post="/accounts/{{$acct.Account.ID}}/delete" hx-target="#accounts-list" hx-swap="innerHTML" class="inline">
                         <button type="submit"
                             aria-label="Delete account {{$acct.Account.Name}} (asks for confirmation)"
-                            class="inline-flex items-center px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-red-600 dark:text-red-400 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-red-400">
+                            class="inline-flex items-center px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-negative rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-negative">
                             Delete account
                         </button>
                     </form>

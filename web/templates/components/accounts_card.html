@@ -37,11 +37,11 @@
                     {{/* Data freshness: "data through Aug 12". Empty when no
                          transactions belong to the account. */}}
                     {{if .HasFreshness}}
-                    <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                    <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-0.5">
                         Data through {{formatDate .Freshness}}
                     </p>
                     {{else}}
-                    <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                    <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-0.5">
                         No transactions loaded for this account
                     </p>
                     {{end}}
@@ -55,7 +55,7 @@
                     <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{formatMoney .Balance}}</p>
                     {{else}}
                     <p class="text-sm font-semibold text-gray-600 dark:text-gray-400">Balance unknown</p>
-                    <p class="text-xs text-gray-600 dark:text-gray-400">Set an anchor on the <a href="/accounts" class="underline text-indigo-600 dark:text-indigo-400">accounts page</a></p>
+                    <p class="text-body-sm text-gray-600 dark:text-gray-400">Set an anchor on the <a href="/accounts" class="underline text-accent">accounts page</a></p>
                     {{end}}
                 </div>
             </div>
@@ -64,14 +64,14 @@
                  color alone (ACCESSIBILITY.md point 8). State precedence is
                  no-anchor > stale > low > healthy; only one flag shows. */}}
             {{if eq $state "low"}}
-            <div class="mt-2 flex items-center gap-1.5 text-sm text-red-700 dark:text-red-400">
+            <div class="mt-2 flex items-center gap-1.5 text-sm text-negative">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"></path>
                 </svg>
                 <span>Below the ${{printf "%.0f" .Threshold}} low-balance threshold</span>
             </div>
             {{else if eq $state "stale"}}
-            <div class="mt-2 flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-400">
+            <div class="mt-2 flex items-center gap-1.5 text-sm text-warning">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l0 4m-9-4a9 9 0 1118 0 9 9 0 01-18 0z"></path>
                 </svg>
@@ -91,7 +91,7 @@
                  renders text, never a number. */}}
             {{if .Projection}}
             {{$projState := .ProjectionState}}
-            <div class="mt-1.5 text-xs text-gray-600 dark:text-gray-400">
+            <div class="mt-1.5 text-body-sm text-gray-600 dark:text-gray-400">
                 {{if eq $projState "crossing"}}
                 Drops below ${{printf "%.0f" .Projection.Threshold}} around {{formatDate .Projection.Crossing}}
                 &mdash; {{if .Projection.HasReference}}you usually move ${{printf "%.0f" .Projection.ReferenceAmount}}.{{else}}no prior transfers to reference.{{end}}

@@ -5,66 +5,66 @@
 {{- $t := .Analysis.Tax -}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Income Taxes</h2>
-    <p class="text-xs text-gray-600 dark:text-gray-300 mb-3">Projected federal and state income tax over the plan. Excludes IRMAA Medicare surcharges (shown separately).</p>
+    <p class="text-body-sm text-gray-600 dark:text-gray-300 mb-3">Projected federal and state income tax over the plan. Excludes IRMAA Medicare surcharges (shown separately).</p>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-        <div class="text-center p-3 bg-rose-50 dark:bg-rose-900/20 rounded-lg border border-rose-200 dark:border-rose-800">
-            <p class="text-xs text-rose-600 dark:text-rose-300 uppercase">Total Income Tax</p>
-            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{formatDollars $t.TotalTaxPaid}}</p>
+        <div class="text-center p-3 bg-negative-soft rounded-lg border border-negative">
+            <p class="text-body-sm text-negative uppercase">Total Income Tax</p>
+            <p class="text-xl font-bold text-negative">{{formatDollars $t.TotalTaxPaid}}</p>
         </div>
-        <div class="text-center p-3 bg-rose-50 dark:bg-rose-900/20 rounded-lg border border-rose-200 dark:border-rose-800">
-            <p class="text-xs text-rose-600 dark:text-rose-300 uppercase">Federal</p>
-            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{formatDollars $t.TotalFederalTaxPaid}}</p>
+        <div class="text-center p-3 bg-negative-soft rounded-lg border border-negative">
+            <p class="text-body-sm text-negative uppercase">Federal</p>
+            <p class="text-xl font-bold text-negative">{{formatDollars $t.TotalFederalTaxPaid}}</p>
         </div>
-        <div class="text-center p-3 bg-rose-50 dark:bg-rose-900/20 rounded-lg border border-rose-200 dark:border-rose-800">
-            <p class="text-xs text-rose-600 dark:text-rose-300 uppercase">State</p>
-            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{formatDollars $t.TotalStateTaxPaid}}</p>
+        <div class="text-center p-3 bg-negative-soft rounded-lg border border-negative">
+            <p class="text-body-sm text-negative uppercase">State</p>
+            <p class="text-xl font-bold text-negative">{{formatDollars $t.TotalStateTaxPaid}}</p>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <p class="text-xs text-gray-600 dark:text-gray-300 uppercase">Avg Effective Rate</p>
-            <p class="text-xl font-bold text-amber-600 dark:text-amber-400">{{printf "%.1f" $t.AverageEffectiveRate}}%</p>
+            <p class="text-body-sm text-gray-600 dark:text-gray-300 uppercase">Avg Effective Rate</p>
+            <p class="text-xl font-bold text-warning">{{printf "%.1f" $t.AverageEffectiveRate}}%</p>
         </div>
     </div>
 
     {{if $t.YearlyTaxSummary}}
     {{with $t.NearestCliff}}
-    <div class="mb-3 rounded-md border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
-        <p class="text-sm text-amber-800 dark:text-amber-200">
+    <div class="mb-3 rounded-md border border-warning bg-warning-soft px-3 py-2">
+        <p class="text-sm text-warning">
             Closest approach to a cost step: in <span class="font-semibold">{{.Year}}</span> (age {{.Age}}) this plan is
             <span class="font-semibold">{{formatDollars .Headroom}}</span> under {{.Label}}.
             Crossing it costs <span class="font-semibold">{{formatDollars .AnnualCost}}</span> for that year.
         </p>
-        <p class="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">
+        <p class="mt-1 text-body-sm text-warning">
             A step, not a ramp &mdash; one dollar over costs the whole amount. IRMAA is billed on income from two years earlier, so the year to act is two before the surcharge lands.
         </p>
     </div>
     {{end}}
-    <div class="overflow-x-auto max-h-96 overflow-y-auto">
+    <div class="overflow-x-auto max-h-96 overflow-y-auto" tabindex="0" role="region" aria-label="Tax summary">
         <table class="w-full text-sm">
             <thead>
                 <tr class="text-left text-gray-600 dark:text-gray-300 border-b dark:border-gray-600">
-                    <th class="pb-2 font-medium">Age</th>
-                    <th class="pb-2 font-medium text-right">Year</th>
-                    <th class="pb-2 font-medium text-right">Taxable Income</th>
-                    <th class="pb-2 font-medium text-right">Federal</th>
-                    <th class="pb-2 font-medium text-right">State</th>
-                    <th class="pb-2 font-medium text-right">Total Tax</th>
-                    <th class="pb-2 font-medium text-right">Eff. Rate</th>
-                    <th class="pb-2 font-medium text-right">Marginal</th>
-                    <th class="pb-2 font-medium text-right">On Gains</th>
+                    <th scope="col" class="pb-2 font-medium">Age</th>
+                    <th scope="col" class="pb-2 font-medium text-right">Year</th>
+                    <th scope="col" class="pb-2 font-medium text-right">Taxable Income</th>
+                    <th scope="col" class="pb-2 font-medium text-right">Federal</th>
+                    <th scope="col" class="pb-2 font-medium text-right">State</th>
+                    <th scope="col" class="pb-2 font-medium text-right">Total Tax</th>
+                    <th scope="col" class="pb-2 font-medium text-right">Eff. Rate</th>
+                    <th scope="col" class="pb-2 font-medium text-right">Marginal</th>
+                    <th scope="col" class="pb-2 font-medium text-right">On Gains</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                 {{$rmdStartAge := -1}}
                 {{if $.Analysis.RMD}}{{$rmdStartAge = $.Analysis.RMD.StartAge}}{{end}}
                 {{range $t.YearlyTaxSummary}}
-                <tr class="text-gray-700 dark:text-gray-300 {{if eq .Age $rmdStartAge}}bg-amber-50 dark:bg-amber-900/20{{end}}">
-                    <td class="py-2 font-medium whitespace-nowrap">{{.Age}}{{if eq .Age $rmdStartAge}}<span class="ml-1.5 inline-block rounded bg-amber-100 dark:bg-amber-800/60 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300 align-middle">RMDs begin</span>{{end}}</td>
+                <tr class="text-gray-700 dark:text-gray-300 {{if eq .Age $rmdStartAge}}bg-warning-soft{{end}}">
+                    <td class="py-2 font-medium whitespace-nowrap">{{.Age}}{{if eq .Age $rmdStartAge}}<span class="ml-1.5 inline-block rounded bg-warning-soft px-1.5 py-0.5 text-label font-semibold text-warning align-middle">RMDs begin</span>{{end}}</td>
                     <td class="py-2 text-right text-gray-600 dark:text-gray-400">{{.Year}}</td>
                     <td class="py-2 text-right">{{formatDollars .TaxableIncome}}</td>
-                    <td class="py-2 text-right text-rose-600 dark:text-rose-400">{{formatDollars .FederalTax}}</td>
-                    <td class="py-2 text-right text-rose-600 dark:text-rose-400">{{formatDollars .StateTax}}</td>
-                    <td class="py-2 text-right font-semibold text-rose-600 dark:text-rose-400">{{formatDollars .TotalTax}}</td>
+                    <td class="py-2 text-right text-negative">{{formatDollars .FederalTax}}</td>
+                    <td class="py-2 text-right text-negative">{{formatDollars .StateTax}}</td>
+                    <td class="py-2 text-right font-semibold text-negative">{{formatDollars .TotalTax}}</td>
                     <td class="py-2 text-right">{{printf "%.1f" .EffectiveRate}}%</td>
                     <td class="py-2 text-right text-gray-600 dark:text-gray-400">{{printf "%.0f" .MarginalRate}}%</td>
                     <td class="py-2 text-right text-gray-600 dark:text-gray-400">{{printf "%.0f" .MarginalRateLongTermGain}}%</td>
@@ -74,12 +74,12 @@
         </table>
     </div>
     {{with $t.ConstantsBasis}}
-    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-2">
         Federal figures: {{.Source}}{{if .VerifiedOn}}, last verified {{.VerifiedOn}}{{end}}.
         {{if .HasProjectedYears}}Years {{.FirstProjectedYear}}&ndash;{{.LastProjectedYear}} are projected from the {{.StatutoryYear}} tables at {{printf "%.1f" .InflationRate}}%/yr &mdash; estimates, not published law. Real indexing rounds in fixed steps and some thresholds are never indexed at all.{{end}}
     </p>
     {{end}}
-    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-2">
         Taxable Income is estimated MAGI; Federal includes NIIT. Marginal is what the next dollar of ordinary income costs, and On Gains what the next dollar of realized long-term gain costs &mdash; both measured from that year&rsquo;s income, so they account for capital-gain stacking, the Social Security phase-in and NIIT. Neither is a statutory bracket and either can exceed one. State tax is $0 unless a state rate is configured.
     </p>
     {{end}}

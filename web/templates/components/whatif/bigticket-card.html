@@ -31,13 +31,13 @@
         <div>
             <span class="font-medium dark:text-gray-200">{{.Name}}</span>
             {{if eq .Type "income"}}
-            <span class="text-green-700 dark:text-green-400">+${{formatNumber .Amount}}</span>
+            <span class="text-positive">+${{formatNumber .Amount}}</span>
             {{else}}
-            <span class="text-red-600 dark:text-red-400">-${{formatNumber .Amount}}</span>
+            <span class="text-negative">-${{formatNumber .Amount}}</span>
             {{end}}
         </div>
         <button type="button" hx-delete="/whatif/bigticket/{{.ID}}" hx-target="#whatif-results"
-            class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" aria-label="Delete big ticket {{.Name}}">
+            class="text-negative hover:text-negative" aria-label="Delete big ticket {{.Name}}">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M6 18L18 6M6 6l12 12"></path>
@@ -47,8 +47,8 @@
     <div class="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-300">
         <span>Year {{.Year}}</span>
         <span class="px-1.5 py-0.5 rounded
-            {{if eq .Type "income"}}bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300
-            {{else}}bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300{{end}}">
+            {{if eq .Type "income"}}bg-positive-soft text-positive
+            {{else}}bg-negative-soft text-negative{{end}}">
             {{if eq .Type "income"}}Income{{else}}Expense{{end}}
         </span>
         {{if .TaxTreatment}}
@@ -60,7 +60,7 @@
         {{end}}
     </div>
     {{if .Notes}}
-    <p class="text-xs text-gray-600 dark:text-gray-300 mt-1 italic">{{.Notes}}</p>
+    <p class="text-body-sm text-gray-600 dark:text-gray-300 mt-1 italic">{{.Notes}}</p>
     {{end}}
 </div>
 {{end}}
@@ -69,7 +69,7 @@
 {{define "whatif-removed-bigticket"}}
 <div id="removed-bigticket" hx-swap-oob="true" class="space-y-1 mb-4 {{if not .Settings.RemovedBigTicketItems}}hidden{{end}}">
     {{if .Settings.RemovedBigTicketItems}}
-    <p class="text-xs text-gray-500 dark:text-gray-400 font-medium">Recently Removed</p>
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 font-medium">Recently Removed</p>
     {{range .Settings.RemovedBigTicketItems}}
     <div class="flex items-center justify-between p-2 bg-gray-100 dark:bg-gray-800 rounded text-sm opacity-60">
         <div>
@@ -80,7 +80,7 @@
         </div>
         <div class="flex items-center gap-1">
             <button hx-post="/whatif/bigticket/{{.ID}}/restore" hx-target="#whatif-results"
-                class="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300" title="Restore" aria-label="Restore big ticket {{.Name}}">
+                class="text-positive hover:text-positive" title="Restore" aria-label="Restore big ticket {{.Name}}">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path>
@@ -88,7 +88,7 @@
             </button>
             <button hx-delete="/whatif/bigticket/{{.ID}}/purge" hx-target="#whatif-results"
                 hx-confirm="Permanently delete {{.Name}}?"
-                class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" title="Permanently delete" aria-label="Permanently delete big ticket {{.Name}}">
+                class="text-negative hover:text-negative" title="Permanently delete" aria-label="Permanently delete big ticket {{.Name}}">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                 </svg>
@@ -118,21 +118,21 @@
     </div>
     <div class="grid grid-cols-3 gap-2">
         <div>
-            <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Year (0=now)</label>
-            <input type="number" name="year"
+            <label for="add-bigticket-year" class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Year (0=now)</label>
+            <input type="number" id="add-bigticket-year" name="year"
                 class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2" value="0" min="0" max="50">
         </div>
         <div>
-            <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Type</label>
-            <select name="type"
+            <label for="add-bigticket-type" class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Type</label>
+            <select name="type" id="add-bigticket-type"
                 class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2">
                 <option value="income">Income</option>
                 <option value="expense">Expense</option>
             </select>
         </div>
         <div>
-            <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Tax</label>
-            <select name="tax_treatment"
+            <label for="add-bigticket-tax" class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Tax</label>
+            <select name="tax_treatment" id="add-bigticket-tax"
                 class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2">
                 <option value="none">None</option>
                 <option value="ordinary">Ordinary</option>
@@ -144,7 +144,7 @@
         <input type="text" name="notes" placeholder="Notes (optional)"
             class="flex-1 mr-2 text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2">
         <button type="submit"
-            class="px-3 py-1 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+            class="px-3 py-1 bg-accent-strong text-white text-sm rounded hover:bg-accent-strong">
             Add Item
         </button>
     </div>

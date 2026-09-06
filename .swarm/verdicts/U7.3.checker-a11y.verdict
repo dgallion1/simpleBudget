@@ -1,0 +1,93 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U7
+ATTEMPT: 3
+---
+Scope: re-audit of the ruling U-2026-09-04m contract fix (kpis.html:108
+Clickable → .Metrics.HasCombinedTarget; kpi-tile.html gate → `and .Clickable
+.DetailKey`). This is the LAST Tier-2 attempt. Read-only; never ran the real
+:8080 binary; used scripts/whatif-verify.sh on :8099 and stopped it after
+(confirmed `curl :8099/api/health` fails post-stop).
+
+1. NESTED-INTERACTIVE — attempt-2 defect gone in BOTH Budget states, both
+   themes (the decider).
+   Rendered the real "kpis" partial twice through internal/templates.Renderer
+   (throwaway Go test in internal/handlers/dashboard, mirroring
+   verdict_render_test.go's own `renderer.RenderToString("kpis", ...)`
+   pattern; test file deleted immediately after, confirmed by `git status`
+   showing no stray file and the package still built clean). Fixtures held
+   everything else constant, varying only HasCombinedTarget true/false.
+   Wrapped each fragment in a real light/`class="dark"` shell linking the
+   repo's actual built web/static/css/tailwind.css + styles.css by absolute
+   path, audited with `npx @axe-core/cli` (wcag2a/2aa/21aa/22aa):
+
+     kpis-target-set.html light: total-violations=0 nested-interactive=0
+     kpis-target-set.html dark:  total-violations=0 nested-interactive=0
+     kpis-no-target.html  light: total-violations=0 nested-interactive=0
+     kpis-no-target.html  dark:  total-violations=0 nested-interactive=0
+
+   Structural confirmation (grep on the rendered fragments): no-target
+   Budget tile div is
+   `<div class="rounded-xl border ... p-4 xl:col-span-2">` — no role,
+   tabindex, data-kpi-detail, or cursor-pointer — and its sole interactive
+   child is `<a href="/whatif" class="...">Set a budget in What-If →</a>`
+   (native anchor, default focusable). Target-set fragment's Budget div
+   carries `role="button" tabindex="0" data-kpi-detail="expenses"
+   aria-label="Budget details"` and has NO nested `<a>` in that branch (the
+   `{{if .Metrics.HasCombinedTarget}}...{{else}}<a href="/whatif">...{{end}}`
+   guard renders the non-link side). The two Budget states are mutually
+   exclusive by construction — same template, same conditional gate.
+
+2. KEYBOARD OPERABILITY.
+   Live server (:8099, target-set data, HasCombinedTarget=true) via
+   Playwright: Tab walk from document start reaches, in order, the native
+   `<button data-kpi-detail="savings">` then all 5 KPI-tile divs
+   (income/expenses/living/healthcare/Budget), all `role="button"
+   tabindex=0`. Focusing the Budget tile and pressing Enter populated
+   `#kpi-detail-container` with the real `#kpi-modal` markup (9981 chars) —
+   the expenses modal opens by keyboard when a target is set. All 12
+   sortable headers on /insights are real `<button type="button">`
+   elements (grep-confirmed at insights.html:194-197,332-335,504-507) —
+   inherently keyboard-operable regardless of tab/visibility state. The 26
+   rendered `[data-navigate-href]` rows (3 markup sites) are all
+   `tr[role="link"][tabindex=0]`.
+   No-target state (isolated fragment, since the live data can't produce
+   it): the `<a href="/whatif">` is the only interactive element in the
+   tile and is a native anchor — Tab-reachable and Enter-activates by
+   browser default, no custom JS needed or present.
+
+3. FULL SITEWIDE AXE SWEEP — 9 pages × 2 themes (Playwright + axe-core,
+   theme forced via `localStorage.setItem('theme', ...)` in an
+   `addInitScript` before navigation, wcag2a/2aa/21aa/22aa):
+
+     /dashboard, /explorer, /insights, /major-expenses, /duplicates,
+     /filemanager, /accounts, /transfers: 0 violations, both themes.
+     /whatif: 3 violations both themes — IDs: label, select-name,
+       target-size, ALL on elements OUTSIDE kpis.html/kpi-tile.html
+       (portfolio-slider, healthcare current_coverage <select>,
+       person_id <select>, removed-income-source restore/delete buttons,
+       etc). `git diff master` on the owning templates
+       (portfolio-settings.html, healthcare-person.html,
+       income-sources-list.html) shows only U6 color-token swaps
+       (text-red-500→text-negative etc.) — no id/label/aria attribute
+       changed. These are exactly the pre-existing What-If settings-rail
+       gaps ruling U-2026-09-03a already attributes to U4's discovery and
+       scopes to U15/observation, not a per-task FAIL. nested-interactive:
+       0 on every page, both themes — zero regressions from this fix.
+   Server stopped after (`curl :8099/api/health` fails, confirmed).
+
+4. Attempt-1/2 work intact: `grep -c '!important' styles.css` = 0;
+   `grep -rE 'text-\[1[01]px\]'` templates/js = 0; inline `<script>` blocks
+   = 4 (base.html theme boot, unlock.html, spending-phases.html,
+   scenario-chain-card.html) ≤ the 5-block allowance; `go build ./...`
+   exit 0. shared/kpi-tile-open used 5× in kpis.html (all five tiles route
+   through the partial). The other 20 previously-fixed controls (12
+   sortable buttons, savings native button, 26 nav rows) all re-verified
+   operable above.
+
+Residual /whatif label/select-name/target-size gaps: OBSERVATION only
+(pre-existing per ruling U-2026-09-03a, confirmed via git diff master —
+not introduced by this attempt or this branch). No FAIL grounds found.
+
+VERDICT: PASS.

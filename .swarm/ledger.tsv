@@ -111,7 +111,24 @@ CB4	2	tests,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane
 CB5	2	tests,second	accepted	1	lead	gate-ok-tier2-attempt-1-dual-lane-lead-authored
 CB6	2	tests,a11y	accepted	2	worker-coder	gate-ok-tier2-attempt-2-after-a11y-ring-catch
 LB1	2	tests,second	accepted	3	worker-coder	gate-ok-tier2-attempt-3-after-T18-contract-rewrite
+U1	1	a11y	accepted	1	worker-coder	gate-ok-tier1-attempt-1-after-scope-ruling-b-checker-clean
+U2	2	a11y,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane-first-attempt-clean
+U3	2	a11y	accepted	1	worker-coder	gate-ok-tier2-attempt-1-a11y-first-attempt-clean
+U4	2	a11y	accepted	1	worker-coder	gate-ok-tier2-attempt-1-a11y-first-attempt-clean
+U5	3	tests,second	accepted	3	worker-coder	gate-ok-tier3-attempt-3-oracle-pass-dual-lane-after-two-second-FAILs
+U6	3	a11y,tests,second	accepted	4	worker-coder	gate-ok-tier3-attempt-4-dual-lane-PASS-oracle11of11; reopened after worktree-loss recovery (ruling j)
+U7	2	tests,a11y	accepted	3	worker-coder	gate-ok-tier2-attempt-3-dual-lane; a11y FAILs attempts 1(keyboard)+2(nested-interactive) drove contract rewrite ruling m
+U8	2	tests,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane
+U9	1	a11y	accepted	1	worker-coder	gate-ok-tier1-attempt-1-a11y
+U10	2	content,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane-content+second
+U11	2	tests,a11y	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane-first-attempt-clean
+U12	2	tests,a11y	accepted	2	worker-coder	gate-ok-tier2-attempt-2-dual-lane; a11y FAIL attempt-1 edit-error-stranding, fixed via ErrorAccountID (ruling n)
+U13	2	tests,a11y	accepted	2	worker-coder	gate-ok-tier2-attempt-2-dual-lane; a11y FAIL attempt-1 stale-toast, fixed via display-only JustRemovedIncome (ruling o)
+U14	3	tests,second	accepted	1	worker-coder	gate-ok-tier3-attempt-1-oracle13of13-dual-lane; irreversible guard adversarially verified
+U15	2	a11y	accepted	2	worker-coder	gate-ok-tier2-attempt-2-a11y+tests; attempt-1 a11y FAIL (3 axe viols on unexercised paths), fix1/2 real + fix3 probe-artifact (ruling p)
 OD1	2	tests,probe	accepted	1	lead	test-only-probe;live-prune-executed-2026-09-04-user-approved-25of25-bind
 CB7	2	tests,second,a11y	accepted	3	worker-coder	gate-ok-tier2-attempt-3-after-second-lane-negzero-catch-at-attempt-2
 CB8	2	tests,second	accepted	1	worker-coder	gate-ok-tier2-attempt-1-dual-lane
 CB9	2	tests,second	accepted	2	lead	gate-ok-tier2-attempt-2-lead-authored-after-dual-lane-attempt1-fail
+U7F	1	a11y	accepted	1	lead	gate-ok-tier1-attempt-1-a11y; live-verified buttons work all 4 pages; mutation-proven test
+U7F2	1	a11y	accepted	1	lead	gate-ok-tier1-attempt-1-a11y; live date-edit auto-refresh verified

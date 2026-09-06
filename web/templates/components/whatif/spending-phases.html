@@ -10,7 +10,7 @@
                     {{if and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled}}checked{{end}}
                     onchange="this.form.requestSubmit(); togglePhaseInputs(this.checked)"
                     class="sr-only peer">
-                <div class="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                <div class="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-accent rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent-strong"></div>
                 <span class="ml-2 text-sm text-gray-600 dark:text-gray-300">Enable phases</span>
             </label>
         </form>
@@ -46,7 +46,7 @@
                             hx-delete="/whatif/spending-phases/{{$i}}"
                             hx-target="#whatif-results"
                             hx-confirm="Remove this spending phase?"
-                            class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-xs"
+                            class="text-negative hover:text-negative text-xs"
                             title="Remove phase" aria-label="Remove phase">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -55,7 +55,7 @@
                         {{end}}
                     </div>
                 </div>
-                <p class="text-xs text-gray-600 dark:text-gray-300 mb-2">{{$phase.Description}}</p>
+                <p class="text-body-sm text-gray-600 dark:text-gray-300 mb-2">{{$phase.Description}}</p>
                 <input type="hidden" name="phase_{{$i}}_name" value="{{$phase.Name}}">
                 <input type="hidden" name="phase_{{$i}}_description" value="{{$phase.Description}}">
                 <div class="flex items-center gap-3">
@@ -76,7 +76,7 @@
                             class="flex-1 h-2 bg-gray-200 dark:bg-gray-500 rounded-lg appearance-none cursor-pointer"
                             oninput="updatePhaseSliderLabel(this)">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-200 w-10 text-right" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-percent">{{printf "%.0f" (mul $phase.Multiplier 100)}}%</span>
-                        <span class="text-xs text-gray-600 dark:text-gray-300 w-20 text-right phase-dollar-label" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">{{formatDollars (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo</span>
+                        <span class="text-body-sm text-gray-600 dark:text-gray-300 w-20 text-right phase-dollar-label" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">{{formatDollars (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo</span>
                     </div>
                 </div>
             </div>
@@ -89,7 +89,7 @@
             <button type="button"
                 hx-post="/whatif/spending-phases/add"
                 hx-target="#whatif-results"
-                class="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1">
+                class="text-sm text-accent hover:text-accent flex items-center gap-1">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                 </svg>
@@ -110,13 +110,13 @@
         <div class="flex items-center justify-between mb-2">
             <h3 class="text-sm font-medium text-gray-700 dark:text-gray-300">Spending Trajectory</h3>
             <div class="flex items-center gap-2">
-                <button type="button" onclick="togglePhasePreview()"
-                    class="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                <button type="button" id="phase-preview-toggle-btn"
+                    class="text-xs text-accent hover:text-accent">
                     <span id="phase-preview-toggle-text">Show</span>
                 </button>
             </div>
         </div>
-        <div id="phase-preview-panel" class="hidden text-xs">
+        <div id="phase-preview-panel" class="hidden text-body-sm">
             <style>
                 #phase-preview-panel .traj-real { display: none; }
                 #phase-preview-panel.traj-view-real .traj-real { display: inline; }
@@ -125,11 +125,11 @@
             <!-- Dollar view toggle -->
             <div class="flex items-center justify-end gap-1 mb-2">
                 <span class="text-gray-600 dark:text-gray-400 text-xs">View:</span>
-                <button type="button" id="btn-nominal" onclick="setDollarView('nominal')"
-                    class="px-2 py-0.5 rounded text-xs bg-indigo-600 text-white">
+                <button type="button" id="btn-nominal" data-dollar-view="nominal"
+                    class="px-2 py-0.5 rounded text-xs bg-accent-strong text-white">
                     Nominal $
                 </button>
-                <button type="button" id="btn-today" onclick="setDollarView('today')"
+                <button type="button" id="btn-today" data-dollar-view="today"
                     class="px-2 py-0.5 rounded text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
                     Today's $
                 </button>
@@ -138,26 +138,26 @@
                 <thead>
                     <tr class="text-gray-600 dark:text-gray-400">
                         {{if gt .Settings.SpouseAge 0}}
-                        <th class="text-left py-1">You</th>
-                        <th class="text-left py-1">Spouse</th>
+                        <th scope="col" class="text-left py-1">You</th>
+                        <th scope="col" class="text-left py-1">Spouse</th>
                         {{else}}
-                        <th class="text-left py-1">Age</th>
+                        <th scope="col" class="text-left py-1">Age</th>
                         {{end}}
-                        <th class="text-left py-1">Phase</th>
-                        <th class="text-right py-1" title="Average monthly expenses in the projection">Spend</th>
-                        <th class="text-right py-1" title="Average monthly income in the projection">Income</th>
-                        <th class="text-right py-1" title="Actual monthly portfolio withdrawal in the projection (covers the spending gap, taxes, and any forced RMD)">Draw</th>
-                        <th class="text-right py-1" title="Forced minimum distribution actually taken in the projection">RMD</th>
-                        <th class="text-right py-1" title="Withdrawal Rate: the year's portfolio draw as % of its starting balance">WR%</th>
+                        <th scope="col" class="text-left py-1">Phase</th>
+                        <th scope="col" class="text-right py-1" title="Average monthly expenses in the projection">Spend</th>
+                        <th scope="col" class="text-right py-1" title="Average monthly income in the projection">Income</th>
+                        <th scope="col" class="text-right py-1" title="Actual monthly portfolio withdrawal in the projection (covers the spending gap, taxes, and any forced RMD)">Draw</th>
+                        <th scope="col" class="text-right py-1" title="Forced minimum distribution actually taken in the projection">RMD</th>
+                        <th scope="col" class="text-right py-1" title="Withdrawal Rate: the year's portfolio draw as % of its starting balance">WR%</th>
                     </tr>
                 </thead>
                 <tbody id="phase-preview-body" class="text-gray-700 dark:text-gray-200">
                 </tbody>
             </table>
-            <p class="mt-2 text-xs text-gray-600 dark:text-gray-400 italic">
+            <p class="mt-2 text-body-sm text-gray-600 dark:text-gray-400 italic">
                 Figures come from the retirement projection (includes Roth conversions, taxes, and withdrawal order).
             </p>
-            <p id="dollar-view-note" class="mt-1 text-xs text-gray-600 dark:text-gray-400 italic hidden">
+            <p id="dollar-view-note" class="mt-1 text-body-sm text-gray-600 dark:text-gray-400 italic hidden">
                 Today's $ shows purchasing power in current dollars (inflation-adjusted)
             </p>
         </div>
@@ -178,8 +178,8 @@
     <td class="text-right py-1"><span class="traj-nominal">{{formatDollars .SpendNominal}}</span><span class="traj-real">{{formatDollars .SpendReal}}</span></td>
     <td class="text-right py-1"><span class="traj-nominal">{{formatDollars .IncomeNominal}}</span><span class="traj-real">{{formatDollars .IncomeReal}}</span></td>
     <td class="text-right py-1">{{if gt .DrawNominal 0.5}}<span class="traj-nominal">{{formatDollars .DrawNominal}}</span><span class="traj-real">{{formatDollars .DrawReal}}</span>{{else}}-{{end}}</td>
-    <td class="text-right py-1{{if gt .RMDNominal 0.5}} text-blue-600 dark:text-blue-400{{end}}" data-col="rmd">{{if gt .RMDNominal 0.5}}<span class="traj-nominal">{{formatDollars .RMDNominal}}</span><span class="traj-real">{{formatDollars .RMDReal}}</span>{{else}}-{{end}}</td>
-    <td class="text-right py-1 {{if gt .WithdrawalRate 5.0}}text-red-600 dark:text-red-400{{else if gt .WithdrawalRate 4.0}}text-amber-600 dark:text-amber-400{{else}}text-green-700 dark:text-green-400{{end}}">{{printf "%.1f" .WithdrawalRate}}%</td>
+    <td class="text-right py-1{{if gt .RMDNominal 0.5}} text-accent{{end}}" data-col="rmd">{{if gt .RMDNominal 0.5}}<span class="traj-nominal">{{formatDollars .RMDNominal}}</span><span class="traj-real">{{formatDollars .RMDReal}}</span>{{else}}-{{end}}</td>
+    <td class="text-right py-1 {{if gt .WithdrawalRate 5.0}}text-negative{{else if gt .WithdrawalRate 4.0}}text-warning{{else}}text-positive{{end}}">{{printf "%.1f" .WithdrawalRate}}%</td>
 </tr>
 {{end}}
 {{else}}
@@ -188,7 +188,13 @@
 {{end}}
 
 {{/* Trajectory refresh hook - re-rendered (OOB) on every results recalc so
-     the engine-fed Spending Trajectory table refreshes when it's open. */}}
+     the engine-fed Spending Trajectory table refreshes when it's open.
+     U7 inline-script allowance (one of the <=5 sitewide): this script IS
+     the refresh trigger — htmx re-executes an inline <script> it swaps in
+     on every OOB update, which is exactly the "call updatePhasePreview()
+     again" behavior this hook needs; a <script src> would not be re-run
+     the same way on repeat swaps, so extracting this one would regress
+     the trajectory table's live refresh. */}}
 {{define "whatif-trajectory-refresh"}}
 <script id="trajectory-refresh-script">
 if (typeof updatePhasePreview === 'function') {
@@ -202,89 +208,5 @@ if (typeof updatePhasePreview === 'function') {
 <div id="trajectory-refresh-wrapper">
 {{template "whatif-trajectory-refresh" .}}
 </div>
-<script>
-function updatePhaseSliderLabel(slider) {
-    var key = slider.dataset.quickAdjustKey;
-    if (key) {
-        var pctLabels = document.querySelectorAll('[data-quick-adjust-display="' + key + '"][data-quick-adjust-display-format="phase-percent"]');
-        pctLabels.forEach(function(label) {
-            label.textContent = Math.round(slider.value * 100) + '%';
-        });
-
-        var dollarLabels = document.querySelectorAll('[data-quick-adjust-display="' + key + '"][data-quick-adjust-display-format="phase-dollar"]');
-        if (dollarLabels.length > 0) {
-            // Canonical exact value (hidden field), not the step=100-snapped
-            // visible range.
-            var baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_value')?.value || '0');
-            var formatted = formatWholeDollars(slider.value * baseExpenses) + '/mo';
-            dollarLabels.forEach(function(label) {
-                label.textContent = formatted;
-            });
-        }
-        return;
-    }
-
-    // Fallback for any legacy slider markup without quick-adjust hooks.
-    var pctLabel = slider.nextElementSibling;
-    if (!pctLabel) return;
-    pctLabel.textContent = Math.round(slider.value * 100) + '%';
-
-    var dollarLabel = pctLabel.nextElementSibling;
-    if (dollarLabel && dollarLabel.classList.contains('phase-dollar-label')) {
-        var baseExpenses = parseFloat(document.getElementById('monthly_living_expenses_value')?.value || '0');
-        dollarLabel.textContent = formatWholeDollars(slider.value * baseExpenses) + '/mo';
-    }
-}
-
-function togglePhaseInputs(enabled) {
-    const config = document.getElementById('spending-phases-config');
-    if (enabled) {
-        config.classList.remove('opacity-50', 'pointer-events-none');
-    } else {
-        config.classList.add('opacity-50', 'pointer-events-none');
-    }
-}
-
-function togglePhasePreview() {
-    const panel = document.getElementById('phase-preview-panel');
-    const toggleText = document.getElementById('phase-preview-toggle-text');
-    if (panel.classList.contains('hidden')) {
-        panel.classList.remove('hidden');
-        toggleText.textContent = 'Hide';
-        updatePhasePreview();
-    } else {
-        panel.classList.add('hidden');
-        toggleText.textContent = 'Show';
-    }
-}
-
-function setDollarView(mode) {
-    const panel = document.getElementById('phase-preview-panel');
-    const btnNominal = document.getElementById('btn-nominal');
-    const btnToday = document.getElementById('btn-today');
-    const note = document.getElementById('dollar-view-note');
-
-    panel.classList.toggle('traj-view-real', mode === 'today');
-    if (mode === 'nominal') {
-        btnNominal.className = 'px-2 py-0.5 rounded text-xs bg-indigo-600 text-white';
-        btnToday.className = 'px-2 py-0.5 rounded text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300';
-        note.classList.add('hidden');
-    } else {
-        btnNominal.className = 'px-2 py-0.5 rounded text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300';
-        btnToday.className = 'px-2 py-0.5 rounded text-xs bg-indigo-600 text-white';
-        note.classList.remove('hidden');
-    }
-}
-
-// Fetch the Spending Trajectory rows from the engine projection. The table
-// is server-rendered from the same projection as the results column and
-// re-fetched on every recalc (the OOB whatif-trajectory-refresh script).
-function updatePhasePreview() {
-    const panel = document.getElementById('phase-preview-panel');
-    if (!panel || panel.classList.contains('hidden')) return;
-    if (window.htmx) {
-        htmx.ajax('GET', '/whatif/spending-trajectory', {target: '#phase-preview-body', swap: 'innerHTML'});
-    }
-}
-</script>
+<script src="/static/js/whatif-spending-phases.js" defer></script>
 {{end}}

@@ -11,7 +11,10 @@
     <!-- Tailwind CSS (vendored static build, see tailwind.config.js for the regen command) -->
     <link href="/static/css/tailwind.css" rel="stylesheet">
 
-    <!-- Theme initialization -->
+    <!-- Theme initialization: this unlock page does not use layouts/base.html
+         (it renders before storage is unlocked), so it carries its own copy
+         of the same pre-first-paint flash-prevention bootstrap (U7 inline-
+         script allowance, budget2-repo-relative: one of the <=5 sitewide). -->
     <script>
         (function () {
             const theme = localStorage.getItem('theme');
@@ -28,8 +31,8 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
             <!-- Lock Icon -->
             <div class="flex justify-center mb-4">
-                <div class="p-3 bg-indigo-100 dark:bg-indigo-900/50 rounded-full">
-                    <svg class="w-8 h-8 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="p-3 bg-accent-soft rounded-full">
+                    <svg class="w-8 h-8 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
                     </svg>
                 </div>
@@ -47,135 +50,31 @@
                 <div id="password-field">
                     <input type="password" name="password" id="password" required autofocus
                         placeholder="Password"
-                        class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                        class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-accent focus:border-transparent">
                 </div>
 
-                <div id="error-message" class="hidden text-sm text-red-600 dark:text-red-400 text-center"></div>
+                <div id="error-message" class="hidden text-sm text-negative text-center"></div>
 
                 <button type="submit" id="unlock-btn"
-                    class="w-full px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+                    class="w-full px-4 py-2 bg-accent-strong text-white font-medium rounded-lg hover:bg-accent-strong transition-colors focus:ring-2 focus:ring-accent focus:ring-offset-2 dark:focus:ring-offset-gray-800">
                     Unlock
                 </button>
             </form>
 
             <!-- Method indicator (shown for non-password methods) -->
             <div id="method-indicator" class="hidden mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <p class="text-xs text-center text-gray-600 dark:text-gray-400">
+                <p class="text-body-sm text-center text-gray-600 dark:text-gray-400">
                     Method: <span id="method-name" class="font-medium"></span>
                 </p>
             </div>
         </div>
 
-        <p class="text-xs text-center text-gray-600 dark:text-gray-400 mt-4">
+        <p class="text-body-sm text-center text-gray-600 dark:text-gray-400 mt-4">
             Financial Dashboard
         </p>
     </div>
 
-    <script>
-        let currentMethod = 'password';
-
-        // Detect the current auth method on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            fetch('/encryption/config')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.method) {
-                        currentMethod = data.method;
-                        updateUIForMethod(data.method);
-                    }
-                })
-                .catch(() => {
-                    // Default to password if we can't detect
-                });
-        });
-
-        function updateUIForMethod(method) {
-            const description = document.getElementById('unlock-description');
-            const passwordField = document.getElementById('password-field');
-            const passwordInput = document.getElementById('password');
-            const unlockBtn = document.getElementById('unlock-btn');
-            const methodIndicator = document.getElementById('method-indicator');
-            const methodName = document.getElementById('method-name');
-
-            switch (method) {
-                case 'age':
-                    description.textContent = 'Your age identity file will be used to unlock';
-                    passwordField.classList.add('hidden');
-                    passwordInput.required = false;
-                    unlockBtn.textContent = 'Unlock with Age Identity';
-                    methodIndicator.classList.remove('hidden');
-                    methodName.textContent = 'Age Identity File';
-                    break;
-
-                case 'ssh':
-                    description.textContent = 'Enter SSH key passphrase (if encrypted) to unlock';
-                    passwordInput.placeholder = 'SSH Key Passphrase (leave empty if unencrypted)';
-                    passwordInput.required = false;
-                    unlockBtn.textContent = 'Unlock with SSH Key';
-                    methodIndicator.classList.remove('hidden');
-                    methodName.textContent = 'SSH Key';
-                    break;
-
-                case 'yubikey':
-                    description.textContent = 'Click the button below, then touch your YubiKey to unlock';
-                    passwordField.classList.add('hidden');
-                    passwordInput.required = false;
-                    unlockBtn.textContent = 'Unlock with YubiKey';
-                    methodIndicator.classList.remove('hidden');
-                    methodName.textContent = 'YubiKey Hardware Key';
-                    break;
-
-                default:
-                    // Password method - use defaults
-                    break;
-            }
-        }
-
-        document.getElementById('unlock-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-
-            const btn = document.getElementById('unlock-btn');
-            const errorDiv = document.getElementById('error-message');
-            const password = document.getElementById('password').value;
-
-            // Only require password for password method
-            if (currentMethod === 'password' && !password) {
-                errorDiv.textContent = 'Password is required';
-                errorDiv.classList.remove('hidden');
-                return;
-            }
-
-            errorDiv.classList.add('hidden');
-            btn.disabled = true;
-            const originalText = btn.textContent;
-            btn.textContent = 'Unlocking...';
-
-            const params = new URLSearchParams();
-            params.append('password', password || '');
-
-            fetch('/unlock', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: params
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.text().then(text => { throw new Error(text || 'Unlock failed'); });
-                }
-                // Redirect to dashboard on success
-                window.location.href = '/dashboard';
-            })
-            .catch(err => {
-                btn.disabled = false;
-                btn.textContent = originalText;
-                errorDiv.textContent = err.message;
-                errorDiv.classList.remove('hidden');
-                if (currentMethod === 'password' || currentMethod === 'ssh') {
-                    document.getElementById('password').select();
-                }
-            });
-        });
-    </script>
+    <script src="/static/js/unlock.js" defer></script>
 </body>
 
 </html>

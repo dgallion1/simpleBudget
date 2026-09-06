@@ -1,0 +1,75 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: U13
+ATTEMPT: 2
+---
+Verified in cp -a scratch of the ui-audit worktree (HEAD 5bfc4c8, branch
+feat/ui-audit). Worker output is uncommitted; diffed against HEAD.
+
+(a) TOOLCHAIN GREEN — all in scratch:
+  - go build ./...            → BUILD_EXIT=0
+  - go vet ./...              → VET_EXIT=0
+  - go test -count=1 ./...    → "5189 passed in 49 packages", FULL_TEST_EXIT=0,
+    0 FAIL/panic lines. Whatif pkg alone (go test -count=1
+    ./internal/handlers/whatif/) → ok 13.318s.
+  - staticcheck ./...         → STATICCHECK_ALL_EXIT=0.
+
+(b) GO CHANGE IS DISPLAY-ONLY — git diff HEAD of the two handler files:
+  - handlers.go: renderResultsTemplate gained a trailing
+    `extra map[string]interface{}` merged into partialData AFTER the standard
+    fields ("for k,v := range extra { partialData[k]=v }"); never touches
+    Settings/Analysis/persisted state. New renderRecalcWithExtra is
+    renderRecalc + extra; renderRecalc is now a one-line wrapper passing nil.
+    Both pre-existing renderResultsTemplate callers (renderWhatIfResults,
+    renderWhatIfResultsOnly) now pass `nil` — confirmed in diff — so
+    add/update/healthcare/sweep/slider are unaffected.
+  - handlers_income_expense.go: adds display-only justRemovedIncome{ID,Name}
+    + justRemovedIncomeExtra (reads the id back out of
+    settings.RemovedIncomeSources where RemoveIncomeSource just placed it;
+    returns nil→no toast if absent). handleWhatIfDeleteIncome inlines
+    RemoveIncomeSource + error handling that is byte-equivalent to
+    recalcAndRender's error path (renderError(..., statusForMutationError(err)))
+    then calls renderRecalcWithExtra(...). NO change to remove/restore/
+    plan-calc/analysis logic. handleWhatIfRestoreIncome untouched.
+
+(c) 3 NEW TESTS LOAD-BEARING — go test -count=1 -v -run (named): all PASS.
+  Mutation proof, each in its own cp -a copy:
+  - mut1: reverted toast hidden condition to
+    {{if not .Settings.RemovedIncomeSources}} (attempt-1 keying) →
+    TestHandleWhatIfUpdateIncome_NoToastForUnrelatedMutation FAILs
+    ("expected toast div classed hidden…"), MUT1_EXIT=1.
+  - mut2: reverted handleWhatIfDeleteIncome to pass nil extra (no
+    JustRemovedIncome) → TestHandleWhatIfDeleteIncome_ShowsToastForJustRemoved
+    FAILs ("toast rendered hidden on a fresh delete"), MUT2_EXIT=1.
+  Both mutations restored (isolated copies discarded).
+
+(d) LOSSLESS + PRE-EXISTING TESTS: TestHandleWhatIfDeleteThenRestoreIncome_Lossless
+  PASS. git diff HEAD of handlers_test.go = 191 insertions, 0 deletions —
+  purely additive (import "reflect" + 4 test funcs), no pre-existing test
+  modified. (Caveat: attempt-1 is also uncommitted, so I cannot byte-isolate
+  attempt-1 vs attempt-2 test edits; the net-zero-deletions against HEAD is
+  the evidence that nothing pre-existing was altered.)
+
+(e) SCOPE + CSS:
+  - make css-verify → "tailwind.css is up to date", CSSVERIFY_EXIT=0.
+  - git diff HEAD --stat: only the 9 manifest files (4 attempt-2 Go/template
+    + 5 attempt-1 template/css). Nothing outside the manifest.
+  - .swarm/critical.globs = internal/services/**, accounts.go,
+    mcpsvc/confirm/**; the change touches only internal/handlers/whatif/**
+    and web/templates|static — NOTHING in critical.globs.
+  - {{.CurrentCoverage.Label}} preserved (healthcare-person.html:251).
+
+RACE READ (worker's rapid-fire-Undo flag): Server side is not racy — the
+SettingsManager hands each handler a private copy (documented in
+saveAndRecalc/saveAndRecalcIfScenario) and delete/restore share no mutable
+state, so writes serialize. The intermittent "Undo not registering" is
+consistent with a client/probe-timing artifact: many overlapping htmx
+requests against the single shared #whatif-results target with OOB toast
+swaps can land out of order under scripted rapid-fire. There IS a minor
+client-side double-submit window — the Undo <button> carries no
+hx-sync/hx-disabled-elt, so a second fast click can POST /restore for an
+already-restored id and render an error instead of a silent no-op — but that
+is a UX-robustness gap, not data corruption, is out of scope for this
+display-only-signal attempt, and matches the worker's own read. FINDING for
+the backlog / a11y lane (which is testing it live), not a FAIL.

@@ -1,0 +1,169 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: RECONCILE
+ATTEMPT: 1
+---
+Build/test hygiene (criterion 7) — ALL CLEAN:
+- `grep -rn '^<<<<<<<\|^>>>>>>>\|^=======' internal web` → no output, no conflict markers.
+- `go build ./...`, `go vet ./...`, `staticcheck ./...` → all clean, exit 0.
+- `go test ./...` → all 46 packages ok.
+- `make css-verify` → "tailwind.css is up to date" (fresh build matches committed file).
+
+Criterion 1 (CB7/CB9 money correctness at render time) — PASS.
+- internal/services/metrics/metrics.go:763 SignedNet still negates
+  SumAmount and normalizes -0 to +0; formatMoney/formatNumber/formatPercent
+  in internal/templates/render.go all retain the CB9 `if v == 0 { v = 0 }`
+  belt.
+- Live render (whatif-verify.sh on :8097) of /dashboard: ordinary window
+  shows Total Expenses "$70,166.53" in text-negative. kpis.html:23 keeps
+  `{{if gt .Metrics.TotalExpenses 0.0}}text-negative{{else}}text-positive{{end}}`
+  (no math.Abs, sign-aware color both ways).
+- explorer.html:329-332 renders the Expenses chip whenever
+  `(isPositive .TotalExpenses) or (isNegative .TotalExpenses)` — i.e. for
+  ANY nonzero total including negative, not gated to positive-only — and
+  colors it sign-aware. Confirmed via TestHandleExplorer_WithRenderer_
+  RefundDominantFilterRendersNegativeExpenses (real renderer, refund-
+  dominant CSV fixture: -500+900=+400 outflow net → SignedNet -400 →
+  renders "-$400.00" with text-positive, NOT text-negative) — ran green.
+  Companion OrdinarySpend and ZeroOutflowsNoNegativeZero tests also green.
+
+Criterion 2 (#90 one-month stepping) — PASS.
+- explorer.js's addMonthsClampedExplorer / major-expenses.js's
+  meAddMonthsClamped both shift by exactly `months` (the ±1 passed from
+  data-step) regardless of window size, with day-of-month clamping.
+- Live Playwright drive against the running :8097 server (chromium from
+  npx cache, since no in-repo Playwright install): set a 3-month window
+  (2025-03-15..2025-06-15, within the page's own min/max bounds) on BOTH
+  #explorer-filter-form and #major-expenses-filter-form, clicked the real
+  [data-step="1"] arrow → both advanced to 2025-04-15..2025-06-15+1mo
+  exactly ONE month, not three. Backward step and end-of-month clamping
+  (Jan 31 -> Feb 28, Apr 30 -> May 30) also verified correct.
+- CAVEAT (not FAIL grounds — see backlog finding below): could not reach
+  this state via a genuine UI click on the preset buttons themselves,
+  because those buttons are dead (see finding 1 below); state was set via
+  direct DOM property injection to isolate and test the stepping logic on
+  its own.
+
+Criterion 3 (#91/#92 whatif) — PASS.
+- Live /whatif render: portfolio-settings shows "...Excludes healthcare
+  premiums and property tax — those are entered below and added on top.
+  Plan total today: $10,684/mo." with a real non-zero formatDollars value.
+- budget-analysis's whatif-expense-rows partial renders Expenses/Living/
+  Healthcare/Property Tax and per-person sub-rows "Darrell Gallion
+  (Medicare)" / "Christine (ACA)" — traced to
+  internal/services/retirement/analysis/budget_fit.go:164
+  `fmt.Sprintf("%s (%s)", name, coverage.Label())`, and
+  internal/models/healthcare.go CoverageType.Label() maps medicare->
+  "Medicare", aca->"ACA" (not raw enum strings).
+
+Criterion 4 (CB8 velocity) — PASS.
+- trends.go:411-415 still divides by math.Abs(historicalDaily), built on
+  metrics.SignedNet(allOutflows). ChangeDisplay (U5) present and used by
+  both handleInsights paths (trends.go:174,231). trends_test.go: no
+  duplicate `^func Test` names (52 unique), all pass; live /insights
+  render returns 200 with a "Burn Rate vs Historical" section.
+
+Criterion 5 (U-run intact) — PASS with two PRE-EXISTING, OUT-OF-SCOPE gaps
+(reported as backlog findings below, not FAIL grounds — see reasoning):
+- Nav Money/Plan/Setup groups + simpleBudget name (U9): present in
+  base.html both desktop and mobile nav.
+- U8 range propagation: `withRange` template func; live-verified
+  /dashboard?start=2025-03-01&end=2025-06-01 propagates
+  `?end=2025-06-01&start=2025-03-01` onto the Explorer/Insights/Major
+  Expenses nav links.
+- U10 Net Savings KPI tile: present in kpis.html:112-113 with the
+  transfers-excluded label ("Income minus all expenses (transfers between
+  your own accounts are excluded)").
+- U7 KPI tiles keyboard-operable: dashboard.js has a `keydown` listener
+  scoped to `[data-kpi-detail][role="button"]`, and the tiles carry
+  tabindex="0" role="button" — genuinely operable.
+- Design tokens: no `text-[10px]`/`text-[11px]`, no rose/emerald/red/green
+  literal Tailwind classes in any of the 60 templates the merge diff
+  touched vs origin/master (`git diff --name-only HEAD^2 HEAD -- web/templates`
+  swept for `text-rose-|text-emerald-|bg-rose-|bg-emerald-|text-red-[0-9]|
+  text-green-[0-9]|bg-red-[0-9]|bg-green-[0-9]` — zero hits).
+
+FAIL GROUNDS — Criterion 6 (re-pinned test faithfulness):
+TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative in
+internal/handlers/dashboard/verdict_render_test.go is a PURE ADDITION by
+this merge commit (`git diff HEAD^1 HEAD -- .../verdict_render_test.go`
+shows it added wholesale, not modified from either parent) — squarely in
+the reconciliation's own scope, exactly the kind of re-pinned CB7 test
+criterion 6 asks me to check.
+
+It does NOT actually assert the sign-aware color behavior it claims to
+pin. Proven by mutation: I edited kpis.html's Expenses-tile line from
+  {{if gt .Metrics.TotalExpenses 0.0}}text-negative{{else}}text-positive{{end}}
+to a hardcoded
+  text-negative
+(i.e. reverted the CB7 sign-aware color fix on the dashboard's main KPI
+tile, the exact regression this test's own doc comment says it exists to
+catch) and reran:
+  go test ./internal/handlers/dashboard/... -run TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative -v
+Result: --- PASS. The test still passes with the color-only revert in
+place. (File restored immediately after, confirmed byte-identical via
+diff against the pre-edit backup; scratch copy only, real worktree never
+touched.)
+
+Root cause: the test only checks `strings.Contains(out, "text-positive")`
+against the WHOLE rendered "kpis" partial, not scoped to the Expenses
+tile's own `<p>`. kpis.html unconditionally renders the Total Income tile
+with a literal `text-2xl font-bold text-positive` class (kpis.html:8) in
+the SAME render call, so "text-positive" is present in the output
+regardless of what color class the Expenses tile itself gets. The other
+two assertions in the same test (`-$1,234.56` present, `>$1,234.56<`
+absent) are unaffected by a color-only revert and so don't catch it
+either.
+
+This is exactly the failure mode the task's criterion 6 warns against
+("confirm... that a color-only revert would still fail them") — and the
+answer for this specific test is no, it would not. Contrast with the
+explorer.js sibling tests (handlers_test.go:1516-1521), which correctly
+scope the assertion to `text-positive ml-1">-$400.00` (color+value fused
+in one substring) and separately assert the ROSE class's absence at that
+same value — those are faithful and DO fail on the same class of revert
+(verified by reading, not just inspection, given the fused-substring
+pattern leaves no root for the Income-tile literal to leak through).
+
+Remedy (fixes the diagnosed defect, satisfies self-check 6b): tighten the
+new dashboard test to assert on the fused substring
+`text-positive">-$1,234.56` (mirroring the explorer pattern) and add the
+negative-of-that assertion (`text-negative">-$1,234.56` absent). I did not
+apply this — read-only checker.
+
+BACKLOG FINDINGS (real, but pre-existing in the U-run BEFORE this merge —
+`git diff HEAD^1 HEAD` touches neither file at either location; confirmed
+identical content already present at a61dc08, the tip of the U-run branch
+this reconciliation merged FROM — so out of the RECONCILE task's scope
+per constitution "could the worker have fixed this without exceeding
+their task block"):
+
+1. shared/range-picker.html's dynamic preset buttons are dead sitewide.
+   `{{$.PresetAttr}}="{{.Value}}"` puts a template action in an HTML
+   ATTRIBUTE NAME position; Go's html/template auto-escaper refuses this
+   and emits the literal placeholder `ZgotmplZ="<value>"` instead of e.g.
+   `data-months="3"`. Confirmed on the LIVE server: curl of /dashboard,
+   /explorer, /major-expenses all show `ZgotmplZ="..."` where data-months/
+   data-preset should be. explorer.js/major-expenses.js both select
+   `.date-range-btn[data-months]` to attach click listeners — that
+   selector matches zero elements, so the 1M/2M/3M/6M/12M/All preset
+   buttons on Dashboard, Explorer, Major Expenses, and Insights do
+   nothing when clicked. No test in internal/ asserts on `data-months`
+   presence. This is severe (core UI feature dead across 4 pages) and
+   present unchanged since a61dc08 (U7/U8 authored this partial) — flag
+   for the U-run backlog, not this reconciliation.
+2. Explorer's sortable `<th data-sort-key>` column headers (date,
+   description, category, majorExpense, amount, ...) have no tabindex,
+   role, or keydown handling — explorer.js:439-442 attaches only a click
+   listener. Mouse-only; not reachable or operable by keyboard, contrary
+   to the general U7 "keyboard-operable" intent for interactive controls.
+   Identical in a61dc08; the merge's only touch to explorer.html was the
+   CB7 Expenses-chip lines (git diff HEAD^1 HEAD -- explorer.html shows a
+   4-line hunk, nowhere near the thead). Out of RECONCILE's scope.
+
+SCOPE NOTE: the FAIL above (criterion-6 test gap) is the only defect I'm
+treating as grounds for FAIL, because it is code the merge worker
+authored fresh during this reconciliation, in the exact area (re-pinned
+CB7 assertions) the task instructions named for scrutiny. The two backlog
+findings are real but predate and are untouched by this merge commit.

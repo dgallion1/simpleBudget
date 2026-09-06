@@ -1,0 +1,116 @@
+VERDICT: PASS
+CHECKER: checker-content
+FAMILY: anthropic
+TASK: U10
+ATTEMPT: 1
+---
+
+## CODE AUDIT: Net Savings Calculation
+
+**metrics.go:374-379** — netSavings derivation:
+```go
+income := ts.FilterByType(models.Income)
+outflows := ts.FilterByType(models.Outflow)
+
+totalIncome := income.SumAmount()
+totalExpenses := math.Abs(outflows.SumAmount())
+netSavings := totalIncome - totalExpenses
+```
+
+✓ Formula: `netSavings = totalIncome - totalExpenses`
+✓ Expense basis: `math.Abs(outflows.SumAmount())` where `outflows := ts.FilterByType(models.Outflow)`
+
+**transaction.go:17-26** — TransactionType enum:
+```go
+const (
+    Income  TransactionType = "Income"
+    Outflow TransactionType = "Outflow"
+    Transfer TransactionType = "Transfer"  // distinct type, not Outflow
+)
+// Comment: "a Transfer row falls out of Total aggregation"
+```
+
+✓ Transfer is DISTINCT from Outflow
+✓ FilterByType(Outflow) EXCLUDES transfers by design
+
+**metrics.go:370-372** (plan-exclusion note):
+```
+TotalIncome/TotalExpenses/NetSavings are computed above this point,
+from the FULL outflow set, and are untouched -- they reflect every
+dollar actually spent regardless of the flag
+```
+
+✓ One-time/flagged expenses are included (no distinct TransactionType for one-time)
+
+## LABEL VALIDATION
+
+**Shipped label** (kpis.html:113):
+"Income minus all expenses (transfers between your own accounts are excluded)"
+
+**Assessment against code**:
+- ✓ TRUE: "Income minus" → `totalIncome - totalExpenses`
+- ✓ TRUE: "all expenses" → includes every Outflow (one-time included per metrics.go comment)
+- ✓ TRUE: "transfers excluded" → `FilterByType(Outflow)` excludes Transfer type
+- ✓ NOT MISLEADING: does NOT claim "including transfers" (would be false)
+- ✓ WORKS BOTH WAYS: label is true under both abs-value branch (current) and signed-net (master CB7) — "income minus total expenses" is convention-agnostic
+
+## FIGURE & COLOR CONSISTENCY
+
+**Old (verdict-bar)** → **New (kpis tile)**:
+- Value: `$v.NetSavings` (verdict.go:176 `v.NetSavings = m.NetSavings`) → `.Metrics.NetSavings`
+  - Same field, same source object
+- Format: `formatMoney` on both paths ✓
+- Coloring:
+  - Old: `{{if ge $v.NetSavings 0.0}}text-positive{{else}}text-negative{{end}}`
+  - New: `{{if ge .Metrics.NetSavings 0.0}}text-positive{{else}}text-negative{{end}}`
+  - Identical logic ✓
+
+**Render verification** (http://localhost:8095/dashboard):
+- Figure: `-$26,043.32` with class `text-negative` (red) ✓
+- Label: "Income minus all expenses (transfers between your own accounts are excluded)" ✓
+- aria-label: "Net Savings details" (from shared/kpi-tile partial line 46) ✓
+
+## VERDICT BAND DIFF
+
+**dashboard-verdict-bar.html**:
+- Removed: entire `<button data-kpi-detail="savings">` with old aria-label ✓
+- Kept intact: Budget Status heading, Spent/Target divs, verdict sentence structure ✓
+- Added: comment explaining the move with code citations ✓
+- No reordering, no silent changes to other markup ✓
+
+## TEST CHANGES
+
+**handlers_http_test.go**:
+- Comment updated to document U10's move (lines 2554-2557) ✓
+- aria-label assertion: `"Show monthly net savings detail"` → `"Net Savings details"`
+  - Matches shared/kpi-tile.html line 46 generated label format ✓
+  - Preserved assertion depth: still checks `data-kpi-detail="savings"` exists (not shown in diff but present in test file) ✓
+
+**Test results**:
+```
+ok  	budget2/internal/handlers/dashboard	0.808s
+ok  	budget2/internal/templates	1.086s
+```
+✓ All tests pass
+
+## FUNCTIONAL CHECKS
+
+- ✓ Net Savings tile renders in KPI row (not in verdict band)
+- ✓ Only one `data-kpi-detail="savings"` on page (in kpi-tile, not verdict-bar)
+- ✓ Figure value and color match what was in verdict band for same transaction set
+- ✓ Click handler wiring intact (dashboard.js lines 10-11, 33-36 use `[data-kpi-detail]` selector)
+- ✓ Label truthfully describes what the code does; transfers are excluded (per code design)
+
+## SCOPE: Blocks Checked
+
+1. **Metrics calculation** (metrics.go:374-379) — netSavings formula and Outflow filter
+2. **Type system** (transaction.go:17-26) — Transfer as distinct type
+3. **Include/exclude rule** (metrics.go:370-372) — one-time included in total expenses
+4. **Label text** (kpis.html:113) — verified against all code paths
+5. **Figure value** (kpis.html:112 & verdict.go:176) — same DashboardMetrics field
+6. **Color logic** (kpis.html:112) — positive/negative branches match verdict band
+7. **Verdict band removal** (dashboard-verdict-bar.html) — Net Savings button excised cleanly
+8. **Test adaptation** (handlers_http_test.go) — aria-label updated, other assertions intact
+9. **Render output** (live :8095) — figure and label as shipped
+10. **Functional wiring** (dashboard.js) — data-kpi-detail handler still active
+

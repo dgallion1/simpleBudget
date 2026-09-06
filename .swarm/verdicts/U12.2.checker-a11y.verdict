@@ -1,0 +1,139 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U12
+ATTEMPT: 2
+---
+
+METHOD: Live render only, against the real running app. Started
+`scripts/whatif-verify.sh start 8092` (throwaway data copy, 5 seeded
+accounts: probe-acct, test-noanchor-acct, usaa-checking, usaa-credit-card,
+usaa-health-checking — document order is alphabetical by ID, confirmed via
+curl before designing the account-choice for each check). Drove the real
+/accounts page with Playwright+chromium (deps already installed in
+scratchpad from attempt 1) using real DOM submits (`form.requestSubmit()`
+after `form.noValidate = true` to bypass the browser's native required
+popup, reproducing exactly what the server sees when a user clears a
+pre-filled field and submits) — never simulated HTML. Ran
+@axe-core/playwright against the live page in light and `class="dark"`
+with every disclosure panel force-opened first (per the rendered-bar
+contract). Stopped the verify server afterward. Diff attribution used
+`git diff HEAD` scoped to the 4 changed files, plus `git show master:...`
+for byte-identical-line checks.
+
+=== SCOPED BEHAVIOR — the four deciding checks ===
+
+1. EDIT-ERROR NO LONGER STRANDED (non-first account) — PASS.
+   Cleared Name on `usaa-credit-card` (4th of 5 in document order, not
+   first) and submitted. Result: `#acct-edit-panel-usaa-credit-card`
+   hidden=false, its toggle button aria-expanded="true";
+   `document.activeElement` = `#acct-edit-name-usaa-credit-card`,
+   `aria-invalid="true"`, visible=true (real focus, not just DOM
+   presence). EVERY OTHER account's edit panel (probe-acct,
+   test-noanchor-acct, usaa-checking, usaa-health-checking) stayed
+   hidden=true/aria-expanded="false". The Add panel stayed
+   hidden=true/aria-expanded="false". This is exactly what attempt 1
+   FAILED on (U-2026-09-05n) — now scoped correctly to the one account
+   that actually errored, and confirmed on a non-first account so it
+   isn't "the first match wins by accident" again.
+
+2. ADD-ERROR STILL WORKS — PASS.
+   Opened Add, submitted with a blanked `id`. Add panel
+   hidden=false/aria-expanded="true", active element = `#acct-new-id`,
+   `aria-invalid="true"`. Every Edit panel stayed collapsed
+   (hidden=true/aria-expanded="false").
+
+3. ANCHOR-ERROR ISOLATION — PASS (as literally scoped by the task ask),
+   with one pre-existing cross-account defect surfaced as an OBSERVATION.
+   Submitted an invalid (blank) `anchor_date` for `usaa-health-checking`
+   (last in document order). Result: that account's anchor_date field IS
+   flagged `aria-invalid="true"`, and its Edit-settings panel
+   (`#acct-edit-panel-usaa-health-checking`) stayed hidden=true — the
+   worker's refinement (gating `$editErrored` on ErrorField being "name"
+   or "low_balance_threshold" only, never an anchor field) works: an
+   anchor error does not pop the unrelated Edit-settings panel open.
+   ALL Edit panels and the Add panel stayed collapsed. Both asks in the
+   task's check #3 hold.
+   OBSERVATION (pre-existing, not this task's regression — see below):
+   the anchor_date/anchor_amount template conditions
+   (accounts.html:668,682) test only `$root.ErrorField`, never
+   `$root.ErrorAccountID` vs `$acct.Account.ID` — unlike the edit-form
+   fields, which ruling U-2026-09-05n scoped per-account. Live probe
+   confirmed ALL FIVE accounts' anchor_date inputs got
+   `aria-invalid="true"` (not just usaa-health-checking's), and
+   `document.activeElement` after the swap landed on
+   `#acct-anchor-date-probe-acct` (the alphabetically-first account),
+   not the account that actually submitted the form. Confirmed via
+   `git diff HEAD`/`git show master:...` that these two template lines
+   are byte-identical to master, and the JS selector doing the
+   first-match-wins pick (`accounts.js:232`,
+   `target.querySelector('[data-focus-target]')`) is the same logic
+   master's inline script used before U7's extraction — so this
+   mis-scoping already existed pre-U12 (anchor forms were never behind
+   a disclosure; visibility was never the issue for them). Not a
+   regression from this task and outside the ruling n contract (which
+   named only the Add/Edit-name/threshold fields, sections 1–5). The
+   worker's own new test
+   (`TestHandleAddAnchor_InvalidDate_RendererMode_DoesNotOpenEditPanel`)
+   and its comment explicitly acknowledge the anchor field itself isn't
+   yet scoped ("so the anchor field itself... can eventually be scoped
+   correctly too"). Flagging for the backlog, not failing this task on it.
+
+4. NO ERROR → NO PANEL FORCED OPEN — PASS.
+   Resubmitted `usaa-checking`'s edit form unchanged (valid). All 5 Edit
+   panels and the Add panel stayed hidden=true/aria-expanded="false".
+   Active element fell through to `#accounts-list-heading` (the existing
+   no-error fallback focus target), not any form field.
+
+=== OTHER REQUIRED CHECKS ===
+
+5. FULL AXE SWEEP, light+dark, all disclosures opened: 0 violations both
+   themes (full ruleset, not just color-contrast) — matches attempt 1's
+   clean baseline, no regression. Heading order in both themes: H1
+   "Accounts" → H2 "Add an account" → H2 "Your accounts" → H3 per account
+   → H4 "Matched files" → H4 "Balance anchors" (×5) → H2 "Unassigned
+   files". Exactly one H1, no skipped levels.
+
+6. Disclosures are real `<button>`s (confirmed `tagName === 'BUTTON'` for
+   the usaa-checking Edit toggle), `aria-expanded`/`aria-controls` present
+   and correct, keyboard-operable (Tab to button, Enter opens — panel
+   hidden=false, aria-expanded="true", field becomes reachable
+   (`offsetParent` truthy); Enter again closes it — hidden=true,
+   aria-expanded="false", field unreachable again). Field inside the
+   collapsed panel confirmed tab-unreachable (`offsetParent` null) before
+   any interaction.
+
+7. `go test ./internal/handlers/accounts/...` → ok. New tests
+   (`TestHandleUpdate_EmptyNameSurfaced_SetsErrorAccountID`,
+   `TestHandleCreate_EmptyNameSurfaced_ErrorAccountIDEmpty`,
+   `TestHandleAddAnchor_InvalidDate_SetsErrorAccountID`,
+   `TestHandleUpdate_RendererMode_ErrorRevealsOnlyErroringAccountsPanel`,
+   `TestHandleAddAnchor_InvalidDate_RendererMode_DoesNotOpenEditPanel`)
+   directly exercise the ErrorAccountID contract server-side, matching
+   the live-browser probe above.
+
+=== OBSERVATIONS (not FAILs) ===
+
+- O1 (pre-existing, master-identical): anchor_date/anchor_amount fields
+  are not scoped by ErrorAccountID, so an anchor-form error on any one
+  account marks every account's corresponding anchor field
+  aria-invalid="true" and misdirects focus to the alphabetically-first
+  account rather than the one that submitted. Real WCAG 3.3.1 concern,
+  but out of this task's ruling-n scope and unaffected by the hidden-panel
+  change (anchor forms were never behind a disclosure). Candidate
+  follow-up: extend the same `$acct.Account.ID` comparison ruling n
+  applied to name/threshold onto anchor_date/anchor_amount.
+- O2 (carried from attempt 1, unaffected by this attempt): master-
+  identical `acct-edit-name-{{.ID}}` lacks `aria-describedby` to its error
+  text.
+- O3: `handlers.go`'s `writeJSONError` and the two static error banners in
+  accounts.html were converted from hue-literal classes
+  (`bg-red-50`/`text-red-700`/etc.) to token classes
+  (`bg-negative-soft`/`text-negative`) as part of this diff — consistent
+  with the branch's token vocabulary (U6/U7), not a scope violation, and
+  covered by the 0-violation axe sweep in both themes.
+
+=== EVIDENCE FILES ===
+/tmp/claude-1000/-home-darrell-work-agents2/fdc3d3ad-6feb-42fa-95ef-64e528e5cac8/scratchpad/a11y-u12/u12_v2_probe.js (checks 1-4, JSON output above)
+/tmp/claude-1000/-home-darrell-work-agents2/fdc3d3ad-6feb-42fa-95ef-64e528e5cac8/scratchpad/a11y-u12/u12_axe_v2.js (axe sweep + headings, both themes)
+/tmp/claude-1000/-home-darrell-work-agents2/fdc3d3ad-6feb-42fa-95ef-64e528e5cac8/scratchpad/a11y-u12/u12_kbd_v2.js (keyboard/disclosure checks)

@@ -1,5 +1,63 @@
 // Dashboard-specific JavaScript functionality
 
+// KPI cards/buttons carry data-kpi-detail/-month-detail/-export instead of
+// an inline onclick= (U7); delegated so it also covers the KPI detail /
+// month-detail modal content the HTMX swap injects. closest() finds the
+// nearest match (e.g. a "view" button inside a row that also carries the
+// attribute), so a click never fires the handler twice.
+document.addEventListener('click', function (e) {
+    var el;
+    if ((el = e.target.closest('[data-kpi-detail]'))) {
+        openKPIDetail(el.getAttribute('data-kpi-detail'));
+        return;
+    }
+    if ((el = e.target.closest('[data-kpi-month-detail]'))) {
+        var parts = el.getAttribute('data-kpi-month-detail').split('|');
+        openKPIMonthDetail(parts[0], parts[1]);
+        return;
+    }
+    if ((el = e.target.closest('[data-export-kpi]'))) {
+        exportKPIToCSV(el.getAttribute('data-export-kpi'));
+        return;
+    }
+});
+
+// The KPI-tile cards (shared/kpi-tile.html) are tabindex="0" role="button"
+// divs, not native <button>s — Enter/Space don't activate those on their
+// own, so this fires the same openKPIDetail() the click handler above
+// uses (U7 attempt 2, ruling U-2026-09-04l). Scoped to [role="button"] so
+// it does not double-fire on the real <button data-kpi-detail="savings">
+// in the verdict bar, which already gets Enter/Space for free.
+document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    var el = e.target.closest('[data-kpi-detail][role="button"]');
+    if (!el || e.target !== el) return;
+    e.preventDefault();
+    openKPIDetail(el.getAttribute('data-kpi-detail'));
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    var dropZone = document.getElementById('drop-zone');
+    var fileInput = document.getElementById('file-input');
+    var importBtn = document.getElementById('import-csv-btn');
+    if (dropZone && fileInput) {
+        dropZone.addEventListener('click', function () { fileInput.click(); });
+        fileInput.addEventListener('change', function () { handleFileSelect(this.files); });
+    }
+    // Page-header "Import CSV" button (U10): same file picker/import path
+    // the drop-zone click always used.
+    if (importBtn && fileInput) {
+        importBtn.addEventListener('click', function () { fileInput.click(); });
+    }
+
+    document.querySelectorAll('#date-filter-form [data-step]').forEach(function (btn) {
+        btn.addEventListener('click', function () { shiftWindow(parseInt(btn.dataset.step, 10)); });
+    });
+    document.querySelectorAll('#date-filter-form .preset-btn[data-preset]').forEach(function (btn) {
+        btn.addEventListener('click', function () { setPreset(btn.dataset.preset); });
+    });
+});
+
 // Major Expense drilldown functions
 function openMajorExpenseDrilldown(name) {
     const form = document.getElementById('date-filter-form');
@@ -9,13 +67,24 @@ function openMajorExpenseDrilldown(name) {
     htmx.ajax('GET', `/dashboard/major-expense?name=${encodeURIComponent(name)}&start=${start}&end=${end}`, {
         target: '#major-expense-drilldown-container',
         swap: 'innerHTML'
+    }).then(function () {
+        // U15: move focus in, trap Tab, and remember what had focus (the
+        // donut wedge click doesn't focus anything itself, but the
+        // keyboard-operable "Other"/credits row buttons do) so it can be
+        // restored on close.
+        var backdrop = document.querySelector('#major-expense-drilldown-container [data-modal-backdrop]');
+        if (backdrop && window.ModalA11y) window.ModalA11y.open(backdrop);
     });
 }
 
 function closeMajorExpenseModal(event) {
     if (event && event.target !== event.currentTarget) return;
     const container = document.getElementById('major-expense-drilldown-container');
-    if (container) container.replaceChildren();
+    if (container) {
+        var backdrop = container.querySelector('[data-modal-backdrop]');
+        if (backdrop && window.ModalA11y) window.ModalA11y.close(backdrop);
+        container.replaceChildren();
+    }
 }
 
 // KPI detail functions
@@ -27,6 +96,9 @@ function openKPIDetail(kpiType) {
     htmx.ajax('GET', `/dashboard/kpi/${encodeURIComponent(kpiType)}?start=${start}&end=${end}`, {
         target: '#kpi-detail-container',
         swap: 'innerHTML'
+    }).then(function () {
+        var backdrop = document.querySelector('#kpi-detail-container [data-modal-backdrop]');
+        if (backdrop && window.ModalA11y) window.ModalA11y.open(backdrop);
     });
 }
 
@@ -40,12 +112,18 @@ function openKPIMonthDetail(kpiType, month) {
     htmx.ajax('GET', `/dashboard/kpi/${encodeURIComponent(kpiType)}/month/${encodeURIComponent(month)}?start=${start}&end=${end}`, {
         target: '#kpi-detail-container',
         swap: 'innerHTML'
+    }).then(function () {
+        var backdrop = document.querySelector('#kpi-detail-container [data-modal-backdrop]');
+        if (backdrop && window.ModalA11y) window.ModalA11y.open(backdrop);
     });
 }
 
 function closeKPIModal(event) {
     if (event && event.target !== event.currentTarget) return;
-    document.getElementById('kpi-detail-container').innerHTML = '';
+    var container = document.getElementById('kpi-detail-container');
+    var backdrop = container.querySelector('[data-modal-backdrop]');
+    if (backdrop && window.ModalA11y) window.ModalA11y.close(backdrop);
+    container.innerHTML = '';
 }
 
 // Column sorting for the KPI month-detail transaction table. Client-side and
@@ -328,44 +406,51 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Drag and drop file upload
+// Drag and drop file upload. Whole-page (U10): the drop-zone box is now a
+// secondary hint under the header "Import CSV" button, but dropping a file
+// ANYWHERE on the page must still import it, so the actual 'drop' listener
+// is on document (mirroring filemanager.js's document-level restore-drop
+// pattern) rather than scoped to #drop-zone alone; #drop-zone only gets the
+// drag-over highlight when it exists.
 document.addEventListener('DOMContentLoaded', function () {
     const dropZone = document.getElementById('drop-zone');
-    if (!dropZone) return;
 
-    // Prevent default drag behaviors on the whole document
-    // Only use preventDefault - do NOT use stopPropagation as it blocks the dropZone handlers
+    // Prevent default drag behaviors on the whole document (so the browser
+    // never navigates to/opens the dropped file) without stopPropagation,
+    // which would block the listeners below.
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         document.addEventListener(eventName, function (e) {
             e.preventDefault();
         }, false);
     });
 
-    // Highlight drop zone on drag over
-    dropZone.addEventListener('dragenter', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        dropZone.classList.remove('border-gray-300', 'bg-gray-50');
-        dropZone.classList.add('border-indigo-500', 'bg-indigo-100');
-    }, false);
+    if (dropZone) {
+        // Highlight the drop-zone hint on drag-over.
+        dropZone.addEventListener('dragenter', function (e) {
+            e.preventDefault();
+            dropZone.classList.remove('border-gray-300', 'bg-gray-50');
+            dropZone.classList.add('border-indigo-500', 'bg-indigo-100');
+        }, false);
 
-    dropZone.addEventListener('dragover', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        dropZone.classList.remove('border-gray-300', 'bg-gray-50');
-        dropZone.classList.add('border-indigo-500', 'bg-indigo-100');
-    }, false);
+        dropZone.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            dropZone.classList.remove('border-gray-300', 'bg-gray-50');
+            dropZone.classList.add('border-indigo-500', 'bg-indigo-100');
+        }, false);
 
-    dropZone.addEventListener('dragleave', function () {
-        dropZone.classList.remove('border-indigo-500', 'bg-indigo-100');
-        dropZone.classList.add('border-gray-300', 'bg-gray-50');
-    }, false);
+        dropZone.addEventListener('dragleave', function () {
+            dropZone.classList.remove('border-indigo-500', 'bg-indigo-100');
+            dropZone.classList.add('border-gray-300', 'bg-gray-50');
+        }, false);
+    }
 
-    dropZone.addEventListener('drop', function (e) {
+    // The actual import trigger: dropping anywhere on the page.
+    document.addEventListener('drop', function (e) {
         e.preventDefault();
-        e.stopPropagation();
-        dropZone.classList.remove('border-indigo-500', 'bg-indigo-100');
-        dropZone.classList.add('border-gray-300', 'bg-gray-50');
+        if (dropZone) {
+            dropZone.classList.remove('border-indigo-500', 'bg-indigo-100');
+            dropZone.classList.add('border-gray-300', 'bg-gray-50');
+        }
         const files = e.dataTransfer.files;
         handleFileSelect(files);
     }, false);

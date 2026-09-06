@@ -417,8 +417,16 @@ func TestKPIsTotalExpensesTile_RefundDominantRangeRendersSignedNegative(t *testi
 	if strings.Contains(out, ">$1,234.56<") {
 		t.Errorf("Expenses tile rendered the POSITIVE (math.Abs'd) figure instead of the signed negative one: %s", trunc(out, 2500))
 	}
-	if !strings.Contains(out, "text-emerald-800 dark:text-emerald-300") {
-		t.Errorf("expected the sign-aware emerald (net-credit) color class on a negative TotalExpenses; got: %s", trunc(out, 2500))
+	// U6 tokenized the sign-aware color: emerald-800 literal -> text-positive
+	// token (net-credit); rose -> text-negative (spend). Reconcile 2026-09-05.
+	// FUSE the color token to THIS tile's figure (RECONCILE checker-second:
+	// a bare Contains("text-positive") is always true from the Income tile,
+	// so it pins nothing) -- a color-only revert to text-negative fails here.
+	if !strings.Contains(out, `text-positive">-$1,234.56`) {
+		t.Errorf("expected the net-credit token (text-positive) fused to the negative Expenses figure; got: %s", trunc(out, 2500))
+	}
+	if strings.Contains(out, `text-negative">-$1,234.56`) {
+		t.Errorf("Expenses tile rendered the SPEND token (text-negative) on a net-credit (negative) figure; got: %s", trunc(out, 2500))
 	}
 }
 
@@ -450,20 +458,25 @@ func bothBucketsMetrics(livingDelta, hcDelta float64) *models.DashboardMetrics {
 }
 
 // TestBudgetKPICard_TintMatchesClassification guards ruling 2026-08-29c: the
-// Budget KPI card's container tint (bg-rose-50/border-rose-200 for over,
-// bg-emerald-50/border-emerald-200 for under) and its headline ("over" /
-// "under" / "On budget") must be driven by the SAME dead-banded
-// BudgetVerdict classification the banner uses ($v.IsOver / $v.IsUnder) —
-// not a bare-sign comparison against the raw delta. Two OTHER KPI cards
-// (Total Expenses, Monthly Healthcare) are permanently rose-tinted and Total
-// Income is permanently emerald-tinted; those are the static baselines this
-// test subtracts out.
+// Budget KPI card's container tint (border-negative/bg-negative-soft for
+// over, border-positive/bg-positive-soft for under — U6 renamed these from
+// the rose/emerald hue literals) and its headline ("over" / "under" / "On
+// budget") must be driven by the SAME dead-banded BudgetVerdict
+// classification the banner uses ($v.IsOver / $v.IsUnder) — not a bare-sign
+// comparison against the raw delta. Two OTHER KPI cards (Total Expenses,
+// Monthly Healthcare) are permanently negative-tinted and Total Income is
+// permanently positive-tinted; those are the static baselines this test
+// subtracts out. Counts use the "border-X bg-X-soft" pair (the card
+// container), not bare "bg-X-soft" alone, because U6 also uses bg-X-soft on
+// each card's icon circle — the container and icon shades used to be
+// numerically distinct (50 vs 100) but the token sweep intentionally
+// consolidated them onto one soft shade.
 func TestBudgetKPICard_TintMatchesClassification(t *testing.T) {
 	_, cleanup := setupTestEnvWithRenderer(t, defaultRows())
 	defer cleanup()
 
-	const staticRose = 2    // Total Expenses + Monthly Healthcare cards
-	const staticEmerald = 1 // Total Income card
+	const staticNegative = 2 // Total Expenses + Monthly Healthcare cards
+	const staticPositive = 1 // Total Income card
 
 	render := func(t *testing.T, m *models.DashboardMetrics) string {
 		t.Helper()
@@ -480,10 +493,8 @@ func TestBudgetKPICard_TintMatchesClassification(t *testing.T) {
 		if !strings.Contains(out, "On budget") {
 			t.Errorf("expected headline \"On budget\"; got: %s", trunc(out, 2500))
 		}
-		for _, rose := range []string{"bg-rose-50", "border-rose-200"} {
-			if n := strings.Count(out, rose); n != staticRose {
-				t.Errorf("dead-band: %d occurrence(s) of %q, want exactly the %d static cards (Budget card must not be rose while on-budget)", n, rose, staticRose)
-			}
+		if n := strings.Count(out, "border-negative bg-negative-soft"); n != staticNegative {
+			t.Errorf("dead-band: %d occurrence(s) of the negative card tint, want exactly the %d static cards (Budget card must not be negative-tinted while on-budget)", n, staticNegative)
 		}
 	})
 
@@ -492,8 +503,8 @@ func TestBudgetKPICard_TintMatchesClassification(t *testing.T) {
 		if !strings.Contains(out, `</span> over</p>`) {
 			t.Errorf("expected headline to end in \"over\"; got: %s", trunc(out, 2500))
 		}
-		if n := strings.Count(out, "bg-rose-50"); n < staticRose+1 {
-			t.Errorf("over: bg-rose-50 count = %d, want >= %d (static cards + the Budget card)", n, staticRose+1)
+		if n := strings.Count(out, "border-negative bg-negative-soft"); n < staticNegative+1 {
+			t.Errorf("over: negative card tint count = %d, want >= %d (static cards + the Budget card)", n, staticNegative+1)
 		}
 	})
 
@@ -502,11 +513,11 @@ func TestBudgetKPICard_TintMatchesClassification(t *testing.T) {
 		if !strings.Contains(out, `</span> under</p>`) {
 			t.Errorf("expected headline to end in \"under\"; got: %s", trunc(out, 2500))
 		}
-		if n := strings.Count(out, "bg-emerald-50"); n < staticEmerald+1 {
-			t.Errorf("under: bg-emerald-50 count = %d, want >= %d (static Income card + the Budget card)", n, staticEmerald+1)
+		if n := strings.Count(out, "border-positive bg-positive-soft"); n < staticPositive+1 {
+			t.Errorf("under: positive card tint count = %d, want >= %d (static Income card + the Budget card)", n, staticPositive+1)
 		}
-		if n := strings.Count(out, "bg-rose-50"); n != staticRose {
-			t.Errorf("under: bg-rose-50 count = %d, want exactly the %d static cards", n, staticRose)
+		if n := strings.Count(out, "border-negative bg-negative-soft"); n != staticNegative {
+			t.Errorf("under: negative card tint count = %d, want exactly the %d static cards", n, staticNegative)
 		}
 	})
 }

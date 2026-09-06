@@ -1050,6 +1050,355 @@ func TestAnalyzeIncomePatterns_LastDate(t *testing.T) {
 	}
 }
 
+// --- ChangeDisplay tests (U5 contract v3, SPEC §2d, after two same-class
+// FAILs at U-2026-09-03d/f) ---
+//
+// ChangeDisplay is now ChangeDisplay(previous, current float64) -- TWO
+// args, no percent input; it owns Kind, Amount, Percent, AND Direction.
+// Every case below is drawn from the Tier-3 oracle's contract-API table
+// (oracle_contract_test.go.src) so the persistent suite and the oracle
+// agree independently.
+
+func TestChangeDisplay_ZeroZero_IsNoneStable(t *testing.T) {
+	// previous == 0 AND current == 0 -> "none" ("no activity either
+	// period"), NOT "new" -- and Direction is always "stable" for none.
+	cell := ChangeDisplay(0, 0)
+	if cell.Kind != models.ChangeKindNone {
+		t.Errorf("Kind = %q, want %q", cell.Kind, models.ChangeKindNone)
+	}
+	if cell.Direction != "stable" {
+		t.Errorf("Direction = %q, want stable", cell.Direction)
+	}
+	if cell.Amount != 0 || cell.Percent != 0 {
+		t.Errorf("Amount=%v Percent=%v, want 0/0", cell.Amount, cell.Percent)
+	}
+}
+
+func TestChangeDisplay_FloatNoiseZero_IsNoneStable(t *testing.T) {
+	// The exact U-2026-09-03f defect: a float-noise "previous" that is not
+	// LITERALLY 0 (e.g. 0.10+0.20-0.30 ~= 5.55e-17) must still round to
+	// $0.00 and classify as none/stable, not "new"/"up".
+	cell := ChangeDisplay(5.55e-17, 0)
+	if cell.Kind != models.ChangeKindNone {
+		t.Errorf("Kind = %q, want %q (5.55e-17 rounds to $0.00)", cell.Kind, models.ChangeKindNone)
+	}
+	if cell.Direction != "stable" {
+		t.Errorf("Direction = %q, want stable", cell.Direction)
+	}
+}
+
+func TestChangeDisplay_ZeroBaselineNewSpend(t *testing.T) {
+	// previous == 0, current > 0 -> "new": no prior spend to compare
+	// against. Amount is the rounded current (12.345 -> 12.35).
+	cell := ChangeDisplay(0, 12.345)
+	if cell.Kind != models.ChangeKindNew {
+		t.Errorf("Kind = %q, want %q", cell.Kind, models.ChangeKindNew)
+	}
+	if cell.Amount != 12.35 || cell.Percent != 100 {
+		t.Errorf("Amount=%v Percent=%v, want 12.35/100", cell.Amount, cell.Percent)
+	}
+}
+
+func TestChangeDisplay_TinyPreviousRoundsToZero_IsNew(t *testing.T) {
+	// previous 0.001 rounds to $0.00 -- classification uses the ROUNDED
+	// previous, so this is "new" even though the raw previous is nonzero.
+	cell := ChangeDisplay(0.001, 50)
+	if cell.Kind != models.ChangeKindNew {
+		t.Errorf("Kind = %q, want %q (0.001 rounds to $0.00)", cell.Kind, models.ChangeKindNew)
+	}
+}
+
+func TestChangeDisplay_ZeroBaselineNegativeCurrent_IsDollar(t *testing.T) {
+	// previous == 0, current < 0: a lone refund with no prior baseline
+	// (MajorExpenseTrends' signed totals allow this) -- a percent against
+	// a zero baseline is undefined, so this is "dollar", not "percent".
+	cell := ChangeDisplay(0, -12.34)
+	if cell.Kind != models.ChangeKindDollar {
+		t.Errorf("Kind = %q, want %q", cell.Kind, models.ChangeKindDollar)
+	}
+	if cell.Amount != -12.34 || cell.Percent != -100 {
+		t.Errorf("Amount=%v Percent=%v, want -12.34/-100", cell.Amount, cell.Percent)
+	}
+	if cell.Direction != "down" {
+		t.Errorf("Direction = %q, want down", cell.Direction)
+	}
+}
+
+func TestChangeDisplay_JustUnderFloorIsDollar(t *testing.T) {
+	// previous 99.99 (< $100 floor) -> dollar delta, not percent, however
+	// large the resulting percent would have been.
+	cell := ChangeDisplay(99.99, 6931.01)
+	if cell.Kind != models.ChangeKindDollar {
+		t.Errorf("Kind = %q, want %q", cell.Kind, models.ChangeKindDollar)
+	}
+	if cell.Amount != 6831.02 {
+		t.Errorf("Amount = %v, want 6831.02", cell.Amount)
+	}
+}
+
+func TestChangeDisplay_AtFloorIsPercent(t *testing.T) {
+	// previous == 100 (the floor itself, NOT < floor) -> percent.
+	cell := ChangeDisplay(100, 150)
+	if cell.Kind != models.ChangeKindPercent {
+		t.Errorf("Kind = %q, want %q", cell.Kind, models.ChangeKindPercent)
+	}
+	if cell.Percent != 50 {
+		t.Errorf("Percent = %v, want 50", cell.Percent)
+	}
+}
+
+func TestChangeDisplay_RoundedClassification_AtFloorAfterRounding(t *testing.T) {
+	// previous 99.995 DISPLAYS as $100.00 (rounds up) -- classification
+	// must use that rounded value: percent, not dollar, even though the
+	// RAW previous (99.995) is numerically under the $100 floor. The
+	// checker's exact repro (ruling 2026-08-29b / U-2026-09-03d).
+	cell := ChangeDisplay(99.995, 150.005)
+	if cell.Kind != models.ChangeKindPercent {
+		t.Errorf("Kind = %q, want %q (previous 99.995 displays as $100.00)", cell.Kind, models.ChangeKindPercent)
+	}
+	if cell.Percent != 50 {
+		t.Errorf("Percent = %v, want 50 (=$50.00/$100.00*100)", cell.Percent)
+	}
+}
+
+func TestChangeDisplay_RoundedClassification_JustUnderFloorAfterRounding(t *testing.T) {
+	// previous 99.994 DISPLAYS as $99.99 (rounds down) -- still under the
+	// floor, so this classifies as dollar, matching what the user sees.
+	cell := ChangeDisplay(99.994, 150)
+	if cell.Kind != models.ChangeKindDollar {
+		t.Errorf("Kind = %q, want %q (previous 99.994 displays as $99.99)", cell.Kind, models.ChangeKindDollar)
+	}
+	if cell.Amount != 50.01 {
+		t.Errorf("Amount = %v, want 50.01", cell.Amount)
+	}
+}
+
+func TestChangeDisplay_AmountUsesRoundedOperandsNotRawDiff(t *testing.T) {
+	// The core sum invariant: Amount must be RoundToCents(current) -
+	// RoundToCents(previous), NOT the raw current-previous difference
+	// formatted afterward. previous=40.00 (exact), current=140.115
+	// (displays as $140.12): rounded-then-subtracted gives $100.12.
+	// (This particular pair happens NOT to discriminate from a
+	// round-after-subtract implementation at runtime -- both give
+	// $100.12, since 140.115's actual float64 value is fractionally ABOVE
+	// the tie once you subtract 40 from it. It stays a named fixture
+	// because the oracle and SPEC §2d rule 3 both require it as a
+	// boundary-correctness case. The genuinely DISCRIMINATING case is
+	// TestChangeDisplay_AmountUsesRoundedOperands_DiscriminatesFromSumFirst
+	// below.)
+	cell := ChangeDisplay(40.00, 140.115)
+	if cell.Kind != models.ChangeKindDollar {
+		t.Fatalf("Kind = %q, want %q", cell.Kind, models.ChangeKindDollar)
+	}
+	if cell.Amount != 100.12 {
+		t.Errorf("Amount = %v, want 100.12", cell.Amount)
+	}
+}
+
+func TestChangeDisplay_AmountUsesRoundedOperands_DiscriminatesFromSumFirst(t *testing.T) {
+	// checker-tests (U5 attempt 2, addendum to U-2026-09-03f): a "sum
+	// first, round after" variant (Amount = models.RoundToCents(current -
+	// previous), rounding the RAW difference instead of subtracting two
+	// already-rounded operands) was caught by no test. previous=4.246
+	// (displays $4.25), current=686.823 (displays $686.82): the CORRECT
+	// rounded-then-subtracted answer is $686.82-$4.25=$682.57, but the raw
+	// difference 686.823-4.246=682.577 rounds (round-after-subtract) to
+	// $682.58 -- genuinely different at real float64 runtime precision
+	// (verified: 686.823-4.246 evaluates to 682.57699999999999818, which
+	// formatMoney would render "682.58"). This is the named oracle fixture
+	// "round-then-subtract".
+	cell := ChangeDisplay(4.246, 686.823)
+	if cell.Kind != models.ChangeKindDollar {
+		t.Fatalf("Kind = %q, want %q", cell.Kind, models.ChangeKindDollar)
+	}
+	if cell.Amount != 682.57 {
+		t.Errorf("Amount = %v, want 682.57 (a sum-first-round-after implementation would give 682.58)", cell.Amount)
+	}
+	sumFirstRoundAfter := models.RoundToCents(686.823 - 4.246)
+	if sumFirstRoundAfter == cell.Amount {
+		t.Fatalf("fixture stopped discriminating: sum-first-round-after (%v) now equals the correct answer (%v) -- replace this fixture", sumFirstRoundAfter, cell.Amount)
+	}
+}
+
+func TestChangeDisplay_NegativePreviousUnderFloorIsDollar(t *testing.T) {
+	// A negative (refund-dominant) previous baseline with |previous| under
+	// the floor still renders as a dollar delta.
+	cell := ChangeDisplay(-50, 40)
+	if cell.Kind != models.ChangeKindDollar {
+		t.Errorf("Kind = %q, want %q", cell.Kind, models.ChangeKindDollar)
+	}
+	if cell.Amount != 90 {
+		t.Errorf("Amount = %v, want 90", cell.Amount)
+	}
+	if cell.Percent != 180 {
+		t.Errorf("Percent = %v, want 180 (=90/|-50|*100)", cell.Percent)
+	}
+	if cell.Direction != "up" {
+		t.Errorf("Direction = %q, want up", cell.Direction)
+	}
+}
+
+func TestChangeDisplay_NegativePreviousOverFloorIsPercent(t *testing.T) {
+	// A negative previous baseline with |previous| at/over the floor
+	// renders as percent, exactly as today.
+	cell := ChangeDisplay(-628, -628)
+	if cell.Kind != models.ChangeKindPercent {
+		t.Errorf("Kind = %q, want %q", cell.Kind, models.ChangeKindPercent)
+	}
+	if cell.Percent != 0 || cell.Direction != "stable" {
+		t.Errorf("Percent=%v Direction=%q, want 0/stable (no change)", cell.Percent, cell.Direction)
+	}
+}
+
+func TestChangeDisplay_SignedDollarDeltaBothDirections(t *testing.T) {
+	// Dollar-kind Amount carries change's sign both ways -- the template
+	// adds the leading "+" for positive; formatMoney itself prepends "-"
+	// for negative, so Amount must stay SIGNED (not abs'd) for either to
+	// render correctly.
+	up := ChangeDisplay(30, 6931)
+	if up.Kind != models.ChangeKindDollar || up.Amount != 6901 {
+		t.Errorf("up = %+v, want Kind=dollar Amount=6901", up)
+	}
+	down := ChangeDisplay(50, 5)
+	if down.Kind != models.ChangeKindDollar || down.Amount != -45 {
+		t.Errorf("down = %+v, want Kind=dollar Amount=-45", down)
+	}
+}
+
+func TestChangeDisplay_PercentAndDirectionAlwaysPopulated(t *testing.T) {
+	// Rule 2: "Percent float64 (= pct, ALWAYS populated)", "Amount ...
+	// ALWAYS populated" -- regardless of Kind, both fields carry a real
+	// value (checked here for a dollar-kind and a new-kind row, where a
+	// template never reads them, but MCP's change_percent/change_amount
+	// still must have a real number).
+	dollar := ChangeDisplay(30, 6931)
+	if dollar.Percent == 0 {
+		t.Errorf("dollar-kind Percent should still be populated, got 0")
+	}
+	newRow := ChangeDisplay(0, 150)
+	if newRow.Amount != 150 {
+		t.Errorf("new-kind Amount = %v, want 150 (still populated)", newRow.Amount)
+	}
+}
+
+func TestChangeDisplay_CategoryTrendsWiresChangeCell(t *testing.T) {
+	// End-to-end: CategoryTrends attaches a Change cell consistent with
+	// ChangeDisplay for a fresh (previously-absent) category, and copies
+	// ChangeAmount/ChangePercent/Direction FROM that cell (Rule 2).
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			catTxn("new store", "new-cat", 150, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)),
+		},
+	}
+	trends := CategoryTrends(ts, currentStart, currentEnd)
+	for _, tr := range trends {
+		if tr.Category == "new-cat" {
+			if tr.Change.Kind != models.ChangeKindNew {
+				t.Errorf("Change.Kind = %q, want %q", tr.Change.Kind, models.ChangeKindNew)
+			}
+			if tr.ChangeAmount != tr.Change.Amount || tr.ChangePercent != tr.Change.Percent || tr.Direction != tr.Change.Direction {
+				t.Errorf("row fields (%v/%v/%q) don't match Change cell (%v/%v/%q)",
+					tr.ChangeAmount, tr.ChangePercent, tr.Direction, tr.Change.Amount, tr.Change.Percent, tr.Change.Direction)
+			}
+			return
+		}
+	}
+	t.Error("expected 'new-cat' in trends")
+}
+
+func TestChangeDisplay_CategoryTrendsRoundsAtSource(t *testing.T) {
+	// Rule 1: CurrentAmount/PreviousAmount on the row are the ROUNDED
+	// totals, not the raw sums -- verified with a fractional-cent fixture.
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			catTxn("x", "frac", 30.005, time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC)),
+			catTxn("x", "frac", 6931.004, time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)),
+		},
+	}
+	trends := CategoryTrends(ts, currentStart, currentEnd)
+	for _, tr := range trends {
+		if tr.Category == "frac" {
+			if tr.PreviousAmount != 30.00 || tr.CurrentAmount != 6931.00 {
+				t.Errorf("PreviousAmount=%v CurrentAmount=%v, want 30.00/6931.00 (rounded at source)", tr.PreviousAmount, tr.CurrentAmount)
+			}
+			if tr.ChangeAmount != 6901.00 {
+				t.Errorf("ChangeAmount = %v, want 6901.00", tr.ChangeAmount)
+			}
+			return
+		}
+	}
+	t.Error("expected 'frac' in trends")
+}
+
+func TestChangeDisplay_MajorExpenseTrendsWiresChangeCell(t *testing.T) {
+	// End-to-end: MajorExpenseTrends attaches a dollar-kind Change cell
+	// when the previous period's total is under the floor, and its own
+	// ChangeAmount/ChangePercent/Direction match the cell.
+	defs := []models.MajorExpense{{ID: "e1", Name: "Roof Repair", Keywords: []string{"roof repair"}}}
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "roof repair deposit", Amount: -30, Category: "Home",
+				Date: time.Date(2025, 1, 15, 0, 0, 0, 0, time.UTC), TransactionType: models.Outflow},
+			{Description: "roof repair deposit", Amount: -6931, Category: "Home",
+				Date: time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC), TransactionType: models.Outflow},
+		},
+	}
+	trends := MajorExpenseTrends(ts, defs, nil, currentStart, currentEnd)
+	for _, tr := range trends {
+		if tr.Category == "Roof Repair" {
+			if tr.Change.Kind != models.ChangeKindDollar {
+				t.Errorf("Change.Kind = %q, want %q (PreviousAmount=%v)", tr.Change.Kind, models.ChangeKindDollar, tr.PreviousAmount)
+			}
+			if tr.ChangeAmount != tr.Change.Amount || tr.ChangePercent != tr.Change.Percent || tr.Direction != tr.Change.Direction {
+				t.Errorf("row fields don't match Change cell")
+			}
+			return
+		}
+	}
+	t.Error("expected 'Roof Repair' in trends")
+}
+
+func TestChangeDisplay_MajorExpenseTrendsFloatNoiseIsNoneStable(t *testing.T) {
+	// The exact U-2026-09-03f repro through the real producer: a category
+	// with 0.10+0.20-0.30 in the current window and NOTHING in the
+	// previous window sums to float noise (~5.55e-17), not exactly 0 --
+	// Rule 1 (round at the source) must turn that into a true $0.00, and
+	// Rule 2 must classify $0.00->$0.00 as none/stable, never new/up.
+	defs := []models.MajorExpense{{ID: "n1", Name: "Noise", Keywords: []string{"noise vendor"}}}
+	currentStart := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	currentEnd := time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC)
+	curDate := time.Date(2025, 2, 15, 0, 0, 0, 0, time.UTC)
+	ts := &models.TransactionSet{
+		Transactions: []models.Transaction{
+			{Description: "Noise Vendor", Amount: -0.10, Category: "c", Date: curDate, TransactionType: models.Outflow},
+			{Description: "Noise Vendor", Amount: -0.20, Category: "c", Date: curDate, TransactionType: models.Outflow},
+			{Description: "Noise Vendor", Amount: 0.30, Category: "c", Date: curDate, TransactionType: models.Outflow},
+		},
+	}
+	trends := MajorExpenseTrends(ts, defs, nil, currentStart, currentEnd)
+	for _, tr := range trends {
+		if tr.Category == "Noise" {
+			if tr.PreviousAmount != 0 || tr.CurrentAmount != 0 {
+				t.Fatalf("PreviousAmount=%v CurrentAmount=%v, want 0/0 (float noise rounded away)", tr.PreviousAmount, tr.CurrentAmount)
+			}
+			if tr.Change.Kind != models.ChangeKindNone {
+				t.Errorf("Change.Kind = %q, want %q", tr.Change.Kind, models.ChangeKindNone)
+			}
+			if tr.Direction != "stable" || tr.ChangePercent != 0 || tr.ChangeAmount != 0 {
+				t.Errorf("Direction=%q ChangePercent=%v ChangeAmount=%v, want stable/0/0", tr.Direction, tr.ChangePercent, tr.ChangeAmount)
+			}
+			return
+		}
+	}
+	t.Error("expected 'Noise' in trends")
+}
+
 // TestCalculateSpendingVelocity_CancellingWindowIsPositiveZero (CB9): a
 // window whose outflow rows cancel exactly used to yield IEEE -0 for
 // DailyAverage/HistoricalDaily/MonthProjection, which json.Marshal (and

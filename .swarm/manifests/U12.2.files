@@ -1,0 +1,5 @@
+internal/handlers/accounts/handlers.go
+internal/handlers/accounts/handlers_test.go
+web/templates/pages/accounts.html
+web/static/js/accounts.js
+.swarm/tier2/U12/error_reveal_probe.js

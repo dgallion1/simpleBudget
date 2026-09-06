@@ -1,0 +1,212 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U13
+ATTEMPT: 1
+---
+SCOPE: uncommitted diff on feat/ui-audit (HEAD 5bfc4c8) vs `command git diff`
+(NOT `git diff master`, which also includes prior committed U-run tasks).
+Touched: healthcare-person.html, income-card.html, income-sources-list.html,
+quick-adjust.html, whatif.html, whatif-income-toast.js (new), plus a Go
+handler test (handlers_test.go). Rendered live via
+`scripts/whatif-verify.sh start 8092` (isolated `cp -rL` data copy) and
+inspected with curl + a real Chromium via Playwright, axe-core 4.13.0
+injected into the live-rendered DOM (not hand-built HTML). Server stopped
+at the end of the audit.
+
+====================================================================
+FAILURE — decisive, reproduces on a completely fresh isolated copy
+====================================================================
+
+Constitution: ACCESSIBILITY.md #14 ("Banners ... are re-announced only on
+state change, not every page load within a session") and the task's own
+acceptance line (U-RUN-SPEC.md §2g / ledger row U13(b)): "On initial page
+load the toast is not shown (a past-session removal must not resurface)."
+Also implicates WCAG 2.2 4.1.3 Status Messages (a role="status" region's
+content must correspond to what actually just happened).
+
+File: web/templates/components/whatif/income-sources-list.html, the
+`whatif-removed-income-sources` define block (this task's own rewrite of
+that block — not pre-existing markup; `git diff` confirms it's new for
+this attempt).
+
+Observed behavior (reproduced twice, once on a server already exercised by
+my own probes, once on a server freshly restarted from a clean `cp -rL`
+copy so it could not be attributed to my own test actions):
+
+1. Fresh server start. `data/settings/whatif.json` (the real production
+   plan, isolated-copied) already has 5 entries in `removed_income_sources`
+   accumulated from PAST sessions (Christine Job, Christine Pension,
+   Christine, Rebuild Payroll x2) — this is real, current plan state, not
+   test fixture noise.
+2. GET /whatif (initial load): toast placeholder correctly renders hidden,
+   empty (`<div id="income-removed-toast" class="hidden" role="status">`).
+   This part of the fix works.
+3. First mutating action of the session — PUT
+   /whatif/healthcare/{id} (an unrelated healthcare-coverage edit, nothing
+   to do with income sources) — response includes an hx-swap-oob fragment:
+     <div id="income-removed-toast" hx-swap-oob="true" role="status"
+         class="fixed bottom-6 ... (no `hidden` class)">
+       <span>Removed <span class="font-medium">Rebuild Payroll</span></span>
+       <button ... data-income-toast-undo>Undo</button>
+       <button ... data-income-toast-dismiss aria-label="Dismiss">...</button>
+     </div>
+   i.e. a VISIBLE, `role="status"` toast announcing "Removed Rebuild
+   Payroll" pops up in response to an action that removed nothing —
+   Rebuild Payroll was removed in some past session. Reproduced identically
+   on a second, unrelated healthcare PUT (a different person's coverage).
+
+Root cause: `whatif-removed-income-sources` is included, unconditionally,
+inside the `whatif-results` OOB template block that EVERY mutating
+what-if handler re-renders (htmx targets `#whatif-results` from ~all
+controls on the page: healthcare edits, quick-adjust sliders, phases,
+scenario switches, etc. — confirmed via `grep -c hx-target="#whatif-results"`
+across the page templates). The template picks "the last entry of
+RemovedIncomeSources" and renders it un-hidden whenever the list is
+non-empty, with no way to distinguish "an item was just removed by THIS
+request" from "the list has old debris nobody purged" (the old permanent
+list supported per-item purge; this task deleted the purge button/affordance
+along with the list, so there is no longer any UI path to clear old
+entries — they now persist and keep re-triggering the toast forever).
+
+Consequence for assistive-technology users: a `role="status"` (implicit
+aria-live="polite") live region fires a false "Removed X. Undo." on
+essentially every interaction with the /whatif page for as long as any
+stale RemovedIncomeSources entries exist in the plan — which they
+currently do, in the real plan file. This is exactly the "junk text
+injected via a live region" class of defect called out in my audit
+instructions, and it is the general-case version of the very failure mode
+the task's own acceptance criterion 1 was written to prevent ("a past-
+session removal must not resurface") — it just resurfaces on the first
+click instead of on page load, which is worse (page load is a single
+event; this fires on every subsequent mutation too).
+
+Reproduction commands (isolated port, no live-data risk):
+  scripts/whatif-verify.sh start 8092
+  curl -s localhost:8092/whatif | grep -A1 'id="income-removed-toast"'
+    # hidden, empty — correct
+  HID=$(curl -s localhost:8092/whatif | grep -o 'hx-put="/whatif/healthcare/[^"]*"' | head -1 | cut -d/ -f3 | tr -d '"')
+  curl -s -X PUT "localhost:8092/whatif/healthcare/$HID" \
+    -d person_id= -d name="Darrell Gallion" -d current_age=67 \
+    -d current_coverage=medicare -d current_monthly_cost=650 \
+    -d post_medicare_inflation=4.5 | grep -A8 'id="income-removed-toast"'
+    # -> visible toast "Removed Rebuild Payroll", unrelated to this action
+  scripts/whatif-verify.sh stop 8092
+
+This is in-scope: the `whatif-removed-income-sources` define block was
+entirely rewritten by this attempt (git diff HEAD, not `git diff master`,
+shows the old per-item permanent list replaced by the toast markup). It is
+not a pre-existing defect — the old design (permanent, always-accurate
+list, no ephemeral "just happened" framing) did not have this failure
+mode.
+
+====================================================================
+Items verified PASSING (own live render / Playwright / axe)
+====================================================================
+
+1. TOAST STRUCTURE (when triggered by an actual, current-session remove):
+   `role="status"`, a real `<button data-income-toast-undo
+   hx-post="/whatif/income/{id}/restore">Undo</button>` (focusable, no
+   inline onclick), a real `<button data-income-toast-dismiss
+   aria-label="Dismiss">` (focusable). Keyboard Esc dismiss verified via
+   Playwright (`document.getElementById('income-removed-toast')` gains
+   `hidden` on Escape keydown — web/static/js/whatif-income-toast.js:25-29).
+   Click-dismiss verified. No inline onclick anywhere in the diff.
+   Focus-restoration verified live: after clicking Undo (which OOB-swaps
+   the toast holding focus), `document.activeElement` becomes
+   `#income-sources-list` (tabindex="-1", per ACCESSIBILITY.md #10) —
+   confirmed via Playwright trace of `htmx:oobBeforeSwap`.
+   Contrast: toast bg `bg-gray-900 dark:bg-gray-800` / `text-white` —
+   very high contrast in both themes; Undo/Dismiss focus rings use
+   `focus:ring-accent`, visible in both themes.
+
+2. PERSON CARD:
+   - Manual person (both real persons in the isolated data, "Darrell
+     Gallion" and "Christine", are unlinked): name renders once (header),
+     no "Source:" row, `<div class="col-span-2">` widens the Person
+     select to fill the row. Confirmed via live GET.
+   - Toggled to linked (`PUT .../healthcare/{id} person_id=<real-person-id>`):
+     name still renders once (header shows "You"), the old duplicate
+     "Linked Person"/"Derived Age" display cards are gone (hidden inputs
+     carry the values in the PUT body instead), and "Source: Linked to
+     canonical person" appears exactly when linked. Confirmed via live PUT.
+   - `{{.CurrentCoverage.Label}}` still used in the coverage-timeline
+     partial (line ~295 of the diff) — not reverted to inline if/else.
+   - All `data-quick-adjust-key`/`data-quick-adjust-display` hooks present
+     and intact on every slider (grep-verified against the diff).
+
+3. SLIDER VALUE ADJACENCY: every healthcare slider (Monthly Cost, Coverage
+   Ends In, Pre/Post-Medicare Inflation, ACA Cost/Inflation, Medicare Cost)
+   now renders `<div class="flex items-center justify-between gap-2">
+   <label>...</label><span data-quick-adjust-display>...</span></div>`
+   immediately above the `<input type=range>` — value is adjacent to its
+   own label, not in a separate/distant column. Confirmed by reading the
+   live-rendered HTML for both healthcare-person cards.
+
+4. FAB CLEARANCE (Playwright, scrolled to `document.documentElement.
+   scrollHeight`, i.e. the true bottom of the page):
+   - 1440x900: FAB (`#quick-adjust-toggle`) viewport rect
+     top=832 bottom=876; the settings-rail grid's lowest content
+     (`#whatif-settings-col`) bottom = 680 (viewport-relative, after
+     scrolling to the document's absolute bottom) — clears the FAB by
+     152px. The reserved `<div class="hidden lg:block h-28"
+     aria-hidden="true">` (112px) is present in the DOM, sized to the
+     closed-FAB footprint as documented in the task's own code comment.
+   - 390x844: confirmed via `checkVisibility()` that the FAB's ancestor
+     (`class="hidden lg:block"`) computes `display:none` and the FAB's
+     own `getBoundingClientRect()` collapses to 0 — the FAB is not
+     rendered below `lg` (1024px), so the 390 clearance question is moot,
+     exactly as the task note anticipated.
+
+5. AXE SWEEP (real Chromium render, axe-core 4.13.0, light + dark via
+   `localStorage.theme`, 1440x900 and 390x844, all `<details>` forced
+   open): 2 violations in every combination — `label` (28 nodes, e.g.
+   `#portfolio-slider`, `#monthly_living_expenses_input`, `person_id`/
+   `current_coverage` selects, income-form `start_year`/`end_year`) and
+   `select-name` (11 nodes, e.g. `#portfolio-range`, the same
+   `current_coverage`/`person_id` selects). Checked `git show
+   master:web/templates/components/whatif/healthcare-person.html` — the
+   `current_coverage` and `person_id` selects had the identical unlabeled
+   structure in master (U13 only changed color-token classes, not the
+   label/id structure); the other flagged controls (#portfolio-slider,
+   income-form date inputs) are outside every file this attempt touched.
+   → PRE-EXISTING, consistent with ruling U-2026-09-03a (U15-scope
+   observation), not a U13 FAIL. No NEW violations introduced.
+   One unrelated pre-existing contrast finding noted for the backlog: the
+   "Add Person" form's selects in `web/templates/components/whatif/
+   healthcare-card.html` (untouched by this diff — `git diff` against HEAD
+   is empty for that file) render black-on-gray-600 in dark mode
+   (ratio 2.78, axe doesn't flag `<select>` native-control contrast) —
+   OBSERVATION, out of scope for U13.
+
+6. TOKEN/TYPE FLOOR: `grep -E 'text-\[10px\]|text-\[11px\]'` on the U13
+   diff's added lines = 0. No raw hue-literal Tailwind classes
+   (`bg-red-*`, `text-blue-*`, etc.) added by this diff — all replaced
+   with `text-accent`/`bg-accent-soft`/`text-negative`/`text-positive`/
+   `text-warning` tokens, contrast-checked live in both themes (ratios
+   5.2–9.4:1, all pass 4.5:1) for the elements this diff actually owns
+   (the two real healthcare-person cards' coverage/person selects).
+
+7. Go regression oracle: `TestHandleWhatIfDeleteThenRestoreIncome_Lossless`
+   (new, in the diff) drives the real DELETE→POST /restore handlers and
+   asserts `reflect.DeepEqual` on every field — a real lossless-round-trip
+   check, not just an ID match. Read but not re-run here (that's
+   checker-tests' lane); cited for completeness since it's part of the
+   diff under audit.
+
+====================================================================
+Summary
+====================================================================
+FAIL on one defect: the Undo-toast rewrite in `whatif-removed-income-
+sources` (income-sources-list.html) resurfaces a `role="status"` "Removed
+X. Undo" banner for OLD, past-session removed income sources on the very
+first (and every subsequent) unrelated what-if mutation, because it always
+renders the LAST entry of the persistent `RemovedIncomeSources` list
+un-hidden rather than only the item removed by the current action. This
+is reproducible from a clean isolated copy of the real production plan
+data (which currently holds 5 stale removed-income entries), is squarely
+inside this attempt's own new code, and violates both ACCESSIBILITY.md #14
+and this task's own "must not resurface" acceptance criterion in the
+general (not just page-load) case. Everything else in the U13 diff
+(toast structure/keyboard/focus, person-card dedup, slider-adjacent
+values, FAB clearance, token floor, axe sweep) verified clean.

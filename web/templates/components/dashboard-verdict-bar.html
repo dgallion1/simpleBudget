@@ -6,11 +6,11 @@
     class="verdict-{{$v.Health}} rounded-xl border px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 {{verdictBandClass $v.Health}}">
 
     <div class="flex-1 min-w-[14rem]">
-        <div class="text-[10px] font-semibold tracking-widest uppercase {{verdictLabelClass $v.Health}}">Budget Status</div>
+        <div class="text-label font-semibold tracking-widest uppercase {{verdictLabelClass $v.Health}}">Budget Status</div>
         <div class="text-lg font-bold text-gray-900 dark:text-gray-100">
             {{if not $v.HasTarget}}
             No budget set
-            <a href="/whatif" class="text-sm font-normal text-indigo-600 dark:text-indigo-400 hover:underline">— set one in What-If →</a>
+            <a href="/whatif" class="text-sm font-normal text-accent hover:underline">— set one in What-If →</a>
             {{else if $v.IsOver}}
             <span class="num">{{formatMoney (abs $v.Delta)}}</span> over budget
             <span class="text-sm font-normal text-gray-600 dark:text-gray-400">over {{printf "%.1f" $v.Months}} months</span>
@@ -45,20 +45,20 @@
     <div class="flex items-center gap-6 ml-auto">
         {{if $v.HasTarget}}
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Spent</div>
-            <div class="num text-base font-bold {{if $v.IsOver}}text-rose-700 dark:text-rose-400{{else}}text-gray-700 dark:text-gray-200{{end}}">{{formatMoney $v.SpentTotal}}</div>
+            <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Spent</div>
+            <div class="num text-base font-bold {{if $v.IsOver}}text-negative{{else}}text-gray-700 dark:text-gray-200{{end}}">{{formatMoney $v.SpentTotal}}</div>
         </div>
         <div class="text-center">
-            <div class="text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Target</div>
+            <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Target</div>
             <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{formatMoney $v.TargetTotal}}</div>
         </div>
         {{end}}
-        <button type="button" onclick="openKPIDetail('savings')"
-            class="text-center rounded px-2 py-1 -my-1 hover:bg-black/5 dark:hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            aria-label="Show monthly net savings detail">
-            <span class="block text-[10px] uppercase tracking-wide text-gray-600 dark:text-gray-400">Net Savings</span>
-            <span class="num block text-base font-bold {{if ge $v.NetSavings 0.0}}text-emerald-700 dark:text-emerald-400{{else}}text-rose-700 dark:text-rose-400{{end}}">{{formatMoney $v.NetSavings}}</span>
-        </button>
+        {{/* Net Savings moved to the KPI row (U10, §2f/D1): the verdict band
+             keeps only Spent/Target; the figure now lives in
+             shared/kpi-tile "Net Savings" in kpis.html, same value
+             ($v.NetSavings / .Metrics.NetSavings are the same field, see
+             internal/handlers/dashboard/verdict.go:176 `v.NetSavings =
+             m.NetSavings`), same formatMoney, same sign coloring. */}}
     </div>
 </div>
 {{end}}

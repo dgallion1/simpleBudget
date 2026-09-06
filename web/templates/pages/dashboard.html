@@ -1,118 +1,91 @@
 {{define "dashboard-content"}}
 <div class="space-y-6">
-    <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Dashboard</h1>
-    <!-- Unassigned-files banner (A8) -->
-    {{template "unassigned_banner" .}}
-
-    <!-- CSV Drop Zone -->
-    <div id="drop-zone"
-        class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center transition-all duration-200 bg-gray-50 dark:bg-gray-800 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 cursor-pointer"
-        onclick="document.getElementById('file-input').click()">
-        <input type="file" id="file-input" accept=".csv,.zip" class="hidden" onchange="handleFileSelect(this.files)">
-        <div id="drop-zone-content" class="flex items-center justify-center space-x-3">
-            <svg class="w-8 h-8 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Dashboard</h1>
+        {{/* Primary CSV-import affordance moved to a header button (U10 /
+             §2f): a real, keyboard-operable <button>, wired in
+             dashboard.js to the same #file-input the drop-zone used.
+             Whole-page drag-and-drop still imports (dashboard.js listens
+             on document, not just #drop-zone). */}}
+        <button type="button" id="import-csv-btn"
+            class="inline-flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-accent-soft hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
             </svg>
-            <span class="text-gray-600 dark:text-gray-400">Drop CSV or backup ZIP files here or <span class="text-indigo-600 dark:text-indigo-400 font-medium">click to
-                    browse</span></span>
+            Import CSV
+        </button>
+    </div>
+    <!-- Unassigned-files banner (A8) -->
+    {{template "unassigned_banner" .}}
+
+    <!-- CSV Drop Zone: secondary now that Import CSV lives in the header
+         above; shrunk (U10), but the same #file-input/#drop-zone-* ids
+         dashboard.js toggles, and dropping anywhere on the page (not just
+         this box) still imports. -->
+    <div id="drop-zone"
+        class="border border-dashed border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-center transition-all duration-200 bg-gray-50 dark:bg-gray-800 hover:border-accent hover:bg-accent-soft cursor-pointer">
+        <input type="file" id="file-input" accept=".csv,.zip" class="hidden">
+        <div id="drop-zone-content" class="flex items-center justify-center space-x-2">
+            <svg class="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+            </svg>
+            <span class="text-sm text-gray-600 dark:text-gray-400">Or drop CSV or backup ZIP files anywhere on this page, or <span class="text-accent font-medium">click to browse</span></span>
         </div>
-        <div id="drop-zone-uploading" class="hidden flex items-center justify-center space-x-3">
-            <svg class="animate-spin h-6 w-6 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24">
+        <div id="drop-zone-uploading" class="hidden flex items-center justify-center space-x-2">
+            <svg class="animate-spin h-5 w-5 text-accent" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor"
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
                 </path>
             </svg>
-            <span class="text-indigo-600 dark:text-indigo-400 font-medium">Uploading...</span>
+            <span class="text-accent font-medium text-sm">Uploading...</span>
         </div>
-        <div id="drop-zone-success" class="hidden flex items-center justify-center space-x-3">
-            <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div id="drop-zone-success" class="hidden flex items-center justify-center space-x-2">
+            <svg class="w-5 h-5 text-positive" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
             </svg>
-            <span class="text-green-700 dark:text-green-400 font-medium">Upload complete! Refreshing...</span>
+            <span class="text-positive font-medium text-sm">Upload complete! Refreshing...</span>
         </div>
-        <div id="drop-zone-error" class="hidden flex items-center justify-center space-x-3">
-            <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div id="drop-zone-error" class="hidden flex items-center justify-center space-x-2">
+            <svg class="w-5 h-5 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
             </svg>
-            <span id="drop-zone-error-msg" class="text-red-600 dark:text-red-400 font-medium">Upload failed</span>
+            <span id="drop-zone-error-msg" class="text-negative font-medium text-sm">Upload failed</span>
         </div>
     </div>
 
-    <!-- Date Range Selector -->
+    <!-- Date Range Selector (shared/range-picker.html, U7) -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
         <form id="date-filter-form" class="flex flex-wrap items-center gap-4">
-
-            <div class="flex items-center space-x-2">
-                <label for="dashboard-date-start" class="text-sm font-medium text-gray-700 dark:text-gray-300">From:</label>
-                <input type="date" id="dashboard-date-start" name="start" value="{{.StartDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
-                    class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500">
-            </div>
-
-            <div class="flex items-center space-x-2">
-                <label for="dashboard-date-end" class="text-sm font-medium text-gray-700 dark:text-gray-300">To:</label>
-                <input type="date" id="dashboard-date-end" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
-                    class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500">
-            </div>
-
-            <div class="flex items-center space-x-2">
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Compare:</label>
-                <select name="comparison"
-                    class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500">
-                    <option value="">No comparison</option>
-                    <option value="previous" {{if eq .Comparison "previous" }}selected{{end}}>Previous period</option>
-                    <option value="year" {{if eq .Comparison "year" }}selected{{end}}>Same period last year</option>
-                </select>
-            </div>
-
-            <!-- Quick presets -->
-            <div class="flex items-center space-x-2 ml-auto">
-                <span class="text-sm text-gray-600 dark:text-gray-400">Quick:</span>
-                <button type="button" onclick="shiftWindow(-1)" title="Shift window backward" aria-label="Shift window backward"
-                    class="min-w-[2rem] px-1.5 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-                    </svg>
-                </button>
-                <button type="button" onclick="setPreset('ytd')" data-preset="ytd"
-                    class="preset-btn min-w-[2.5rem] px-2 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
-                    YTD
-                </button>
-                <button type="button" onclick="setPreset('1m')" data-preset="1m"
-                    class="preset-btn min-w-[2.5rem] px-2 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
-                    1M
-                </button>
-                <button type="button" onclick="setPreset('2m')" data-preset="2m"
-                    class="preset-btn min-w-[2.5rem] px-2 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
-                    2M
-                </button>
-                <button type="button" onclick="setPreset('3m')" data-preset="3m"
-                    class="preset-btn min-w-[2.5rem] px-2 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
-                    3M
-                </button>
-                <button type="button" onclick="setPreset('6m')" data-preset="6m"
-                    class="preset-btn min-w-[2.5rem] px-2 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
-                    6M
-                </button>
-                <button type="button" onclick="setPreset('12m')" data-preset="12m"
-                    class="preset-btn min-w-[2.5rem] px-2 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
-                    12M
-                </button>
-                <button type="button" onclick="setPreset('all')" data-preset="all"
-                    class="preset-btn min-w-[2.5rem] px-2 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
-                    All
-                </button>
-                <button type="button" onclick="shiftWindow(1)" title="Shift window forward" aria-label="Shift window forward"
-                    class="min-w-[2rem] px-1.5 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                    </svg>
-                </button>
-            </div>
+            {{template "shared/range-picker" (dict
+                "Layout" "inline"
+                "ArrowPosition" "wrap"
+                "QuickLabel" "Quick:"
+                "StartID" "dashboard-date-start"
+                "EndID" "dashboard-date-end"
+                "StartValue" .StartDate
+                "EndValue" .EndDate
+                "MinDate" .MinDate
+                "MaxDate" .MaxDate
+                "PresetAttr" "data-preset"
+                "PresetClass" "preset-btn"
+                "PresetInactiveClass" "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                "Presets" (slice
+                    (dict "Value" "ytd" "Label" "YTD")
+                    (dict "Value" "1m" "Label" "1M")
+                    (dict "Value" "2m" "Label" "2M")
+                    (dict "Value" "3m" "Label" "3M")
+                    (dict "Value" "6m" "Label" "6M")
+                    (dict "Value" "12m" "Label" "12M")
+                    (dict "Value" "all" "Label" "All"))
+                "Comparison" (safeHTML (printf `<div class="flex items-center space-x-2"><label for="dashboard-comparison" class="text-sm font-medium text-gray-700 dark:text-gray-300">Compare:</label><select id="dashboard-comparison" name="comparison" class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-1.5 text-sm focus:ring-accent focus:border-accent"><option value="">No comparison</option><option value="previous" %s>Previous period</option><option value="year" %s>Same period last year</option></select></div>`
+                    (htmlSelected (eq .Comparison "previous"))
+                    (htmlSelected (eq .Comparison "year")))))}}
 
             <span id="loading-indicator" class="htmx-indicator">
-                <svg class="animate-spin h-5 w-5 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none"
+                <svg class="animate-spin h-5 w-5 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none"
                     viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor"
@@ -137,49 +110,45 @@
     <!-- Budget vs Actual Over Time -->
     {{template "budget-vs-actual" .}}
 
+    {{/* Dashboard chart cards all share one shell (shared/card.html, U7):
+         a chart-container div with a "Loading chart..." placeholder that
+         charts.js replaces once the data arrives. Only the Major Expense
+         card adds two extra breakdown divs below the chart. */}}
     <!-- Charts Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Spending by Major Expense -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Spending by Major Expense</h2>
-            <div id="chart-major-expense" class="chart-container" data-chart-url="/dashboard/charts/data/major-expense">
-                <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
-                    Loading chart...
-                </div>
+        {{template "shared/card-open" (dict "Title" "Spending by Major Expense")}}
+        <div id="chart-major-expense" class="chart-container" data-chart-url="/dashboard/charts/data/major-expense">
+            <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
+                Loading chart...
             </div>
-            <div id="chart-major-expense-breakdown" class="mt-3 text-sm text-gray-600 dark:text-gray-300"></div>
-            <div id="chart-major-expense-credits" class="mt-3 text-sm text-gray-600 dark:text-gray-300"></div>
         </div>
+        <div id="chart-major-expense-breakdown" class="mt-3 text-sm text-gray-600 dark:text-gray-300"></div>
+        <div id="chart-major-expense-credits" class="mt-3 text-sm text-gray-600 dark:text-gray-300"></div>
+        {{template "shared/card-close" .}}
 
-        <!-- Spending Trend -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Spending Trend</h2>
-            <div id="chart-spending-trend" class="chart-container" data-chart-url="/dashboard/charts/data/spending-trend">
-                <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
-                    Loading chart...
-                </div>
+        {{template "shared/card-open" (dict "Title" "Spending Trend")}}
+        <div id="chart-spending-trend" class="chart-container" data-chart-url="/dashboard/charts/data/spending-trend">
+            <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
+                Loading chart...
             </div>
         </div>
+        {{template "shared/card-close" .}}
 
-        <!-- Top Merchants -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Top Spending</h2>
-            <div id="chart-merchants" class="chart-container" data-chart-url="/dashboard/charts/data/merchants">
-                <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
-                    Loading chart...
-                </div>
+        {{template "shared/card-open" (dict "Title" "Top Spending")}}
+        <div id="chart-merchants" class="chart-container" data-chart-url="/dashboard/charts/data/merchants">
+            <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
+                Loading chart...
             </div>
         </div>
+        {{template "shared/card-close" .}}
 
-        <!-- Cumulative Balance -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 lg:col-span-2">
-            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Cumulative Balance</h2>
-            <div id="chart-cumulative" class="chart-container" data-chart-url="/dashboard/charts/data/cumulative">
-                <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
-                    Loading chart...
-                </div>
+        {{template "shared/card-open" (dict "Title" "Cumulative Balance" "Class" "lg:col-span-2")}}
+        <div id="chart-cumulative" class="chart-container" data-chart-url="/dashboard/charts/data/cumulative">
+            <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
+                Loading chart...
             </div>
         </div>
+        {{template "shared/card-close" .}}
     </div>
 
     <!-- Major Expense Drilldown Modal Container -->

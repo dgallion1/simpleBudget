@@ -1,0 +1,213 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U7
+ATTEMPT: 2
+---
+
+## Method
+- Read `.swarm/U-RUN-SPEC.md` §2b (U7 contract), the task table row (checks
+  a-e), ruling U-2026-09-04l (§10), ACCESSIBILITY.md (17 points), and the
+  attempt-1 FAIL verdict this attempt claims to fix.
+- Read the U7.2 manifest and the diffs of the four claimed files
+  (`web/templates/pages/insights.html`, `web/templates/components/shared/
+  kpi-tile.html`, `web/static/js/dashboard.js`, `web/static/js/insights.js`)
+  against `git diff master`.
+- Started `scripts/whatif-verify.sh start 8099` (throwaway data copy) and
+  ran INDEPENDENT Playwright probes (not the manifest's numbers alone)
+  against the live rendered pages: a Tab-walk/keyboard-activation check on
+  every KPI tile, every Insights nav target, and a sample of the sortable
+  `<th>` buttons; a full sitewide axe sweep (my own harness, then the
+  worker's own `u7_axe_probe.js` re-run byte-for-byte as a cross-check).
+- Built an isolated harness (real `kpi-tile.html`/`kpis.html` markup,
+  real `dashboard.js`, real `axe-core`) to force-render the Budget tile's
+  "no target set" branch — a state the running verify-server's fixture
+  data does not reach — and tested keyboard activation of the nested
+  `<a href="/whatif">` plus ran axe against that exact markup.
+- Stopped the server (`scripts/whatif-verify.sh stop 8099`) when done.
+
+## 1. Keyboard operability — the three families attempt 1 failed — PASS
+Independently reproduced live against `localhost:8099` (not just re-running
+the manifest's harness):
+
+- **5 dashboard KPI tiles** (`kpi-tile.html` → `kpis.html`): all `DIV
+  tabIndex=0 role="button"`, focusable, `aria-label="<Label> details"`.
+  Enter on each opens `#kpi-detail-container` (verified: `EnterOpens=true`
+  ×5, income/expenses/living/healthcare/budget).
+- **12 Insights sortable `<th>` headers**: now `<th scope="col">` wrapping
+  a real `<button type="button" data-sort-fn=... data-sort=...>`. Native
+  buttons get Enter/Space for free; independently focused and pressed
+  Enter on a sample of 4 (recurring-payments table) — `aria-sort` set to
+  `ascending` on each, matching click behavior. `scope="col"` retained;
+  accessible name is the visible column text ("Description", "Amount",
+  etc.) — good.
+- **4 Insights navigation targets**: the subscriptions card is a real
+  `<a href="/explorer?...">` (native, no JS needed). The 3 `<tr
+  data-navigate-href tabindex="0" role="link" aria-label="Open … in
+  Explorer">` row families: independently focused row[0] (a
+  recurring-payments row, aria-label "Open Amazon in Explorer") and
+  pressed Enter — navigated to `/explorer?search=Amazon&type=Outflow`,
+  matching click behavior. 26 rendered row instances present in the
+  fixture data, all carry the same `tabindex`/`role`/`aria-label` pattern
+  by construction (grep-verified across all three markup sites).
+
+No inline `onclick=` reintroduced (`grep -rc 'onclick='` across
+`web/templates` = 0).
+
+## 2. Pattern correctness
+
+- **Sortable headers**: correct. `<th scope="col">` kept; button carries
+  visible, non-empty accessible name; `aria-sort` tracked by
+  `updateSortIcons()` in `insights.js`.
+- **Nav rows (`<tr role="link">`)**: correct. A `<tr>` genuinely cannot
+  become an `<a>` without losing its `<td>` children; the
+  `tabindex="0" role="link"` + scoped keydown (`e.target === el` guard,
+  so a keypress inside a nested control is never hijacked) fallback is
+  the right choice, and the `aria-label` is meaningful and per-row.
+- **KPI tiles — REAL DEFECT.** The Budget tile's "no combined target set"
+  branch (`web/templates/components/kpis.html:151-154`) nests a real
+  `<a href="/whatif">` inside the tile's outer `<div role="button"
+  tabindex="0" data-kpi-detail="expenses">` (`kpi-tile.html:24`). Traced
+  both halves of the ruling's own two-part question:
+  - *Does the keydown fire the modal even when the inner link is
+    focused?* No — verified correct. Built an isolated harness with the
+    exact rendered markup (`kpi-tile-open`'s attribute string + the
+    "Not set"/`<a href="/whatif">` block from `kpis.html`) plus the real
+    `dashboard.js`. Tab from the tile lands on the `<a>`
+    (`tag=A href=/whatif`); pressing Enter there navigates to `/whatif`
+    (native browser link behavior — `e.target !== el` in the keydown
+    handler correctly excludes it), and does NOT open the KPI modal. The
+    worker's `e.target === el` guard works as designed.
+  - *Does the nesting confuse the accessibility tree?* **Yes.** Ran
+    axe-core (wcag2a/wcag2aa/wcag21aa/wcag22aa tags, same ruleset as the
+    project's own oracle) against that exact isolated markup:
+    `nested-interactive` (impact: serious, tags include `wcag2a`,
+    `wcag412` — WCAG 4.1.2 Name, Role, Value, Level A, part of the
+    "WCAG 2.2 AA" baseline ACCESSIBILITY.md line 3 states) fires on the
+    outer `<div role="button">` because it contains a focusable `<a>`
+    descendant: "Interactive controls must not be nested — not always
+    announced by screen readers or can cause focus problems for
+    assistive technologies."
+  - **This is NEW this attempt, not carried over from master.**
+    Reconstructed master's markup for the same branch
+    (`git show master:web/templates/components/kpis.html`, lines
+    188-189): the pre-U7 `<div onclick="openKPIDetail('expenses')">` has
+    **no `role` attribute**. Ran the same axe ruleset against that
+    markup: zero violations — axe's `nested-interactive` rule only fires
+    on elements carrying an interactive ARIA role, so master's bare
+    `onclick` div (accessibility-broken in its own right, but not via
+    this rule) does not trip it. Attempt 2's fix — adding
+    `role="button"` to make the tile keyboard-operable — is exactly what
+    newly triggers this WCAG 4.1.2 violation on this one branch.
+  - **Why no axe sweep caught it:** the "no budget target configured"
+    state never renders in the verify-server's fixture data (confirmed:
+    `grep -c 'Not set'` on the live `/dashboard` response = 0), so
+    neither attempt 1's, nor attempt 2's, nor my own independent sitewide
+    sweep (§3 below) ever scanned this branch. It is nonetheless a real,
+    commonly-reachable state (any household that hasn't set a What-If
+    budget target yet — arguably the FIRST-run state) and the exact
+    branch the worker's own manifest cites as the reason a native
+    `<button>` wasn't used for the tiles. Same class of gap as the
+    U6/U-2026-09-04j hidden-state coverage misses (rulings h/j/k):
+    automated coverage depends on fixture data reaching the state; it
+    didn't here.
+
+## 3. Full axe sweep — PASS (independently reproduced, not just trusted)
+My own first-pass sweep (simpler harness, no tab/modal-opener activation)
+surfaced spurious violations on `/whatif` and dark-mode contrast on
+several pages; re-running the **worker's own, unmodified**
+`u7_axe_probe.js` (which opens every `<details>`, clicks every
+tab/quick-adjust/collapse toggle, and opens every KPI/month-detail/
+drilldown modal before scanning — the correct methodology per
+ruling U-2026-09-03h/U-2026-09-04k) reproduced **18/18 clean** (9 pages ×
+light/dark) exactly as claimed. My simpler harness's extra findings were
+an artifact of an inferior probe (not opening hidden tabs/panels), not
+real defects — discarded per the "necessary but not sufficient, verify
+with the right harness" standard, and confirmed by direct comparison.
+This satisfies criterion (e)'s sitewide-zero bar and shows attempt 1's
+clean axe result did not regress under the tag set the oracle actually
+runs. It does NOT catch the nested-interactive gap in §2 because that
+defect requires fixture data axe never sees (§2's coverage-gap note).
+
+## 4. Attempt-1 accepted work intact — PASS
+- Four shared partials present: `web/templates/components/shared/{card,
+  data-table,kpi-tile,range-picker}.html`.
+- `grep -c '!important' web/static/css/styles.css` = 0.
+- `grep -rn 'text-\[10px\]\|text-\[11px\]' web/templates` = 0.
+- `grep -rc 'onclick=' web/templates/**/*.html` = 0 everywhere.
+- Extracted JS files present (`dashboard.js`, `insights.js`, and the
+  other per-page files from attempt 1, unchanged this attempt per
+  `git status` scoping to the 4 named files).
+
+## VERDICT RATIONALE
+Two of three families the ruling required — sortable headers, nav
+rows/tiles' modal-open behavior — are fixed correctly and independently
+verified live. The third (KPI tiles) fixes keyboard reachability
+correctly but its chosen pattern (`role="button"` wrapping a div that,
+on one data-dependent branch, contains a real focusable `<a>`) introduces
+a NEW, axe-detectable WCAG 4.1.2 (`nested-interactive`, serious impact)
+violation on the Budget tile's "no target set" state — proven against the
+actual attempt-2 markup and the actual `dashboard.js`, and proven absent
+on master's equivalent (pre-`role`) markup, so this is content this
+attempt's own fix newly broke, not a carried-over defect. This state is
+common (any household without a What-If budget target) and is the exact
+branch the worker's own manifest names as the reason a native `<button>`
+was not used — the worker reasoned about this branch and still landed
+on a structurally invalid nesting. FAIL.
+
+Scope for attempt 3 (do not re-open the other two families, which pass):
+fix the Budget tile only — e.g. don't put `role="button"`/`tabindex="0"`
+on the outer div when it can contain the `<a href="/whatif">` (make the
+"Set a budget" link the tile's sole interactive affordance for that
+branch and drop the click-to-open-modal behavior there), or restructure
+so the link sits outside the `role="button"` region, or another pattern
+that does not nest a second interactive control inside the `role="button"`
+element. Re-verify keyboard activation of both the tile and the link
+after the fix, and re-run axe against the "no target set" branch
+specifically (the fixture gap that hid this — force the state via a
+throwaway data copy with no budget target configured, not the default
+verify-server data).
+
+## OBSERVATIONS (not blocking, for the ledger/backlog)
+- The verify-server's default fixture data (and, apparently, every prior
+  U6/U7 axe oracle's fixture data) never exercises the dashboard's
+  "no budget target configured" state. Worth a follow-up: extend the U6/
+  U7 oracle's data setup (or add a second fixture) so this state is
+  scanned by the standing sitewide sweep rather than requiring a manual
+  isolated probe, the same lesson as rulings U-2026-09-03h and
+  U-2026-09-04j/k (hidden state ⇒ hidden defects).
+- Modal `role="dialog"`/`aria-modal`/focus-trap gap on kpi-detail,
+  kpi-month-detail, major-expense-drilldown stays U15 scope per the
+  ruling; not re-litigated here, no regression found.
+- `major-expenses.html`'s bare `<th data-sort-key>` headers remain
+  unchanged by this attempt (pre-existing, U15 scope per attempt-1's
+  verdict).
+
+## Evidence commands
+```
+scripts/whatif-verify.sh start 8099
+node .../u6/u7_axe_probe.js http://localhost:8099 ./node_modules/axe-core/axe.min.js
+# -> AXE PROBE: clean (18/18) — reproduced independently
+
+node live_probe.js
+# KPI tiles found: 5; tile[0..4] tag=DIV tabIndex=0 EnterOpens=true (x5)
+# sortable buttons found: 8; th[0..3] tag=BUTTON ariaSortAfterEnter=ascending
+# nav rows found: 26; row[0] tag=TR aria-label="Open Amazon in Explorer"
+#   navigated=true url=http://localhost:8099/explorer?search=Amazon&type=Outflow
+
+# isolated nested-link harness (real kpi-tile.html + kpis.html "Not set"
+# markup, real dashboard.js):
+node nested_probe.js
+# outerFocused=budget-tile modalOpenedOnTileEnter=true
+# afterTabFocused={"tag":"A","href":"/whatif"}
+# linkEnter: navigated=true url=file:///whatif  (native link nav, no
+#   modal fired — the e.target!==el guard works)
+
+node axe_nested.js   # attempt-2 markup (role="button" added)
+# violations include: nested-interactive (serious, wcag2a/wcag412), x1
+
+node axe_master.js   # master's markup (no role attribute) for the same branch
+# violations: []   <- confirms this is new, not carried over
+
+scripts/whatif-verify.sh stop 8099
+```

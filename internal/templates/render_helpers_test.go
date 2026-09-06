@@ -364,14 +364,15 @@ func TestSafeJS(t *testing.T) {
 }
 
 func TestColorClass(t *testing.T) {
-	if !strings.Contains(colorClass(1.0), "green") {
-		t.Error("positive should be green")
+	// U6: colorClass emits semantic token classes, not hue literals.
+	if !strings.Contains(colorClass(1.0), "positive") {
+		t.Error("positive amount should use the positive token")
 	}
-	if !strings.Contains(colorClass(-1.0), "red") {
-		t.Error("negative should be red")
+	if !strings.Contains(colorClass(-1.0), "negative") {
+		t.Error("negative amount should use the negative token")
 	}
-	if !strings.Contains(colorClass(0), "gray") {
-		t.Error("zero should be gray")
+	if !strings.Contains(colorClass(0), "neutral") {
+		t.Error("zero amount should use the neutral token")
 	}
 }
 

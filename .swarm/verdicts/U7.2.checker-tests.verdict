@@ -1,0 +1,66 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: U7
+ATTEMPT: 2
+---
+Verified in a cp -a scratch copy (real tree read-only; verify server on :8099
+throwaway data, stopped after). Attempt 2 is the a11y keyboard-operability
+delta on top of the accepted attempt-1 refactor (ruling U-2026-09-04l).
+Attempt-2 window confirmed by mtime (whole tree, after 17:00): exactly the
+four authorized files — web/templates/pages/insights.html,
+web/templates/components/shared/kpi-tile.html, web/static/js/dashboard.js,
+web/static/js/insights.js — plus generated web/static/css/tailwind.css and
+build-scratch tmp/tailwind.check.css. No .go/test file modified this attempt.
+
+(a) PASS — in scratch: `go build ./...` exit 0; `go vet ./...` exit 0;
+`go test -count=1 ./...` exit 0, 49 packages ok, 0 FAIL/panic (incl. dashboard,
+insights, templates render tests); `staticcheck ./...` exit 0, no output.
+
+(b) PASS — no test was modified this attempt (mtime scan finds no *.go changed
+after 17:00), so the attempt-1 render tests still guard the markup and the
+hooks they grep still exist post-change:
+  - handlers_http_test.go asserts `data-kpi-detail="expenses|savings|living|
+    healthcare"`; kpi-tile.html line 34 still emits `data-kpi-detail=
+    "{{.DetailKey}}"` (now alongside tabindex/role/aria-label).
+  - render_kpi_month_detail_test.go asserts `<th scope="col" data-sort=%q` +
+    `<button type="button" data-sort-btn=%q` (button-in-th contract) — the
+    internal/templates package tests pass ok.
+  Mutation proof: renaming data-kpi-detail→data-kpi-BROKEN in kpi-tile.html →
+  `go test ./internal/handlers/dashboard/` FAILs
+  (TestDashboardKPIs_LivingHealthcareCardsWiredToOwnKinds); reverting → ok.
+  Insights sortable headers have no Go test; proved via rendered output (c).
+
+(c) PASS — verify server on :8099: /dashboard 200, /insights 200; server.log
+  shows no 500/panic/error. Rendered /insights carries 8 sortable headers of
+  shape `<th scope="col" ...><button type="button" data-sort-fn="..."
+  data-sort="...">`, loads /static/js/insights.js, and renders nav rows with
+  `role="link"` + aria-label + data-navigate-href (behavior-preserving; sort
+  click still delegates data-sort-fn→sortRecurringTable/sortTrendsTable at
+  insights.js:19-25, functions intact at :53/:106, Enter/Space keydown added
+  at :41). Rendered /dashboard emits data-kpi-detail={income,expenses,living,
+  healthcare} each with `tabindex="0" role="button" aria-label="... details"`,
+  loads /static/js/dashboard.js which keeps the click delegation on
+  [data-kpi-detail] and adds Enter/Space keydown scoped to
+  [data-kpi-detail][role="button"] (dashboard.js:8-36).
+
+(d) PASS — `make css-verify` exit 0 ("tailwind.css is up to date");
+  `grep -c '!important' web/static/css/styles.css` = 0; bare inline `<script>`
+  blocks in web/templates = 4 (base.html, unlock.html, scenario-chain-card,
+  spending-phases) ≤ 5. tailwind.css regeneration is the in-sync generated
+  consequence of the new utility classes in the two changed templates.
+
+(e) PASS — scope clean. Attempt-2 mtime scan touches only the four authorized
+  files (+ generated tailwind.css/tmp). No path in .swarm/critical.globs (all
+  internal/services/**) touched. Attempt-1's extracted JS partials and shared
+  components are intact (all extracted *.js present untracked; the large
+  template deletions from extraction still present in `git diff --stat HEAD`);
+  nothing reverted.
+
+SCOPE — within U7 attempt-2's authorized four files plus generated CSS. No
+critical-glob path touched.
+
+FINDINGS — none blocking. Note: insights sortable-header button rendering is
+covered by no Go test (guarded here only by the live-server render assertion);
+candidate for a test-only follow-up if the run wants the evidence to outlive
+this verdict.

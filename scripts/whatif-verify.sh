@@ -40,7 +40,13 @@ case "$CMD" in
     fi
     rm -rf "$WORK"
     mkdir -p "$WORK"
-    cp -r "$REPO/data" "$WORK/data"
+    # cp -rL (DEREFERENCE): in a git worktree $REPO/data is a SYMLINK to the
+    # main checkout's LIVE data dir. A plain `cp -r` copies the symlink, so
+    # $WORK/data points back at live data and every write endpoint the verify
+    # server exercises corrupts the real plan (2026-09-05 U13/U12 incident).
+    # -L follows the symlink and copies the real files into an isolated dir.
+    rm -rf "$WORK/data"
+    cp -rL "$REPO/data" "$WORK/data"
     echo "Building server..."
     (cd "$REPO" && go build -o "$WORK/budget2-server" ./cmd/server)
     # BUDGET2_BACKUP_DIR must be isolated too, not just the data dir.

@@ -201,6 +201,9 @@ func isCandidatePair(a, b models.Transaction) bool {
 // -- an exact Original Description match plus same amount is the only
 // evidence, so the date window stays narrow.
 func isSameDayReimportPair(a, b models.Transaction) bool {
+	if a.AccountID != b.AccountID {
+		return false
+	}
 	if dayDiff(a.Date, b.Date) > 1 {
 		return false
 	}

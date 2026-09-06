@@ -1,0 +1,24 @@
+CHECK 1 go build ./cmd/server: PASS
+CHECK 2 server up on :8199 with synthetic data (3 CSVs): PASS
+CHECK 3 fixture: 3 CSVs present before any request: PASS
+CHECK 4 GET /filemanager renders: PASS
+CHECK 5 Clear All is a <button> with hx-delete=/data/all, carries expected_count, confirm names the count (3): FAIL
+    Traceback (most recent call last):
+  File "<stdin>", line 10, in <module>
+AssertionError: button does not carry expected_count (hx-vals / hx-delete query)
+CHECK 6 Clear All is not in the same immediate container as Load Test Data: FAIL
+    Traceback (most recent call last):
+  File "<stdin>", line 8, in <module>
+AssertionError: no container boundary between Load Test Data and Clear All
+CHECK 7 DELETE without expected_count → 409 and nothing deleted (got 200, csvs=0): FAIL
+CHECK 8 DELETE with stale expected_count=2 → 409 and nothing deleted (got 200, csvs=0): FAIL
+CHECK 9 DELETE with non-numeric expected_count → 4xx and nothing deleted (got 200, csvs=0): FAIL
+CHECK 10 DELETE with matching expected_count=3 → 200, all 3 CSVs gone, non-CSV and backups dir survive (got 200, csvs=0): FAIL
+CHECK 11 repeating the same request after deletion → 409 (count is now 0, not 3; got 200): FAIL
+CHECK 12 encryption card collapsed by default: disclosure button aria-expanded=false controls a hidden panel: FAIL
+    Traceback (most recent call last):
+  File "<stdin>", line 6, in <module>
+AssertionError: no disclosure <button aria-expanded="false" aria-controls=…> near the encryption card
+CHECK 13 backup handlers + storage suites green: PASS
+SUMMARY: 5 passed, 8 failed
+ORACLE FAIL

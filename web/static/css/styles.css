@@ -1,5 +1,79 @@
 /* Custom styles for Budget Dashboard */
 
+/* Design tokens (U6) — one semantic palette, defined once.
+   Twelve Tailwind hue families used to carry four meanings; these five
+   tokens replace them. Each has three shades exposed via tailwind.config.js
+   theme.extend.colors as `rgb(var(--x) / <alpha-value>)`:
+     DEFAULT — text/icon color on the page surface (flips light/dark so
+               templates use e.g. `text-positive` with NO `dark:` twin).
+     soft    — tinted fill/background (flips light/dark; dark values are the
+               family's 900-shade blended ~20% over the page's gray-900,
+               approximating today's `dark:bg-*-900/20` look without a
+               dark: modifier in the template).
+     strong  — bold text or a filled control with white text; deliberately
+               theme-INVARIANT (buttons keep the same fill in both themes,
+               matching the existing bg-indigo-600 pattern) and picked dark
+               enough that white-on-strong clears 4.5:1 for every family
+               (verified: indigo-600 6.3:1, emerald-700 5.5:1, rose-700
+               6.3:1, amber-800 7.1:1, gray-700 10.3:1).
+   Hex sources: accent=indigo, positive=emerald, negative=rose,
+   warning=amber, neutral=gray (today's dominant families per meaning).
+   DEFAULT shades were tuned PER FAMILY for 4.5:1 text contrast on white/
+   gray-900 rather than reusing one shade number everywhere — emerald-600
+   and amber-600/700 fall short of 4.5:1 on white (3.8:1 / ~4.0-5.0:1
+   borderline), so positive/negative use 700 and warning uses 800 for
+   DEFAULT-light where indigo's 600 already clears 6.3:1. Values are RGB
+   triplets (no commas) so Tailwind's alpha-value substitution works. */
+:root {
+    --accent: 79 70 229;          /* indigo-600 */
+    --accent-soft: 238 242 255;   /* indigo-50 */
+    --accent-strong: 79 70 229;   /* indigo-600 */
+
+    --positive: 4 120 87;         /* emerald-700 (emerald-600 fails 4.5:1 on white) */
+    --positive-soft: 236 253 245; /* emerald-50 */
+    --positive-strong: 4 120 87;  /* emerald-700 */
+
+    --negative: 190 18 60;        /* rose-700 */
+    --negative-soft: 255 241 242; /* rose-50 */
+    --negative-strong: 190 18 60; /* rose-700 */
+
+    --warning: 146 64 14;         /* amber-800 (amber-600/700 too light on white) */
+    --warning-soft: 255 251 235;  /* amber-50 */
+    --warning-strong: 146 64 14;  /* amber-800 */
+
+    --neutral: 75 85 99;          /* gray-600 */
+    --neutral-soft: 249 250 251;  /* gray-50 */
+    --neutral-strong: 55 65 81;   /* gray-700 */
+}
+
+.dark {
+    /* accent/negative use the 300 shade, not 400: axe found 400 fails
+       4.5:1 against the gray-700 secondary-button fill used under
+       "Delete"/"Remove" controls (indigo-400 3.46:1, rose-400 3.82:1);
+       300 clears it (indigo-300 5.17:1, rose-300 5.45:1) while still
+       passing comfortably against the gray-900 page background and each
+       token's own -soft fill. */
+    --accent: 165 180 252;        /* indigo-300 */
+    --accent-soft: 23 28 57;      /* indigo-900 blended ~20% over gray-900 */
+    --accent-strong: 79 70 229;   /* indigo-600 (theme-invariant) */
+
+    --positive: 52 211 153;       /* emerald-400 */
+    --positive-soft: 15 35 43;    /* emerald-900 blended ~20% over gray-900 */
+    --positive-strong: 4 120 87;  /* emerald-700 (theme-invariant) */
+
+    --negative: 253 164 175;      /* rose-300 */
+    --negative-soft: 41 23 42;    /* rose-900 blended ~20% over gray-900 */
+    --negative-strong: 190 18 60; /* rose-700 (theme-invariant) */
+
+    --warning: 251 191 36;        /* amber-400 */
+    --warning-soft: 38 30 34;     /* amber-900 blended ~20% over gray-900 */
+    --warning-strong: 146 64 14;  /* amber-800 (theme-invariant) */
+
+    --neutral: 156 163 175;       /* gray-400 */
+    --neutral-soft: 31 41 55;     /* gray-800 */
+    --neutral-strong: 55 65 81;   /* gray-700 (theme-invariant) */
+}
+
 /* Ensure charts are responsive */
 .chart-container {
     width: 100%;
@@ -87,7 +161,7 @@ input:focus, select:focus {
 /* Print styles */
 @media print {
     nav, footer, .no-print {
-        display: none !important;
+        display: none;
     }
 
     .print-break {
@@ -100,6 +174,12 @@ input:focus, select:focus {
    The detail row is hidden until the chevron toggles data-open="true". */
 #major-expenses-list tbody[data-open="false"] > tr.major-expense-detail-row {
     display: none;
+}
+
+/* Major Expenses — definitions disclosure chevron (U11): points right when
+   collapsed, down when the toggle button reports it is expanded. */
+#major-expenses-definitions-toggle[aria-expanded="true"] #major-expenses-definitions-toggle-icon {
+    transform: rotate(90deg);
 }
 
 /* Major Expenses — Exceptions bulk-pin checkboxes.
@@ -124,25 +204,40 @@ input:focus, select:focus {
 
 /* What-If tab bar — active tab indicator.
    whatif-tabs.js toggles .wf-tab-active; the buttons carry Tailwind
-   `text-gray-500 border-transparent` utilities, and the CDN build injects
-   its stylesheet after this one, so !important is required to win. */
+   `text-gray-500 border-transparent` utilities. U7: styles.css is loaded
+   AFTER tailwind.css in layouts/base.html, so at equal specificity these
+   selectors already win the cascade on source order alone — no
+   specificity override needed (one was required when a Tailwind CDN
+   build injected its stylesheet later; this app now vendors a static
+   build, loaded first). */
 .wf-tab-active {
-    color: rgb(79 70 229) !important;              /* indigo-600 */
-    border-bottom-color: rgb(79 70 229) !important;
+    color: rgb(79 70 229);              /* indigo-600 */
+    border-bottom-color: rgb(79 70 229);
 }
 .dark .wf-tab-active {
-    color: rgb(129 140 248) !important;            /* indigo-400 */
-    border-bottom-color: rgb(129 140 248) !important;
+    color: rgb(129 140 248);            /* indigo-400 */
+    border-bottom-color: rgb(129 140 248);
 }
 
 /* Quick Adjust tab strip — active pill.
-   quick-adjust-scripts.html toggles .qa-tab-active; the buttons carry
-   Tailwind text-color utilities injected later by the CDN build, so
-   !important is required to win. Same white pill in both themes. */
+   quick-adjust-scripts.html toggles .qa-tab-active; the buttons also carry
+   the Tailwind `dark:text-gray-300` utility for their INACTIVE state. That
+   utility compiles to `.dark .dark\:text-gray-300`, a two-class selector
+   (specificity 0,2,0) that OUTRANKS the single-class `.qa-tab-active`
+   (0,1,0) in dark mode regardless of source order, so the active pill's
+   dark gray-900 text lost to gray-300-on-white — 1.5:1, an axe
+   color-contrast failure (U15). `.wf-tab-active` below already solves this
+   the same way: give the dark-mode override its own `.dark .qa-tab-active`
+   rule so its specificity (0,2,0) ties the utility and source order (this
+   rule comes later in the stylesheet) decides. Same white pill in both
+   themes. */
 .qa-tab-active {
-    background-color: #fff !important;
-    color: rgb(17 24 39) !important;   /* gray-900 */
+    background-color: #fff;
+    color: rgb(17 24 39);   /* gray-900 */
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.10);
+}
+.dark .qa-tab-active {
+    color: rgb(17 24 39);   /* gray-900 — same pill, same dark text, both themes */
 }
 
 /* Tabular monospace numerals for aligned financial figures */

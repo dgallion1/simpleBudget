@@ -1,0 +1,89 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: U14
+ATTEMPT: 1
+---
+All probing done against isolated fixtures (mktemp dirs, BUDGET_DATA_DIR-scoped
+`go build -o $WORK/srv ./cmd/server` servers on :8299/:8199); the live `data`
+symlink (-> /home/darrell/bin/ai/budget2/data) was never touched, confirmed by
+`readlink -f data` before/after.
+
+1. expected_count parsing edge cases — probed empty, %203 (leading space),
+   3%20 (trailing space), %2B3 (+3), 03, 3.0, 0x3, 3e0, Arabic-indic ٣, huge
+   value 99999999999999999999, -1, duplicate params (3,2 and 2,3 order), and
+   expected_count in the DELETE body instead of the query, against a live
+   3-CSV fixture. Every one of them was either rejected 409 (strconv.Atoi
+   syntax/overflow error or genuine mismatch) or, for "+3" — a value that is
+   both syntactically valid AND numerically equal to the true count —
+   correctly deleted (this is a true positive, not a bypass: actual was
+   really 3). Zero files were deleted by any malformed/spoofed input; no
+   panic/500 on the huge-value overflow. Full transcript with codes+body+csv
+   counts in this session's tool output.
+2. TOCTOU — rendered page showed CSVCount=3; (a) dropped a 4th CSV into the
+   fixture then DELETE expected_count=3 -> 409 "expected 3, found 4", 4 CSVs
+   untouched; (b) removed a file down to 2 then DELETE expected_count=3 ->
+   409 "expected 3, found 2", 2 CSVs untouched. Guard recounts via
+   CountDeletableCSVs at request time in both directions; client's stale
+   number is never trusted.
+3. What gets deleted — built a fixture with one.csv, TWO.CSV (uppercase),
+   a symlink link-to-one.csv -> one.csv, three.csv.bak, keep.json, a subdir
+   with nested.csv, and a directory that merely resembles a backup dir but
+   isn't the configured one. Rendered CSVCount=3 (one.csv, TWO.CSV, the
+   symlink); DELETE expected_count=3 -> 200 "Deleted 3 files"; afterward
+   three.csv.bak, keep.json, subdir/nested.csv, and the non-configured
+   directory all survived untouched. Separately configured BUDGET2_BACKUP_DIR
+   as a subdirectory INSIDE data (backupsubdir/backedup.csv): rendered
+   count excluded it (count=2), DELETE expected_count=2 deleted only the two
+   top-level CSVs and left backupsubdir/backedup.csv alone. Rendered count
+   and actually-deleted set agreed exactly in every configuration tried —
+   no split-classification drift found.
+4. Single source — grep confirms `backup.CountDeletableCSVs` is the only
+   call site feeding both `data["CSVCount"]` (explorer/handlers.go:816,
+   consumed by the template's `expected_count` and `hx-confirm` text) and
+   the DELETE guard's `actual` (backup/handlers.go:601); `isBackupDirEntry`
+   is the one shared exclusion helper used by both the counter and the
+   delete loop. No second CSV-counting implementation exists in this path
+   (accounts.go/csvBasenames use separate glob-based counts for unrelated
+   features, not this guard or this page's CSVCount).
+5. Encryption/locked path — enabled password encryption on an isolated
+   fixture, restarted the server to force the locked state, and confirmed
+   (a) the rendered page's Clear-All button read `expected_count=0` while
+   the true on-disk CSV count was 2 (encrypted files keep their .csv name),
+   and (b) DELETE /data/all with expected_count=0 AND with the true count
+   (2, bypassing the UI) both returned 307 redirect to /unlock via
+   cmd/server/main.go's lockCheckMiddleware — neither request reached the
+   handler at all, and 0 files were removed either way. Locked state is
+   blocked at the routing layer, independent of the guard.
+6. uid 0 — this session ran as uid 1000 (non-root), confirmed via `id -u`.
+   Could not exercise root-only paths directly. By code inspection,
+   HandleDeleteAllData/CountDeletableCSVs contain no root-conditional
+   branches; the only uid-0-aware code in this area is in pre-existing
+   tests (coverage_gaps_test.go, handlers_test.go) that `t.Skip` themselves
+   under Geteuid()==0, so a root run exercises strictly fewer assertions,
+   never different guard behavior.
+7. Ran `.swarm/tier3/U14/accept.sh` independently: 13/13 checks, ORACLE
+   PASS, output byte-for-byte matching both `oracle.1.log` and
+   `oracle.1.lead-verify.log`. Ran `go test -count=1 ./...`: all packages
+   ok, including `budget2/internal/handlers/backup` (39.1s) and
+   `budget2/internal/services/storage` (79.3s).
+
+OBSERVATION (pre-existing, NOT introduced by U14, not grounds for FAIL):
+`TestHandleDeleteAllDataRemoveError` (unmodified by this task's diff — git
+diff HEAD on handlers_test.go touches only the three tests around line
+493-547 to add expected_count, plus new tests appended after) exercises a
+scenario where the guard passes (expected_count matches actual) but the
+subsequent os.Remove calls fail (directory chmod 0555). I reproduced this
+directly: HandleDeleteAllData returns HTTP 200 "Deleted 0 files" even though
+0 of the expected 1 CSV was actually removed. The body text is honest (it
+says 0, and a page refresh re-derives CSVCount from disk so no stale state
+persists), but a 200 on total remove-failure is a pre-existing gap in the
+delete LOOP's error handling, untouched by U14's guard logic (which lives
+entirely before that loop). Flagging for the backlog; not a defect in the
+expected_count guard this task was scoped to build, and not exploitable to
+delete the wrong things or bypass the count check.
+
+Full go test / oracle output, and all curl transcripts, were produced in
+this session's tool calls (isolated mktemp fixtures on :8299 and :8199,
+teardown via kill on each). No file under the real budget2/data path was
+read, written, or deleted at any point.

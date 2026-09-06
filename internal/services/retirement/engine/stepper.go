@@ -340,6 +340,7 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 	monthlyRMD := MonthlyRMDForMonth(s, monthInYear, st.AnnualRMD, st.TaxDeferredBalance)
 
 	monthResult := ExecuteTaxAwarePortfolioMonth(PortfolioMonthInput{
+		OneTimeExpense:                    oneTimeExpenseThisMonth,
 		TotalExpenses:                     totalExpenses,
 		IncomeBreakdown:                   incomeBreakdown,
 		MonthlyRMD:                        monthlyRMD,

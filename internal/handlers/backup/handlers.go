@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -532,8 +533,84 @@ func HandleRestoreTestData(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprint(w, restoreResponseMessage(res, "test files"))
 }
 
+// isBackupDirEntry reports whether entry (a direct child of dataDir) IS the
+// configured backup directory or lives inside it. Shared by CountDeletableCSVs
+// and HandleDeleteAllData so the count the confirmation names and the set
+// actually deleted can never disagree about what "the backup dir" excludes.
+func isBackupDirEntry(dataDir, backupDir string, entry os.DirEntry) bool {
+	if backupDir == "" {
+		return false
+	}
+	backupAbs, _ := filepath.Abs(backupDir)
+	if backupAbs == "" {
+		return false
+	}
+	entryAbs, _ := filepath.Abs(filepath.Join(dataDir, entry.Name()))
+	return entryAbs == backupAbs || strings.HasPrefix(entryAbs, backupAbs+string(filepath.Separator))
+}
+
+// CountDeletableCSVs counts exactly the files HandleDeleteAllData would
+// remove: top-level *.csv (case-insensitive) entries in dataDir, excluding
+// the backup directory and any subdirectory. Exported so the File Manager
+// page handler can render the SAME count the delete confirmation and the
+// server-side expected_count guard both depend on — one source of truth for
+// "how many files Clear All would delete", not a second count that could
+// drift from the handler's own logic.
+func CountDeletableCSVs(dataDir, backupDir string) (int, error) {
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, entry := range entries {
+		if isBackupDirEntry(dataDir, backupDir, entry) {
+			continue
+		}
+		if entry.IsDir() {
+			continue
+		}
+		if !strings.HasSuffix(strings.ToLower(entry.Name()), ".csv") {
+			continue
+		}
+		count++
+	}
+	return count, nil
+}
+
+// HandleDeleteAllData is the irreversible Clear-All control. HTMX puts DELETE
+// params in the query string, so expected_count travels there: the caller
+// (the File Manager page) must name the CSV count it saw when the confirm
+// dialog was shown. This handler recounts from disk and refuses with 409,
+// deleting NOTHING, when the field is missing, non-numeric, or stale (a
+// concurrent import/delete changed the count between page render and click).
+// Only an exact match proceeds to delete. This makes "a cancelled or stale
+// confirm deletes nothing" an executable, curl-provable guarantee rather than
+// a browser-only claim resting on hx-confirm.
 func HandleDeleteAllData(w http.ResponseWriter, r *http.Request) {
-	// Read data directory
+	raw := r.URL.Query().Get("expected_count")
+	if raw == "" {
+		http.Error(w, "expected_count is required; refresh the page and try again", http.StatusConflict)
+		return
+	}
+	expected, err := strconv.Atoi(raw)
+	if err != nil {
+		http.Error(w, "expected_count must be an integer", http.StatusConflict)
+		return
+	}
+
+	actual, err := CountDeletableCSVs(cfg.DataDirectory, cfg.BackupDir)
+	if err != nil {
+		http.Error(w, "Error reading data directory", http.StatusInternalServerError)
+		return
+	}
+	if expected != actual {
+		http.Error(w, fmt.Sprintf("data files changed (expected %d, found %d); refresh the page and try again", expected, actual), http.StatusConflict)
+		return
+	}
+
+	// Re-list rather than trust actual's count alone: the count and the
+	// delete loop share isBackupDirEntry/suffix logic so what was counted is
+	// exactly what gets removed.
 	entries, err := os.ReadDir(cfg.DataDirectory)
 	if err != nil {
 		http.Error(w, "Error reading data directory", http.StatusInternalServerError)
@@ -544,12 +621,8 @@ func HandleDeleteAllData(w http.ResponseWriter, r *http.Request) {
 	for _, entry := range entries {
 		// Skip BackupDir to defend the safety net even if future code broadens
 		// what HandleDeleteAllData removes.
-		if cfg.BackupDir != "" {
-			backupAbs, _ := filepath.Abs(cfg.BackupDir)
-			entryAbs, _ := filepath.Abs(filepath.Join(cfg.DataDirectory, entry.Name()))
-			if backupAbs != "" && (entryAbs == backupAbs || strings.HasPrefix(entryAbs, backupAbs+string(filepath.Separator))) {
-				continue
-			}
+		if isBackupDirEntry(cfg.DataDirectory, cfg.BackupDir, entry) {
+			continue
 		}
 		// Only delete CSV files, skip directories and other files
 		if entry.IsDir() {

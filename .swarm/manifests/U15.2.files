@@ -1,0 +1,6 @@
+web/static/css/tailwind.css
+web/templates/pages/explorer.html
+web/templates/components/whatif/historical-backtest.html
+web/templates/components/whatif/tax-summary.html
+web/templates/components/whatif/projection-breakdown.html
+.swarm/work/u15/axe_probe.js

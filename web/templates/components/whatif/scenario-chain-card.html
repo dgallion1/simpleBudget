@@ -36,7 +36,7 @@
                     hx-delete="/whatif/chain/{{$i}}"
                     hx-target="#whatif-results"
                     hx-swap="innerHTML"
-                    class="text-red-500 hover:text-red-700 p-1"
+                    class="text-negative hover:text-negative p-1"
                     title="Remove" aria-label="Remove">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -48,7 +48,7 @@
 
         <div class="flex gap-2">
             <button type="button" id="add-chain-step-btn"
-                class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+                class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-accent-strong hover:bg-accent-strong text-white transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                 </svg>
@@ -56,7 +56,7 @@
             </button>
             {{if .Settings.ScenarioChain}}
             <button type="submit"
-                class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white transition-colors">
+                class="inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-positive-strong hover:bg-positive-strong text-white transition-colors">
                 Apply
             </button>
             {{end}}
@@ -64,6 +64,13 @@
     </form>
 </div>
 
+{{/* U7 inline-script allowance (one of the <=5 sitewide): this script
+     builds the "Add Step" row's <select> options from the server-rendered
+     .Scenarios list and .Settings.CurrentAge, which a plain <script src>
+     cannot see — moving it out would require serializing that data into a
+     data-* JSON attribute instead, a larger change than a script-location
+     refactor should make; left inline and data-driven only from this
+     component's own render. */}}
 <script>
 (function() {
     var btn = document.getElementById('add-chain-step-btn');
@@ -111,7 +118,7 @@
         // Remove button
         var removeBtn = document.createElement('button');
         removeBtn.type = 'button';
-        removeBtn.className = 'text-red-500 hover:text-red-700 p-1';
+        removeBtn.className = 'text-negative hover:text-negative p-1';
         removeBtn.title = 'Remove';
         removeBtn.addEventListener('click', function() { row.remove(); });
 
@@ -138,7 +145,7 @@
         if (!form.querySelector('[type="submit"]')) {
             var applyBtn = document.createElement('button');
             applyBtn.type = 'submit';
-            applyBtn.className = 'inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-700 text-white transition-colors';
+            applyBtn.className = 'inline-flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-positive-strong hover:bg-positive-strong text-white transition-colors';
             applyBtn.textContent = 'Apply';
             form.querySelector('.flex.gap-2').appendChild(applyBtn);
         }

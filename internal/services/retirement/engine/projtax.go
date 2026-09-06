@@ -2,6 +2,16 @@ package engine
 
 import "math"
 
+// OneTimeExpenseIncome is the subset of realized income raised to fund a
+// planned one-time expense. RMDs are excluded because they are already
+// carried at face value. The amounts remain in the full income totals;
+// this subset only prevents their annualization.
+type OneTimeExpenseIncome struct {
+	TaxDeferredWithdrawals float64
+	RothEarnings           float64
+	CapitalGains           float64
+}
+
 // ProjectionTaxAccumulator tracks year-to-date taxable income and taxes
 // paid during a monthly projection. Tax law is annual; this struct lets
 // the monthly loop estimate per-month tax with proper year-to-date
@@ -15,9 +25,11 @@ import "math"
 //     simplified long-term capital-gains brackets in tax.go.
 //   - Roth withdrawals are not taxed.
 type ProjectionTaxAccumulator struct {
+	OneTimeIncomeYTD        OneTimeExpenseIncome
 	OrdinaryIncomeYTD       float64
 	SocialSecurityIncomeYTD float64
-	// TaxableWithdrawalsYTD holds recurring monthly tax-deferred draws;
+	// TaxableWithdrawalsYTD holds non-RMD tax-deferred draws, including
+	// one-time funding identified by OneTimeIncomeYTD;
 	// RMDWithdrawalsYTD holds the year's RMD, which lands as a single lump in
 	// the trigger month and — like RothConversionsYTD — must never be
 	// annualized: extrapolating a start-of-year lump x12 overstated the annual
@@ -71,22 +83,27 @@ type ProjectedTaxSnapshot struct {
 }
 
 // AnnualizedInputs extrapolates YTD totals plus the current month to a
-// full year by linear annualization. Roth conversions and RMDs are
-// deliberately not annualized — they're discrete events (the full annual
-// RMD is withdrawn in a single trigger month).
+// full year by linear annualization. Roth conversions, RMDs, and income
+// raised for planned one-time expenses are discrete events and are not
+// annualized.
 func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, m MonthlyTaxInputs) ProjectedAnnualTaxInputs {
 	monthsElapsed := float64(monthInYear + 1)
 	if monthsElapsed <= 0 {
 		monthsElapsed = 1
 	}
 	annualizationFactor := 12.0 / monthsElapsed
+	// Only the recurring remainder is extrapolated. In the last month
+	// the factor is one, preserving the full realized annual income.
+	oneTimeWithdrawals := a.OneTimeIncomeYTD.TaxDeferredWithdrawals + m.OneTimeIncome.TaxDeferredWithdrawals
+	oneTimeRothEarnings := a.OneTimeIncomeYTD.RothEarnings + m.OneTimeIncome.RothEarnings
+	oneTimeGains := a.OneTimeIncomeYTD.CapitalGains + m.OneTimeIncome.CapitalGains
 
 	return ProjectedAnnualTaxInputs{
-		OrdinaryIncome:        (a.OrdinaryIncomeYTD + m.OrdinaryIncome) * annualizationFactor,
+		OrdinaryIncome:        (a.OrdinaryIncomeYTD+m.OrdinaryIncome-oneTimeRothEarnings)*annualizationFactor + oneTimeRothEarnings,
 		SocialSecurityIncome:  (a.SocialSecurityIncomeYTD + m.SocialSecurityIncome) * annualizationFactor,
-		TaxableWithdrawals:    (a.TaxableWithdrawalsYTD+m.TaxableWithdrawals)*annualizationFactor + a.RMDWithdrawalsYTD + m.RMDWithdrawals,
+		TaxableWithdrawals:    (a.TaxableWithdrawalsYTD+m.TaxableWithdrawals-oneTimeWithdrawals)*annualizationFactor + oneTimeWithdrawals + a.RMDWithdrawalsYTD + m.RMDWithdrawals,
 		QualifiedDividends:    (a.QualifiedDividendsYTD + m.QualifiedDividends) * annualizationFactor,
-		LongTermCapitalGains:  (a.LongTermCapitalGainsYTD + m.LongTermCapitalGains) * annualizationFactor,
+		LongTermCapitalGains:  (a.LongTermCapitalGainsYTD+m.LongTermCapitalGains-oneTimeGains)*annualizationFactor + oneTimeGains,
 		ShortTermCapitalGains: (a.ShortTermCapitalGainsYTD + m.ShortTermCapitalGains) * annualizationFactor,
 		NonQualifiedDividends: (a.NonQualifiedDividendsYTD + m.NonQualifiedDividends) * annualizationFactor,
 		RothConversions:       a.RothConversionsYTD + m.RothConversions,
@@ -98,15 +115,16 @@ func (a ProjectionTaxAccumulator) AnnualizedInputs(monthInYear int, m MonthlyTax
 // replace what was a 14-argument positional list — the same treatment
 // PortfolioMonthInput gave the cash-flow waterfall.
 type MonthlyTaxInputs struct {
+	OneTimeIncome OneTimeExpenseIncome
 	Calculator    *TaxCalculator
 	YearsFromBase int
 	MonthInYear   int
 
 	OrdinaryIncome       float64
 	SocialSecurityIncome float64
-	// TaxableWithdrawals is the month's recurring tax-deferred draw (linearly
-	// annualized); RMDWithdrawals is the RMD lump, taxed identically but never
-	// annualized — see ProjectionTaxAccumulator.RMDWithdrawalsYTD.
+	// TaxableWithdrawals holds non-RMD draws; OneTimeIncome identifies the
+	// subset that must not be annualized. RMDWithdrawals is carried at face
+	// value separately — see ProjectionTaxAccumulator.RMDWithdrawalsYTD.
 	TaxableWithdrawals    float64
 	RMDWithdrawals        float64
 	QualifiedDividends    float64
@@ -413,6 +431,9 @@ func (a ProjectionTaxAccumulator) EstimateMonthlyTaxes(tc *TaxCalculator, yearsF
 // ApplyMonth folds a month's realised income and tax payments into the
 // accumulator. Mutating receiver — caller resets at year boundary.
 func (a *ProjectionTaxAccumulator) ApplyMonth(m RealizedMonthIncome) {
+	a.OneTimeIncomeYTD.TaxDeferredWithdrawals += m.OneTimeIncome.TaxDeferredWithdrawals
+	a.OneTimeIncomeYTD.RothEarnings += m.OneTimeIncome.RothEarnings
+	a.OneTimeIncomeYTD.CapitalGains += m.OneTimeIncome.CapitalGains
 	a.OrdinaryIncomeYTD += m.OrdinaryIncome
 	a.SocialSecurityIncomeYTD += m.SocialSecurityIncome
 	a.TaxableWithdrawalsYTD += m.TaxableWithdrawals
@@ -430,6 +451,7 @@ func (a *ProjectionTaxAccumulator) ApplyMonth(m RealizedMonthIncome) {
 // InvestmentIncomeTaxInputs has them: nine float64 dollars in a row is a
 // transposition waiting to happen.
 type RealizedMonthIncome struct {
+	OneTimeIncome        OneTimeExpenseIncome
 	OrdinaryIncome       float64
 	SocialSecurityIncome float64
 	// TaxableWithdrawals excludes the RMD lump, which travels separately in

@@ -167,6 +167,24 @@ function renderChart(containerId, chartData) {
         displayModeBar: false
     };
 
+    // Category Spending Trends (F4): the server sends vertical bars with
+    // categories on x. Plotly auto-rotates long x tick labels ~45deg to
+    // avoid overlap, which lands the default bottom-left legend ("Current
+    // Period") directly on top of them and truncates the longest labels at
+    // the chart's right edge. Rendering as horizontal bars puts category
+    // names on the y-axis (never rotated, automargin expands to fit) and
+    // frees the top-right corner for the legend, which no longer shares
+    // space with any tick label. Values/order are untouched — only the
+    // trace orientation and axis assignment flip.
+    if (containerId === 'chart-trends') {
+        data.data = (data.data || []).map(function(trace) {
+            return { ...trace, orientation: 'h', x: trace.y, y: trace.x };
+        });
+        layout.yaxis = { ...layout.yaxis, autorange: 'reversed' };
+        layout.legend = { orientation: 'h', x: 1, xanchor: 'right', y: 1.02, yanchor: 'bottom' };
+        layout.margin = { ...layout.margin, t: 50 };
+    }
+
     // Render
     Plotly.newPlot(containerId, data.data, layout, config);
 
@@ -344,37 +362,30 @@ function renderMajorExpenseCredits(items) {
 }
 
 /**
- * Render a sparkline chart with optional target overlay or balance mode.
+ * Render a KPI sparkline: a single filled line, no target/threshold overlay.
+ * This is the one sparkline treatment used by every KPI card (U2 — a
+ * per-card mix of plain/target-line/balance-mode styles was consolidated
+ * to this single style so no two cards read as visually different charts).
  *
  * @param {string} containerId - The ID of the container element
- * @param {number[]} values - The data values (or cumulative balance values when mode==="balance")
- * @param {string} color - The line color (used when no target/mode customization applies)
- * @param {object} [options] - Optional rendering options
- * @param {number} [options.target] - When set, draws a dashed horizontal target line.
- *                                    Months above the line fill red, below fill green.
- * @param {string} [options.mode] - When "balance", values are cumulative balances
- *                                  (target − actual; positive = saved, negative = overspent).
- *                                  Zero is the reference; fill above zero green, below red.
- *                                  Overrides options.target.
- * @param {number} [options.neutralBand] - Balance mode only. Dead-band half-width
- *                                  around zero (matches the KPI card's on-budget
- *                                  epsilon): green fill only for v > neutralBand,
- *                                  red fill only for v < -neutralBand. Values inside
- *                                  ±neutralBand feed neither fill, so the chart's
- *                                  color story agrees with the card's classification.
- *                                  Default 0 (no dead band).
+ * @param {number[]} values - The data values
+ * @param {string} color - The line/fill color
  */
-function renderSparkline(containerId, values, color, options) {
+function renderSparkline(containerId, values, color) {
     const container = document.getElementById(containerId);
     if (!container || !values || values.length === 0) {
         return;
     }
 
-    options = options || {};
-    const isBalance = options.mode === 'balance';
-    const hasTarget = !isBalance && typeof options.target === 'number' && isFinite(options.target);
+    const data = [{
+        type: 'scatter',
+        mode: 'lines',
+        y: values,
+        line: { color: color || '#6366f1', width: 2 },
+        fill: 'tozeroy',
+        fillcolor: (color || '#6366f1') + '20'
+    }];
 
-    const data = [];
     const layout = {
         margin: { t: 0, r: 0, b: 0, l: 0 },
         paper_bgcolor: 'transparent',
@@ -383,116 +394,6 @@ function renderSparkline(containerId, values, color, options) {
         yaxis: { visible: false },
         showlegend: false
     };
-
-    if (isBalance) {
-        // Split the line into above-zero (green = saved) and below-zero
-        // (red = overspent) segments by clamping each direction. Two filled
-        // traces against the zero baseline give the divergent fill. A
-        // neutralBand dead band (matching the KPI card's on-budget epsilon)
-        // excludes values within ±neutralBand from either fill, so the
-        // chart's color story cannot contradict the card's classification.
-        const nb = (typeof options.neutralBand === 'number' && isFinite(options.neutralBand)) ? options.neutralBand : 0;
-        const above = values.map(v => v > nb ? v : 0);
-        const below = values.map(v => v < -nb ? v : 0);
-
-        data.push({
-            type: 'scatter',
-            mode: 'lines',
-            y: below,
-            line: { color: '#ef4444', width: 1 },
-            fill: 'tozeroy',
-            fillcolor: 'rgba(239, 68, 68, 0.3)'
-        });
-        data.push({
-            type: 'scatter',
-            mode: 'lines',
-            y: above,
-            line: { color: '#22c55e', width: 1 },
-            fill: 'tozeroy',
-            fillcolor: 'rgba(34, 197, 94, 0.3)'
-        });
-        data.push({
-            type: 'scatter',
-            mode: 'lines',
-            y: values,
-            line: { color: color || '#6366f1', width: 2 }
-        });
-
-        layout.shapes = [{
-            type: 'line',
-            xref: 'paper',
-            x0: 0,
-            x1: 1,
-            yref: 'y',
-            y0: 0,
-            y1: 0,
-            line: { color: '#6b7280', width: 1, dash: 'dash' }
-        }];
-    } else if (hasTarget) {
-        // Above-target fill (red) and below-target fill (green) achieved by
-        // plotting two clamped series with fill: 'tonexty' relative to a flat
-        // target baseline.
-        const target = options.target;
-        const targetSeries = values.map(() => target);
-        const above = values.map(v => v > target ? v : target);
-        const below = values.map(v => v < target ? v : target);
-
-        data.push({
-            type: 'scatter',
-            mode: 'lines',
-            y: targetSeries,
-            line: { color: 'transparent', width: 0 }
-        });
-        data.push({
-            type: 'scatter',
-            mode: 'lines',
-            y: below,
-            line: { color: 'transparent', width: 0 },
-            fill: 'tonexty',
-            fillcolor: 'rgba(34, 197, 94, 0.3)'
-        });
-        data.push({
-            type: 'scatter',
-            mode: 'lines',
-            y: targetSeries,
-            line: { color: 'transparent', width: 0 }
-        });
-        data.push({
-            type: 'scatter',
-            mode: 'lines',
-            y: above,
-            line: { color: 'transparent', width: 0 },
-            fill: 'tonexty',
-            fillcolor: 'rgba(239, 68, 68, 0.3)'
-        });
-        data.push({
-            type: 'scatter',
-            mode: 'lines',
-            y: values,
-            line: { color: color || '#6366f1', width: 2 }
-        });
-
-        layout.shapes = [{
-            type: 'line',
-            xref: 'paper',
-            x0: 0,
-            x1: 1,
-            yref: 'y',
-            y0: target,
-            y1: target,
-            line: { color: '#6b7280', width: 1, dash: 'dash' }
-        }];
-    } else {
-        // Original behavior — single filled line, no target reference.
-        data.push({
-            type: 'scatter',
-            mode: 'lines',
-            y: values,
-            line: { color: color || '#6366f1', width: 2 },
-            fill: 'tozeroy',
-            fillcolor: (color || '#6366f1') + '20'
-        });
-    }
 
     const config = {
         responsive: true,
@@ -660,36 +561,20 @@ document.addEventListener('htmx:afterSettle', function(evt) {
     }
 });
 
-// Initialize sparklines from data attributes
+// Initialize sparklines from data attributes. Every card renders through the
+// same renderSparkline() style (U2); data-target/data-mode/data-neutral-band
+// may still be present on the element (server-rendered, read by tests that
+// assert on the KPI markup) but no longer select a different visual treatment.
 function initSparklines() {
     document.querySelectorAll('[id^="sparkline-"]').forEach(function(el) {
         const valuesAttr = el.getAttribute('data-values');
         const color = el.getAttribute('data-color') || '#6366f1';
-        const targetAttr = el.getAttribute('data-target');
-        const neutralBandAttr = el.getAttribute('data-neutral-band');
-        const mode = el.getAttribute('data-mode') || '';
 
         if (valuesAttr && valuesAttr !== 'null' && valuesAttr !== '[]') {
             try {
                 const values = JSON.parse(valuesAttr);
                 if (values && values.length > 0) {
-                    const options = {};
-                    if (mode) {
-                        options.mode = mode;
-                    }
-                    if (targetAttr !== null && targetAttr !== '') {
-                        const t = parseFloat(targetAttr);
-                        if (isFinite(t) && t > 0) {
-                            options.target = t;
-                        }
-                    }
-                    if (neutralBandAttr !== null && neutralBandAttr !== '') {
-                        const nb = parseFloat(neutralBandAttr);
-                        if (isFinite(nb) && nb > 0) {
-                            options.neutralBand = nb;
-                        }
-                    }
-                    renderSparkline(el.id, values, color, options);
+                    renderSparkline(el.id, values, color);
                 }
             } catch (e) {
                 console.error('Error parsing sparkline data:', e);

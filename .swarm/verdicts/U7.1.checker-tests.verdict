@@ -1,0 +1,85 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: U7
+ATTEMPT: 1
+---
+Verified in a cp -a copy at /tmp/.../scratchpad/u7work (real tree read-only;
+verify server on :8099 throwaway data, stopped after). U7 is a behavior-
+preserving refactor; the Go test suite is the primary oracle.
+
+(a) PASS — in the working copy: `go build ./...` exit 0; `go vet ./...` exit 0;
+`go test -count=1 ./...` all ok (49 packages, incl. handler/template render
+tests: dashboard, majorexpenses, accounts, templates); `staticcheck ./...`
+exit 0, no output. Five files under test were touched; each inspected via
+`git diff HEAD`:
+  - handlers_http_test.go: `openKPIDetail('X')`→`data-kpi-detail="X"` (and
+    month/savings/living/healthcare) — faithful onclick→data-attr hook rename,
+    still asserts the wiring exists. Not weakened.
+  - render_major_expenses_test.go: `onclick="event.stopPropagation()"`→
+    `data-stop-row-click`; PreservesChecked test now reads the moved
+    static/js/major-expenses.js AND asserts the `<script src>` tag — same
+    string assertions, strengthened.
+  - warnings_client_regression_test.go: reads static/js/accounts.js instead of
+    the inline block, and ADDS assertions that accounts.html carries no inline
+    <script> body and loads accounts.js via `<script src>`. Strengthened.
+  - render_spending_preview_test.go: node harness now reads whatif-rate-
+    assumptions.js + whatif-quick-adjust.js directly; same execution, faithful.
+  - render.go: added `slice`/`htmlSelected` funcs + components/shared glob —
+    support, not a test.
+  Mutation proof: breaking `data-kpi-detail` in kpi-tile.html → dashboard
+  package FAILs; pointing accounts.html's `<script src>` at a wrong file →
+  TestExtractSyncWarningsScript + TestSyncWarnings_ClientRegressionHarness
+  FAIL. Tests guard the hooks they name.
+
+(b) PASS — `grep -rn 'template "shared/...' web/templates`: range-picker used
+  by dashboard/explorer/insights/major-expenses (all 4 range pages);
+  kpi-tile-open/icon/close by kpis.html and insights.html; card-open/close by
+  dashboard.html (+the partial's own demo); data-table's shared/th &
+  shared/sortable-th by kpi-month-detail.html and filemanager.html. No hand-
+  rolled range picker survives: `grep -r 'type="date"'` finds date inputs only
+  in range-picker.html (the partial) and accounts.html (a single account-
+  anchor date, not a range) — defensible. Documented exclusions (explorer's
+  bespoke two-table fixed-header split, card applied only to the 4 byte-
+  identical dashboard placeholder shells) are valid: a generic partial would
+  risk U1's 390px fix or force structurally-different blocks through one shell.
+
+(c) PASS (with a literal-grep note) — inline `<script>` blocks after stripping
+  `{{/* */}}`: exactly 4 (base.html theme bootstrap, unlock.html theme
+  bootstrap, spending-phases.html htmx OOB re-exec trigger, scenario-chain-
+  card.html per-render <select> builder), ≤ 5; each has a why-comment and the
+  base.html theme bootstrap is one. `grep -rc 'onclick="'` returns 3 hits, but
+  all three are `//` comment lines in interactions.js describing the replaced
+  patterns — ZERO real onclick attributes in templates or JS-injected markup
+  (templates: only 3 comment mentions; charts.js:533 `btn.onclick =` is a JS
+  property assignment, not an inline HTML attribute). Intent ("no inline
+  onclick=") met.
+
+(d) PASS — `grep -c '!important' web/static/css/styles.css` = 0; base.html
+  loads tailwind.css (line 18) BEFORE styles.css (line 32) — cascade order,
+  not weight.
+
+(e) PASS — verify server on :8099: dashboard/whatif/filemanager (and all 9
+  pages) return 200, server.log shows no 500/panic. dashboard loads
+  dashboard.js+charts.js+interactions.js+base.js via `<script src>` and emits
+  data-kpi-detail={expenses,healthcare,income,living,savings}; dashboard.js
+  references data-kpi-detail. whatif loads all whatif-*.js. filemanager loads
+  filemanager.js and emits data-sort/data-sort-btn/data-sort-arrow;
+  filemanager.js references data-sort. interactions.js+base.js loaded sitewide
+  via base.html.
+
+(f) PASS — `make css-verify` exit 0: "tailwind.css is up to date".
+
+SCOPE — clean. `git diff HEAD` touches only templates (script extraction
+inherently edits every page/component that held an inline script), web/static/
+js, web/static/css, internal/templates/render.go and 4 pinned test files —
+consistent with the refactor and the 54-file manifest. No path in
+.swarm/critical.globs (all internal/services/**) is touched.
+
+OBSERVATIONS (not FAIL grounds): (1) criterion (c)'s literal `grep onclick="`
+is 3, all `//` comments — zero real attributes; flagged for transparency.
+(2) The worker fixed pre-existing axe gaps (2 modal close-button aria-labels,
+4 unnamed <select>s, 5 keyboard-inaccessible scroll regions) beyond the
+onclick/script scope — beneficial, out of U7's written scope, belongs to
+U15's sitewide sweep per ruling U-2026-09-03a. (3) Root `data` is a symlink to
+budget2/data (pre-existing worktree fixture), not a U7 artifact.

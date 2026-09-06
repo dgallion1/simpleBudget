@@ -126,12 +126,49 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// justRemovedIncome is the Undo toast's display-only signal: the ID/Name of
+// an income source removed in THIS request. It is deliberately NOT read
+// from settings.RemovedIncomeSources (the persistent removed-sources store,
+// which can carry stale entries from past sessions or unrelated removals)
+// -- see justRemovedIncomeExtra and ruling U-2026-09-05o. Never persisted;
+// exists only in the response's template data.
+type justRemovedIncome struct {
+	ID   string
+	Name string
+}
+
+// justRemovedIncomeExtra returns the renderRecalcWithExtra "extra" map for a
+// successful income removal: {"JustRemovedIncome": &justRemovedIncome{...}}
+// for the source RemoveIncomeSource just moved into RemovedIncomeSources.
+// The toast template keys ONLY on this signal (never on the persistent
+// list), so every OTHER mutation's response -- including the Undo/restore
+// response itself -- renders the toast hidden by simply never setting this
+// key (ruling U-2026-09-05o).
+//
+// Looks the id up in settings.RemovedIncomeSources (where RemoveIncomeSource
+// just placed it) rather than trusting the pre-mutation form/URL value, so
+// the toast's Name always matches what was actually removed. Returns nil
+// (no signal, toast stays hidden) if the id is somehow not found there --
+// degrading to "no toast" rather than a wrong one.
+func justRemovedIncomeExtra(settings *models.WhatIfSettings, id string) map[string]interface{} {
+	for _, src := range settings.RemovedIncomeSources {
+		if src.ID == id {
+			return map[string]interface{}{
+				"JustRemovedIncome": &justRemovedIncome{ID: src.ID, Name: src.Name},
+			}
+		}
+	}
+	return nil
+}
+
 func handleWhatIfDeleteIncome(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	recalcAndRender(w, r, "Failed to remove income source", func() (*models.WhatIfSettings, int, error) {
-		settings, err := retirementMgr.RemoveIncomeSource(id)
-		return settings, revisionUnreported, err
-	})
+	settings, err := retirementMgr.RemoveIncomeSource(id)
+	if err != nil {
+		renderError(w, "Failed to remove income source: "+err.Error(), statusForMutationError(err))
+		return
+	}
+	renderRecalcWithExtra(w, r, settings, revisionUnreported, justRemovedIncomeExtra(settings, id))
 }
 
 func handleWhatIfRestoreIncome(w http.ResponseWriter, r *http.Request) {

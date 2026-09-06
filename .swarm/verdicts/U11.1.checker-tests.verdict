@@ -1,0 +1,73 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: U11
+ATTEMPT: 1
+---
+Verified in a `cp -a` scratch of the ui-audit worktree (branch feat/ui-audit,
+HEAD 14c090a). U11's work is the UNCOMMITTED diff only: exactly
+web/templates/pages/major-expenses.html, web/static/js/major-expenses.js,
+web/static/css/styles.css (+ .swarm/ledger.tsv, lead bookkeeping). The large
+`git diff master` file list is prior committed waves A-C, not U11.
+
+(a) BUILD/VET/TEST/STATICCHECK all green in scratch:
+  - `go build ./...` -> BUILD_EXIT=0
+  - `go vet ./...` -> VET_EXIT=0
+  - `go test -count=1 ./...` -> zero failures (grep -vE '^ok|no test files' empty);
+    explicit `go test -count=1 ./internal/handlers/majorexpenses/... ./internal/templates/...`
+    -> `ok budget2/internal/handlers/majorexpenses 0.294s`, `ok budget2/internal/templates 1.164s`.
+  - `staticcheck ./...` -> STATICCHECK_EXIT=0.
+  ORACLE preserved by construction: `git diff master --name-only -- 'internal/handlers/majorexpenses/*_test.go'`
+  is EMPTY (test files byte-identical to master); U11's uncommitted diff touches no *_test.go.
+  The named oracle tests exist and PASS: TestHandleMajorExpensesPage_HTMXFilterReturnsWrapperOnly,
+  TestHandlePin_Success, TestHandleBulkPin_Success, TestHandleRestore_ReturnsExpenseAndPinsToActive,
+  TestHandleExceptions_ReturnsAllThreeBuckets, TestHandleDelete_Success. Handlers untouched by U11
+  (handlers.go change is a prior committed wave, not in the uncommitted diff), so filter/pin/
+  bulk-pin/restore/exceptions behavior is preserved.
+
+(b) Live render on :8091 (scripts/whatif-verify.sh start 8091, server built by the script, live
+  :8080 never queried). GET /major-expenses -> HTTP 200. Playwright probe (chromium):
+  - `#major-expenses-results-wrapper` class="space-y-4", computed display=block (NOT grid);
+    no lg:grid-cols-2 (grep-confirmed absent).
+  - exceptions panel (#major-expenses-results @15883) renders BEFORE definitions card
+    (#major-expenses-list-card @103274), full width.
+  - definitions `<details id="major-expenses-definitions-panel">` has no `open` attr;
+    element.open === false on load (collapsed by default).
+  - disclosure is a real `<button aria-expanded="false" aria-controls="major-expenses-definitions-panel">`;
+    keyboard: focus toggle + press Enter -> details.open=true, aria-expanded=true.
+
+(c) Delete control, both states proven live:
+  - COLLAPSED first delete button (button[aria-label^="Delete major expense"]): getBoundingClientRect
+    w=0 h=0, offsetParent=null, Playwright isVisible()=false -> not reachable/not in a11y tree.
+  - EXPANDED (keyboard Enter on the row toggle button.major-expense-row-toggle): isVisible()=true,
+    box 78.6x30; hx-delete="/major-expenses/{id}", hx-target="#major-expenses-results",
+    hx-swap="innerHTML", hx-include="#major-expenses-filter-form" all intact.
+  - Static: exactly 47 delete-definition buttons, one per detail row (47 major-expense-detail-row,
+    47 summary rows); ZERO hx-delete delete-definition buttons in the exceptions panel; the leading
+    summary-row `<td>` delete + trailing header `<th class="w-6">` were removed (moved into detail row).
+
+(d) Exactly one `<h1>` ("Major Expenses"); positioned before the filter form
+  (h1 offset 9648 < filter-form offset 9822). Old h1 inside the intro card removed.
+
+(e) Behavior preserved: /major-expenses 200; HTMX filter GET (?q=Amazon&start&end) -> HTTP 200,
+  returns wrapper class="space-y-4" exceptions-first, ZgotmplZ=0. Preset buttons carry real
+  data-months=0,1,2,3,6,12 (no ZgotmplZ anywhere on the page). #90 meStepDateRange/meAddMonthsClamped
+  present (5 refs) and UNTOUCHED by the U11 diff. JS diff is purely additive disclosure wiring
+  (openDefinitionsPanel + toggle click handler + auto-open-on-match + aria sync on HTMX restore);
+  no existing handler removed (the sole -1 is a reformat of `d.open=true` into a block).
+  Restore path intact (hx-post .../restore present; TestHandleRestore passes). Server stopped
+  (`whatif-verify.sh stop 8091` -> "stopped and cleaned :8091").
+
+(f) `make css-verify` -> "tailwind.css is up to date", exit 0. styles.css diff adds ONLY the chevron
+  rotate rule (no !important added, no hue literal). grep 'text-\[1[01]px\]' on the template = 0;
+  no arbitrary text-[Npx] sizes in the template. Scope confined to the 3 manifest files + ledger.tsv;
+  NONE of .swarm/critical.globs touched. tailwind.css unchanged (byte-identical rebuild).
+
+OBSERVATION (not a FAIL): one pre-existing axe empty-table-header finding on the leading chevron-column
+`<th class="w-6"></th>`. Confirmed byte-identical to master (`git show master:` had TWO w-6 th; U11
+removed only the TRAILING delete-column one, so the finding's node count went DOWN). Untouched
+pre-existing element, in U15's sitewide scope per ruling U-2026-09-03a/e.
+
+NOTE (not a FAIL): SPEC.md §5 U11 "Files" column names only pages/major-expenses.html, but the lead's
+task brief and the U11.1 manifest both authorize all 3 files (js disclosure wiring + css chevron rule
+are the natural cost of the collapse-by-default structure). Scope is confined to those authorized files.

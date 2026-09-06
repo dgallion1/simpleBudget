@@ -1504,7 +1504,7 @@ func TestHandleExplorer_WithRenderer_RefundDominantFilterRendersNegativeExpenses
 	// Type filter <select> unconditionally has an "Expenses" option text
 	// too, so a bare ">Expenses<" substring would pass even if the chip
 	// itself never rendered.
-	if !strings.Contains(body, `text-rose-700 dark:text-rose-300">Expenses<`) {
+	if !strings.Contains(body, `text-negative">Expenses<`) {
 		t.Errorf("rendered body missing the Expenses chip label -- must render whenever TotalExpenses is nonzero, not only when positive:\n%s", body)
 	}
 	// checker-tests observation (CB7-2026-09-03c): the chip's VALUE and its
@@ -1513,10 +1513,10 @@ func TestHandleExplorer_WithRenderer_RefundDominantFilterRendersNegativeExpenses
 	// rose class back) would otherwise still pass a figure-only check.
 	// Negative (net credit) -> the emerald class, exactly as kpis.html's
 	// own sign-aware pair.
-	if !strings.Contains(body, `text-emerald-800 dark:text-emerald-300 ml-1">-$400.00`) {
+	if !strings.Contains(body, `text-positive ml-1">-$400.00`) {
 		t.Errorf("rendered body missing the emerald sign-aware class on the negative Expenses figure:\n%s", body)
 	}
-	if strings.Contains(body, `text-rose-600 dark:text-rose-400 ml-1">-$400.00`) {
+	if strings.Contains(body, `text-negative ml-1">-$400.00`) {
 		t.Errorf("Expenses chip rendered the ROSE (spend) class on a negative (net-credit) figure:\n%s", body)
 	}
 	// Net = income - expenses = 2000 - (-400) = 2400.
@@ -1546,10 +1546,10 @@ func TestHandleExplorer_WithRenderer_OrdinarySpendRendersRoseExpensesClass(t *te
 	}
 	body := rec.Body.String()
 
-	if !strings.Contains(body, `text-rose-600 dark:text-rose-400 ml-1">$500.00`) {
+	if !strings.Contains(body, `text-negative ml-1">$500.00`) {
 		t.Errorf("rendered body missing the rose sign-aware class on the positive (spend) Expenses figure:\n%s", body)
 	}
-	if strings.Contains(body, `text-emerald-800 dark:text-emerald-300 ml-1">$500.00`) {
+	if strings.Contains(body, `text-positive ml-1">$500.00`) {
 		t.Errorf("Expenses chip rendered the EMERALD (credit) class on a positive (ordinary spend) figure:\n%s", body)
 	}
 }
@@ -1585,7 +1585,7 @@ func TestHandleExplorer_WithRenderer_ZeroOutflowsNoNegativeZero(t *testing.T) {
 	// span specifically -- the Type filter <select> unconditionally has an
 	// "Expenses" option text too, so a bare ">Expenses<" substring check
 	// would false-positive on that dropdown, not the summary-stats chip.
-	if strings.Contains(body, `text-rose-700 dark:text-rose-300">Expenses<`) {
+	if strings.Contains(body, `text-negative">Expenses<`) {
 		t.Errorf("Expenses chip rendered for a zero-Outflow filter; want absent:\n%s", body)
 	}
 }

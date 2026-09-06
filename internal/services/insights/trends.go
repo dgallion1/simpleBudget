@@ -11,6 +11,96 @@ import (
 	"budget2/internal/services/metrics"
 )
 
+// ChangeDollarFloor is the ONE named threshold (U5) below which a
+// period-over-period Change is shown as a signed dollar delta instead of a
+// percent -- a tiny previous-period baseline makes any percent (however
+// computed) misleading (e.g. $30 -> $6,931 reads "+23004.0%"). See
+// ChangeDisplay, the single function every Change-rendering surface must
+// go through.
+const ChangeDollarFloor = 100.0
+
+// ChangeDisplay is THE ONE classifier (U5 contract v3, SPEC §2d rule 2,
+// after two same-class FAILs: attempt 1 derived the dollar delta from
+// unrounded floats; attempt 2 rounded inside ChangeDisplay but the
+// producer still classified and computed percent/direction from its OWN
+// raw floats -- a split classification that let a float-noise sum
+// (0.10+0.20-0.30 ~= 5e-17) render "$0.00 -> $0.00, +100.0%, up"). This
+// function now owns EVERY decision derived from the pair -- Kind, the
+// dollar Amount, the Percent, and the Direction -- so there is exactly one
+// place that can disagree with what the user sees. Producers do nothing
+// but call this and copy its fields onto the row (Rule 2: "delete the
+// producers' own percent/direction computation entirely").
+//
+// previous and current are rounded to cents FIRST (models.RoundToCents --
+// the exact fmt.Sprintf("%.2f") primitive formatMoney itself uses), and
+// every downstream value (change, pct, Kind, Direction) is derived from
+// THAT rounded pair, never the raw inputs. Callers are also expected to
+// round at the source (Rule 1) before storing CurrentAmount/PreviousAmount
+// on the row; rounding again here is idempotent and makes this function
+// correct on its own regardless of what a caller passes.
+//
+//   - previous == 0 && current > 0 -> Kind "new": no prior spend to
+//     compare against.
+//   - previous == 0 && current == 0 -> Kind "none": truly no activity
+//     either period (the float-noise-sum case above lands here once
+//     rounded) -- Direction is always "stable".
+//   - (previous != 0 && |previous| < ChangeDollarFloor) || (previous == 0
+//     && current < 0) -> Kind "dollar": either previous is nonzero but too
+//     small for a percent to mean anything, or there is no prior baseline
+//     and the whole period is a net refund (current < 0) -- a percent
+//     against a zero baseline is not just misleading, it is undefined.
+//     Amount is current-previous (SIGNED, rendered via formatMoney with a
+//     leading "+" added by the template for positive values).
+//   - otherwise -> Kind "percent": pct = change / |previous| * 100, signed,
+//     one decimal, exactly zero previous excluded by the branches above.
+//
+// pct itself: previous == 0 sets it to +100 (current > 0), -100
+// (current < 0), or 0 (current == 0, i.e. the "none" case) -- matching the
+// existing zero-baseline convention MCP callers already depend on: else
+// change / |previous| * 100. Percent is ALWAYS populated (even for
+// "new"/"none"/"dollar" rows) so MCP's change_percent has one source
+// regardless of which text the web UI shows. Amount is likewise ALWAYS
+// populated. Direction follows pct with the existing +-5 band.
+func ChangeDisplay(previous, current float64) models.ChangeCell {
+	previous = models.RoundToCents(previous)
+	current = models.RoundToCents(current)
+	change := models.RoundToCents(current - previous)
+
+	var pct float64
+	switch {
+	case previous == 0 && current > 0:
+		pct = 100
+	case previous == 0 && current < 0:
+		pct = -100
+	case previous == 0:
+		pct = 0
+	default:
+		pct = change / math.Abs(previous) * 100
+	}
+
+	var kind, text string
+	switch {
+	case previous == 0 && current > 0:
+		kind, text = models.ChangeKindNew, "new"
+	case previous == 0 && current == 0:
+		kind, text = models.ChangeKindNone, "—"
+	case (previous != 0 && math.Abs(previous) < ChangeDollarFloor) || (previous == 0 && current < 0):
+		kind = models.ChangeKindDollar
+	default:
+		kind = models.ChangeKindPercent
+	}
+
+	direction := "stable"
+	switch {
+	case pct > 5:
+		direction = "up"
+	case pct < -5:
+		direction = "down"
+	}
+
+	return models.ChangeCell{Kind: kind, Text: text, Amount: change, Percent: pct, Direction: direction}
+}
+
 // MajorExpenseTrends groups outflows by matched MajorExpense.Name
 // for the current and previous periods and returns the same CategoryTrend
 // shape as CategoryTrends so existing UI can render it. Unmatched
@@ -66,54 +156,31 @@ func MajorExpenseTrends(ts *models.TransactionSet, defs []models.MajorExpense, p
 
 	var trends []models.CategoryTrend
 	for name := range nameSet {
-		current := currentTotals[name]
-		previous := prevTotals[name]
-		change := current - previous
+		// Rule 1 (SPEC §2d contract v3): round at the source. MajorExpenseTrends'
+		// totals are SIGNED (CB3-D) float sums -- a category with no activity in
+		// a period, or a period whose signed transactions cancel out (e.g.
+		// 0.10+0.20-0.30), can land on a float-noise value like 5.55e-17 instead
+		// of exactly 0. Rounding immediately after summation, before ANYTHING
+		// downstream sees these totals, means "no activity" reads as exactly
+		// $0.00 everywhere (producer, MCP, template) rather than tripping
+		// ChangeDisplay's previous==0/current==0 comparison on noise.
+		current := models.RoundToCents(currentTotals[name])
+		previous := models.RoundToCents(prevTotals[name])
 
-		// CB3-c: MajorExpenseTrends' totals are now SIGNED (CB3-D), so the
-		// old flat "previous==0 -> +100/up" and the signed-previous
-		// denominator both broke: a refund-dominant swing (e.g.
-		// current=0, previous=-628 -> change=+628) used to divide by the
-		// SIGNED previous and land on changePercent=-100/"down", directly
-		// contradicting a positive change. Fixed the same way CB3-E
-		// documents for PercentChange: divide by |previous| so the result's
-		// sign always tracks change's sign, and pick previous==0's
-		// changePercent by the SIGN OF CHANGE (not a hardcoded +100)
-		// so it agrees too. Direction then derives from changePercent
-		// using the EXISTING +-5 stable band, unchanged. CategoryTrends
-		// (a separate function, abs-based, out of CB3 scope) keeps its own
-		// classifier untouched.
-		var changePercent float64
-		if previous == 0 {
-			switch {
-			case change > 0:
-				changePercent = 100
-			case change < 0:
-				changePercent = -100
-			default:
-				changePercent = 0
-			}
-		} else {
-			changePercent = (change / math.Abs(previous)) * 100
-		}
-
-		var direction string
-		switch {
-		case changePercent > 5:
-			direction = "up"
-		case changePercent < -5:
-			direction = "down"
-		default:
-			direction = "stable"
-		}
+		// Rule 2: ONE classifier owns change, percent, and direction --
+		// CategoryTrend's own fields are copied FROM the cell, never computed
+		// independently (that split is exactly what let attempt 2's producer
+		// disagree with its own rounded ChangeDisplay call).
+		cell := ChangeDisplay(previous, current)
 
 		trends = append(trends, models.CategoryTrend{
 			Category:       name,
 			CurrentAmount:  current,
 			PreviousAmount: previous,
-			ChangePercent:  changePercent,
-			ChangeAmount:   change,
-			Direction:      direction,
+			ChangePercent:  cell.Percent,
+			ChangeAmount:   cell.Amount,
+			Direction:      cell.Direction,
+			Change:         cell,
 		})
 	}
 
@@ -153,38 +220,24 @@ func CategoryTrends(ts *models.TransactionSet, currentStart, currentEnd time.Tim
 	}
 
 	for cat := range catSet {
-		current := currentTotals[cat]
-		previous := prevTotals[cat]
+		// Rule 1: round at the source. CategoryTotals() sums are non-negative
+		// (Abs-based) so float noise is rarer here than in MajorExpenseTrends,
+		// but the contract is "no unrounded money leaves a producer" -- always
+		// round, not only when it happens to matter for a given category.
+		current := models.RoundToCents(currentTotals[cat])
+		previous := models.RoundToCents(prevTotals[cat])
 
-		var changePercent float64
-		var direction string
-
-		if previous == 0 {
-			if current == 0 {
-				changePercent = 0
-				direction = "stable"
-			} else {
-				changePercent = 100
-				direction = "up"
-			}
-		} else {
-			changePercent = ((current - previous) / previous) * 100
-			if changePercent > 5 {
-				direction = "up"
-			} else if changePercent < -5 {
-				direction = "down"
-			} else {
-				direction = "stable"
-			}
-		}
+		// Rule 2: ONE classifier owns change, percent, and direction.
+		cell := ChangeDisplay(previous, current)
 
 		trends = append(trends, models.CategoryTrend{
 			Category:       cat,
 			CurrentAmount:  current,
 			PreviousAmount: previous,
-			ChangePercent:  changePercent,
-			ChangeAmount:   current - previous,
-			Direction:      direction,
+			ChangePercent:  cell.Percent,
+			ChangeAmount:   cell.Amount,
+			Direction:      cell.Direction,
+			Change:         cell,
 		})
 	}
 

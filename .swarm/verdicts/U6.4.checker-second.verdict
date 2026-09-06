@@ -1,0 +1,123 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: U6
+ATTEMPT: 4
+---
+All mutation testing done in `cp -a` scratch copies (ui-audit-scratch-checker2,
+ui-audit-scratch2), cleaned up after. Real worktree untouched (no edits,
+no commits/checkout/stash/reset on the tracked tree). Throwaway servers on
+8199/8200 stopped after use; the primary checker's :8198 was never touched.
+
+1. ORACLE INTEGRITY (mutation tests against real checks, not theory)
+
+  a) error_probe.js accounts-case edit: verified against
+     internal/handlers/accounts/handlers.go:245-320 — with anchor_date/
+     anchor_amount BLANK (old probe), handleAddAnchor short-circuits at the
+     "required fields" branch (line 249) and calls renderList (200), never
+     reaching renderError. With valid anchor_date=2024-01-01&anchor_amount=100
+     (new probe) it proceeds past date/amount parsing to
+     accounts.Mutate -> errAccountNotFound -> renderError(...,404) at line
+     313. The fix is necessary and correct; it changed only input VALUES,
+     not any assertion (STATUS/FRAGMENT/HUE/UNSTYLED/CONTRAST checks are
+     identical for all 3 cases).
+
+  b) Mutant: reverted renderError's Tailwind classes to red-50/red-200/
+     red-500/red-800/red-700 literals in all three handlers
+     (accounts/majorexpenses/whatif), scratch copy, ran
+     `bash .swarm/tier3/U6/accept.sh` end to end (fresh go build of the
+     throwaway server each time, per scripts/whatif-verify.sh):
+       CHECK 9: FAIL (MISSING bg-red-50/border-red-200/text-red-500/
+                 text-red-700/text-red-800 from all 3 handler files)
+       CHECK 10: FAIL (HUE literal detected in all 3 fragments; UNSTYLED
+                 background/border in light+dark; CONTRAST violations in
+                 dark for all 3 cases) — includes the reconstructed
+                 accounts case, confirming (a) above works end to end.
+       SUMMARY: 8 passed, 3 failed, ORACLE FAIL.
+     Reverting renderError does NOT survive the oracle.
+
+  c) Mutant: reverted successRateTextClass's darkened tiers (lime-700/
+     yellow-700/orange-700 -> lime-600/yellow-600/orange-600) in
+     internal/templates/render.go ONLY (safelist/CSS untouched, matching
+     "revert ONLY the darkening"):
+       CHECK 9 (python3 emitter_coverage.py): FAIL deterministically —
+         MISSING text-lime-600, text-orange-600, text-yellow-600 (all
+         three, every run).
+       go test ./internal/templates/... ./web/...: PASS — neither
+         TestSuccessRateClasses (checks substring "lime" only, not shade)
+         nor TestTailwindBuildCoversEveryClassSource (checks the CSS
+         artifact for a static ".text-lime-700" string, independent of
+         what render.go actually emits) catch this mutation. Neither is
+         a gap in scope for this task; noting for completeness.
+       CHECK 7 (render_probe.js, browser+axe): did NOT reliably fail with
+         only render.go reverted — the unsafelisted class has no CSS rule,
+         so the element renders with inherited (near-black) text, which
+         passes contrast trivially (observed RENDER PROBE: clean on a
+         rerun). When the safelist + `make css` were ALSO reverted/rebuilt
+         (a deeper mutation making -600 an actually-styled rule), check 7
+         DID fail, but only on ~2/5-3/6 runs, because the Monte Carlo
+         success-rate value that drives this UI is stochastic per page
+         load (observed 91.4%, 88.9%, and other values across repeated
+         requests) and only sometimes lands in the affected 60-89% tier.
+     Net: this mutant does NOT survive the oracle either — CHECK 9 kills
+     it deterministically every time, backing up CHECK 7's probabilistic
+     coverage. (See OBSERVATIONS below — this is a pre-existing oracle
+     design property, not something introduced or fixable by this task.)
+     failend-validation.attempt4.HEAD-5b756e4.log independently confirms
+     the pre-fix baseline: checks 3/7/9/10 FAIL there (7 passed, 4
+     failed), matching this checker's own findings.
+
+2. EMITTER COMPLETENESS: grepped internal/ and web/static/js for
+   string-concatenation or Sprintf-assembled color classes
+   (`grep -rnE '"(bg|text|border|ring)-" *\+|fmt.Sprintf\("[^"]*(bg|text|
+   border)-'`) — no hits. Grepped web/templates for split {{if}}/{{end}}
+   class fragments that a literal-token scanner would miss — no hits.
+   Spot-checked JS classList.add/toggle/className literals in charts.js,
+   dashboard.js, whatif-tabs.js against the built tailwind.css with the
+   emitter script's own has_rule() logic — all present (a false lead on
+   `hover:bg-gray-900` resolved: the actual source string is
+   `dark:hover:bg-gray-900`, which IS covered).
+
+3. DARKENING IS REAL: independently computed WCAG contrast ratios
+   (relative luminance formula) for lime/yellow/orange -600 vs -700 on
+   white (#fff, the `.num` tile's actual ancestor background per
+   monte-carlo.html/historical-backtest.html's `bg-white`): got 3.09/4.99,
+   2.94/4.92, 3.56/5.18 — exact matches to the code's own comments.
+   Dark variants (untouched -400 shades) on gray-800 (#1f2937): 9.74,
+   9.59, 6.49 — all comfortably >=4.5:1. The fix is factually correct,
+   not cosmetic.
+
+4. REGRESSION SWEEP: oracle CHECK 8 (go build/vet/test/staticcheck, bare,
+   fresh) PASSED in oracle.4.log. Diffed all listed _test.go changes
+   (dashboard/verdict_render_test.go, explorer/summary_stats_render_test.go,
+   whatif/spending_trajectory_test.go, whatif/tax_summary_render_test.go,
+   templates/render_helpers_test.go, render_kpi_month_detail_test.go,
+   render_test.go, web/offline_assets_test.go) — every change is a 1:1
+   rename of an old hue-literal assertion to the equivalent-strength
+   semantic-token assertion; no assertion was weakened, skipped, or
+   turned into a no-op.
+
+5. SCOPE: git diff --stat shows the full pre-existing U6 uncommitted diff
+   (70 files, task's own large diff, not attributable solely to attempt
+   4 since there's no per-attempt commit history). `successRateBarClass`
+   is untouched in the render.go diff. No unrelated template restructure
+   found.
+
+OBSERVATIONS (not FAIL grounds — pre-existing oracle property, not
+introduced by this attempt, and backstopped by a deterministic check in
+the same oracle run):
+- CHECK 7's coverage of successRateTextClass's mid-tier colors (lime/
+  yellow/orange) is stochastic: it depends on the Monte Carlo engine's
+  randomized simulation landing a success rate in 60-89% on that one page
+  load, and silently misses the mutation when the CSS build is stale
+  (unsafelisted class -> inherited color -> trivially passes contrast).
+  CHECK 9 (emitter_coverage.py) reliably catches the same mutation every
+  time regardless, so the oracle as a whole is not compromised, but a
+  future task could make CHECK 7 deterministic (fixed MC seed or a
+  fixture forcing each tier) rather than relying on CHECK 9 as the sole
+  reliable backstop.
+- TestSuccessRateClasses (pre-existing, untouched by U6) only asserts the
+  tier-name substring ("lime"/"yellow"/"orange"), not the specific shade,
+  so it would pass identically whether the -700 darkening were present or
+  reverted. Not introduced by this attempt; flagging for the backlog if a
+  future task touches this function again.

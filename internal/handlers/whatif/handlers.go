@@ -169,6 +169,16 @@ const revisionUnreported = 0
 // revision must be the revision the caller's own write produced (see
 // SettingsManager.SaveWithRevision), or revisionUnreported.
 func renderRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings, revision int) {
+	renderRecalcWithExtra(w, r, settings, revision, nil)
+}
+
+// renderRecalcWithExtra is renderRecalc plus a display-only extra map merged
+// into the results-partial data for THIS response only (see
+// renderResultsTemplate). It has exactly one caller (handleWhatIfDeleteIncome,
+// for the Undo toast's JustRemovedIncome signal, ruling U-2026-09-05o) —
+// every other mutating handler keeps calling the shared recalcAndRender /
+// renderRecalc unchanged.
+func renderRecalcWithExtra(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings, revision int, extra map[string]interface{}) {
 	analysis, pendingHash, err := analysisFastOrCached(settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
@@ -179,7 +189,7 @@ func renderRecalc(w http.ResponseWriter, r *http.Request, settings *models.WhatI
 			w.Header().Set("HX-Trigger", string(trigger))
 		}
 	}
-	renderWhatIfResults(w, settings, analysis, pendingHash)
+	renderResultsTemplate(w, "whatif-results-with-oob", settings, analysis, pendingHash, extra)
 }
 
 // recalcAndRender is the shared tail of a mutating what-if handler: apply
@@ -424,7 +434,7 @@ func buildResultsPartialData(settings *models.WhatIfSettings, analysis *models.W
 // pendingHash is the dep-hash of a RunFast analysis awaiting its async full
 // fetch, or "" when analysis is already the full analysis.
 func renderWhatIfResults(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, pendingHash string) {
-	renderResultsTemplate(w, "whatif-results-with-oob", settings, analysis, pendingHash)
+	renderResultsTemplate(w, "whatif-results-with-oob", settings, analysis, pendingHash, nil)
 }
 
 // renderWhatIfResultsOnly renders the results column alone, with no OOB swaps.
@@ -434,7 +444,7 @@ func renderWhatIfResults(w http.ResponseWriter, settings *models.WhatIfSettings,
 // pendingHash is the dep-hash of a RunFast analysis awaiting its async full
 // fetch, or "" when analysis is already the full analysis.
 func renderWhatIfResultsOnly(w http.ResponseWriter, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, pendingHash string) {
-	renderResultsTemplate(w, "whatif-results", settings, analysis, pendingHash)
+	renderResultsTemplate(w, "whatif-results", settings, analysis, pendingHash, nil)
 }
 
 // renderResultsTemplate computes the shared results partial data (Completeness
@@ -446,10 +456,18 @@ func renderWhatIfResultsOnly(w http.ResponseWriter, settings *models.WhatIfSetti
 // fetch, or "" when analysis is already the full analysis; it sets
 // AnalysisPending/AsyncHash on the partial data so the template can embed the
 // async loader and skeleton cards.
-func renderResultsTemplate(w http.ResponseWriter, name string, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, pendingHash string) {
+//
+// extra is merged into the partial data AFTER the standard fields, for a
+// single response's own display-only signals (e.g. JustRemovedIncome — see
+// renderRecalcWithExtra). nil for every caller except the one response that
+// needs a signal; it never touches Settings/Analysis or any persisted state.
+func renderResultsTemplate(w http.ResponseWriter, name string, settings *models.WhatIfSettings, analysis *models.WhatIfAnalysis, pendingHash string, extra map[string]interface{}) {
 	partialData := buildResultsPartialData(settings, analysis, completeness.Check(settings))
 	partialData["AnalysisPending"] = pendingHash != ""
 	partialData["AsyncHash"] = pendingHash
+	for k, v := range extra {
+		partialData[k] = v
+	}
 	if renderer != nil {
 		_ = renderer.RenderPartial(w, name, partialData)
 	} else {
@@ -701,14 +719,14 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 func renderError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(statusCode)
-	body := fmt.Sprintf(`<div class="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg">
+	body := fmt.Sprintf(`<div class="p-4 bg-negative-soft border border-negative rounded-lg">
 		<div class="flex items-center">
-			<svg class="w-5 h-5 text-red-500 dark:text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<svg class="w-5 h-5 text-negative mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
 			</svg>
-			<span class="text-red-700 dark:text-red-300 font-medium">Error</span>
+			<span class="text-negative font-medium">Error</span>
 		</div>
-		<p class="mt-2 text-sm text-red-600 dark:text-red-400">%s</p>
+		<p class="mt-2 text-body-sm text-negative">%s</p>
 	</div>`, html.EscapeString(message))
 	_, _ = w.Write([]byte(body))
 }
@@ -1201,4 +1219,3 @@ func handleWhatIfProjectionChartNoGuardrails(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(chartData)
 }
-

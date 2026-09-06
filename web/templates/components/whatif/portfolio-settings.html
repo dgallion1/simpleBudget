@@ -5,7 +5,7 @@
     <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Portfolio & Expenses</h2>
         <button hx-post="/whatif/sync" hx-target="#whatif-results" hx-indicator="#sync-loading"
-            class="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1">
+            class="text-sm text-accent hover:text-accent flex items-center gap-1">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
@@ -29,8 +29,9 @@
 
         <div>
             <div class="flex items-center justify-between mb-1">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Portfolio Value</label>
-                <select id="portfolio-range" onchange="updatePortfolioRange(this.value, { sourceEvent: event, triggerChange: false })"
+                <label for="portfolio-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Portfolio Value</label>
+                <select id="portfolio-range" aria-label="Portfolio value slider range"
+                    onchange="updatePortfolioRange(this.value, { sourceEvent: event, triggerChange: false })"
                     class="text-xs border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                     <option value="0,10000,1000" {{if le .Settings.PortfolioValue 10000.0}}selected{{end}}>$0-10K</option>
                     <option value="0,50000,1000" {{if and (gt .Settings.PortfolioValue 10000.0) (le .Settings.PortfolioValue 50000.0)}}selected{{end}}>$0-50K</option>
@@ -50,7 +51,7 @@
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Monthly Living Expenses</label>
+            <label for="monthly_living_expenses_input" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Monthly Living Expenses</label>
             {{/* Hidden input carries the exact saved value and is the only
                  one submitted with the form. The visible range below keeps
                  step=100 for drag feel but has no name — assigning its
@@ -75,9 +76,9 @@
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                 oninput="onMonthlyLivingExpensesInput(this.value)">
             <span id="monthly_living_expenses_display" class="text-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="monthly_living_expenses" data-quick-adjust-display-format="currency">{{formatDollars .Settings.MonthlyLivingExpenses}}</span>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">In today's dollars; inflation is applied during projection. Excludes healthcare premiums and property tax — those are entered below and added on top.{{if and .Analysis .Analysis.BudgetFit}} Plan total today: {{formatDollars .Analysis.BudgetFit.MonthlyExpenses}}/mo.{{end}}</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">In today's dollars; inflation is applied during projection. Excludes healthcare premiums and property tax — those are entered below and added on top.{{if and .Analysis .Analysis.BudgetFit}} Plan total today: {{formatDollars .Analysis.BudgetFit.MonthlyExpenses}}/mo.{{end}}</p>
             {{if .LivingExpensesPhaseNote.Show}}
-            <p id="living-expenses-phase-note" class="text-xs text-gray-500 dark:text-gray-400 mt-1" data-phase-multiplier="{{.LivingExpensesPhaseNote.Multiplier}}">Engine spends <span id="living-expenses-phase-amount">{{formatMoney .LivingExpensesPhaseNote.EngineMonth0}}</span>/mo now ({{.LivingExpensesPhaseNote.PhaseName}} ×{{.LivingExpensesPhaseNote.MultiplierText}}){{if .LivingExpensesPhaseNote.NextClause}}; {{.LivingExpensesPhaseNote.NextClause}}{{end}}.</p>
+            <p id="living-expenses-phase-note" class="text-body-sm text-gray-500 dark:text-gray-400 mt-1" data-phase-multiplier="{{.LivingExpensesPhaseNote.Multiplier}}">Engine spends <span id="living-expenses-phase-amount">{{formatMoney .LivingExpensesPhaseNote.EngineMonth0}}</span>/mo now ({{.LivingExpensesPhaseNote.PhaseName}} ×{{.LivingExpensesPhaseNote.MultiplierText}}){{if .LivingExpensesPhaseNote.NextClause}}; {{.LivingExpensesPhaseNote.NextClause}}{{end}}.</p>
             {{end}}
         </div>
 
@@ -87,21 +88,21 @@
                 <input type="number" id="monthly-property-tax-input" name="monthly_property_tax"
                     value="{{printf "%.0f" .Settings.MonthlyPropertyTax}}"
                     min="0" max="50000" step="1"
-                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Annual bill ÷ 12. Leave 0 if you rent or own outright with no tax.</p>
+                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">Annual bill ÷ 12. Leave 0 if you rent or own outright with no tax.</p>
             </div>
             <div>
                 <label for="property-tax-inflation-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Property Tax Inflation %</label>
                 <input type="number" id="property-tax-inflation-input" name="property_tax_inflation"
                     value="{{printf "%.1f" .Settings.PropertyTaxInflation}}"
                     min="0" max="15" step="0.1"
-                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Annual rate (default 4%). Tracks assessment + levy growth.</p>
+                    class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
+                <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">Annual rate (default 4%). Tracks assessment + levy growth.</p>
             </div>
         </div>
 
         <div>
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Projection Years</label>
+            <label for="projection-years-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Projection Years</label>
             <input type="range" id="projection-years-slider" name="projection_years" value="{{.Settings.ProjectionYears}}"
                 min="5" max="50" step="1"
                 data-quick-adjust-key="projection_years"
@@ -115,96 +116,5 @@
 
 {{/* Portfolio Range JavaScript - should be included once in page */}}
 {{define "whatif-portfolio-scripts"}}
-<script>
-function updatePortfolioRange(rangeStr, options) {
-    const shouldTriggerChange = !options || options.triggerChange !== false;
-    if (options && options.sourceEvent && typeof options.sourceEvent.stopPropagation === 'function') {
-        options.sourceEvent.stopPropagation();
-    }
-    const [min, max, step] = rangeStr.split(',').map(Number);
-    const slider = document.getElementById('portfolio-slider');
-    if (!slider) return;
-    const currentVal = Number(slider.value);
-    slider.min = min;
-    slider.max = max;
-    slider.step = step;
-    // Clamp current value to new range
-    if (currentVal < min) slider.value = min;
-    else if (currentVal > max) slider.value = max;
-    // Update display
-    slider.nextElementSibling.textContent = formatWholeDollars(Number(slider.value));
-    const select = document.getElementById('portfolio-range');
-    if (select && select.value !== rangeStr) select.value = rangeStr;
-    const mirrorSelect = document.getElementById('quick-adjust-portfolio-range');
-    if (mirrorSelect && mirrorSelect.value !== rangeStr) mirrorSelect.value = rangeStr;
-    if (typeof quickAdjustSyncFromCanonical === 'function') {
-        quickAdjustSyncFromCanonical(slider);
-    }
-    // Trigger change event for HTMX
-    if (shouldTriggerChange) {
-        slider.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-}
-
-function initializePortfolioRange() {
-    const slider = document.getElementById('portfolio-slider');
-    if (!slider) return;
-    const select = document.getElementById('portfolio-range');
-    if (!select) return;
-    updatePortfolioRange(select.value, { triggerChange: false });
-}
-
-// updateLivingExpensesPhaseNote recomputes the phase note's dollar figure
-// (the "Engine spends $X/mo now" text) as value × the current-phase
-// multiplier stashed on the note's data-phase-multiplier attribute. The
-// phase name and next-transition clause are static text set server-side —
-// they don't change while dragging a single slider — only the dollar
-// amount needs a live update.
-function updateLivingExpensesPhaseNote(value) {
-    const note = document.getElementById('living-expenses-phase-note');
-    const amount = document.getElementById('living-expenses-phase-amount');
-    if (!note || !amount) return;
-    const multiplier = parseFloat(note.dataset.phaseMultiplier);
-    if (!isFinite(multiplier)) return;
-    const base = parseFloat(value) || 0;
-    amount.textContent = '$' + (base * multiplier).toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    });
-}
-
-// onMonthlyLivingExpensesInput handles the visible living-expenses range's
-// oninput event. The range itself is not submitted (no name attribute) and
-// snaps to $100 increments while dragging, which is fine for drag feel; the
-// exact value only needs to be exact once dragging actually changes it. The
-// hidden #monthly_living_expenses_value input is the one the form submits,
-// and it is otherwise left untouched at its saved value (never
-// browser-snapped, since hidden inputs aren't subject to range step
-// sanitization) — this is what fixes the snap trap: an unrelated form
-// submit with no drag on this slider round-trips the saved value exactly.
-//
-// Dispatching 'input' on the hidden field re-uses the existing quick-adjust
-// sync machinery (quick-adjust-scripts.html) to update the display span,
-// the quick-adjust mirror slider, and the phase note in one path — whether
-// the change originated here or from a drag on the mirror slider.
-function onMonthlyLivingExpensesInput(rawValue) {
-    const exact = document.getElementById('monthly_living_expenses_value');
-    if (exact) {
-        exact.value = rawValue;
-        exact.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    if (typeof updateSpendingPreview === 'function') updateSpendingPreview();
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    initializePortfolioRange();
-});
-
-document.addEventListener('htmx:afterSettle', function(evt) {
-    const target = evt.detail && evt.detail.target;
-    if (target && (target.id === 'whatif-results' || target.id === 'whatif-portfolio-settings-card')) {
-        initializePortfolioRange();
-    }
-});
-</script>
+<script src="/static/js/whatif-portfolio-settings.js" defer></script>
 {{end}}

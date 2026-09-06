@@ -82,8 +82,8 @@ func TestRenderMajorExpenses_UnmatchedBucketShowsAllRowsWithDimming(t *testing.T
 	if !strings.Contains(html, `<a href="/explorer?search=Tiny&#43;Coffee&type=Outflow"`) {
 		t.Errorf("expected sub-threshold AllUnmatched description to link to /explorer, got html=%s", html)
 	}
-	if got := strings.Count(html, `onclick="event.stopPropagation()"`); got < 2 {
-		t.Errorf("expected stopPropagation handler on each AllUnmatched description anchor (2 rows), got %d. html=%s", got, html)
+	if got := strings.Count(html, `data-stop-row-click`); got < 2 {
+		t.Errorf("expected a data-stop-row-click guard on each AllUnmatched description anchor (2 rows), got %d. html=%s", got, html)
 	}
 }
 
@@ -486,8 +486,8 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 	// fixture: UnknownLarge, Anomalous, NewMerchants). The matched-row
 	// anchor does NOT use stopPropagation (no row click handler there),
 	// so the count is a tight lower bound on the exception anchors.
-	if got := strings.Count(html, `onclick="event.stopPropagation()"`); got < 3 {
-		t.Errorf("expected at least 3 stopPropagation handlers on exception description anchors, got %d. html=%s", got, html)
+	if got := strings.Count(html, `data-stop-row-click`); got < 3 {
+		t.Errorf("expected at least 3 data-stop-row-click guards on exception description anchors, got %d. html=%s", got, html)
 	}
 }
 
@@ -822,6 +822,10 @@ func TestRenderMajorExpenses_BulkToolbarLeadTrailSpans(t *testing.T) {
 // partial re-renders. Without this, every date-filter change or pin
 // mutation wipes the user's selections and they have to re-check
 // every row before the next bulk operation.
+//
+// The behavior lives in static/js/major-expenses.js (extracted from an
+// inline <script> by U7); the page render is only checked for the
+// <script src> tag that loads it.
 func TestRenderMajorExpenses_PreservesCheckedAcrossHTMXSwaps(t *testing.T) {
 	now := time.Now()
 	html := renderMajorExpensesContent(t, map[string]any{
@@ -844,26 +848,36 @@ func TestRenderMajorExpenses_PreservesCheckedAcrossHTMXSwaps(t *testing.T) {
 		"TotalDeclared": 0.0,
 	})
 
+	if !strings.Contains(html, `<script src="/static/js/major-expenses.js" defer></script>`) {
+		t.Errorf("expected the page to load static/js/major-expenses.js, got: %s", html)
+	}
+
+	js, err := fs.ReadFile(web.EmbeddedFS, "static/js/major-expenses.js")
+	if err != nil {
+		t.Fatalf("reading static/js/major-expenses.js: %v", err)
+	}
+	jsStr := string(js)
+
 	// Snapshot bucket: the beforeSwap handler must collect every
 	// currently-checked exception checkbox into savedCheckedHashes.
-	if !strings.Contains(html, `let savedCheckedHashes = null;`) {
-		t.Errorf("expected savedCheckedHashes declaration in JS, got: %s", html)
+	if !strings.Contains(jsStr, `let savedCheckedHashes = null;`) {
+		t.Errorf("expected savedCheckedHashes declaration in JS, got: %s", jsStr)
 	}
-	if !strings.Contains(html, `input.major-expenses-pin-check:checked`) {
-		t.Errorf("expected beforeSwap to query checked exception checkboxes, got: %s", html)
+	if !strings.Contains(jsStr, `input.major-expenses-pin-check:checked`) {
+		t.Errorf("expected beforeSwap to query checked exception checkboxes, got: %s", jsStr)
 	}
 
 	// Restore bucket: afterSwap must look up each fresh checkbox by
 	// data-hash and re-check it if the snapshot held that hash.
-	if !strings.Contains(html, `savedCheckedHashes.has(h)`) {
-		t.Errorf("expected afterSwap restore to consult savedCheckedHashes, got: %s", html)
+	if !strings.Contains(jsStr, `savedCheckedHashes.has(h)`) {
+		t.Errorf("expected afterSwap restore to consult savedCheckedHashes, got: %s", jsStr)
 	}
 
 	// The restored selections must surface the bulk-pin toolbar even
 	// when no search filter is active (applyUnifiedFilter only runs
 	// for non-empty queries, so syncBulkPinToolbar must be called
 	// directly from afterSwap).
-	if !strings.Contains(html, `syncBulkPinToolbar(visibleExceptions, input ? input.value : '');`) {
-		t.Errorf("expected afterSwap to refresh bulk-pin toolbar after restoring checks, got: %s", html)
+	if !strings.Contains(jsStr, `syncBulkPinToolbar(visibleExceptions, input ? input.value : '');`) {
+		t.Errorf("expected afterSwap to refresh bulk-pin toolbar after restoring checks, got: %s", jsStr)
 	}
 }

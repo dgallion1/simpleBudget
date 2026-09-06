@@ -1,0 +1,114 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U9
+ATTEMPT: 1
+---
+Scope: web/templates/layouts/base.html + rebuilt web/static/css/tailwind.css
+(git status confirms these are the only tracked-file diffs; U-RUN-SPEC.md
+§2e/§2i and ACCESSIBILITY.md are the standard). Verified against a REAL
+render on scripts/whatif-verify.sh :8091 (server started, probed, stopped —
+confirmed via `scripts/whatif-verify.sh stop 8091` -> "stopped and cleaned").
+
+(a) One product name
+`grep -niE 'Financial Dashboard|Budget Dashboard' web/templates/layouts/base.html`
+= 0 matches. `<title>{{.Title}} - simpleBudget</title>`, header wordmark
+"simpleBudget", footer "simpleBudget &copy; {{now.Year}}" — all three
+confirmed in the diff (base.html:8, :77, :216).
+
+(b) Three groups, correct distribution, hrefs unchanged
+Live DOM probe (Playwright) on /dashboard and /accounts, desktop (1440px)
+AND mobile (390px, menu opened):
+  Money:  /dashboard /explorer /insights /major-expenses
+  Plan:   /whatif
+  Setup:  /accounts /transfers /filemanager (+/duplicates when count>0,
+          unchanged {{if .UnresolvedDuplicateCount}} gate, badge markup
+          untouched apart from token rename bg-amber-500 -> bg-warning-strong)
+Set matches master's original flat 9-link nav exactly (dashboard, explorer,
+whatif, insights, major-expenses, duplicates, filemanager, accounts,
+transfers) — confirmed by reading the pre-image in `git diff master --
+web/templates/layouts/base.html`. No href changed, none dropped, none added.
+
+(c) Keyboard + ARIA
+- `aria-current="page"` probed on /dashboard and /accounts (2 different
+  pages): each time exactly the correct link (desktop copy AND mobile copy)
+  carries aria-current, no false positive on the other tab.
+- Mobile toggle: before open aria-expanded=false, aria-controls="mobile-nav";
+  focused #mobile-nav-toggle and pressed Enter (real keyboard, no click()):
+  aria-expanded flips to true, #mobile-nav loses .hidden. aria-controls
+  resolves to the real panel id.
+- Tab-walk from the open mobile menu visits all 8 links in visual/group
+  order (dashboard, explorer, insights, major-expenses, whatif, accounts,
+  transfers, filemanager) then continues into page content — no trap, no
+  skipped/duplicated stop.
+- Group labels: role="group" + aria-labelledby resolves to a real, VISIBLE
+  text node in both desktop (span, text-white/60, labelVisible:true) and
+  mobile (p, same, labelVisible:true) — confirmed via getComputedStyle +
+  offsetParent, not just DOM presence.
+- Heading order: 0 headings inside <nav> (group labels are span/p, not
+  h2/h3, avoiding a heading-hierarchy complaint); /dashboard heading
+  sequence is H1,H2,H2,H2,H2,H2,H2 — no skip, no heading was inserted
+  before the page's own H1.
+- No `outline-none`/`outline:none` anywhere in the nav markup — default
+  focus ring survives on every link and the toggle button.
+
+(d) Full axe sweep, 9 pages x 2 themes (own script modeled on
+.swarm/tier3/U6/render_probe.js, full axe.run() not contrast-only, 1440px,
+localStorage theme + html.dark class forced, <details> opened):
+  16/18 page/theme cells: 0 violations.
+  /whatif (light+dark): `label` (critical, x28) + `select-name` (critical,
+    x11) on slider/number/select inputs (#portfolio-slider,
+    #monthly_living_expenses_input, #projection-years-slider,
+    select[name=person_id], etc.)
+  /major-expenses (light+dark): `empty-table-header` (minor, x2) on
+    `<th class="w-6"></th>` action-column headers.
+Provenance check (required by the task): confirmed these exact elements
+exist verbatim in master —
+  `git show master:web/templates/components/whatif/portfolio-settings.html`
+    has `<input type="range" id="portfolio-slider" ...>` with no
+    label/aria-label, unchanged.
+  `git show master:web/templates/components/whatif/healthcare-person.html`
+    has `<select name="person_id" ...>` with no accessible name.
+  `git show master:web/templates/pages/major-expenses.html` has
+    `<th class="w-6"></th>` (lines 1008, 1018) already empty.
+None of these files are in U9's diff (git status shows only base.html and
+tailwind.css touched). PRE-EXISTING, U15-scope — OBSERVATION, not a FAIL,
+per the task's own instruction and ruling U-2026-09-03a precedent.
+Isolated nav-only contrast check (axe color-contrast scoped to `<nav>` and
+to `#mobile-nav`) is 0 violations in both themes at both viewport widths —
+covers WCAG 1.4.3/1.4.11 for the new group-label text and divider.
+
+(e) Token discipline
+- Group-label / mobile-heading classes use `text-label` (defined in
+  tailwind.config.js:70, fontSize token, 0.75rem/12px) — no
+  `text-[10px]`/`text-[11px]` literal anywhere in the diff.
+- Duplicates badge and header gradient use `bg-warning-strong` /
+  `from-accent-strong`/`to-accent-strong` (CSS vars in styles.css:30/42,
+  theme-invariant) replacing the old `bg-amber-500` / `from-indigo-600
+  to-purple-600` hue literals — no raw hue literal introduced.
+- Decorative vertical-rule dividers (`<div class="h-6 w-px bg-white/20"
+  aria-hidden="true">`) are `aria-hidden`, carry no text, confirmed by grep
+  of the diff (two occurrences, both desktop group separators).
+
+No hidden-text abuse found: no `sr-only`/visually-hidden injection, no
+`aria-hidden` on anything with visible interactive content.
+prefers-reduced-motion: no new animation/transition introduced (existing
+hover:bg-white/10 transition-colors carried over unchanged).
+
+Server lifecycle: scripts/whatif-verify.sh start 8091 / stop 8091, isolated
+data+backup copies per its own design; budget2 binary was never invoked
+directly.
+
+OBSERVATIONS (not FAIL grounds for U9):
+- web/templates/pages/unlock.html still says "Financial Dashboard"
+  (title + heading) and cmd/server/main.go:340 logs "Starting Budget
+  Dashboard" — both out of U9's one-file scope, correctly flagged by the
+  manifest as backlog/U15 candidates.
+- The header nav background collapsed from a two-stop gradient
+  (indigo-600 -> purple-600) to a flat `from-accent-strong to-accent-strong`
+  (both stops = indigo-600) as a side effect of token migration — a
+  cosmetic change, not an a11y regression (contrast against white text
+  unaffected, confirmed 0 nav contrast violations both themes).
+- /whatif `label`/`select-name` and /major-expenses `empty-table-header`
+  axe findings are real and should be tracked for U15; they are unrelated
+  to base.html and pre-date this branch.

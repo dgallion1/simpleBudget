@@ -1,0 +1,116 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: U7F
+ATTEMPT: 1
+---
+
+SCOPE (uncommitted diff, `git status --porcelain`):
+ M .swarm/ledger.tsv
+ M web/templates/components/shared/range-picker.html
+?? internal/templates/render_range_picker_preset_attr_test.go
+(no tailwind.css diff — the fix adds no new Tailwind classes, so the build
+is byte-identical; `make css-verify` confirms "tailwind.css is up to date")
+
+Confirmed scope is exactly the claim: `git diff --stat` against dictionaries/
+JS/pages (web/static/js/*, pages/dashboard|insights|explorer|major-expenses)
+is empty — the fix touched only range-picker.html + the new test + ledger.
+
+THE FIX (read in full): the two preset-button lines now emit
+`{{if eq $.PresetAttr "data-months"}}data-months="{{.Value}}"{{else}}data-preset="{{.Value}}"{{end}}`
+— a static-literal attribute name selected by a conditional — replacing the
+old `{{$.PresetAttr}}="{{.Value}}"` dynamic-attribute-name interpolation
+that html/template silently rewrote to `ZgotmplZ`.
+
+1. REAL ATTRIBUTE, NO ZgotmplZ, ALL FOUR PAGES (live render via
+   scripts/whatif-verify.sh start 8098, server stopped after):
+   - /dashboard: 0 ZgotmplZ; preset buttons carry real
+     `data-preset="ytd"|"1m"|"2m"|"3m"|"6m"|"12m"|"all"`.
+   - /insights: 0 ZgotmplZ IN THE PRESET BUTTONS (real `data-preset` values
+     render correctly). BUT 2 `ZgotmplZ` DO appear on this page, in the
+     From/To date `<input>` elements (lines 192/199 of the rendered HTML) —
+     see OBSERVATION below; this is NOT in U7F's diff.
+   - /explorer: 0 ZgotmplZ; real `data-months="0"|"1"|"2"|"3"|"6"|"12"`.
+   - /major-expenses: 0 ZgotmplZ; real `data-months="0"|"1"|"2"|"3"|"6"|"12"`.
+
+2. BEHAVIOR — preset click actually changes the date window (Playwright,
+   headless chromium, all four pages driven, `btn.click()` then re-read
+   `input[name=start]`/`input[type=date]`):
+   - /dashboard 1M preset: dataset={preset:"1m"}; start 2026-01-01 → 2026-08-05 (changed=true)
+   - /insights  1M preset: dataset={preset:"1m"}; start 2025-08-27 → 2026-08-05 (changed=true)
+   - /explorer  3M preset: dataset={months:"3"}; start 2025-01-01 → 2026-05-27 (changed=true)
+   - /major-expenses 3M preset: dataset={months:"3"}; start 2025-01-01 → 2026-05-27 (changed=true)
+   No console errors on any page. `btn.dataset.preset`/`btn.dataset.months`
+   now resolve (were `undefined` pre-fix); the click handlers fire and the
+   date window updates on all four pages driven.
+
+3. KEYBOARD OPERABILITY (real `page.keyboard.press('Enter')` after
+   `btn.focus()`, not `.click()`):
+   - /dashboard 1M preset: tag=BUTTON, type=button, tabIndex>=0; Enter
+     changed start 2026-01-01 → 2026-08-05.
+   - /explorer 3M preset: tag=BUTTON, type=button, tabIndex>=0; Enter
+     changed start 2025-01-01 → 2026-05-27.
+   Buttons were already real `<button type="button">` pre-fix; confirmed
+   the attribute-name fix didn't disturb that (WCAG 2.2 AA 2.1.1, 4.1.2;
+   ACCESSIBILITY.md #3, #9).
+
+4. REGRESSION TEST is load-bearing:
+   `internal/templates/render_range_picker_preset_attr_test.go` asserts,
+   for {inline,stacked} x {data-months,data-preset} (4 cases), BOTH that
+   the real attribute string is present AND that "ZgotmplZ" is absent.
+   `go test ./internal/templates/... -run TestRangePickerPresetButtonsCarryRealDataAttr -v`
+   → PASS (4/4).
+   Mutation-proof (scratch `cp -a` to
+   /tmp/.../scratchpad/mutation-copy, reverted the two preset-button lines
+   back to `{{$.PresetAttr}}="{{.Value}}"`, restored/discarded after):
+   test FAILS all 4 cases, e.g.:
+     `<button type="button" ZgotmplZ="6" class="date-range-btn ...">6M</button>`
+     "stacked/data-preset: preset button missing \"data-preset=\"6\"\""
+   Confirms the test is real coverage, not tautological.
+
+5. BUILD/LINT/CSS:
+   - `go build ./...` — clean, no output.
+   - `go vet ./...` — clean, no output.
+   - `go test ./internal/templates/...` — ok.
+   - `staticcheck ./...` — exit 0, no findings.
+   - `make css-verify` — "tailwind.css is up to date".
+   - No `ZgotmplZ` in committed `web/static/css/tailwind.css` or any
+     template except the explanatory COMMENT in range-picker.html itself
+     (documentation, not rendered output).
+
+Grep for other `}}="` dynamic-attribute-name patterns across
+`web/templates/`: NONE found. This defect class is not replicated
+elsewhere in templates.
+
+OBSERVATIONS (non-blocking, out of scope for U7F — attributed by
+`git diff HEAD` / `git show HEAD:...`, both PRE-EXISTING in HEAD da2fbca,
+untouched by this uncommitted diff):
+
+- OBS-1 (same defect class, different mechanism, insights page only):
+  `web/templates/pages/insights.html:22` passes
+  `"InputHxAttrs" (safeHTML "hx-get=... hx-target=... hx-trigger=change ...")`
+  into `shared/range-picker.html` lines 96/103
+  (`{{if .InputHxAttrs}}{{.InputHxAttrs}}{{end}}`, mid-tag, not inside a
+  quoted attribute value). `safeHTML` returns `template.HTML` (render.go:749),
+  not `template.HTMLAttr`; html/template's contextual escaper can't safely
+  splice `template.HTML` into a bare-attribute-list position and substitutes
+  `ZgotmplZ` for the whole blob — confirmed live: both the From and To date
+  inputs on /insights render literally `ZgotmplZ` where `hx-get`,
+  `hx-target`, `hx-select`, `hx-include`, `hx-push-url`, `hx-trigger`,
+  `hx-indicator` should be. This means typing/changing the date inputs
+  directly on /insights does NOT trigger an HTMX refresh at all (the preset
+  buttons still work per finding 2 above — this only affects the manual
+  date-input path). Present in HEAD (da2fbca) before this uncommitted
+  diff — confirmed via `git show HEAD:web/templates/components/shared/
+  range-picker.html` (identical lines) and `git diff HEAD -- range-picker.html`
+  (U7F's diff doesn't touch lines 90-105). Recommend a same-defect-class
+  follow-up task: change `InputHxAttrs`'s type to `template.HTMLAttr` (or
+  restructure to individual `{{if}}` per hx-attribute, as the fixed preset
+  buttons now do) and add a render-test asserting the hx-* attributes are
+  real and ZgotmplZ is absent on /insights, mirroring this test's pattern.
+- OBS-2: dashboard/insights presets use non-numeric string values
+  (ytd/1m/2m/.../all) vs explorer/major-expenses numeric strings
+  (0/1/2/3/6/12) — both work correctly with the fix since it branches on
+  attribute NAME not value; noted only for completeness, not a defect.
+
+No FAILs against ACCESSIBILITY.md or WCAG 2.2 AA within U7F's scope.

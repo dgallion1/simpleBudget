@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -87,6 +88,8 @@ func getFuncMap() template.FuncMap {
 		"toFloat":                             toFloat,
 		"seq":                                 seq,
 		"dict":                                dict,
+		"slice":                               sliceOf,
+		"htmlSelected":                        htmlSelected,
 		"json":                                jsonMarshal,
 		"toJSON":                              jsonMarshal,
 		"lower":                               strings.ToLower,
@@ -99,6 +102,7 @@ func getFuncMap() template.FuncMap {
 		"split":                               strings.Split,
 		"join":                                strings.Join,
 		"safeHTML":                            safeHTML,
+		"safeHTMLAttr":                        safeHTMLAttr,
 		"safeJS":                              safeJS,
 		"now":                                 time.Now,
 		"isNegative":                          func(v interface{}) bool { return toFloat(v) < 0 },
@@ -114,6 +118,7 @@ func getFuncMap() template.FuncMap {
 		"percentDiff":                         percentDiff,
 		"deref":                               deref,
 		"urlEncode":                           url.PathEscape,
+		"withRange":                           withRange,
 		"socialSecurityProjectionActive":      retirement.SocialSecurityProjectionActive,
 		"ssPortfolioEligible":                 analysis.SSPortfolioEligible,
 		"hasManualSocialSecurityIncomeSource": retirement.HasManualSocialSecurityIncomeSource,
@@ -152,8 +157,9 @@ func (r *Renderer) loadTemplates() error {
 		templateFiles = append(templateFiles, matches...)
 	}
 
-	// Nested component subdirectories (e.g., components/whatif/*.html)
-	for _, subdir := range []string{"components/whatif"} {
+	// Nested component subdirectories (e.g., components/whatif/*.html,
+	// components/shared/*.html — the U7 shared partials)
+	for _, subdir := range []string{"components/whatif", "components/shared"} {
 		var matches []string
 		var err error
 
@@ -715,6 +721,24 @@ func dict(values ...interface{}) map[string]interface{} {
 	return result
 }
 
+// htmlSelected returns the literal "selected" attribute text when cond is
+// true, else "" — for building a small pre-rendered HTML snippet (e.g. the
+// Comparison <select> passed into shared/range-picker.html, U7) with printf
+// rather than a template action per option.
+func htmlSelected(cond bool) string {
+	if cond {
+		return "selected"
+	}
+	return ""
+}
+
+// sliceOf builds a []interface{} from its arguments, for building ad-hoc
+// lists (e.g. of dicts) in templates that need one (shared/range-picker.html
+// preset lists, U7).
+func sliceOf(values ...interface{}) []interface{} {
+	return values
+}
+
 func jsonMarshal(v interface{}) template.JS {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -727,17 +751,32 @@ func safeHTML(s string) template.HTML {
 	return template.HTML(s)
 }
 
+// safeHTMLAttr marks a string as a trusted set of HTML ATTRIBUTES for
+// splicing mid-tag (e.g. a block of hx-* attributes on an <input>). Unlike
+// safeHTML (template.HTML), which html/template only trusts in element-CONTENT
+// context and replaces with the literal "ZgotmplZ" when spliced into a tag's
+// attribute area, template.HTMLAttr is trusted in ATTRIBUTE context and
+// emitted verbatim. Use for author-controlled attribute strings only, never
+// user input.
+func safeHTMLAttr(s string) template.HTMLAttr {
+	return template.HTMLAttr(s)
+}
+
 func safeJS(s string) template.JS {
 	return template.JS(s)
 }
 
+// colorClass maps a signed amount to a semantic text-color token (U6):
+// positive amounts use the `positive` token, negative use `negative`, zero
+// uses `neutral`. The token's CSS variable flips light/dark on its own, so
+// no `dark:` twin is needed here.
 func colorClass(v float64) string {
 	if v > 0 {
-		return "text-green-700 dark:text-green-400"
+		return "text-positive"
 	} else if v < 0 {
-		return "text-red-600 dark:text-red-400"
+		return "text-negative"
 	}
-	return "text-gray-600 dark:text-gray-400"
+	return "text-neutral"
 }
 
 // successRateTextClass maps a Monte-Carlo / historical success rate (0-100)
@@ -750,11 +789,15 @@ func successRateTextClass(v float64) string {
 	case v >= 90:
 		return "text-green-700 dark:text-green-400"
 	case v >= 80:
-		return "text-lime-600 dark:text-lime-400"
+		// lime-600 is 3.09:1 on white (fails WCAG AA 4.5:1); lime-700 is
+		// 4.99:1. dark:lime-400 is measured on a dark ground and passes.
+		return "text-lime-700 dark:text-lime-400"
 	case v >= 70:
-		return "text-yellow-600 dark:text-yellow-400"
+		// yellow-600 is 2.94:1 on white (fails); yellow-700 is 4.92:1.
+		return "text-yellow-700 dark:text-yellow-400"
 	case v >= 60:
-		return "text-orange-600 dark:text-orange-400"
+		// orange-600 is 3.56:1 on white (fails); orange-700 is 5.18:1.
+		return "text-orange-700 dark:text-orange-400"
 	default:
 		return "text-red-600 dark:text-red-400"
 	}
@@ -854,4 +897,63 @@ func deref(v *float64) float64 {
 // isNonNegative returns true if v >= 0
 func isNonNegative(v float64) bool {
 	return v >= 0
+}
+
+// withRange returns href with "?start=<start>&end=<end>" appended when the
+// page data being rendered (pageData, the "." the base layout was executed
+// with) carries a non-empty StartDate/EndDate pair, else the bare href.
+// This is how base.html's Money-group nav links (Dashboard, Explorer,
+// Insights, Major Expenses -- the four range-bearing pages, §2c) propagate
+// the current window: Dashboard -> Explorer keeps the same start/end. The
+// Plan and Setup nav links call this with a page that never sets those
+// keys, so they stay bare (see extractDateRange). Values are query-encoded
+// via url.Values, so no manual escaping is required at the call site.
+func withRange(href string, pageData interface{}) string {
+	start, end := extractDateRange(pageData)
+	if start == "" || end == "" {
+		return href
+	}
+	v := url.Values{}
+	v.Set("start", start)
+	v.Set("end", end)
+	return href + "?" + v.Encode()
+}
+
+// extractDateRange reads a "StartDate"/"EndDate" pair out of a page-data
+// value that may be shaped as map[string]interface{} (most handlers) or a
+// struct (accounts, transfers use their own pageData struct with no such
+// fields). Either shape resolves without a template-execution error: a
+// missing map key or absent struct field simply yields empty strings, which
+// withRange treats as "no range set".
+func extractDateRange(pageData interface{}) (string, string) {
+	if m, ok := pageData.(map[string]interface{}); ok {
+		return stringOrEmpty(m["StartDate"]), stringOrEmpty(m["EndDate"])
+	}
+
+	rv := reflect.ValueOf(pageData)
+	for rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
+			return "", ""
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return "", ""
+	}
+	start := rv.FieldByName("StartDate")
+	end := rv.FieldByName("EndDate")
+	if !start.IsValid() || start.Kind() != reflect.String {
+		return "", ""
+	}
+	if !end.IsValid() || end.Kind() != reflect.String {
+		return "", ""
+	}
+	return start.String(), end.String()
+}
+
+// stringOrEmpty type-asserts v to a string, returning "" for nil or any
+// other type (a missing map key comes back as a nil interface{}).
+func stringOrEmpty(v interface{}) string {
+	s, _ := v.(string)
+	return s
 }

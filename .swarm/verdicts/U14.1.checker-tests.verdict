@@ -1,0 +1,63 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: U14
+ATTEMPT: 1
+---
+Verified in a cp -a copy of the worktree (feat/ui-audit, HEAD 03d64ea). euid=1000
+(non-root). Real tree untouched except this verdict file.
+
+(a) ORACLE — `bash .swarm/tier3/U14/accept.sh` (tee'd) → last line `ORACLE PASS`,
+    `SUMMARY: 13 passed, 0 failed`. DELETE-case lines 7-11 verbatim:
+      CHECK 7 DELETE without expected_count → 409 and nothing deleted (got 409, csvs=3): PASS
+      CHECK 8 DELETE with stale expected_count=2 → 409 and nothing deleted (got 409, csvs=3): PASS
+      CHECK 9 DELETE with non-numeric expected_count → 4xx and nothing deleted (got 409, csvs=3): PASS
+      CHECK 10 DELETE with matching expected_count=3 → 200, all 3 CSVs gone, non-CSV and backups dir survive (got 200, csvs=0): PASS
+      CHECK 11 repeating the same request after deletion → 409 (count is now 0, not 3; got 409): PASS
+
+(b) `go build ./...` rc=0; `go vet ./...` rc=0; `go test -count=1 ./...` rc=0 (no
+    FAIL lines, all pkgs ok); `staticcheck ./...` rc=0.
+
+(c) LOAD-BEARING TESTS PROVEN — new tests pass:
+      TestHandleDeleteAllData_MissingExpectedCount / _NonNumericExpectedCount /
+      _StaleExpectedCount / _MatchingCountThenRepeatIsStale / TestCountDeletableCSVs
+      all --- PASS.
+    MUTATION: replaced the expected_count guard (handlers.go L590-609) with
+    unconditional delete (parse-and-ignore). Result:
+      --- FAIL: _MissingExpectedCount (handlers_test.go:562: expected 409, got 200: Deleted 2 files)
+      --- FAIL: _NonNumericExpectedCount (562/583: got 200: Deleted 1 files)
+      --- FAIL: _StaleExpectedCount (602: got 200: Deleted 2 files)
+      --- FAIL: _MatchingCountThenRepeatIsStale (653: expected 409 on repeat, got 200)
+    Guard restored; rebuild ok; diff-stat back to original. The matching path
+    (_MatchingCountThenRepeatIsStale) returns 200 "Deleted 2 files", removes the
+    CSVs, and PRESERVES keep.txt and backups/budget_backup_X.zip; immediate repeat
+    (count now 0≠2) → 409.
+
+(d) SINGLE-SOURCE — one function, no drift. Template filemanager.html uses
+    {{.CSVCount}} for BOTH `expected_count={{.CSVCount}}` on hx-delete AND the
+    confirm text "Delete all {{.CSVCount}} data files?". explorer/handlers.go sets
+    data["CSVCount"] = backup.CountDeletableCSVs(cfg.DataDirectory, cfg.BackupDir).
+    Server guard HandleDeleteAllData calls the SAME CountDeletableCSVs; its delete
+    loop and the counter share isBackupDirEntry + strings.HasSuffix(ToLower,".csv").
+
+(e) SUITES — `go test -count=1 ./internal/services/storage/ ./internal/handlers/backup/`
+    → ok storage 68.4s, ok backup 30.4s. euid=1000 (non-root): the
+    `if os.Geteuid()==0 { t.Skip(...) }` branches (handlers_test:4116,
+    coverage_gaps:172/402/431, stage_durable:54) SKIP only under root, so the
+    perm-based tests RUN here; the uid-0 (root) paths are skipped. Guard correctness
+    does NOT depend on filesystem perms: CountDeletableCSVs + `expected!=actual`
+    return 409 BEFORE any store.Remove — proven by the mutation (guard rejects with
+    zero deletes regardless of perms).
+
+(f) SCOPE — `make css-verify` rc=0 ("tailwind.css is up to date"). Exactly the 6
+    manifested files changed (git diff --name-only HEAD, excl .swarm): backup
+    handlers.go + handlers_test.go, explorer handlers.go, filemanager.html,
+    filemanager.js, tailwind.css — identical to .swarm/manifests/U14.1.files. NONE
+    are in .swarm/critical.globs (globs cover internal/services/storage|dataloader|
+    retirement|transfers|accounts|mcpsvc — none touched; changes live in
+    internal/handlers/{backup,explorer}). explorer/handlers.go change is ONLY the
+    display-only csvCount block + its import; no other logic touched.
+
+FINDING (non-blocking): `make check` also runs `vuln` (govulncheck), not in the
+criteria and not run here; all other composite components (vet/static/css-verify/
+test) verified green.

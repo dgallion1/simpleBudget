@@ -1,0 +1,59 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: U12
+ATTEMPT: 1
+---
+Verified in a cp -a scratch of the ui-audit worktree (HEAD 8be5995). Uncommitted
+diff touches only: web/templates/pages/accounts.html, web/static/js/accounts.js,
+.swarm/ledger.tsv (+ untracked .swarm/manifests/U12.1.*, .swarm/tier2/U12/
+accounts_probe.js). Pre-existing worktree infra `data` (symlink to main tree,
+Sep 3) and `.swarm-local/` (Sep 4) are not U12 output.
+
+(a) PASS. In scratch: `go build ./...` exit 0; `go vet ./...` exit 0;
+    `go test -count=1 ./...` exit 0 with 0 FAIL lines; `staticcheck ./...` exit 0.
+    `go test -count=1 ./internal/handlers/accounts/...` -> "ok
+    budget2/internal/handlers/accounts 0.701s". Regression oracle intact:
+    `git diff HEAD --name-only -- '*_test.go'` empty; `... -- internal/handlers/
+    accounts` empty; `... -- internal/services/accounts` empty (accounts.go is in
+    critical.globs and is UNTOUCHED).
+
+(b) PASS. `git diff HEAD -- web/templates/components/accounts_card.html` is empty;
+    file still present (6.6K). Dashboard A8 widget not clobbered.
+
+(c) PASS. GET /accounts on :8091 -> HTTP 200. `grep -c '<h1'` = 1 (line 178,
+    "Accounts"). Three cards rendered; each shows name (h3), kind, matched-file
+    count, latest anchor, verified against fixture accounts.json:
+    usaa-checking: kind "checking", Matched files 5 (5 usaa-checking*.csv),
+      latest anchor "Sep 3, 2026 . $25,211.62" (latest of 2 anchors) — correct.
+    usaa-credit-card: kind "credit", Matched files 7, "Sep 3, 2026 . -$11,868.99"
+      — correct.
+    usaa-health-checking: kind "checking", Matched files 1,
+      "Sep 3, 2026 . $4,772.08" — correct.
+    NOTE (not a fail): fixture has no zero-anchor account, so the "No anchor set"
+    branch is not runtime-exercised; the `{{else}}<dd>No anchor set</dd>` template
+    branch is present and correct by inspection. No bare $0 path exists.
+
+(d) PASS. Four real `<button type="button" aria-expanded aria-controls
+    data-toggle-target>` disclosures (1 Add + 3 Edit); the only other
+    aria-expanded is the pre-existing #mobile-nav-toggle. All four panels carry
+    the `hidden` attribute (hidden by default). jsdom harness loading the fetched
+    page + accounts.js and dispatching a click proved for all four:
+    BEFORE {hidden:true,expanded:"false"} -> AFTER {hidden:false,expanded:"true"}.
+    Edit form inside #acct-edit-panel-usaa-checking: hx-post=/accounts/usaa-checking
+    hx-target=#accounts-list hx-swap=innerHTML (intact). Add form:
+    hx-post="/accounts" hx-target="#accounts-list" hx-swap="innerHTML".
+
+(e) PASS (verify server :8091). GET /accounts 200. POST /accounts (add) -> 200 and
+    re-renders the card list (response contains "Probe Acct" and data-toggle-target
+    buttons). POST /accounts/usaa-checking (edit) -> 200, re-renders cards. Matched-
+    files list (h4 line 447), anchors add/delete forms (lines 482/511), and
+    /accounts/{id}/delete confirm (557) render AFTER the edit panel `</div>`
+    (closes line 444) — i.e. outside the Edit toggle, per spec. Server stopped.
+
+(f) PASS. `make css-verify` exit 0 ("tailwind.css is up to date"). Scope confined
+    to accounts.html + accounts.js (+ ledger/manifests/tier2 probe under .swarm);
+    no path in .swarm/critical.globs touched. Added lines contain no
+    text-[10px]/[11px] and no color/hue literals (`#[0-9a-fA-F]{3,6}\b` = none;
+    the earlier "#acc" hits were `#accounts-...` selector ids in getElementById/
+    querySelector, not colors).

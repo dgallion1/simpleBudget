@@ -1,5 +1,7 @@
 {{define "major-expenses-content"}}
 <div class="space-y-4">
+    <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Major Expenses</h1>
+
     <!-- Filter card (NEW) -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
         <form id="major-expenses-filter-form"
@@ -10,40 +12,30 @@
               hx-trigger="submit, change from:input[type=date], click from:.date-range-btn"
               hx-indicator="#me-loading"
               class="flex flex-wrap items-end gap-3">
-            <div>
-                <label for="major-expenses-date-start" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
-                <input type="date" id="major-expenses-date-start" name="start" value="{{.StartDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
-                    class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
-            </div>
-            <div>
-                <label for="major-expenses-date-end" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
-                <input type="date" id="major-expenses-date-end" name="end" value="{{.EndDate}}" min="{{.MinDate}}" max="{{.MaxDate}}"
-                    class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500">
-            </div>
-            <div class="flex gap-1 items-center" id="me-date-range-buttons">
-                <button type="button" onclick="meStepDateRange(-1)" title="Step back" aria-label="Step back"
-                    class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                </button>
-                <button type="button" onclick="meSetDateRange(1)" data-months="1"
-                    class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">1M</button>
-                <button type="button" onclick="meSetDateRange(2)" data-months="2"
-                    class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">2M</button>
-                <button type="button" onclick="meSetDateRange(3)" data-months="3"
-                    class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">3M</button>
-                <button type="button" onclick="meSetDateRange(6)" data-months="6"
-                    class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">6M</button>
-                <button type="button" onclick="meSetDateRange(12)" data-months="12"
-                    class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">12M</button>
-                <button type="button" onclick="meSetDateRange(0)" data-months="0"
-                    class="date-range-btn px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">All</button>
-                <button type="button" onclick="meStepDateRange(1)" title="Step forward" aria-label="Step forward"
-                    class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                </button>
-            </div>
+            {{template "shared/range-picker" (dict
+                "Layout" "stacked"
+                "ArrowPosition" "wrap"
+                "GroupInputs" false
+                "StartID" "major-expenses-date-start"
+                "EndID" "major-expenses-date-end"
+                "StartValue" .StartDate
+                "EndValue" .EndDate
+                "MinDate" .MinDate
+                "MaxDate" .MaxDate
+                "PresetGroupID" "me-date-range-buttons"
+                "PresetAttr" "data-months"
+                "PresetClass" "date-range-btn"
+                "PresetInactiveClass" "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                "PresetActiveClass" "bg-accent-strong text-white"
+                "Presets" (slice
+                    (dict "Value" "1" "Label" "1M")
+                    (dict "Value" "2" "Label" "2M")
+                    (dict "Value" "3" "Label" "3M")
+                    (dict "Value" "6" "Label" "6M")
+                    (dict "Value" "12" "Label" "12M")
+                    (dict "Value" "0" "Label" "All")))}}
             <span id="me-loading" class="htmx-indicator">
-                <svg class="animate-spin h-5 w-5 text-indigo-600 dark:text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg class="animate-spin h-5 w-5 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
@@ -53,8 +45,7 @@
 
     <!-- Existing search/header card -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-        <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Major Expenses</h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+        <p class="text-sm text-gray-600 dark:text-gray-400">
             Tell the app about expenses you understand. We'll group transactions
             that match your keywords and call out anything that looks unusual.
         </p>
@@ -78,830 +69,18 @@
     {{template "major-expenses-results-wrapper" .}}
 </div>
 
-<script>
-// Filter-form sessionStorage restore: bare /major-expenses with empty
-// query + saved key → redirect once to /major-expenses?<saved>. Mirrors
-// the pattern in pages/explorer.html.
-(function () {
-    const KEY = 'majorExpensesFilters';
-    if (window.location.search === '' || window.location.search === '?') {
-        const saved = sessionStorage.getItem(KEY);
-        if (saved && !sessionStorage.getItem(KEY + '_restoring')) {
-            sessionStorage.setItem(KEY + '_restoring', '1');
-            window.location.replace('/major-expenses?' + saved);
-            return;
-        }
-        sessionStorage.removeItem(KEY + '_restoring');
-    } else {
-        sessionStorage.removeItem(KEY + '_restoring');
-    }
+<script src="/static/js/major-expenses.js" defer></script>
 
-    // Save outgoing filter params on every htmx:configRequest from the
-    // filter form. We do NOT save window.location.search inside this
-    // handler — at this moment it still contains the OLD URL because
-    // hx-push-url runs after the request settles. Instead pull start/end
-    // from the form values so the saved value reflects what's about to
-    // be sent.
-    document.body.addEventListener('htmx:configRequest', function (evt) {
-        const form = document.getElementById('major-expenses-filter-form');
-        if (!form || !(evt.detail.elt === form || form.contains(evt.detail.elt))) return;
-        const start = form.querySelector('input[name="start"]').value;
-        const end = form.querySelector('input[name="end"]').value;
-        const params = new URLSearchParams();
-        if (start) params.set('start', start);
-        if (end) params.set('end', end);
-        sessionStorage.setItem(KEY, params.toString());
-    });
-})();
 
-// Quick-range helpers — page-local copies of Explorer's setDateRange /
-// stepDateRange / detectSelectedDateRange, scoped to the major-expenses
-// filter form. Naming is `me*` to avoid colliding with Explorer's
-// global-scope versions on the rare chance both pages ever co-exist.
-function meParseDateLocal(s) {
-    if (!s) return null;
-    const parts = s.split('-').map(Number);
-    if (parts.length !== 3 || parts.some(isNaN)) return null;
-    return new Date(parts[0], parts[1] - 1, parts[2]);
-}
-
-function meFormatDateLocal(d) {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return year + '-' + month + '-' + day;
-}
-
-function meSetDateRange(months) {
-    const form = document.getElementById('major-expenses-filter-form');
-    if (!form) return;
-    const startInput = form.querySelector('input[name="start"]');
-    const endInput = form.querySelector('input[name="end"]');
-    const minDate = startInput.getAttribute('min');
-    const maxDate = endInput.getAttribute('max');
-    if (months === 0) {
-        startInput.value = minDate;
-        endInput.value = maxDate;
-    } else {
-        const end = new Date(maxDate);
-        const start = new Date(end);
-        start.setMonth(start.getMonth() - months);
-        const minDateObj = new Date(minDate);
-        if (start < minDateObj) start.setTime(minDateObj.getTime());
-        startInput.value = start.toISOString().split('T')[0];
-        endInput.value = maxDate;
-    }
-    form.dataset.activeMonths = String(months);
-    meUpdateDateRangeButtons(months);
-    htmx.trigger(form, 'submit');
-}
-
-// Shift the date window forward (+1) or backward (-1) by exactly one
-// calendar month, regardless of window size. Day-of-month is preserved
-// (clamped to month end) and the preset highlight is kept. "All" is a no-op.
-function meAddMonthsClamped(d, months) {
-    const day = d.getDate();
-    const r = new Date(d.getFullYear(), d.getMonth() + months, 1);
-    const last = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
-    r.setDate(Math.min(day, last));
-    return r;
-}
-function meStepDateRange(direction) {
-    const form = document.getElementById('major-expenses-filter-form');
-    if (!form) return;
-    const startInput = form.querySelector('input[name="start"]');
-    const endInput = form.querySelector('input[name="end"]');
-    const currentStart = meParseDateLocal(startInput.value);
-    const currentEnd = meParseDateLocal(endInput.value);
-    if (!currentStart || !currentEnd) return;
-
-    // Arrows always step by exactly one calendar month, regardless of window size.
-    const activeMonths = parseInt(form.dataset.activeMonths || '-1', 10);
-    if (activeMonths === 0) return;
-    let newStart = meAddMonthsClamped(currentStart, direction);
-    let newEnd = meAddMonthsClamped(currentEnd, direction);
-
-    const minDate = meParseDateLocal(startInput.getAttribute('min'));
-    const maxDate = meParseDateLocal(endInput.getAttribute('max'));
-    if (minDate && newStart < minDate) {
-        const diffMs = minDate - newStart;
-        newStart = new Date(newStart.getTime() + diffMs);
-        newEnd = new Date(newEnd.getTime() + diffMs);
-    }
-    if (maxDate && newEnd > maxDate) {
-        const diffMs = newEnd - maxDate;
-        newStart = new Date(newStart.getTime() - diffMs);
-        newEnd = new Date(newEnd.getTime() - diffMs);
-    }
-    if (minDate && newStart < minDate) newStart = new Date(minDate);
-    if (maxDate && newEnd > maxDate) newEnd = new Date(maxDate);
-
-    const newStartStr = meFormatDateLocal(newStart);
-    const newEndStr = meFormatDateLocal(newEnd);
-    if (newStartStr === startInput.value && newEndStr === endInput.value) return;
-
-    startInput.value = newStartStr;
-    endInput.value = newEndStr;
-    // Preset highlight is intentionally preserved across shifts —
-    // form.dataset.activeMonths stays set so post-swap detection
-    // re-applies the same highlight.
-    htmx.trigger(form, 'submit');
-}
-
-function meUpdateDateRangeButtons(selectedMonths) {
-    document.querySelectorAll('#me-date-range-buttons .date-range-btn').forEach(function (btn) {
-        const btnMonths = parseInt(btn.getAttribute('data-months'));
-        if (btnMonths === selectedMonths) {
-            btn.classList.remove('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
-            btn.classList.add('bg-indigo-600', 'dark:bg-indigo-500', 'text-white', 'dark:text-white');
-        } else {
-            btn.classList.remove('bg-indigo-600', 'dark:bg-indigo-500', 'text-white', 'dark:text-white');
-            btn.classList.add('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
-        }
-    });
-}
-
-function meDetectSelectedDateRange() {
-    const form = document.getElementById('major-expenses-filter-form');
-    if (!form) return;
-    // Honor an explicit activeMonths set by setDateRange / stepDateRange
-    // so a scrolled window keeps its preset highlight across swaps.
-    const explicit = parseInt(form.dataset.activeMonths || '', 10);
-    if (!isNaN(explicit) && [0, 1, 2, 3, 6, 12].includes(explicit)) {
-        meUpdateDateRangeButtons(explicit);
-        return;
-    }
-    const startInput = form.querySelector('input[name="start"]');
-    const endInput = form.querySelector('input[name="end"]');
-    const minDate = startInput.getAttribute('min');
-    const maxDate = endInput.getAttribute('max');
-    const startDate = startInput.value;
-    const endDate = endInput.value;
-    if (endDate !== maxDate) { meUpdateDateRangeButtons(-1); return; }
-    if (startDate === minDate) { meUpdateDateRangeButtons(0); return; }
-    const end = new Date(maxDate);
-    for (const months of [1, 2, 3, 6, 12]) {
-        const expectedStart = new Date(end);
-        expectedStart.setMonth(expectedStart.getMonth() - months);
-        if (startDate === expectedStart.toISOString().split('T')[0]) {
-            meUpdateDateRangeButtons(months);
-            return;
-        }
-    }
-    meUpdateDateRangeButtons(-1);
-}
-
-// Clear the stored preset when the user manually edits a date input,
-// so post-swap detection runs from the date values instead of stale state.
-document.addEventListener('DOMContentLoaded', function () {
-    const form = document.getElementById('major-expenses-filter-form');
-    if (!form) return;
-    form.querySelectorAll('input[type="date"]').forEach(function (input) {
-        input.addEventListener('change', function () {
-            form.dataset.activeMonths = '';
-        });
-    });
-});
-
-// Highlight the correct quick-range button on first paint and after
-// every HTMX swap of the wrapper (the inputs may have new values).
-document.addEventListener('DOMContentLoaded', meDetectSelectedDateRange);
-document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
-</script>
-
-<script>
-(function () {
-    function visibleExceptionHashes() {
-        return Array.from(
-            document.querySelectorAll('tr.major-expenses-exception-row:not([style*="display: none"])')
-        ).map(function (tr) {
-            return tr.getAttribute('data-hash') || '';
-        }).filter(Boolean);
-    }
-
-    // ---- Bulk-selection helpers (DOM is the source of truth) ----
-
-    // Anchor for shift-click range select, keyed by bucket id. Reset
-    // on every htmx:afterSwap so post-mutation state is clean.
-    let lastCheckedByBucket = Object.create(null);
-
-    function rowCheckboxes(bucketID) {
-        const sel = bucketID
-            ? 'input.major-expenses-pin-check[data-bucket="' + bucketID + '"]'
-            : 'input.major-expenses-pin-check';
-        return Array.from(document.querySelectorAll(sel));
-    }
-
-    function visibleRowCheckboxesInBucket(bucketID) {
-        return rowCheckboxes(bucketID).filter(function (cb) {
-            const tr = cb.closest('tr.major-expenses-exception-row');
-            return tr && tr.style.display !== 'none';
-        });
-    }
-
-    function checkedRowCheckboxes() {
-        return rowCheckboxes().filter(function (cb) { return cb.checked; });
-    }
-
-    function countChecked() { return checkedRowCheckboxes().length; }
-
-    function collectCheckedHashes() {
-        return checkedRowCheckboxes().map(function (cb) {
-            return cb.getAttribute('data-hash') || '';
-        }).filter(Boolean);
-    }
-
-    function refreshBucketHeader(bucketID) {
-        const header = document.getElementById('major-expenses-pin-check-header-' + bucketID);
-        if (!header) return;
-        const visible = visibleRowCheckboxesInBucket(bucketID);
-        if (!visible.length) {
-            header.checked = false;
-            header.indeterminate = false;
-            return;
-        }
-        const checkedCount = visible.filter(function (cb) { return cb.checked; }).length;
-        if (checkedCount === 0) {
-            header.checked = false;
-            header.indeterminate = false;
-        } else if (checkedCount === visible.length) {
-            header.checked = true;
-            header.indeterminate = false;
-        } else {
-            header.checked = false;
-            header.indeterminate = true;
-        }
-    }
-
-    function refreshAllBucketHeaders() {
-        ['unmatched', 'anomalous', 'new-merchants'].forEach(refreshBucketHeader);
-    }
-
-    function refreshCountChip() {
-        const chip = document.getElementById('major-expenses-pin-count-chip');
-        const num = document.getElementById('major-expenses-pin-count-chip-num');
-        if (!chip || !num) return;
-        const n = countChecked();
-        num.textContent = String(n);
-        chip.classList.toggle('hidden', n === 0);
-    }
-
-    // Show/hide the bulk-pin toolbar and update its row count based on
-    // the current visible-exception set.
-    function syncBulkPinToolbar(visibleCount, query) {
-        const bar = document.getElementById('major-expenses-bulk-pin');
-        if (!bar) return;
-        const counter = document.getElementById('major-expenses-bulk-pin-count');
-        const apply = document.getElementById('major-expenses-bulk-pin-apply');
-        const target = document.getElementById('major-expenses-bulk-pin-target');
-        const clear = document.getElementById('major-expenses-bulk-pin-clear');
-        const labelLead = bar.querySelector('span.major-expenses-bulk-pin-label-lead');
-
-        const checkedCount = countChecked();
-        const filterActive = (query || '').trim() !== '' && visibleCount > 0;
-
-        // Mode priority: checked > filter > hidden.
-        let mode = 'hidden';
-        let displayCount = 0;
-        if (checkedCount > 0) {
-            mode = 'checked';
-            displayCount = checkedCount;
-        } else if (filterActive) {
-            mode = 'filter';
-            displayCount = visibleCount;
-        }
-
-        const visibleBar = mode !== 'hidden';
-        bar.classList.toggle('hidden', !visibleBar);
-        bar.classList.toggle('flex', visibleBar);
-
-        if (counter) counter.textContent = String(displayCount);
-
-        // Update the lead and trail labels between "Pin all"/"matching"
-        // (filter) and "Pin"/"selected" (checked) by swapping each
-        // span's textContent.
-        if (labelLead) {
-            labelLead.textContent = mode === 'checked' ? 'Pin ' : 'Pin all ';
-        }
-        const labelTrail = bar.querySelector('span.major-expenses-bulk-pin-label-trail');
-        if (labelTrail) {
-            labelTrail.textContent = mode === 'checked' ? ' selected →' : ' matching →';
-        }
-
-        if (apply) apply.disabled = !visibleBar || !target || !target.value;
-        if (clear) clear.classList.toggle('hidden', mode !== 'checked');
-    }
-
-    function setRowOpen(tbody, open) {
-        if (!tbody) return;
-        tbody.setAttribute('data-open', open ? 'true' : 'false');
-        const btn = tbody.querySelector('button.major-expense-row-toggle');
-        if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    }
-
-    function applyUnifiedFilter(query) {
-        const q = (query || '').toLowerCase().trim();
-
-        // ---- LEFT CARD: iterate by tbody group, not by row. ----
-        const groups = document.querySelectorAll('#major-expenses-list tbody[data-expense-id]');
-        let visibleExpenses = 0;
-        groups.forEach(function (group) {
-            const summary = group.querySelector('tr.major-expense-item-row');
-            const itemHay = (summary && summary.getAttribute('data-search') || '').toLowerCase();
-            const itemMatch = q === '' || itemHay.includes(q);
-
-            const txnRows = group.querySelectorAll('tr.major-expense-matched-row');
-            let txnHadMatch = false;
-            txnRows.forEach(function (tr) {
-                const hay = (tr.getAttribute('data-search') || '').toLowerCase();
-                const match = q === '' || hay.includes(q);
-                tr.style.display = match ? '' : 'none';
-                if (match && q !== '') txnHadMatch = true;
-            });
-
-            const show = q === '' || itemMatch || txnHadMatch;
-            group.style.display = show ? '' : 'none';
-            if (show) visibleExpenses++;
-
-            // Force-open the row when the user matched a contained txn.
-            // Empty queries leave open-state untouched so collapse
-            // defaults survive.
-            if (q !== '' && txnHadMatch) setRowOpen(group, true);
-        });
-
-        // ---- RIGHT CARD: Exceptions ----
-        const exRows = document.querySelectorAll('tr.major-expenses-exception-row');
-        let visibleExceptions = 0;
-        exRows.forEach(function (tr) {
-            const text = (tr.getAttribute('data-search') || '').toLowerCase();
-            const match = q === '' || text.includes(q);
-            tr.style.display = match ? '' : 'none';
-            if (match) visibleExceptions++;
-        });
-        document.querySelectorAll('#major-expenses-results details').forEach(function (d) {
-            if (q === '') return;
-            const hasMatch = d.querySelector('tr.major-expenses-exception-row:not([style*="display: none"])');
-            if (hasMatch) d.open = true;
-        });
-
-        // ---- Status badge ----
-        const status = document.getElementById('major-expenses-search-status');
-        if (status) {
-            if (q === '') {
-                status.classList.add('hidden');
-                status.textContent = '';
-            } else {
-                status.classList.remove('hidden');
-                status.textContent = visibleExpenses + ' expenses · ' + visibleExceptions + ' exceptions';
-            }
-        }
-        const clear = document.getElementById('major-expenses-search-clear');
-        if (clear) clear.classList.toggle('hidden', q === '');
-
-        refreshAllBucketHeaders();
-        syncBulkPinToolbar(visibleExceptions, q);
-    }
-
-    // Persist <details> open state AND tbody[data-open] across HTMX
-    // swaps. Each swap replaces DOM nodes wholesale, so we snapshot
-    // before, restore after.
-    let savedOpenDetails = null;
-    let savedOpenRows = null;
-    let savedCheckedHashes = null;
-    function persistedDetailsSelector() {
-        return '#major-expenses-results details[id], #major-expenses-list-card details[id]';
-    }
-    document.body.addEventListener('htmx:beforeSwap', function () {
-        const open = new Set();
-        document.querySelectorAll(persistedDetailsSelector()).forEach(function (d) {
-            if (d.open) open.add(d.id);
-        });
-        savedOpenDetails = open;
-
-        const rows = new Set();
-        document.querySelectorAll('#major-expenses-list tbody[data-expense-id][data-open="true"]').forEach(function (tb) {
-            rows.add(tb.getAttribute('data-expense-id'));
-        });
-        savedOpenRows = rows;
-
-        const checked = new Set();
-        document.querySelectorAll('input.major-expenses-pin-check:checked').forEach(function (cb) {
-            const h = cb.getAttribute('data-hash');
-            if (h) checked.add(h);
-        });
-        savedCheckedHashes = checked;
-    });
-    document.body.addEventListener('htmx:afterSwap', function () {
-        // Incoming markup has fresh, unchecked checkboxes. Anchors are
-        // bucket-positional and can't survive a re-render, so wipe
-        // those; checkbox selections are restored by hash below.
-        lastCheckedByBucket = Object.create(null);
-
-        if (savedOpenDetails) {
-            document.querySelectorAll(persistedDetailsSelector()).forEach(function (d) {
-                if (savedOpenDetails.has(d.id)) d.open = true;
-            });
-            savedOpenDetails = null;
-        }
-        if (savedOpenRows) {
-            savedOpenRows.forEach(function (id) {
-                const tb = document.querySelector('#major-expenses-list tbody[data-expense-id="' + CSS.escape(id) + '"]');
-                if (tb) setRowOpen(tb, true);
-            });
-            savedOpenRows = null;
-        }
-        if (savedCheckedHashes && savedCheckedHashes.size > 0) {
-            document.querySelectorAll('input.major-expenses-pin-check').forEach(function (cb) {
-                const h = cb.getAttribute('data-hash');
-                if (h && savedCheckedHashes.has(h)) cb.checked = true;
-            });
-        }
-        savedCheckedHashes = null;
-
-        const input = document.getElementById('major-expenses-search');
-        if (input && input.value) applyUnifiedFilter(input.value);
-        refreshAllBucketHeaders();
-        refreshCountChip();
-        // syncBulkPinToolbar isn't called by applyUnifiedFilter when
-        // the search box is empty, so call it directly to surface the
-        // bulk-pin bar for restored selections.
-        const visibleExceptions = document.querySelectorAll(
-            'tr.major-expenses-exception-row:not([style*="display: none"])'
-        ).length;
-        syncBulkPinToolbar(visibleExceptions, input ? input.value : '');
-    });
-
-    // Bulk-pin Apply.
-    document.addEventListener('click', function (e) {
-        if (!e.target || e.target.id !== 'major-expenses-bulk-pin-apply') return;
-        e.preventDefault();
-        const target = document.getElementById('major-expenses-bulk-pin-target');
-        if (!target || !target.value) return;
-        const hashes = countChecked() > 0 ? collectCheckedHashes() : visibleExceptionHashes();
-        if (!hashes.length) return;
-        const fd = new FormData();
-        fd.append('expense_id', target.value);
-        hashes.forEach(function (h) { fd.append('hashes', h); });
-        const filterForm = document.getElementById('major-expenses-filter-form');
-        if (filterForm) {
-            // Carry the active date window so the post-mutation render
-            // preserves the user's filter. Guard each input — an OOB
-            // swap mid-request could leave the form without one.
-            const startInput = filterForm.querySelector('input[name="start"]');
-            const endInput = filterForm.querySelector('input[name="end"]');
-            if (startInput && startInput.value) fd.append('start', startInput.value);
-            if (endInput && endInput.value) fd.append('end', endInput.value);
-        }
-        if (window.htmx && typeof window.htmx.ajax === 'function') {
-            window.htmx.ajax('POST', '/major-expenses/pins/bulk', {
-                target: '#major-expenses-results',
-                swap: 'innerHTML',
-                values: fd,
-            });
-        }
-    });
-
-    document.addEventListener('change', function (e) {
-        if (e.target && e.target.id === 'major-expenses-bulk-pin-target') {
-            const input = document.getElementById('major-expenses-search');
-            applyUnifiedFilter(input ? input.value : '');
-        }
-    });
-
-    // Row + header checkbox change. Delegated so HTMX swaps don't
-    // need rebinding. Note: shift-click range is handled in the
-    // 'click' phase (a separate listener) because by the time
-    // 'change' fires the browser has already toggled the box.
-    document.addEventListener('change', function (e) {
-        const t = e.target;
-        if (!t) return;
-
-        // Header checkbox: toggle every visible row in this bucket
-        // to the header's new state.
-        if (t.classList && t.classList.contains('major-expenses-pin-check-header')) {
-            const bucket = t.getAttribute('data-bucket') || '';
-            const want = !!t.checked;
-            visibleRowCheckboxesInBucket(bucket).forEach(function (cb) {
-                cb.checked = want;
-            });
-            // Header was just clicked; keep its state authoritative
-            // (refreshBucketHeader could reset it to indeterminate
-            // if any visible row diverges, but right now they all
-            // match `want`).
-            refreshBucketHeader(bucket);
-            refreshCountChip();
-            const input = document.getElementById('major-expenses-search');
-            applyUnifiedFilter(input ? input.value : '');
-            return;
-        }
-
-        // Row checkbox: update bucket header and count chip. Anchor
-        // is recorded on click (next task) — change does not touch it.
-        if (t.classList && t.classList.contains('major-expenses-pin-check')) {
-            const bucket = t.getAttribute('data-bucket') || '';
-            refreshBucketHeader(bucket);
-            refreshCountChip();
-            const input = document.getElementById('major-expenses-search');
-            applyUnifiedFilter(input ? input.value : '');
-            return;
-        }
-    }); // end change listener
-
-    // Click on a row checkbox. Two responsibilities:
-    //   1. Record the bucket anchor (always, on every click).
-    //   2. If shift is held AND there is a previous anchor in this
-    //      bucket AND it is still visible, toggle the visible-range
-    //      between anchor and target to the target's NEW value.
-    //
-    // Click fires before change; the target's `checked` reflects the
-    // pre-click state during the listener. We compute the new state
-    // as !target.checked.
-    document.addEventListener('click', function (e) {
-        const t = e.target;
-        if (!t || !t.classList || !t.classList.contains('major-expenses-pin-check')) return;
-        const bucket = t.getAttribute('data-bucket') || '';
-        const targetHash = t.getAttribute('data-hash') || '';
-
-        const anchorHash = lastCheckedByBucket[bucket] || '';
-        const wantApplyRange = e.shiftKey && anchorHash && anchorHash !== targetHash;
-
-        if (wantApplyRange) {
-            const visible = visibleRowCheckboxesInBucket(bucket);
-            const idxAnchor = visible.findIndex(function (cb) { return cb.getAttribute('data-hash') === anchorHash; });
-            const idxTarget = visible.findIndex(function (cb) { return cb.getAttribute('data-hash') === targetHash; });
-            if (idxAnchor === -1) {
-                // Anchor no longer visible; treat as a fresh click.
-                lastCheckedByBucket[bucket] = targetHash;
-                return;
-            }
-            if (idxTarget === -1) {
-                // Target not in visible set (rare race with a concurrent
-                // filter); treat as a plain click.
-                lastCheckedByBucket[bucket] = targetHash;
-                return;
-            }
-            // Browser will toggle target after this listener returns;
-            // its NEW state is !current. Apply that to every visible
-            // checkbox in [min, max].
-            const newState = !t.checked;
-            const lo = Math.min(idxAnchor, idxTarget);
-            const hi = Math.max(idxAnchor, idxTarget);
-            for (let i = lo; i <= hi; i++) {
-                visible[i].checked = newState;
-            }
-            // Refresh state synchronously; the change event for `t`
-            // will still fire and trigger another refresh, which is
-            // a harmless no-op.
-            refreshBucketHeader(bucket);
-            refreshCountChip();
-            const input = document.getElementById('major-expenses-search');
-            applyUnifiedFilter(input ? input.value : '');
-        }
-
-        // Always record the anchor on click (shift or not).
-        lastCheckedByBucket[bucket] = targetHash;
-    });
-
-    // Clear button: uncheck every row + every header, reset the
-    // anchor map, and re-sync everything visible.
-    document.addEventListener('click', function (e) {
-        if (!e.target || e.target.id !== 'major-expenses-bulk-pin-clear') return;
-        e.preventDefault();
-        rowCheckboxes().forEach(function (cb) { cb.checked = false; });
-        document.querySelectorAll('input.major-expenses-pin-check-header').forEach(function (h) {
-            h.checked = false;
-            h.indeterminate = false;
-        });
-        lastCheckedByBucket = Object.create(null);
-        refreshCountChip();
-        const input = document.getElementById('major-expenses-search');
-        applyUnifiedFilter(input ? input.value : '');
-    });
-
-    // Search input (delegated; survives HTMX swaps).
-    document.addEventListener('input', function (e) {
-        if (e.target && e.target.id === 'major-expenses-search') {
-            applyUnifiedFilter(e.target.value);
-        }
-    });
-
-    document.addEventListener('click', function (e) {
-        const clear = e.target && e.target.closest && e.target.closest('#major-expenses-search-clear');
-        if (!clear) return;
-        e.preventDefault();
-        const input = document.getElementById('major-expenses-search');
-        if (!input) return;
-        input.value = '';
-        applyUnifiedFilter('');
-        input.focus();
-    });
-
-    // Add-panel toggle: [+] icon flips <details> open state and aria.
-    // Opening from this button is a "blank-slate" create — clear any
-    // pin_hash that an earlier "+ Create new from this" might have set.
-    document.addEventListener('click', function (e) {
-        const toggle = e.target && e.target.closest && e.target.closest('#major-expenses-add-toggle');
-        if (!toggle) return;
-        e.preventDefault();
-        const panel = document.getElementById('major-expenses-add-panel');
-        if (!panel) return;
-        const willOpen = !panel.open;
-        panel.open = willOpen;
-        toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-        if (willOpen) {
-            const ph = document.getElementById('major-expenses-add-pin-hash');
-            if (ph) ph.value = '';
-            const hint = document.getElementById('major-expenses-add-pin-hash-hint');
-            if (hint) hint.classList.add('hidden');
-            const name = panel.querySelector('input[name="name"]');
-            if (name) name.focus();
-        }
-    });
-
-    // Prefill the add form from an exception row's data-fill-* attrs.
-    // If pinHash is non-empty, also stage that hash so submit will pin
-    // the originating transaction to the newly created expense.
-    function prefillAddFormFromRow(fillRow, pinHash) {
-        const form = document.getElementById('major-expenses-add-form');
-        if (!form) return;
-        const panel = document.getElementById('major-expenses-add-panel');
-        const toggle = document.getElementById('major-expenses-add-toggle');
-        if (panel && !panel.open) {
-            panel.open = true;
-            if (toggle) toggle.setAttribute('aria-expanded', 'true');
-        }
-        const desc = fillRow.getAttribute('data-fill-name') || '';
-        const amount = parseFloat(fillRow.getAttribute('data-fill-amount') || '0');
-        const isCheckLike = /\bcheck\b|^\s*#?\d{3,}\s*$/i.test(desc);
-
-        const nameInput = form.querySelector('input[name="name"]');
-        const kwInput = form.querySelector('input[name="keywords"]');
-        const minInput = form.querySelector('input[name="expected_min"]');
-        const maxInput = form.querySelector('input[name="expected_max"]');
-        if (!nameInput || !kwInput || !minInput || !maxInput) return;
-
-        nameInput.value = '';
-        if (isCheckLike) {
-            kwInput.value = '';
-            if (amount > 0) {
-                const exact = amount.toFixed(2);
-                minInput.value = exact;
-                maxInput.value = exact;
-            }
-        } else {
-            kwInput.value = desc;
-            minInput.value = '';
-            maxInput.value = '';
-        }
-
-        const ph = document.getElementById('major-expenses-add-pin-hash');
-        const hint = document.getElementById('major-expenses-add-pin-hash-hint');
-        if (ph) ph.value = pinHash || '';
-        if (hint) hint.classList.toggle('hidden', !pinHash);
-
-        nameInput.focus();
-        form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-
-    // "+ Create new from this…" sentinel in pin pickers. We intercept
-    // before HTMX fires (the form's hx-trigger excludes value=='__new__'
-    // already, but we also reset the select so it doesn't stay stuck on
-    // the sentinel after the user backs out).
-    document.addEventListener('change', function (e) {
-        const select = e.target && e.target.closest && e.target.closest('select.major-expenses-pin-select');
-        if (!select) return;
-        if (select.value !== '__new__') return;
-        const hash = select.getAttribute('data-hash') || '';
-        const row = select.closest('tr[data-fill-name]');
-        // Reset the select back to its previous selection (or placeholder)
-        // so re-selecting "+ Create new" later still fires `change`.
-        select.value = '';
-        for (let i = 0; i < select.options.length; i++) {
-            if (select.options[i].defaultSelected) {
-                select.value = select.options[i].value;
-                break;
-            }
-        }
-        if (row) prefillAddFormFromRow(row, hash);
-    });
-
-    // Chevron toggle: flips data-open on the parent tbody.
-    document.addEventListener('click', function (e) {
-        const btn = e.target && e.target.closest && e.target.closest('button.major-expense-row-toggle');
-        if (!btn) return;
-        e.preventDefault();
-        const tbody = btn.closest('tbody[data-expense-id]');
-        if (!tbody) return;
-        const open = tbody.getAttribute('data-open') !== 'true';
-        setRowOpen(tbody, open);
-    });
-
-    // Click delegation for jump-to-existing AND exception-row prefill.
-    document.addEventListener('click', function (e) {
-        const tag = (e.target.tagName || '').toLowerCase();
-        if (tag === 'input' || tag === 'button' || tag === 'svg' || tag === 'path' ||
-            tag === 'select' || tag === 'option') return;
-
-        // Jump-to-existing: open the target row first.
-        const jumpEl = e.target.closest('[data-jump-expense]');
-        if (jumpEl) {
-            e.preventDefault();
-            const id = jumpEl.getAttribute('data-jump-expense');
-            const summary = document.getElementById('major-expense-item-' + id);
-            const tbody = summary && summary.closest('tbody[data-expense-id]');
-            if (!summary) return;
-            setRowOpen(tbody, true);
-            summary.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            summary.classList.add('ring-2', 'ring-amber-400');
-            setTimeout(function () { summary.classList.remove('ring-2', 'ring-amber-400'); }, 1500);
-            return;
-        }
-
-        // Exception-row prefill: open the add panel before filling.
-        // Plain row click does NOT pin — only the "+ Create new from
-        // this…" path does. Keyword-only matching is the historical
-        // behavior and stays the default for clicking the row body.
-        const fillRow = e.target.closest('tr[data-fill-name]');
-        if (fillRow) {
-            prefillAddFormFromRow(fillRow, '');
-            return;
-        }
-    });
-
-    // Sortable tables: any <table class="major-expenses-sortable"> with
-    // <th data-sort-key data-sort-type="text|number"> headers will sort
-    // its <tbody> rows on header click. Rows declare values via
-    // data-sort-{key} attrs. State is per-table and resets on HTMX swap
-    // (which is fine — the server's default sort takes over).
-    const sortStates = new WeakMap();
-    function applyTableSort(table, key, type, dir) {
-        const cmp = function (av, bv) {
-            let v;
-            if (type === 'number') {
-                v = (parseFloat(av) || 0) - (parseFloat(bv) || 0);
-            } else {
-                v = (av || '').localeCompare(bv || '', undefined, { sensitivity: 'base' });
-            }
-            return dir === 'asc' ? v : -v;
-        };
-        // Two layouts: a single tbody of <tr> rows (default), OR multiple
-        // <tbody data-expense-id> groups under one table (the expenses
-        // list, where each row is a group of summary+detail+matched-txn
-        // sub-rows). data-sort-groups="tbody" picks the latter.
-        if (table.getAttribute('data-sort-groups') === 'tbody') {
-            const groups = Array.from(table.querySelectorAll(':scope > tbody[data-expense-id]'));
-            groups.sort(function (a, b) {
-                return cmp(a.getAttribute('data-sort-' + key), b.getAttribute('data-sort-' + key));
-            });
-            groups.forEach(function (g) { table.appendChild(g); });
-        } else {
-            const tbody = table.querySelector('tbody');
-            if (!tbody) return;
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            rows.sort(function (a, b) {
-                return cmp(a.getAttribute('data-sort-' + key), b.getAttribute('data-sort-' + key));
-            });
-            rows.forEach(function (r) { tbody.appendChild(r); });
-        }
-        table.querySelectorAll('thead th[data-sort-key]').forEach(function (th) {
-            const ind = th.querySelector('.major-expenses-sort-indicator');
-            if (th.getAttribute('data-sort-key') === key) {
-                if (ind) ind.textContent = dir === 'asc' ? '▲' : '▼';
-                th.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : 'descending');
-            } else {
-                if (ind) ind.textContent = '';
-                th.setAttribute('aria-sort', 'none');
-            }
-        });
-    }
-    document.addEventListener('click', function (e) {
-        const th = e.target && e.target.closest && e.target.closest('th[data-sort-key]');
-        if (!th) return;
-        const table = th.closest('table.major-expenses-sortable');
-        if (!table) return;
-        const key = th.getAttribute('data-sort-key');
-        const type = th.getAttribute('data-sort-type') || 'text';
-        let state = sortStates.get(table);
-        if (!state || state.key !== key) {
-            // First click on a column: numeric → desc (biggest first), text → asc.
-            state = { key: key, dir: type === 'number' ? 'desc' : 'asc' };
-        } else {
-            state.dir = state.dir === 'asc' ? 'desc' : 'asc';
-        }
-        sortStates.set(table, state);
-        applyTableSort(table, key, type, state.dir);
-    });
-})();
-</script>
 {{end}}
 
 {{define "major-expenses-results-wrapper"}}
-<div id="major-expenses-results-wrapper" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <div id="major-expenses-list-card" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-        {{template "major-expenses-list-card-content" .}}
-    </div>
+<div id="major-expenses-results-wrapper" class="space-y-4">
     <div id="major-expenses-results" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
         {{template "major-expenses-exceptions-panel" .}}
+    </div>
+    <div id="major-expenses-list-card" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        {{template "major-expenses-list-card-content" .}}
     </div>
 </div>
 {{end}}
@@ -910,18 +89,27 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 {{define "major-expenses-list-card-content"}}
 {{template "major-expenses-verdict-bar" .}}
 <div class="flex items-center justify-between mb-3 gap-3">
-    <h2 class="text-lg font-medium text-gray-800 dark:text-gray-100">Your Major Expenses</h2>
+    <h2 class="text-lg font-medium text-gray-800 dark:text-gray-100">
+        <button type="button" id="major-expenses-definitions-toggle"
+            aria-expanded="false" aria-controls="major-expenses-definitions-panel"
+            class="flex items-center gap-1.5 hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent rounded">
+            <svg id="major-expenses-definitions-toggle-icon" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+            <span>Your Major Expenses</span>
+        </button>
+    </h2>
     <div class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 flex-wrap">
         <span data-total-declared="{{printf "%.2f" .TotalDeclared}}">
             Total: <span class="num">${{printf "%.0f" .TotalDeclared}}</span>
         </span>
         <span class="text-gray-500 dark:text-gray-400">·</span>
-        <span class="text-xs text-gray-600 dark:text-gray-400">{{len .Summaries}} declared</span>
+        <span class="text-body-sm text-gray-600 dark:text-gray-400">{{len .Summaries}} declared</span>
         {{if .UnmatchedCount}}
         <span class="text-gray-500 dark:text-gray-400">·</span>
         <a href="#major-expenses-bucket-unknown-large"
               data-unmatched-total="{{printf "%.2f" .UnmatchedTotal}}"
-              class="text-xs text-amber-600 dark:text-amber-400 hover:underline"
+              class="text-xs text-warning hover:underline"
               title="Click to jump to the Unmatched bucket. Dashboard total = Declared + Unmatched.">
             Unmatched: <span class="num">${{printf "%.0f" .UnmatchedTotal}}</span>
             · {{.UnmatchedCount}} txn{{if ne .UnmatchedCount 1}}s{{end}}
@@ -931,7 +119,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         <button type="button" id="major-expenses-add-toggle"
             aria-label="Add a major expense" aria-expanded="false"
             aria-controls="major-expenses-add-panel"
-            class="p-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            class="p-1.5 rounded-md bg-accent-strong text-white hover:bg-accent-strong focus:outline-none focus:ring-2 focus:ring-accent">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -939,16 +127,20 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     </div>
 </div>
 
-<details id="major-expenses-add-panel" class="mb-3">
-    <summary class="sr-only">Add a major expense</summary>
-    {{template "major-expenses-add-form" .}}
+<details id="major-expenses-definitions-panel">
+    <summary class="sr-only">Your Major Expenses — definitions list</summary>
+
+    <details id="major-expenses-add-panel" class="mb-3">
+        <summary class="sr-only">Add a major expense</summary>
+        {{template "major-expenses-add-form" .}}
+    </details>
+
+    {{template "major-expenses-list" .}}
+
+    {{if .Deleted}}
+    {{template "major-expenses-deleted-panel" .}}
+    {{end}}
 </details>
-
-{{template "major-expenses-list" .}}
-
-{{if .Deleted}}
-{{template "major-expenses-deleted-panel" .}}
-{{end}}
 {{end}}
 
 {{define "major-expenses-deleted-panel"}}
@@ -956,15 +148,15 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     <summary class="cursor-pointer px-3 py-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
         <span class="font-medium text-gray-700 dark:text-gray-200">Deleted</span>
         <span class="ml-2 text-xs text-gray-600 dark:text-gray-400">({{len .Deleted}})</span>
-        <span class="ml-2 text-xs italic text-gray-600 dark:text-gray-400">restore brings back the definition and pinned transactions</span>
+        <span class="ml-2 text-body-sm italic text-gray-600 dark:text-gray-400">restore brings back the definition and pinned transactions</span>
     </summary>
-    <table class="w-full text-xs mt-1">
+    <table class="w-full text-body-sm mt-1">
         <thead class="text-gray-600 dark:text-gray-400">
             <tr>
-                <th class="text-left px-2 py-1">Name</th>
-                <th class="text-left px-2 py-1">Deleted</th>
-                <th class="text-right px-2 py-1">Pins</th>
-                <th class="text-left px-2 py-1">Actions</th>
+                <th scope="col" class="text-left px-2 py-1">Name</th>
+                <th scope="col" class="text-left px-2 py-1">Deleted</th>
+                <th scope="col" class="text-right px-2 py-1">Pins</th>
+                <th scope="col" class="text-left px-2 py-1">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -979,7 +171,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                           hx-target="#major-expenses-results" hx-swap="innerHTML"
                           hx-include="#major-expenses-filter-form">
                         <button type="submit"
-                                class="text-xs px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30">
+                                class="text-xs px-2 py-0.5 rounded border border-positive text-positive hover:bg-positive-soft">
                             Restore
                         </button>
                     </form>
@@ -988,7 +180,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                           hx-include="#major-expenses-filter-form"
                           hx-confirm="Permanently discard {{.Expense.Name}}? This cannot be undone.">
                         <button type="submit"
-                                class="text-xs px-2 py-0.5 rounded border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30">
+                                class="text-xs px-2 py-0.5 rounded border border-negative text-negative hover:bg-negative-soft">
                             Discard
                         </button>
                     </form>
@@ -1005,17 +197,16 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 <table id="major-expenses-list" class="w-full text-sm major-expenses-sortable" data-sort-groups="tbody">
     <thead class="text-xs text-gray-600 dark:text-gray-400">
         <tr>
-            <th class="w-6"></th>
-            <th class="text-left py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="name" data-sort-type="text" aria-sort="ascending">
-                <span class="inline-flex items-center gap-1">Name <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block">▲</span></span>
+            <th scope="col" class="w-6"></th>
+            <th scope="col" class="text-left py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="name" data-sort-type="text" aria-sort="ascending">
+                <span class="inline-flex items-center gap-1">Name <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block">▲</span></span>
             </th>
-            <th class="text-right py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="matched" data-sort-type="number" aria-sort="none">
-                <span class="inline-flex items-center justify-end gap-1">Matched <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
+            <th scope="col" class="text-right py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="matched" data-sort-type="number" aria-sort="none">
+                <span class="inline-flex items-center justify-end gap-1">Matched <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block"></span></span>
             </th>
-            <th class="text-right py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="total" data-sort-type="number" aria-sort="none">
-                <span class="inline-flex items-center justify-end gap-1">Total <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
+            <th scope="col" class="text-right py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="total" data-sort-type="number" aria-sort="none">
+                <span class="inline-flex items-center justify-end gap-1">Total <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block"></span></span>
             </th>
-            <th class="w-6"></th>
         </tr>
     </thead>
     {{range .Summaries}}
@@ -1049,28 +240,17 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         </td>
         <td class="py-1.5 px-1 text-gray-800 dark:text-gray-100 font-medium">{{.Expense.Name}}</td>
         <td class="py-1.5 px-1 text-right text-gray-600 dark:text-gray-300">
-            {{.Count}} matched{{if .PinnedCount}} <span class="text-amber-600 dark:text-amber-400" title="{{.PinnedCount}} manually pinned">· 📌 {{.PinnedCount}}</span>{{end}}
+            {{.Count}} matched{{if .PinnedCount}} <span class="text-warning" title="{{.PinnedCount}} manually pinned">· 📌 {{.PinnedCount}}</span>{{end}}
         </td>
         <td class="py-1.5 px-1 text-right font-mono text-gray-800 dark:text-gray-100">${{printf "%.0f" .Total}}</td>
-        <td class="py-1.5 px-1 text-right align-middle">
-            <button type="button" hx-delete="/major-expenses/{{.Expense.ID}}"
-                hx-target="#major-expenses-results" hx-swap="innerHTML"
-                hx-include="#major-expenses-filter-form"
-                class="text-red-500 hover:text-red-700"
-                aria-label="Delete major expense {{.Expense.Name}}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-            </button>
-        </td>
     </tr>
     <tr id="major-expense-detail-{{.Expense.ID}}" class="major-expense-detail-row">
-        <td colspan="5" class="px-1 pb-3 pt-1 bg-gray-50 dark:bg-gray-700/50">
+        <td colspan="4" class="px-1 pb-3 pt-1 bg-gray-50 dark:bg-gray-700/50">
             <form id="major-expense-edit-{{.Expense.ID}}"
                 hx-put="/major-expenses/{{.Expense.ID}}" hx-target="#major-expenses-results"
                 hx-swap="innerHTML" hx-trigger="change delay:500ms"
                 hx-include="#major-expenses-filter-form"
-                class="grid grid-cols-1 gap-2 text-xs p-2">
+                class="grid grid-cols-1 gap-2 text-body-sm p-2">
                 <label class="block">
                     <span class="text-gray-600 dark:text-gray-300">Name</span>
                     <input type="text" name="name" value="{{.Expense.Name}}" required
@@ -1103,7 +283,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 <label class="flex items-center gap-2 mt-1">
                     <input type="checkbox" name="is_internal_transfer" value="on"
                         {{if .Expense.IsInternalTransfer}}checked{{end}}
-                        class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+                        class="rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent">
                     <span class="text-gray-600 dark:text-gray-300">
                         Treat as internal transfer
                         <span class="text-gray-500 dark:text-gray-400">— matches are dropped at load time, not counted as spending</span>
@@ -1112,7 +292,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 <label class="flex items-center gap-2 mt-1">
                     <input type="checkbox" name="exclude_from_plan_sync" value="on"
                         {{if .Expense.ExcludeFromPlanSync}}checked{{end}}
-                        class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+                        class="rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent">
                     <span class="text-gray-600 dark:text-gray-300">
                         Modeled in retirement plan — excluded from the plan's living-expense sync
                         <span class="text-gray-500 dark:text-gray-400">— The retirement plan models this expense separately; keep it out of the synced living-expense figure.</span>
@@ -1120,13 +300,13 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 </label>
             </form>
             {{if .Transactions}}
-            <div class="mt-2 text-xs">
+            <div class="mt-2 text-body-sm">
                 <p class="text-gray-600 dark:text-gray-400 px-2 py-0.5">
                     Matched transactions ({{.Count}}{{if .PinnedCount}}, {{.PinnedCount}} pinned{{end}})
                 </p>
                 <table class="w-full">
                     <thead class="text-gray-500 dark:text-gray-400">
-                        <tr><th class="text-left py-0.5 px-2">Date</th><th class="text-left py-0.5 px-2">Description</th><th class="text-right py-0.5 px-2">Amount</th><th></th></tr>
+                        <tr><th scope="col" class="text-left py-0.5 px-2">Date</th><th scope="col" class="text-left py-0.5 px-2">Description</th><th scope="col" class="text-right py-0.5 px-2">Amount</th><th scope="col"></th></tr>
                     </thead>
                     <tbody>
                         {{$pinned := .PinnedHashes}}
@@ -1136,18 +316,18 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                             data-search="{{$bankText}} ${{printf "%.2f" .AbsAmount}} {{.Date.Format "2006-01-02"}}">
                             <td class="py-0.5 px-2 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
                             <td class="py-0.5 px-2 dark:text-gray-200">
-                                {{if and $pinned (index $pinned .Hash)}}<span class="text-amber-600 dark:text-amber-400" title="Pinned manually">📌</span> {{end}}<a href="/explorer?search={{urlquery $bankText}}&type=Outflow"
-                                    class="text-blue-600 dark:text-blue-400 hover:underline"
+                                {{if and $pinned (index $pinned .Hash)}}<span class="text-warning" title="Pinned manually">📌</span> {{end}}<a href="/explorer?search={{urlquery $bankText}}&type=Outflow"
+                                    class="text-accent hover:underline"
                                     title="Show all transactions matching “{{$bankText}}” in the Explorer">{{$bankText}}</a>
                             </td>
-                            <td class="py-0.5 px-2 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .AbsAmount}}</td>
+                            <td class="py-0.5 px-2 text-right font-mono text-negative">${{printf "%.2f" .AbsAmount}}</td>
                             <td class="py-0.5 px-2 text-right">
                                 {{if and $pinned (index $pinned .Hash)}}
                                 <button type="button"
                                     hx-delete="/major-expenses/pins/{{.Hash}}"
                                     hx-target="#major-expenses-results" hx-swap="innerHTML"
                                     hx-include="#major-expenses-filter-form"
-                                    class="text-xs text-gray-600 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"
+                                    class="text-xs text-gray-600 hover:text-negative dark:text-gray-400"
                                     aria-label="Unpin transaction">unpin</button>
                                 {{end}}
                             </td>
@@ -1157,6 +337,18 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 </table>
             </div>
             {{end}}
+            <div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-600 flex justify-end">
+                <button type="button" hx-delete="/major-expenses/{{.Expense.ID}}"
+                    hx-target="#major-expenses-results" hx-swap="innerHTML"
+                    hx-include="#major-expenses-filter-form"
+                    class="inline-flex items-center gap-1 text-body-sm text-negative hover:text-negative border border-negative rounded px-2 py-1"
+                    aria-label="Delete major expense {{.Expense.Name}}">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                    Delete
+                </button>
+            </div>
         </td>
     </tr>
 </tbody>
@@ -1168,20 +360,20 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     hx-include="#major-expenses-filter-form"
     class="space-y-2 pb-3 mb-3 border-b dark:border-gray-700">
     <h3 class="text-sm font-medium text-gray-700 dark:text-gray-200">Add a major expense</h3>
-    <p class="text-xs text-gray-600 dark:text-gray-400">Tip: click an exception row on the right to pre-fill this form.</p>
+    <p class="text-body-sm text-gray-600 dark:text-gray-400">Tip: click an exception row on the right to pre-fill this form.</p>
     {{/* Optional pin: when set by JS via "+ Create new from this", the
          server pins this transaction to the new expense ID after add. */}}
     <input type="hidden" name="pin_hash" id="major-expenses-add-pin-hash" value="">
-    <p id="major-expenses-add-pin-hash-hint" class="text-xs italic text-emerald-700 dark:text-emerald-300 hidden">
+    <p id="major-expenses-add-pin-hash-hint" class="text-body-sm italic text-positive hidden">
         Will also pin the originating transaction to this new expense.
     </p>
     <label class="block">
-        <span class="text-xs text-gray-600 dark:text-gray-300">Name <span class="text-red-500">*</span></span>
+        <span class="text-xs text-gray-600 dark:text-gray-300">Name <span class="text-negative">*</span></span>
         <input type="text" name="name" placeholder="What is this? e.g., Car Payment, Rent, Groceries" required
             class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
     </label>
     <label class="block">
-        <span class="text-xs text-gray-600 dark:text-gray-300">Keywords <span class="text-gray-500">(match by description)</span></span>
+        <span class="text-xs text-gray-600 dark:text-gray-300">Keywords <span class="text-gray-500 dark:text-gray-400">(match by description)</span></span>
         <input type="text" name="keywords" placeholder="e.g., landlord — leave blank for amount-only or pin-only"
             class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
     </label>
@@ -1197,7 +389,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 class="mt-0.5 w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
         </label>
     </div>
-    <details class="text-xs text-gray-600 dark:text-gray-400">
+    <details class="text-body-sm text-gray-600 dark:text-gray-400">
         <summary class="cursor-pointer hover:text-gray-700 dark:hover:text-gray-200">How matching works</summary>
         <ul class="mt-1 ml-4 list-disc space-y-1">
             <li><strong>Keyword only</strong> — matches anything whose description contains the keyword (case-insensitive). A range, if set, is used for anomaly detection.</li>
@@ -1210,9 +402,9 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     </details>
     <input type="text" name="notes" placeholder="Notes (optional)"
         class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1.5 px-2">
-    <label class="flex items-start gap-2 text-xs">
+    <label class="flex items-start gap-2 text-body-sm">
         <input type="checkbox" name="is_internal_transfer" value="on"
-            class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+            class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent">
         <span class="text-gray-600 dark:text-gray-300">
             Treat as internal transfer
             <span class="block text-gray-500 dark:text-gray-400">
@@ -1220,9 +412,9 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             </span>
         </span>
     </label>
-    <label class="flex items-start gap-2 text-xs">
+    <label class="flex items-start gap-2 text-body-sm">
         <input type="checkbox" name="exclude_from_plan_sync" value="on"
-            class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500">
+            class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent">
         <span class="text-gray-600 dark:text-gray-300">
             Modeled in retirement plan — excluded from the plan's living-expense sync
             <span class="block text-gray-500 dark:text-gray-400">
@@ -1231,7 +423,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         </span>
     </label>
     <div class="flex justify-end">
-        <button type="submit" class="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700">
+        <button type="submit" class="px-3 py-1.5 bg-accent-strong text-white text-sm rounded hover:bg-accent-strong">
             Add expense
         </button>
     </div>
@@ -1273,7 +465,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     <select name="expense_id" aria-label="Pin to existing expense"
         class="major-expenses-pin-select text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5 min-w-[14rem]"
         data-hash="{{.Hash}}"
-        onclick="event.stopPropagation()">
+        data-stop-row-click>
         <option value="" disabled {{if not .CurrentPin}}selected{{end}}>Pin to…</option>
         {{range .Options}}<option value="{{.ID}}" title="{{.Label}}"{{if eq $.CurrentPin .ID}} selected{{end}}>{{.Label}}</option>{{end}}
         <option value="__new__" class="major-expenses-pin-create-option">+ Create new from this…</option>
@@ -1292,10 +484,10 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     {{if .AllUnmatched}}{{$total = add $total (len .AllUnmatched)}}{{else}}{{$total = add $total (len .Match.Exceptions.UnknownLarge)}}{{end}}
     {{$total = add $total (len .Match.Exceptions.Anomalous)}}
     {{$total = add $total (len .Match.Exceptions.NewMerchants)}}
-    <span class="text-xs text-gray-600 dark:text-gray-400" aria-live="polite">
+    <span class="text-body-sm text-gray-600 dark:text-gray-400" aria-live="polite">
         {{$total}} flagged
         <span id="major-expenses-pin-count-chip"
-              class="major-expenses-pin-count-chip hidden ml-1 text-amber-700 dark:text-amber-300">
+              class="major-expenses-pin-count-chip hidden ml-1 text-warning">
             · <span id="major-expenses-pin-count-chip-num">0</span> selected
         </span>
     </span>
@@ -1308,17 +500,17 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
 {{else}}
 
 {{if .ExpenseOptions}}
-<div id="major-expenses-bulk-pin" class="mb-3 hidden items-center gap-2 text-xs px-2 py-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded">
-    <span class="text-amber-700 dark:text-amber-300 font-medium">
+<div id="major-expenses-bulk-pin" class="mb-3 hidden items-center gap-2 text-xs px-2 py-1.5 bg-warning-soft border border-warning rounded">
+    <span class="text-warning font-medium">
         <span class="major-expenses-bulk-pin-label-lead">Pin all </span><span id="major-expenses-bulk-pin-count">0</span><span class="major-expenses-bulk-pin-label-trail"> matching →</span>
     </span>
     <select id="major-expenses-bulk-pin-target" aria-label="Pin all matching exceptions to this expense"
-        class="text-xs border border-amber-300 dark:border-amber-700 dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5 flex-1 min-w-0">
+        class="text-xs border border-warning dark:bg-gray-700 dark:text-gray-100 rounded px-1 py-0.5 flex-1 min-w-0">
         <option value="" disabled selected>Choose expense…</option>
         {{range .ExpenseOptions}}<option value="{{.ID}}" title="{{.Label}}">{{.Label}}</option>{{end}}
     </select>
     <button type="button" id="major-expenses-bulk-pin-apply"
-        class="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+        class="px-2 py-0.5 bg-warning-strong hover:bg-warning-strong text-white rounded text-xs disabled:opacity-50 disabled:cursor-not-allowed"
         disabled>Apply</button>
     <button type="button" id="major-expenses-bulk-pin-clear"
         class="major-expenses-bulk-pin-clear hidden px-2 py-0.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-100 rounded text-xs"
@@ -1335,35 +527,35 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
     {{$unmatchedFromExceptions = true}}
 {{end}}
 <details id="major-expenses-bucket-unknown-large" class="mb-2 border border-gray-200 dark:border-gray-700 rounded">
-    <summary class="cursor-pointer px-3 py-2 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 rounded">
-        <span class="font-medium text-red-700 dark:text-red-300">
+    <summary class="cursor-pointer px-3 py-2 bg-negative-soft hover:bg-negative-soft rounded">
+        <span class="font-medium text-negative">
             Unmatched
         </span>
         {{if $unmatchedFromExceptions}}
-            <span class="ml-2 text-xs text-red-600 dark:text-red-400">({{len .Match.Exceptions.UnknownLarge}} over ${{printf "%.0f" .Threshold}})</span>
+            <span class="ml-2 text-body-sm text-negative">({{len .Match.Exceptions.UnknownLarge}} over ${{printf "%.0f" .Threshold}})</span>
         {{else}}
-            <span class="ml-2 text-xs text-red-600 dark:text-red-400">({{len $unmatchedRows}})</span>
-            <span class="ml-1 text-xs italic text-red-500 dark:text-red-400">click headers to sort; rows under ${{printf "%.0f" .Threshold}} are dimmed</span>
+            <span class="ml-2 text-xs text-negative">({{len $unmatchedRows}})</span>
+            <span class="ml-1 text-body-sm italic text-negative">click headers to sort; rows under ${{printf "%.0f" .Threshold}} are dimmed</span>
         {{end}}
     </summary>
     {{if $unmatchedFromExceptions}}
         {{/* Legacy render path for fixtures without AllUnmatched. */}}
         {{if .Match.Exceptions.UnknownLarge}}
-        <table class="w-full text-xs mt-1">
+        <table class="w-full text-body-sm mt-1">
             <thead class="text-gray-600 dark:text-gray-400">
                 <tr>
-                    <th class="px-2 py-1 w-10">
+                    <th scope="col" class="px-2 py-1 w-10">
                         <input type="checkbox"
                                id="major-expenses-pin-check-header-unmatched"
                                class="major-expenses-pin-check-header"
                                data-bucket="unmatched"
                                aria-label="Select visible unmatched exceptions"
-                               onclick="event.stopPropagation()">
+                               data-stop-row-click>
                     </th>
-                    <th class="text-left px-2 py-1">Date</th>
-                    <th class="text-left px-2 py-1">Description</th>
-                    <th class="text-right px-2 py-1">Amount</th>
-                    {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
+                    <th scope="col" class="text-left px-2 py-1">Date</th>
+                    <th scope="col" class="text-left px-2 py-1">Description</th>
+                    <th scope="col" class="text-right px-2 py-1">Amount</th>
+                    {{if .Expenses}}<th scope="col" class="text-left px-2 py-1">Pin to</th>{{end}}
                 </tr>
             </thead>
             <tbody>
@@ -1375,20 +567,20 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                     data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
                     title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
-                    <td class="major-expenses-pin-check-cell px-2 py-1 w-10" onclick="event.stopPropagation()">
+                    <td class="major-expenses-pin-check-cell px-2 py-1 w-10" data-stop-row-click>
                         <input type="checkbox"
                                class="major-expenses-pin-check"
                                data-hash="{{.Transaction.Hash}}"
                                data-bucket="unmatched"
                                aria-label="Select {{$label}} for bulk pinning"
-                               onclick="event.stopPropagation()">
+                               data-stop-row-click>
                     </td>
                     <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
                     <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
-                        class="text-blue-600 dark:text-blue-400 hover:underline"
+                        class="text-accent hover:underline"
                         title="Show this transaction in the Explorer"
-                        onclick="event.stopPropagation()">{{$label}}</a></td>
-                    <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
+                        data-stop-row-click>{{$label}}</a></td>
+                    <td class="px-2 py-1 text-right font-mono text-negative">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                     {{if $.Expenses}}
                     <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions "CurrentPin" $pinnedID)}}</td>
                     {{end}}
@@ -1397,31 +589,31 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             </tbody>
         </table>
         {{else}}
-        <p class="text-xs italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
+        <p class="text-body-sm italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
         {{end}}
     {{else}}
         {{if $unmatchedRows}}
-        <table class="w-full text-xs mt-1 major-expenses-sortable" data-default-sort="amount" data-default-dir="desc">
+        <table class="w-full text-body-sm mt-1 major-expenses-sortable" data-default-sort="amount" data-default-dir="desc">
             <thead class="text-gray-600 dark:text-gray-400">
                 <tr>
-                    <th class="px-2 py-1 w-10">
+                    <th scope="col" class="px-2 py-1 w-10">
                         <input type="checkbox"
                                id="major-expenses-pin-check-header-unmatched"
                                class="major-expenses-pin-check-header"
                                data-bucket="unmatched"
                                aria-label="Select visible unmatched exceptions"
-                               onclick="event.stopPropagation()">
+                               data-stop-row-click>
                     </th>
-                    <th class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="date" data-sort-type="text" aria-sort="none">
-                        <span class="inline-flex items-center gap-1">Date <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
+                    <th scope="col" class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="date" data-sort-type="text" aria-sort="none">
+                        <span class="inline-flex items-center gap-1">Date <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block"></span></span>
                     </th>
-                    <th class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="desc" data-sort-type="text" aria-sort="none">
-                        <span class="inline-flex items-center gap-1">Description <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block"></span></span>
+                    <th scope="col" class="text-left px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="desc" data-sort-type="text" aria-sort="none">
+                        <span class="inline-flex items-center gap-1">Description <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block"></span></span>
                     </th>
-                    <th class="text-right px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="amount" data-sort-type="number" aria-sort="descending">
-                        <span class="inline-flex items-center justify-end gap-1">Amount <span class="major-expenses-sort-indicator text-[10px] opacity-60 w-2 inline-block">▼</span></span>
+                    <th scope="col" class="text-right px-2 py-1 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="amount" data-sort-type="number" aria-sort="descending">
+                        <span class="inline-flex items-center justify-end gap-1">Amount <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block">▼</span></span>
                     </th>
-                    {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
+                    {{if .Expenses}}<th scope="col" class="text-left px-2 py-1">Pin to</th>{{end}}
                 </tr>
             </thead>
             <tbody>
@@ -1429,7 +621,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 {{$label := .Label}}{{$rawText := or .DisplayName .Description}}
                 {{$pinnedID := ""}}{{if $.PinMap}}{{$pinnedID = index $.PinMap .Hash}}{{end}}
                 {{$amt := .AbsAmount}}{{$dim := lt $amt $.Threshold}}
-                <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700{{if $dim}} opacity-70{{end}}"
+                <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                     data-hash="{{.Hash}}"
                     data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" $amt}}"
                     data-search="{{$label}} ${{printf "%.2f" $amt}} {{.Date.Format "2006-01-02"}}"
@@ -1437,20 +629,20 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                     data-sort-desc="{{$label}}"
                     data-sort-amount="{{printf "%.2f" $amt}}"
                     title="Click to pre-fill the add form, or use the dropdown to pin to an existing expense">
-                    <td class="major-expenses-pin-check-cell px-2 py-1 w-10" onclick="event.stopPropagation()">
+                    <td class="major-expenses-pin-check-cell px-2 py-1 w-10" data-stop-row-click>
                         <input type="checkbox"
                                class="major-expenses-pin-check"
                                data-hash="{{.Hash}}"
                                data-bucket="unmatched"
                                aria-label="Select {{$label}} for bulk pinning"
-                               onclick="event.stopPropagation()">
+                               data-stop-row-click>
                     </td>
                     <td class="px-2 py-1 dark:text-gray-300">{{.Date.Format "2006-01-02"}}</td>
                     <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
-                        class="text-blue-600 dark:text-blue-400 hover:underline"
+                        class="text-accent hover:underline"
                         title="Show this transaction in the Explorer"
-                        onclick="event.stopPropagation()">{{$label}}</a></td>
-                    <td class="px-2 py-1 text-right font-mono {{if $dim}}text-gray-600 dark:text-gray-400{{else}}text-red-600 dark:text-red-400{{end}}">${{printf "%.2f" $amt}}</td>
+                        data-stop-row-click>{{$label}}</a></td>
+                    <td class="px-2 py-1 text-right font-mono {{if $dim}}text-gray-600 dark:text-gray-400{{else}}text-negative{{end}}">${{printf "%.2f" $amt}}</td>
                     {{if $.Expenses}}
                     <td class="px-2 py-1">{{template "major-expenses-pin-picker" (dict "Hash" .Hash "Options" $.ExpenseOptions "CurrentPin" $pinnedID)}}</td>
                     {{end}}
@@ -1459,36 +651,37 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             </tbody>
         </table>
         {{else}}
-        <p class="text-xs italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
+        <p class="text-body-sm italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
         {{end}}
     {{end}}
 </details>
 
 <details id="major-expenses-bucket-anomalous" class="mb-2 border border-gray-200 dark:border-gray-700 rounded">
-    <summary class="cursor-pointer px-3 py-2 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded">
-        <span class="font-medium text-amber-700 dark:text-amber-300">
+    <summary class="cursor-pointer px-3 py-2 bg-warning-soft hover:bg-warning-soft rounded">
+        <span class="font-medium text-warning">
             Matched but anomalous amount
         </span>
-        <span class="ml-2 text-xs text-amber-600 dark:text-amber-400">({{len .Match.Exceptions.Anomalous}})</span>
+        <span class="ml-2 text-xs text-warning">({{len .Match.Exceptions.Anomalous}})</span>
     </summary>
     {{if .Match.Exceptions.Anomalous}}
-    <table class="w-full text-xs mt-1">
+    <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Matched but anomalous amount table">
+    <table class="w-full text-body-sm mt-1">
         <thead class="text-gray-600 dark:text-gray-400">
             <tr>
-                <th class="px-2 py-1 w-10">
+                <th scope="col" class="px-2 py-1 w-10">
                     <input type="checkbox"
                            id="major-expenses-pin-check-header-anomalous"
                            class="major-expenses-pin-check-header"
                            data-bucket="anomalous"
                            aria-label="Select visible anomalous exceptions"
-                           onclick="event.stopPropagation()">
+                           data-stop-row-click>
                 </th>
-                <th class="text-left px-2 py-1">Date</th>
-                <th class="text-left px-2 py-1">Expense</th>
-                <th class="text-left px-2 py-1">Description</th>
-                <th class="text-right px-2 py-1">Amount</th>
-                <th class="text-right px-2 py-1">Expected</th>
-                {{if .Expenses}}<th class="text-left px-2 py-1">Move to</th>{{end}}
+                <th scope="col" class="text-left px-2 py-1">Date</th>
+                <th scope="col" class="text-left px-2 py-1">Expense</th>
+                <th scope="col" class="text-left px-2 py-1">Description</th>
+                <th scope="col" class="text-right px-2 py-1">Amount</th>
+                <th scope="col" class="text-right px-2 py-1">Expected</th>
+                {{if .Expenses}}<th scope="col" class="text-left px-2 py-1">Move to</th>{{end}}
             </tr>
         </thead>
         <tbody>
@@ -1499,25 +692,25 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
                 data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{.MajorExpenseName}} {{$desc}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.Transaction.Date.Format "2006-01-02"}}"
                 title="Click to move this transaction to a new expense — or click the expense name to edit {{.MajorExpenseName}}">
-                <td class="major-expenses-pin-check-cell px-2 py-1 w-10" onclick="event.stopPropagation()">
+                <td class="major-expenses-pin-check-cell px-2 py-1 w-10" data-stop-row-click>
                     <input type="checkbox"
                            class="major-expenses-pin-check"
                            data-hash="{{.Transaction.Hash}}"
                            data-bucket="anomalous"
                            aria-label="Select {{$desc}} for bulk pinning"
-                           onclick="event.stopPropagation()">
+                           data-stop-row-click>
                 </td>
                 <td class="px-2 py-1 dark:text-gray-300">{{.Transaction.Date.Format "2006-01-02"}}</td>
                 <td class="px-2 py-1 dark:text-gray-200 font-medium">
                     <a href="#major-expense-item-{{.MajorExpenseID}}" data-jump-expense="{{.MajorExpenseID}}"
-                        class="text-amber-700 dark:text-amber-300 hover:underline"
+                        class="text-warning hover:underline"
                         title="Click to edit {{.MajorExpenseName}}">{{.MajorExpenseName}}</a>
                 </td>
                 <td class="px-2 py-1 dark:text-gray-300"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
-                    class="text-blue-600 dark:text-blue-400 hover:underline"
+                    class="text-accent hover:underline"
                     title="Show this transaction in the Explorer"
-                    onclick="event.stopPropagation()">{{$desc}}</a></td>
-                <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
+                    data-stop-row-click>{{$desc}}</a></td>
+                <td class="px-2 py-1 text-right font-mono text-negative">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                 <td class="px-2 py-1 text-right font-mono text-gray-600 dark:text-gray-400">
                     {{if and (gt .ExpectedMin 0.0) (gt .ExpectedMax 0.0)}}${{printf "%.0f" .ExpectedMin}}–${{printf "%.0f" .ExpectedMax}}
                     {{else if gt .ExpectedMin 0.0}}≥ ${{printf "%.0f" .ExpectedMin}}
@@ -1531,34 +724,35 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             {{end}}
         </tbody>
     </table>
+    </div>
     {{else}}
-    <p class="text-xs italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
+    <p class="text-body-sm italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
     {{end}}
 </details>
 
 <details id="major-expenses-bucket-new-merchants" class="border border-gray-200 dark:border-gray-700 rounded">
-    <summary class="cursor-pointer px-3 py-2 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded">
-        <span class="font-medium text-blue-700 dark:text-blue-300">
-            New merchants <span class="text-xs">(last {{.WindowDays}} days)</span>
+    <summary class="cursor-pointer px-3 py-2 bg-accent-soft hover:bg-accent-soft rounded">
+        <span class="font-medium text-accent">
+            New merchants <span class="text-body-sm">(last {{.WindowDays}} days)</span>
         </span>
-        <span class="ml-2 text-xs text-blue-600 dark:text-blue-400">({{len .Match.Exceptions.NewMerchants}})</span>
+        <span class="ml-2 text-xs text-accent">({{len .Match.Exceptions.NewMerchants}})</span>
     </summary>
     {{if .Match.Exceptions.NewMerchants}}
-    <table class="w-full text-xs mt-1">
+    <table class="w-full text-body-sm mt-1">
         <thead class="text-gray-600 dark:text-gray-400">
             <tr>
-                <th class="px-2 py-1 w-10">
+                <th scope="col" class="px-2 py-1 w-10">
                     <input type="checkbox"
                            id="major-expenses-pin-check-header-new-merchants"
                            class="major-expenses-pin-check-header"
                            data-bucket="new-merchants"
                            aria-label="Select visible new-merchant exceptions"
-                           onclick="event.stopPropagation()">
+                           data-stop-row-click>
                 </th>
-                <th class="text-left px-2 py-1">First seen</th>
-                <th class="text-left px-2 py-1">Description</th>
-                <th class="text-right px-2 py-1">Amount</th>
-                {{if .Expenses}}<th class="text-left px-2 py-1">Pin to</th>{{end}}
+                <th scope="col" class="text-left px-2 py-1">First seen</th>
+                <th scope="col" class="text-left px-2 py-1">Description</th>
+                <th scope="col" class="text-right px-2 py-1">Amount</th>
+                {{if .Expenses}}<th scope="col" class="text-left px-2 py-1">Pin to</th>{{end}}
             </tr>
         </thead>
         <tbody>
@@ -1566,37 +760,37 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
             {{$label := .Transaction.Label}}{{$rawText := or .Transaction.DisplayName .Transaction.Description}}
             {{$matchedID := ""}}{{if $.MatchedHashToExpenseID}}{{$matchedID = index $.MatchedHashToExpenseID .Transaction.Hash}}{{end}}
             {{$pinnedID := ""}}{{if $.PinMap}}{{$pinnedID = index $.PinMap .Transaction.Hash}}{{end}}
-            <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700{{if $matchedID}} opacity-75{{end}}"
+            <tr class="major-expenses-exception-row border-t border-gray-100 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                 data-hash="{{.Transaction.Hash}}"
                 data-fill-name="{{$rawText}}" data-fill-keyword="{{$rawText}}" data-fill-amount="{{printf "%.2f" .Transaction.AbsAmount}}"
                 data-search="{{$label}} ${{printf "%.2f" .Transaction.AbsAmount}} {{.FirstSeen.Format "2006-01-02"}}"
                 title="{{if $matchedID}}Already grouped under a major expense{{else}}Click to pre-fill the add form, or use the dropdown to pin to an existing expense{{end}}">
-                <td class="major-expenses-pin-check-cell px-2 py-1 w-10" onclick="event.stopPropagation()">
+                <td class="major-expenses-pin-check-cell px-2 py-1 w-10" data-stop-row-click>
                     <input type="checkbox"
                            class="major-expenses-pin-check"
                            data-hash="{{.Transaction.Hash}}"
                            data-bucket="new-merchants"
                            aria-label="Select {{$label}} for bulk pinning"
-                           onclick="event.stopPropagation()">
+                           data-stop-row-click>
                 </td>
                 <td class="px-2 py-1 dark:text-gray-300">{{.FirstSeen.Format "2006-01-02"}}</td>
                 <td class="px-2 py-1 dark:text-gray-200"><a href="/explorer?search={{urlquery $rawText}}&type=Outflow"
-                    class="text-blue-600 dark:text-blue-400 hover:underline"
+                    class="text-accent hover:underline"
                     title="Show this transaction in the Explorer"
-                    onclick="event.stopPropagation()">{{$label}}</a></td>
-                <td class="px-2 py-1 text-right font-mono text-red-600 dark:text-red-400">${{printf "%.2f" .Transaction.AbsAmount}}</td>
+                    data-stop-row-click>{{$label}}</a></td>
+                <td class="px-2 py-1 text-right font-mono text-negative">${{printf "%.2f" .Transaction.AbsAmount}}</td>
                 {{if $.Expenses}}
                 <td class="px-2 py-1">
                     {{if $matchedID}}
                         {{$matchedName := $matchedID}}{{if $.ExpenseByID}}{{with index $.ExpenseByID $matchedID}}{{$matchedName = .Name}}{{end}}{{end}}
-                        <span class="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300"
+                        <span class="inline-flex items-center gap-1 text-body-sm text-positive"
                               title="This transaction is already grouped under {{$matchedName}}{{if $pinnedID}} (pinned){{end}}">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                             </svg>
                             <a href="#major-expense-item-{{$matchedID}}" data-jump-expense="{{$matchedID}}"
-                               class="hover:underline" onclick="event.stopPropagation()">{{$matchedName}}</a>
-                            {{if $pinnedID}}<span class="text-emerald-600 dark:text-emerald-400" aria-label="pinned" title="Pinned">📌</span>{{end}}
+                               class="hover:underline" data-stop-row-click>{{$matchedName}}</a>
+                            {{if $pinnedID}}<span class="text-positive" aria-label="pinned" title="Pinned">📌</span>{{end}}
                         </span>
                     {{else}}
                         {{template "major-expenses-pin-picker" (dict "Hash" .Transaction.Hash "Options" $.ExpenseOptions "CurrentPin" $pinnedID)}}
@@ -1608,7 +802,7 @@ document.body.addEventListener('htmx:afterSwap', meDetectSelectedDateRange);
         </tbody>
     </table>
     {{else}}
-    <p class="text-xs italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
+    <p class="text-body-sm italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
     {{end}}
 </details>
 

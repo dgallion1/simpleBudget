@@ -915,6 +915,7 @@ type ProjectionMonth struct {
 	TaxesPaid            float64 `json:"taxes_paid,omitempty"`
 	StateTaxPaid         float64 `json:"state_tax_paid,omitempty"` // State portion of TaxesPaid (federal = TaxesPaid - StateTaxPaid)
 	NetWithdrawal        float64 `json:"net_withdrawal"`
+	FundingShortfall     float64 `json:"funding_shortfall,omitempty"`
 	RMDWithdrawal        float64 `json:"rmd_withdrawal"` // Forced RMD withdrawal (age 73+)
 	TaxableWithdrawals   float64 `json:"taxable_withdrawals,omitempty"`
 	RothConversions      float64 `json:"roth_conversions,omitempty"`
@@ -1223,33 +1224,51 @@ type SensitivityResult struct {
 	ScoreChange    int                 `json:"score_change"` // vs baseline
 }
 
-// FailurePoint represents the threshold where a parameter causes portfolio failure
+// FailurePoint describes either a bracketed transition or a surviving outer search bound.
 type FailurePoint struct {
-	ParamName    string  `json:"param_name"`    // e.g., "investment_return"
-	ParamLabel   string  `json:"param_label"`   // e.g., "Investment Return"
-	CurrentValue float64 `json:"current_value"` // Current setting value
-	Threshold    float64 `json:"threshold"`     // Value at which failure occurs
-	Direction    string  `json:"direction"`     // "below" or "above"
-	Margin       float64 `json:"margin"`        // How much buffer before failure (as %)
-	SafetyLevel  string  `json:"safety_level"`  // "safe", "marginal", "critical"
+	ParamName      string  `json:"param_name"`      // e.g., "investment_return"
+	ParamLabel     string  `json:"param_label"`     // e.g., "Investment Return"
+	CurrentValue   float64 `json:"current_value"`   // Current setting value
+	Threshold      float64 `json:"threshold"`       // Legacy rounded transition or surviving bound
+	SearchMin      float64 `json:"search_min"`      // Lowest value included in the tested range
+	SearchMax      float64 `json:"search_max"`      // Highest value included in the tested range
+	ThresholdFound bool    `json:"threshold_found"` // Whether the tested range brackets a transition
+	Direction      string  `json:"direction"`       // "below" or "above"
+	Margin         float64 `json:"margin"`          // How much modeled margin remains (as %)
+	SafetyLevel    string  `json:"safety_level"`    // "safe", "marginal", "critical"
 }
 
-// FailurePointAnalysis contains all failure thresholds
+// FailurePointAnalysis contains all one-variable failure-point search results.
 type FailurePointAnalysis struct {
 	FailurePoints    []FailurePoint `json:"failure_points"`
 	BaselineSurvives bool           `json:"baseline_survives"` // Does current scenario survive?
 }
 
+// MonteCarloGuardrailImpact records the lived spending path observed in one
+// Monte Carlo run. A non-nil pointer on MonteCarloResult means the run was
+// observed, even when no guardrail cuts occurred.
+type MonteCarloGuardrailImpact struct {
+	FundingGapMonths            int     `json:"funding_gap_months"`
+	MonthsObserved              int     `json:"months_observed"`
+	MonthsBelowPlan             int     `json:"months_below_plan"`
+	LongestBelowPlanMonths      int     `json:"longest_below_plan_months"`
+	CutEpisodes                 int     `json:"cut_episodes"`
+	MinLivingSpendingMultiplier float64 `json:"min_living_spending_multiplier"`
+	MaxMonthlyLivingCutReal     float64 `json:"max_monthly_living_cut_real"`
+	BelowPlanAtEnd              bool    `json:"below_plan_at_end"`
+}
+
 // MonteCarloResult represents a single simulation run outcome
 type MonteCarloResult struct {
-	FinalBalance    float64 `json:"final_balance"`
-	DepletionYear   float64 `json:"depletion_year"` // 0 if survives
-	Survives        bool    `json:"survives"`
-	TotalIRMAA      float64 `json:"total_irmaa"`      // Cumulative IRMAA surcharge over the run
-	MarketCrashes   int     `json:"market_crashes"`   // Number of crash years
-	SpendingShocks  int     `json:"spending_shocks"`  // Number of spending shock events
-	HealthShocks    int     `json:"health_shocks"`    // Number of health emergency events
-	ProjectionYears int     `json:"projection_years"` // Actual years projected (varies with longevity)
+	FinalBalance    float64                    `json:"final_balance"`
+	DepletionYear   float64                    `json:"depletion_year"` // 0 if survives
+	Survives        bool                       `json:"survives"`
+	TotalIRMAA      float64                    `json:"total_irmaa"`      // Cumulative IRMAA surcharge over the run
+	MarketCrashes   int                        `json:"market_crashes"`   // Number of crash years
+	SpendingShocks  int                        `json:"spending_shocks"`  // Number of spending shock events
+	HealthShocks    int                        `json:"health_shocks"`    // Number of health emergency events
+	ProjectionYears int                        `json:"projection_years"` // Actual years projected (varies with longevity)
+	GuardrailImpact *MonteCarloGuardrailImpact `json:"guardrail_impact"`
 
 	// Crash timing breakdown
 	EarlyCrashes   int `json:"early_crashes"`    // Crashes in years 1-5
@@ -1304,10 +1323,28 @@ type SequenceRiskBreakdown struct {
 	AdaptationRationale       string  `json:"adaptation_rationale"`         // Explanation of adaptation benefit
 }
 
+// LifestyleOutcomeStats classifies Monte Carlo runs by whether the modeled
+// lifestyle was fully funded and summarizes the burden observed in runs with
+// spending cuts.
+type LifestyleOutcomeStats struct {
+	Runs                       int     `json:"runs"`
+	FundedWithoutCuts          int     `json:"funded_without_cuts"`
+	FundedWithCuts             int     `json:"funded_with_cuts"`
+	Shortfall                  int     `json:"shortfall"`
+	RunsWithCuts               int     `json:"runs_with_cuts"`
+	MedianCutMonths            float64 `json:"median_cut_months"`
+	P90CutMonths               float64 `json:"p90_cut_months"`
+	P90LongestCutMonths        float64 `json:"p90_longest_cut_months"`
+	MedianMaxLivingCutPct      float64 `json:"median_max_living_cut_pct"`
+	P90MaxLivingCutPct         float64 `json:"p90_max_living_cut_pct"`
+	P90MaxMonthlyLivingCutReal float64 `json:"p90_max_monthly_living_cut_real"`
+	CutRunsEndingBelowPlan     int     `json:"cut_runs_ending_below_plan"`
+}
+
 // MonteCarloStats contains aggregated simulation statistics
 type MonteCarloStats struct {
 	Runs           int     `json:"runs"`             // Number of simulations
-	SuccessRate    float64 `json:"success_rate"`     // % of scenarios that survive
+	SuccessRate    float64 `json:"success_rate"`     // % of scenarios avoiding modeled depletion
 	MedianBalance  float64 `json:"median_balance"`   // Median final balance
 	MeanBalance    float64 `json:"mean_balance"`     // Average final balance
 	Percentile10   float64 `json:"percentile_10"`    // 10th percentile (worst 10%)
@@ -1328,6 +1365,7 @@ type MonteCarloStats struct {
 
 	// Detailed sequence risk analysis
 	SequenceRisk *SequenceRiskBreakdown `json:"sequence_risk"`
+	Lifestyle    *LifestyleOutcomeStats `json:"lifestyle,omitempty"`
 }
 
 // MonteCarloDistribution contains bucketed results for visualization

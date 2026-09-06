@@ -68,6 +68,70 @@ func TestShapeAnalysis_OmitsMonteCarloWhenNotRequested(t *testing.T) {
 	}
 }
 
+func TestShapeAnalysis_MonteCarloLifestyleIsOptional(t *testing.T) {
+	a := sampleAnalysis()
+	a.MonteCarlo = &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{SuccessRate: 91.5}}
+
+	without := ShapeAnalysis(a, true)
+	if without.MonteCarlo == nil {
+		t.Fatal("MonteCarlo should be present")
+	}
+	if without.MonteCarlo.Lifestyle != nil {
+		t.Fatalf("Lifestyle = %+v, want nil", without.MonteCarlo.Lifestyle)
+	}
+	data, err := json.Marshal(without.MonteCarlo)
+	if err != nil {
+		t.Fatalf("json.Marshal without lifestyle failed: %v", err)
+	}
+	if strings.Contains(string(data), "lifestyle") {
+		t.Fatalf("nil lifestyle should be omitted from JSON: %s", data)
+	}
+
+	a.MonteCarlo.Stats.Lifestyle = &models.LifestyleOutcomeStats{
+		Runs: 4, FundedWithoutCuts: 1, FundedWithCuts: 1, Shortfall: 2,
+	}
+	with := ShapeAnalysis(a, true)
+	if with.MonteCarlo == nil || with.MonteCarlo.Lifestyle == nil {
+		t.Fatalf("Lifestyle should be present: %+v", with.MonteCarlo)
+	}
+	got := with.MonteCarlo.Lifestyle
+	if got.Runs != 4 || got.FundedWithoutCuts != 1 || got.FundedWithCuts != 1 || got.Shortfall != 2 {
+		t.Fatalf("unexpected lifestyle counts: %+v", got)
+	}
+	data, err = json.Marshal(with.MonteCarlo)
+	if err != nil {
+		t.Fatalf("json.Marshal with lifestyle failed: %v", err)
+	}
+	for _, key := range []string{"\"runs\":4", "\"funded_without_cuts\":1", "\"funded_with_cuts\":1", "\"shortfall\":2"} {
+		if !strings.Contains(string(data), key) {
+			t.Errorf("lifestyle JSON missing %s: %s", key, data)
+		}
+	}
+}
+
+func TestShapeAnalysis_DefinesLegacySuccessRateForGapBearingLifestyle(t *testing.T) {
+	a := sampleAnalysis()
+	a.MonteCarlo = &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{
+		Runs:        1,
+		SuccessRate: 100,
+		Lifestyle: &models.LifestyleOutcomeStats{
+			Runs: 1, Shortfall: 1,
+		},
+	}}
+
+	got := ShapeAnalysis(a, true).MonteCarlo
+	if got == nil || got.Lifestyle == nil || got.Lifestyle.Shortfall != 1 {
+		t.Fatalf("gap-bearing lifestyle missing: %+v", got)
+	}
+	if got.SuccessRate != 100 {
+		t.Fatalf("SuccessRate = %v, want unchanged legacy value 100", got.SuccessRate)
+	}
+	const wantDefinition = "Percentage of runs avoiding modeled portfolio depletion; unpaid spending during withdrawal delays can still occur."
+	if got.SuccessRateDefinition != wantDefinition {
+		t.Fatalf("SuccessRateDefinition = %q, want %q", got.SuccessRateDefinition, wantDefinition)
+	}
+}
+
 func TestShapeAnalysis_SustainabilityScoreZeroMarshalsWithKey(t *testing.T) {
 	a := &models.WhatIfAnalysis{
 		Settings:       &models.WhatIfSettings{PortfolioValue: 1_000_000, ProjectionYears: 2},

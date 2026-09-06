@@ -219,6 +219,16 @@ input:focus, select:focus {
     border-bottom-color: rgb(129 140 248);
 }
 
+/* What-If keyboard focus — the theme-aware accent stays distinct from a
+   tab's selected underline and the chart controls' pressed fills. */
+[data-wf-tab]:focus-visible,
+[data-wf-collapse-toggle]:focus-visible,
+[data-whatif-projection-card] [data-display-dollars]:focus-visible,
+[data-whatif-projection-card] [data-projection-compare-toggle]:focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+}
+
 /* Quick Adjust tab strip — active pill.
    quick-adjust-scripts.html toggles .qa-tab-active; the buttons also carry
    the Tailwind `dark:text-gray-300` utility for their INACTIVE state. That

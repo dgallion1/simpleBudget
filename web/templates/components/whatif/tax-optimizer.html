@@ -28,7 +28,7 @@
         {{if gt $to.MonteCarloRuns 0}}
         MC median ending: {{formatMoney $best.MCMedianEndingReal}} real
         · deterministic: {{formatMoney $best.EndingPortfolioReal}}
-        · MC survival: {{printf "%.0f" $best.MCSurvivalRate}}%
+        · MC avoids depletion: {{printf "%.0f" $best.MCSurvivalRate}}%
         {{else}}
         Ending: {{formatMoney $best.EndingPortfolioReal}} real
         {{end}}
@@ -80,7 +80,7 @@
                     </th>
                     {{if gt $to.MonteCarloRuns 0}}
                     <th scope="col" class="text-right py-2 px-2 text-gray-600 dark:text-gray-400 font-medium">
-                        {{template "taxopt-th-tooltip" (dict "Label" "MC Surv%" "Tip" (printf "Monte Carlo survival rate: percent of %d random return paths in which the portfolio lasted the full projection. Not the ranking metric — strategies are ranked by MC Median, not survival." $to.MonteCarloRuns) "Align" "right")}}
+                        {{template "taxopt-th-tooltip" (dict "Label" "MC Surv%" "Tip" (printf "Monte Carlo depletion-avoidance rate: percent of %d random return paths avoiding modeled portfolio depletion. This does not establish paid spending or a maintained lifestyle. Not the ranking metric — strategies are ranked by MC Median, not survival." $to.MonteCarloRuns) "Align" "right")}}
                     </th>
                     {{end}}
                 </tr>

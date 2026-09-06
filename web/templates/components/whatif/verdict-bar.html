@@ -6,30 +6,17 @@
     class="verdict-{{$v.Health}} rounded-xl border px-4 py-3 mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 {{verdictBandClass $v.Health}}">
 
     <div class="flex-1 min-w-[14rem]">
-        <div class="text-label font-semibold tracking-widest uppercase {{verdictLabelClass $v.Health}}">Plan Verdict</div>
-        <div class="text-lg font-bold text-gray-900 dark:text-gray-100">
-            {{$v.Headline}}
-            <span class="text-sm font-normal text-gray-600 dark:text-gray-400">— {{$v.Detail}}</span>
-        </div>
+        <h2 class="text-lg font-bold text-gray-900 dark:text-gray-100">{{$v.Headline}}</h2>
+        <p class="text-sm text-gray-700 dark:text-gray-300">{{$v.Detail}}</p>
     </div>
 
     <div class="flex flex-wrap items-center gap-x-6 gap-y-2 ml-auto">
+        {{if and $v.HasMonteCarlo (not .AnalysisPending)}}
         <div class="text-center">
-            <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">{{if $v.GapAtSteadyState}}Gap @ Yr {{$v.GapYear}}{{else}}Monthly Gap{{end}}</div>
-            <div class="num text-base font-bold {{if $v.GapIsShortfall}}text-negative{{else}}text-positive{{end}}">
-                {{if $v.GapIsShortfall}}-{{end}}${{formatNumber (abs $v.MonthlyGap)}}<span class="sr-only">{{if $v.GapIsShortfall}} shortfall{{else}} surplus{{end}}</span>
-            </div>
-        </div>
-        {{if $v.HasMonteCarlo}}
-        <div class="text-center" title="Monte Carlo success rate">
-            <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Monte Carlo</div>
+            <div class="text-body-sm text-gray-600 dark:text-gray-300">Monte Carlo: avoids depletion</div>
             <div class="num text-base font-bold {{successRateTextClass $v.SuccessRate}}">{{printf "%.1f" $v.SuccessRate}}%</div>
         </div>
         {{end}}
-        <div class="text-center">
-            <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Req. Rate</div>
-            <div class="num text-base font-bold text-gray-700 dark:text-gray-200">{{printf "%.1f" $v.RequiredRate}}%</div>
-        </div>
         {{if $v.HasTaxes}}
         <div class="text-center" title="Lifetime income tax over the plan">
             <div class="text-label uppercase tracking-wide text-gray-600 dark:text-gray-400">Est. Taxes</div>
@@ -42,9 +29,31 @@
             <div class="num text-base font-bold {{if gt $v.EndBalance 0.0}}text-positive{{else}}text-gray-600 dark:text-gray-400{{end}}">{{formatDollars $v.EndBalance}}</div>
         </div>
         {{end}}
-        {{if .AnalysisPending}}
-        <span class="text-label uppercase tracking-wide font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-full px-2 py-1">updating risk metrics…</span>
+    </div>
+    <div class="w-full border-t border-gray-200 dark:border-gray-700 pt-3 mt-1 text-sm text-gray-700 dark:text-gray-300">
+        {{if $v.HasBudgetFit}}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+            <div>
+                <p class="font-medium">Needed from portfolio after estimated taxes and RMDs</p>
+                <p><span class="num font-semibold">{{formatDollars (abs $v.CurrentMonthlyGap)}}/mo</span> · current {{if gt $v.CurrentMonthlyGap 0.0}}funding need{{else if lt $v.CurrentMonthlyGap 0.0}}surplus{{else}}balanced cash flow{{end}}</p>
+                <p class="text-body-sm">Additional withdrawal rate after RMDs: <span class="num">{{printf "%.1f" $v.CurrentRequiredRate}}%</span></p>
+            </div>
+            {{if $v.GapAtSteadyState}}
+            <div>
+                <p class="font-medium">Selected year {{$v.GapYear}} · nominal dollars</p>
+                <p><span class="num font-semibold">{{formatDollars (abs $v.MonthlyGap)}}/mo</span> · {{if $v.GapIsShortfall}}funding need{{else if lt $v.MonthlyGap 0.0}}surplus{{else}}balanced cash flow{{end}}</p>
+                <p class="text-body-sm">Additional withdrawal rate after RMDs: <span class="num">{{printf "%.1f" $v.RequiredRate}}%</span></p>
+            </div>
+            {{end}}
+        </div>
+        <p class="text-body-sm mt-2">A positive gap is a funding need after income, estimated taxes and RMDs; it is not necessarily unpaid spending. RMDs are portfolio distributions.</p>
+        {{else}}
+        <p>Current funding needs unavailable.</p>
         {{end}}
+        {{if $v.HasFirstYearOutflow}}
+        <p class="mt-2"><span class="font-medium">First projection year net portfolio outflow:</span> <span class="num">{{formatDollars $v.FirstYearOutflow}}</span> for the year (nominal). Includes RMDs, net of reinvested surplus.</p>
+        {{end}}
+        {{if .AnalysisPending}}<p class="text-body-sm mt-2">Risk results pending.</p>{{else if not $v.HasMonteCarlo}}<p class="text-body-sm mt-2">Risk results unavailable.</p>{{end}}
     </div>
 </div>
 {{end}}

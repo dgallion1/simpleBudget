@@ -175,6 +175,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			TaxesPaid:                 taxesPaid,
 			StateTaxPaid:              monthResult.TaxSnapshot.MonthlyStateTax,
 			NetWithdrawal:             cashFlow.ActualWithdrawal,
+			FundingShortfall:          monthResult.Shortfall,
 			RMDWithdrawal:             cashFlow.RMDWithdrawal,
 			TaxableWithdrawals:        cashFlow.WithdrawalFromTaxDeferred,
 			RothConversions:           out.RothConversion,

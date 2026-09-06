@@ -32,6 +32,7 @@
       var on = t.getAttribute('data-wf-tab') === name;
       t.classList.toggle('wf-tab-active', on);
       t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.setAttribute('tabindex', on ? '0' : '-1');
     });
 
     if (!matched) { return activateTab('overview', persist); }
@@ -49,17 +50,23 @@
   }
 
   // Settings-card collapse with persistence.
-  function applyCollapse(card) {
-    var id = card.getAttribute('data-wf-collapse');
+  function setCollapseState(card, collapsed) {
     var body = card.querySelector('[data-wf-collapse-body]');
     if (!body) return;
+    body.classList.toggle('hidden', collapsed);
+    var chevron = card.querySelector('[data-wf-chevron]');
+    if (chevron) chevron.classList.toggle('rotate-180', !collapsed);
+    var header = card.querySelector('[data-wf-collapse-toggle]');
+    if (header) header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+
+  function applyCollapse(card) {
+    var id = card.getAttribute('data-wf-collapse');
     var collapsed = false;
     if (window.localStorage) {
       try { collapsed = window.localStorage.getItem('whatifCollapse:' + id) === '1'; } catch (e) {}
     }
-    body.classList.toggle('hidden', collapsed);
-    var chevron = card.querySelector('[data-wf-chevron]');
-    if (chevron) chevron.classList.toggle('rotate-180', !collapsed);
+    setCollapseState(card, collapsed);
   }
 
   function toggleCollapse(card) {
@@ -67,9 +74,7 @@
     var body = card.querySelector('[data-wf-collapse-body]');
     if (!body) return;
     var nowCollapsed = !body.classList.contains('hidden');
-    body.classList.toggle('hidden', nowCollapsed);
-    var chevron = card.querySelector('[data-wf-chevron]');
-    if (chevron) chevron.classList.toggle('rotate-180', !nowCollapsed);
+    setCollapseState(card, nowCollapsed);
     if (window.localStorage) {
       try { window.localStorage.setItem('whatifCollapse:' + id, nowCollapsed ? '1' : '0'); } catch (e) {}
     }
@@ -103,6 +108,21 @@
         if (tab) { e.preventDefault(); activateTab(tab.getAttribute('data-wf-tab'), true); return; }
         var goto_ = e.target.closest('[data-wf-goto]');
         if (goto_) { e.preventDefault(); activateTab(goto_.getAttribute('data-wf-goto'), true); }
+      });
+      container.addEventListener('keydown', function (e) {
+        var tab = e.target.closest('[data-wf-tab]');
+        if (!tab) return;
+        var tabs = Array.prototype.slice.call(container.querySelectorAll('[data-wf-tab]'));
+        var current = tabs.indexOf(tab);
+        var next = current;
+        if (e.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'ArrowRight') next = (current + 1) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        else return;
+        e.preventDefault();
+        activateTab(tabs[next].getAttribute('data-wf-tab'), true);
+        tabs[next].focus();
       });
     }
     document.querySelectorAll('[data-wf-collapse]').forEach(function (card) {

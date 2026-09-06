@@ -1,142 +1,53 @@
 package whatif
 
 import (
-	"testing"
-
 	"budget2/internal/models"
+	"strings"
+	"testing"
 )
 
 func intPtr(i int) *int { return &i }
 
 func TestBuildVerdict(t *testing.T) {
-	t.Run("funded full horizon with strong MC is green", func(t *testing.T) {
-		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
-		a := &models.WhatIfAnalysis{
-			Projection: &models.ProjectionResult{Survives: true, FinalBalance: 410250},
-			BudgetFit:  &models.BudgetFitAnalysis{MonthlyGap: -200, RequiredRate: 0},
-			MonteCarlo: &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{SuccessRate: 85}},
-		}
-		v := BuildVerdict(a, s)
-		if v.Health != models.HealthGreen {
-			t.Errorf("Health = %q, want green", v.Health)
-		}
-		if v.Headline != "Funded through 2064" {
-			t.Errorf("Headline = %q, want \"Funded through 2064\"", v.Headline)
-		}
-		if v.GapIsShortfall {
-			t.Errorf("GapIsShortfall = true, want false (surplus)")
-		}
-		if !v.HasMonteCarlo || v.SuccessRate != 85 {
-			t.Errorf("MC = (%v,%v), want (true,85)", v.HasMonteCarlo, v.SuccessRate)
-		}
-		if want := "spending covered for all 38 years"; v.Detail != want {
-			t.Errorf("Detail = %q, want %q (strong MC keeps the plain detail)", v.Detail, want)
-		}
-	})
-
-	t.Run("funded but weak MC is amber and says so", func(t *testing.T) {
-		s := &models.WhatIfSettings{ProjectionYears: 30, StartDate: "2026-01"}
-		a := &models.WhatIfAnalysis{
-			Projection: &models.ProjectionResult{Survives: true},
-			BudgetFit:  &models.BudgetFitAnalysis{MonthlyGap: 100},
-			MonteCarlo: &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{SuccessRate: 55}},
-		}
-		v := BuildVerdict(a, s)
-		if v.Health != models.HealthAmber {
-			t.Errorf("Health = %q, want amber", v.Health)
-		}
-		if want := "covers the median path — 45% of market simulations fall short"; v.Detail != want {
-			t.Errorf("Detail = %q, want %q", v.Detail, want)
-		}
-		if v.Headline != "Funded through 2056" {
-			t.Errorf("Headline = %q, want \"Funded through 2056\"", v.Headline)
+	for _, tc := range []struct {
+		name, start, headline, detail string
+		survives, guards              bool
+		depletion                     *int
+		months                        []models.ProjectionMonth
+		health                        models.Health
+	}{
+		{name: "funded full horizon is conditional and neutral", start: "2026-01", survives: true, headline: "Funded through Dec 2063", detail: "Base projection funds your planned lifestyle", health: models.HealthNeutral},
+		{name: "April endpoint", start: "2026-04", survives: true, headline: "Funded through Mar 2064", detail: "Base projection funds your planned lifestyle", health: models.HealthNeutral},
+		{name: "funded with below-plan cuts", start: "2026-01", survives: true, guards: true, months: []models.ProjectionMonth{{PlannedLivingExpenses: 1000, GuardrailMultiplier: 0.9}}, headline: "Funded through Dec 2063", detail: "Base projection funds spending with circuit-breaker cuts", health: models.HealthAmber},
+		{name: "early depletion", start: "2026-01", depletion: intPtr(72), headline: "Funds run out in Jan 2032", detail: "Base projection has a funding shortfall", health: models.HealthRed},
+		{name: "late depletion despite guardrails", start: "2026-04", guards: true, depletion: intPtr(300), headline: "Funds run out in Apr 2051", detail: "Base projection has a funding shortfall despite configured guardrails", health: models.HealthRed},
+		{name: "depletion crossing New Year", start: "2026-04", depletion: intPtr(9), headline: "Funds run out in Jan 2027", detail: "Base projection has a funding shortfall", health: models.HealthRed},
+		{name: "unpaid gap overrides survival", start: "2026-01", survives: true, months: []models.ProjectionMonth{{FundingShortfall: 1}}, headline: "Base projection has a funding shortfall", detail: "unpaid", health: models.HealthRed},
+		{name: "missing depletion date", start: "2026-01", headline: "Base projection has a funding shortfall", detail: "Base projection has a funding shortfall", health: models.HealthRed},
+		{name: "lowering prior raise stays above plan", start: "2026-01", survives: true, months: []models.ProjectionMonth{{PlannedLivingExpenses: 1000, GuardrailMultiplier: 1.1}}, headline: "Funded through Dec 2063", detail: "Base projection funds your planned lifestyle", health: models.HealthNeutral},
+		{name: "legacy zero multiplier without baseline", start: "2026-01", survives: true, months: []models.ProjectionMonth{{GuardrailMultiplier: 0}}, headline: "Funded through Dec 2063", detail: "Base projection funds your planned lifestyle", health: models.HealthNeutral},
+		{name: "zero multiplier with positive baseline is a cut", start: "2026-01", survives: true, months: []models.ProjectionMonth{{PlannedLivingExpenses: 1000, GuardrailMultiplier: 0}}, headline: "Funded through Dec 2063", detail: "circuit-breaker cuts", health: models.HealthAmber},
+		{name: "cut tolerance", start: "2026-01", survives: true, months: []models.ProjectionMonth{{PlannedLivingExpenses: 1000, GuardrailMultiplier: 1 - 1e-10, FundingShortfall: 1e-8}}, headline: "Funded through Dec 2063", detail: "Base projection funds your planned lifestyle", health: models.HealthNeutral},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: tc.start, Guardrails: &models.GuardrailConfig{Enabled: tc.guards}}
+			a := &models.WhatIfAnalysis{Projection: &models.ProjectionResult{Survives: tc.survives, DepletionMonth: tc.depletion, Months: tc.months}}
+			for _, rate := range []float64{0, 55, 70, 95, 100} {
+				a.MonteCarlo = &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{Runs: 100, SuccessRate: rate}}
+				v := BuildVerdict(a, s)
+				if v.Headline != tc.headline || !strings.Contains(v.Detail, tc.detail) || v.Health != tc.health {
+					t.Errorf("rate %v: verdict = %+v; want %q, %q, %s", rate, v, tc.headline, tc.detail, tc.health)
+				}
+			}
+		})
+	}
+	t.Run("missing inputs and projection", func(t *testing.T) {
+		for _, v := range []VerdictView{BuildVerdict(nil, nil), BuildVerdict(&models.WhatIfAnalysis{}, &models.WhatIfSettings{StartDate: "2026-01", ProjectionYears: 38})} {
+			if v.Headline != "Projection unavailable" || v.Health != models.HealthNeutral {
+				t.Errorf("missing projection = %+v", v)
+			}
 		}
 	})
-
-	t.Run("early depletion is red with depletion-year headline", func(t *testing.T) {
-		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
-		a := &models.WhatIfAnalysis{
-			Projection: &models.ProjectionResult{Survives: false, DepletionMonth: intPtr(72)}, // 6 years
-			BudgetFit:  &models.BudgetFitAnalysis{MonthlyGap: 1601, RequiredRate: 3.1},
-			MonteCarlo: &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{SuccessRate: 12}},
-		}
-		v := BuildVerdict(a, s)
-		if v.Health != models.HealthRed {
-			t.Errorf("Health = %q, want red", v.Health)
-		}
-		if v.Headline != "Funds run out in 2032" {
-			t.Errorf("Headline = %q, want \"Funds run out in 2032\"", v.Headline)
-		}
-		if v.YearsCovered != 6 {
-			t.Errorf("YearsCovered = %d, want 6", v.YearsCovered)
-		}
-		if !v.GapIsShortfall {
-			t.Errorf("GapIsShortfall = false, want true")
-		}
-	})
-
-	t.Run("late depletion is amber", func(t *testing.T) {
-		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
-		a := &models.WhatIfAnalysis{
-			Projection: &models.ProjectionResult{Survives: false, DepletionMonth: intPtr(300)}, // 25 years
-			BudgetFit:  &models.BudgetFitAnalysis{MonthlyGap: 500},
-			MonteCarlo: &models.MonteCarloAnalysis{Stats: &models.MonteCarloStats{SuccessRate: 60}},
-		}
-		if v := BuildVerdict(a, s); v.Health != models.HealthAmber {
-			t.Errorf("Health = %q, want amber", v.Health)
-		}
-	})
-
-	t.Run("nil MonteCarlo degrades gracefully", func(t *testing.T) {
-		s := &models.WhatIfSettings{ProjectionYears: 20, StartDate: "2026-01"}
-		a := &models.WhatIfAnalysis{
-			Projection: &models.ProjectionResult{Survives: true},
-			BudgetFit:  &models.BudgetFitAnalysis{MonthlyGap: -50},
-		}
-		v := BuildVerdict(a, s)
-		if v.HasMonteCarlo {
-			t.Errorf("HasMonteCarlo = true, want false")
-		}
-		if v.Health != models.HealthGreen {
-			t.Errorf("Health = %q, want green (survives, no MC)", v.Health)
-		}
-	})
-
-	t.Run("nil inputs return a defined (non-red) health", func(t *testing.T) {
-		if v := BuildVerdict(nil, nil); v.Health != models.HealthAmber {
-			t.Errorf("Health = %q, want amber for nil inputs (must not silently render red)", v.Health)
-		}
-	})
-
-	t.Run("depletion exactly at the early-depletion boundary is amber", func(t *testing.T) {
-		// 120 months / 12 = 10 years; 10 < earlyDepletionYears(10) is false → amber.
-		// Pins the < vs <= boundary so a future slip can't flip it silently.
-		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
-		a := &models.WhatIfAnalysis{Projection: &models.ProjectionResult{Survives: false, DepletionMonth: intPtr(120)}}
-		if v := BuildVerdict(a, s); v.Health != models.HealthAmber {
-			t.Errorf("Health = %q, want amber at exactly 10 years", v.Health)
-		}
-		// One month earlier (119 → 9 years) crosses into red.
-		a.Projection.DepletionMonth = intPtr(119)
-		if v := BuildVerdict(a, s); v.Health != models.HealthRed {
-			t.Errorf("Health = %q, want red just under 10 years", v.Health)
-		}
-	})
-
-	t.Run("not-survives with nil depletion month falls back to the full horizon", func(t *testing.T) {
-		// Defensive: a non-surviving plan that recorded no depletion month must
-		// not panic; it falls back to ProjectionYears (amber, not red).
-		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
-		a := &models.WhatIfAnalysis{Projection: &models.ProjectionResult{Survives: false, DepletionMonth: nil}}
-		v := BuildVerdict(a, s)
-		if v.YearsCovered != 38 {
-			t.Errorf("YearsCovered = %d, want 38 (fallback to horizon)", v.YearsCovered)
-		}
-		if v.Health != models.HealthAmber {
-			t.Errorf("Health = %q, want amber (38 >= early-depletion cutoff)", v.Health)
-		}
-	})
-
 	t.Run("steady-state in view reports the selected-year gap and rate", func(t *testing.T) {
 		s := &models.WhatIfSettings{ProjectionYears: 38, StartDate: "2026-01"}
 		a := &models.WhatIfAnalysis{
@@ -156,6 +67,9 @@ func TestBuildVerdict(t *testing.T) {
 		}
 		if v.GapYear != 12 {
 			t.Errorf("GapYear = %d, want 12", v.GapYear)
+		}
+		if !v.HasBudgetFit || v.CurrentMonthlyGap != -200 || v.CurrentRequiredRate != 0 {
+			t.Errorf("current funding needs overwritten by selected year: %+v", v)
 		}
 		if v.MonthlyGap != 3400 {
 			t.Errorf("MonthlyGap = %v, want 3400 (steady-state gap, not today's -200)", v.MonthlyGap)
@@ -206,4 +120,10 @@ func TestBuildVerdict(t *testing.T) {
 			t.Errorf("expected HasTaxes/HasEndBalance false, got %v/%v", v.HasTaxes, v.HasEndBalance)
 		}
 	})
+}
+
+func TestProjectionHasLivingCutsNil(t *testing.T) {
+	if projectionHasLivingCuts(nil) {
+		t.Error("nil projection cannot establish living cuts")
+	}
 }

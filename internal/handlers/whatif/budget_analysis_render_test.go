@@ -55,8 +55,8 @@ func TestBudgetAnalysis_Render(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		if got := strings.Count(out, "Monthly Gap"); got != 1 {
-			t.Errorf("expected exactly one Monthly Gap tile at year 0, got %d", got)
+		if got := strings.Count(out, "Needed from portfolio after estimated taxes and RMDs"); got != 1 {
+			t.Errorf("expected exactly one Needed from portfolio after estimated taxes and RMDs tile at year 0, got %d", got)
 		}
 		if !strings.Contains(out, "Suggested Withdrawal Mix") {
 			t.Errorf("withdrawal mix must survive the year-0 dedup")
@@ -73,7 +73,7 @@ func TestBudgetAnalysis_Render(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		if got := strings.Count(out, "Monthly Gap"); got != 2 {
+		if got := strings.Count(out, "Needed from portfolio after estimated taxes and RMDs"); got != 2 {
 			t.Errorf("expected today + year-12 gap tiles, got %d", got)
 		}
 	})

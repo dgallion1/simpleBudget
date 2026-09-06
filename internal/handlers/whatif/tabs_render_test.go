@@ -52,6 +52,46 @@ func TestWhatIfResults_TabStructure(t *testing.T) {
 	}
 }
 
+func TestWhatIfResults_TabAccessibilityRelationships(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	settings := models.DefaultWhatIfSettings()
+	analysis, err := runAnalysisWithCache(context.Background(), settings)
+	if err != nil {
+		t.Fatalf("runAnalysisWithCache: %v", err)
+	}
+	out, err := renderer.RenderToString("whatif-results", buildResultsPartialData(settings, analysis, nil))
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+
+	for i, name := range []string{"overview", "cashflow", "risk", "taxes", "strategies"} {
+		tabID := "wf-tab-" + name
+		panelID := "wf-panel-" + name
+		selected := "false"
+		tabindex := "-1"
+		if i == 0 {
+			selected = "true"
+			tabindex = "0"
+		}
+		tab := `id="` + tabID + `" role="tab" aria-controls="` + panelID + `" aria-selected="` + selected + `" tabindex="` + tabindex + `" data-wf-tab="` + name + `"`
+		if !strings.Contains(out, tab) {
+			t.Errorf("tab %q missing accessible identity/state: %s", name, tab)
+		}
+		panel := `id="` + panelID + `" role="tabpanel" aria-labelledby="` + tabID + `" data-wf-panel="` + name + `"`
+		if !strings.Contains(out, panel) {
+			t.Errorf("panel %q missing relationship to its tab: %s", name, panel)
+		}
+		if count := strings.Count(out, `id="`+tabID+`"`); count != 1 {
+			t.Errorf("tab id %q appears %d times, want 1", tabID, count)
+		}
+		if count := strings.Count(out, `id="`+panelID+`"`); count != 1 {
+			t.Errorf("panel id %q appears %d times, want 1", panelID, count)
+		}
+	}
+}
+
 // TestWhatIfCalculateAndSync_PreserveActiveScenario is a regression test for
 // the calculate/sync handlers omitting ActiveFilename from the partial data:
 // the whatif-results template then rendered data-scenario="" and
@@ -131,5 +171,61 @@ func TestWhatIfSettings_Groups(t *testing.T) {
 	}
 	if !strings.Contains(out, `class="order-1 lg:order-none lg:col-span-4 space-y-4" id="whatif-results"`) {
 		t.Errorf("results column must order before settings on small screens")
+	}
+}
+
+func TestWhatIfSettings_CollapseAccessibilityState(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	settings := models.DefaultWhatIfSettings()
+	analysis, err := runAnalysisWithCache(context.Background(), settings)
+	if err != nil {
+		t.Fatalf("runAnalysisWithCache: %v", err)
+	}
+	out, err := renderer.RenderToString("whatif-content", map[string]any{
+		"Settings": settings, "Analysis": analysis,
+		"Verdict": BuildVerdict(analysis, settings), "ActiveFilename": "whatif.json",
+	})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+
+	for _, name := range []string{"money", "assumptions", "strategies"} {
+		toggleID := "wf-collapse-" + name + "-toggle"
+		bodyID := "wf-collapse-" + name + "-body"
+		toggle := `id="` + toggleID + `" aria-expanded="true" aria-controls="` + bodyID + `" data-wf-collapse-toggle`
+		if !strings.Contains(out, toggle) {
+			t.Errorf("collapse %q missing expanded state and controlled body: %s", name, toggle)
+		}
+		body := `id="` + bodyID + `" role="region" aria-labelledby="` + toggleID + `" data-wf-collapse-body`
+		if !strings.Contains(out, body) {
+			t.Errorf("collapse body %q missing stable accessible relationship: %s", name, body)
+		}
+	}
+}
+
+func TestWhatIfProjectionChart_ResponsiveControlLayout(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	settings := models.DefaultWhatIfSettings()
+	analysis, err := runAnalysisWithCache(context.Background(), settings)
+	if err != nil {
+		t.Fatalf("runAnalysisWithCache: %v", err)
+	}
+	out, err := renderer.RenderToString("whatif-results", buildResultsPartialData(settings, analysis, nil))
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+
+	for _, className := range []string{
+		`class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4"`,
+		`class="flex flex-wrap items-center gap-2"`,
+		`class="inline-flex flex-wrap shrink-0 rounded-md shadow-sm border border-gray-200 dark:border-gray-600"`,
+	} {
+		if !strings.Contains(out, className) {
+			t.Errorf("projection chart missing responsive control class %s", className)
+		}
 	}
 }

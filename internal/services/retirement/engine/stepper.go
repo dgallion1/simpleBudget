@@ -340,7 +340,10 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 	monthlyRMD := MonthlyRMDForMonth(s, monthInYear, st.AnnualRMD, st.TaxDeferredBalance)
 
 	monthResult := ExecuteTaxAwarePortfolioMonth(PortfolioMonthInput{
-		OneTimeExpense:                    oneTimeExpenseThisMonth,
+		// ExtraExpenses is already part of TotalExpenses above. Include it
+		// here only as metadata so discrete Monte Carlo shocks are not
+		// annualized by the tax estimator.
+		OneTimeExpense:                    oneTimeExpenseThisMonth + p.ExtraExpenses,
 		TotalExpenses:                     totalExpenses,
 		IncomeBreakdown:                   incomeBreakdown,
 		MonthlyRMD:                        monthlyRMD,

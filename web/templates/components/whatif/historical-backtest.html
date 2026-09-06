@@ -9,7 +9,7 @@
             {{.Analysis.HistoricalBacktest.DataStartYear}}-{{.Analysis.HistoricalBacktest.DataEndYear}} ({{.Analysis.HistoricalBacktest.TotalSequences}} sequences)
         </span>
     </div>
-    <p class="text-body-sm text-gray-600 dark:text-gray-300 mb-3">Replays your plan through every historical market sequence since 1928 — the share that never run out is the success rate.</p>
+    <p class="text-body-sm text-gray-600 dark:text-gray-300 mb-3">Replays your plan through every historical market sequence since 1928 — the share avoiding modeled depletion is reported below. It does not establish that all spending was paid or the planned lifestyle was maintained.</p>
 
     <!-- Success Rate Comparison -->
     <div class="grid grid-cols-2 gap-4 mb-4">
@@ -17,28 +17,30 @@
             <div class="text-2xl font-bold {{successRateTextClass .Analysis.HistoricalBacktest.SuccessRate}}">
                 {{printf "%.1f" .Analysis.HistoricalBacktest.SuccessRate}}%
             </div>
-            <div class="text-xs text-gray-600 dark:text-gray-300">Historical Success</div>
+            <div class="text-xs text-gray-600 dark:text-gray-300">Historical: avoids depletion</div>
             <div class="text-body-sm text-gray-600 dark:text-gray-300 mt-1">
                 {{.Analysis.HistoricalBacktest.SurvivedCount}} of {{.Analysis.HistoricalBacktest.TotalSequences}} survived
             </div>
         </div>
         <div class="text-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            {{if and .Analysis.MonteCarlo .Analysis.MonteCarlo.Stats (gt .Analysis.MonteCarlo.Stats.Runs 0)}}
             <div class="text-2xl font-bold {{successRateTextClass .Analysis.HistoricalBacktest.MonteCarloSuccessRate}}">
                 {{printf "%.1f" .Analysis.HistoricalBacktest.MonteCarloSuccessRate}}%
             </div>
-            <div class="text-xs text-gray-600 dark:text-gray-300">Monte Carlo Success</div>
+            <div class="text-xs text-gray-600 dark:text-gray-300">Monte Carlo: avoids depletion</div>
+            {{else}}<p class="text-sm text-gray-600 dark:text-gray-300">Monte Carlo results unavailable.</p>{{end}}
         </div>
     </div>
 
     <!-- Difference indicator -->
     {{$diff := .Analysis.HistoricalBacktest.HistoricalVsMC}}
-    {{if ne $diff 0.0}}
-    <div class="mb-4 p-2 rounded-lg {{if gt $diff 0.0}}bg-positive-soft{{else}}bg-warning-soft{{end}}">
-        <p class="text-sm text-center {{if gt $diff 0.0}}text-positive{{else}}text-warning{{end}}">
+    {{if and (ne $diff 0.0) .Analysis.MonteCarlo .Analysis.MonteCarlo.Stats (gt .Analysis.MonteCarlo.Stats.Runs 0)}}
+    <div class="mb-4 p-2 rounded-lg bg-gray-50 dark:bg-gray-700">
+        <p class="text-sm text-center text-gray-700 dark:text-gray-300">
             {{if gt $diff 0.0}}
-            Historical data shows {{printf "%.1f" $diff}}% higher success rate
+            Historical success rate is {{printf "%.1f" $diff}} percentage points higher than Monte Carlo.
             {{else}}
-            Historical data shows {{printf "%.1f" (mul $diff -1)}}% lower success rate
+            Historical success rate is {{printf "%.1f" (mul $diff -1)}} percentage points lower than Monte Carlo.
             {{end}}
         </p>
     </div>

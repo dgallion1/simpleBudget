@@ -45,6 +45,16 @@ func TestFormatMoney(t *testing.T) {
 	}
 }
 
+// TestFormatMoney_ExportedWrapper proves the exported FormatMoney wrapper
+// (used by internal/handlers/whatif for guardrail chart hover text) renders
+// identically to the unexported formatMoney the templates use, since it is
+// a pure pass-through.
+func TestFormatMoney_ExportedWrapper(t *testing.T) {
+	if got, want := FormatMoney(26722.44), "$26,722.44"; got != want {
+		t.Errorf("FormatMoney(26722.44) = %q, want %q", got, want)
+	}
+}
+
 func TestConversionSummary(t *testing.T) {
 	tests := []struct {
 		name string

@@ -373,3 +373,14 @@ main is focused and separately require removal after blur; retain exact focus,
 saved-value, region/status and all other assertions. Old evidence stays intact.
 No change to the independent calibrated oracle. Mechanism: fresh worker's
 contract review caught this test-level assumption before a production edit.
+
+2026-09-07 release-operations catch (primary checker, read-only review): the
+lead's one-shot restart wrapper initially lacked asynchronous spawn-error
+handling, placed the shutdown wait outside recovery, and described rollback
+as restarted before checking old-build health. Conceded before any execution.
+Wrapper now awaits spawn/error, includes shutdown in recovery, waits for a slow
+old process without forced kill or concurrent replacement, and verifies the
+old commit's health before claiming recovery. Graceful deadline accommodates
+the app's30-second HTTP drain plus30-second final snapshot. No application
+source, accepted task verdict, data or settings changed for this correction.
+Mechanism: primary checker reviewing lead-authored release operations.

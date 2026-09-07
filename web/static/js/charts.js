@@ -250,6 +250,10 @@ function renderMajorExpenseBreakdown(items) {
     header.textContent = 'Other categories';
     target.appendChild(header);
 
+    const list = document.createElement('div');
+    list.className = 'grid grid-cols-1 md:grid-cols-2 gap-x-6';
+    target.appendChild(list);
+
     items.forEach(function(it) {
         const row = document.createElement('button');
         row.type = 'button';
@@ -283,7 +287,7 @@ function renderMajorExpenseBreakdown(items) {
         valEl.appendChild(pctEl);
 
         row.appendChild(valEl);
-        target.appendChild(row);
+        list.appendChild(row);
     });
 }
 
@@ -328,6 +332,10 @@ function renderMajorExpenseCredits(items) {
     header.textContent = 'Net credits (refunds met or exceeded spending)';
     target.appendChild(header);
 
+    const list = document.createElement('div');
+    list.className = 'grid grid-cols-1 md:grid-cols-2 gap-x-6';
+    target.appendChild(list);
+
     items.forEach(function(it) {
         const row = document.createElement('button');
         row.type = 'button';
@@ -357,7 +365,7 @@ function renderMajorExpenseCredits(items) {
         valEl.textContent = fmtMoney.format(Number(it.amount) || 0);
         row.appendChild(valEl);
 
-        target.appendChild(row);
+        list.appendChild(row);
     });
 }
 

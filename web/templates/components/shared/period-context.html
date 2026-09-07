@@ -1,0 +1,53 @@
+{{define "shared/period-context"}}
+{{with .Period}}
+<section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <p class="text-sm text-gray-700 dark:text-gray-300">Selected period: {{.SelectedStart.Format "2006-01-02"}} to {{.SelectedEnd.Format "2006-01-02"}} ({{.SelectedDays}} calendar days)</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Prior period: {{.PreviousStart.Format "2006-01-02"}} to {{.PreviousEnd.Format "2006-01-02"}} ({{.PreviousDays}} calendar days){{if eq .ComparisonKind "year"}} — same period last year{{end}}{{if .ComparisonClamped}} — clamped to the prior month's last day{{end}}</p>
+    {{if .HasData}}
+    <p class="text-sm text-gray-700 dark:text-gray-300">Latest transaction: {{.LatestTransaction.Format "2006-01-02"}}</p>
+    {{if .Stale}}
+    <details open>
+        <summary class="text-sm text-gray-700 dark:text-gray-300">Data freshness</summary>
+        <p class="text-sm text-gray-700 dark:text-gray-300">Data is more than seven calendar days old ({{.DataAgeDays}} days). Current-month forecast is unavailable.</p>
+    </details>
+    {{end}}
+    {{else}}
+    <p class="text-sm text-gray-700 dark:text-gray-300">No transaction data available.</p>
+    {{end}}
+    {{if not .HistoryAvailable}}<p class="text-sm text-gray-700 dark:text-gray-300">{{.HistoryReason}}</p>{{end}}
+    <p class="text-sm text-gray-600 dark:text-gray-400">First and last transaction dates are evidence bounds, not proof that all accounts or transactions were imported.</p>
+</section>
+{{end}}
+{{end}}
+
+{{define "shared/period-forecast"}}
+{{if and .Period .Period.ForecastAvailable}}
+<p class="text-sm text-gray-600 dark:text-gray-400">Estimated {{.Period.Today.Format "January 2006"}} total through {{.Period.Today.Format "2006-01-02"}}</p>
+<p class="num text-2xl font-bold text-gray-800 dark:text-gray-100">{{formatMoney .Period.ForecastAmount}}</p>
+<p class="text-sm text-gray-600 dark:text-gray-400">{{if lt .Period.ForecastAmount 0.0}}Net refund estimate. {{end}}Spending pace estimate, not confirmed bills.</p>
+{{else}}
+<p class="text-sm text-gray-700 dark:text-gray-300">Forecast unavailable</p>
+<p class="text-sm text-gray-600 dark:text-gray-400">{{if .Period}}{{.Period.ForecastReason}}{{else}}No period context available{{end}}</p>
+{{end}}
+{{end}}
+
+{{define "shared/period-history"}}
+{{if and .Period .Period.HistoryAvailable}}
+<p class="text-3xl font-bold text-gray-600 dark:text-gray-300">{{formatMoney .HistoricalDaily}}</p>
+{{else}}
+<p class="text-sm text-gray-600 dark:text-gray-400">Not enough history to compare</p>
+{{end}}
+{{end}}
+
+{{define "shared/period-days-remaining"}}
+{{if and .Period .Period.ForecastAvailable}}
+<p class="text-3xl font-bold text-gray-800 dark:text-gray-100">{{.DaysRemaining}}</p>
+{{else}}
+<p class="text-sm text-gray-600 dark:text-gray-400">Unavailable for this selection</p>
+{{end}}
+{{end}}
+
+{{define "dashboard-period-kpis"}}
+{{template "shared/period-context" .}}
+{{template "kpis" .}}
+{{end}}

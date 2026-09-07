@@ -1,0 +1,31 @@
+--- /tmp/DI5-final-worker.btR0cu/web/static/js/page-refresh.js	2026-09-06 23:33:31.082123848 -0400
++++ web/static/js/page-refresh.js	2026-09-07 07:49:46.534229541 -0400
+@@ -86,11 +86,24 @@
+         }
+         target = document.querySelector('main');
+         if (target) {
+-            var tabindex = target.getAttribute('tabindex');
+-            target.setAttribute('tabindex', '-1');
++            var releaseTabindex = null;
++            if (target.getAttribute('tabindex') === null) {
++                target.setAttribute('tabindex', '-1');
++                // Keep main focusable until blur. A later attribute write,
++                // even of the same value, transfers ownership to its writer.
++                var changed = false;
++                var observer = new MutationObserver(function () { changed = true; });
++                observer.observe(target, {attributes: true, attributeFilter: ['tabindex']});
++                releaseTabindex = function () {
++                    var untouched = !changed && observer.takeRecords().length === 0;
++                    observer.disconnect();
++                    target.removeEventListener('blur', releaseTabindex);
++                    if (untouched && target.getAttribute('tabindex') === '-1') target.removeAttribute('tabindex');
++                };
++                target.addEventListener('blur', releaseTabindex);
++            }
+             target.focus({preventScroll: true});
+-            if (tabindex === null) target.removeAttribute('tabindex');
+-            else target.setAttribute('tabindex', tabindex);
++            if (releaseTabindex && document.activeElement !== target) releaseTabindex();
+             keepVisible(target);
+         }
+     }

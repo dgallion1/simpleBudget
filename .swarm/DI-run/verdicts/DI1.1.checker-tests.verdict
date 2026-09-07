@@ -1,0 +1,157 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DI1
+ATTEMPT: 1
+---
+Acceptance numbering follows the five checkboxes in
+.superpowers/sdd/2026-09-06-dashboard-insights/task-1-brief.md, read with the
+Global Constraints and referenced design's Subscription classification section.
+
+ISOLATION
+Lead-authorized git archive 69e484a into /tmp/DI1-checker-tests.X5bN0s,
+then cp -a --parents of ONLY the 14 frozen manifest paths. This superseded
+whole-tree copying; no DI6 working files or live data were copied.
+Baseline: /tmp/DI1-checker-baseline.mBOpD0.
+Mutation copy: /tmp/DI1-checker-mutant.TiaUlj.
+Checker fixtures exist only in these scratch directories.
+No git state operations, source fixes, subagents, or real-data writes.
+The only real-tree write by this checker is this verdict.
+
+1. FAIL — Required positive/negative classification fixtures and UI/tool parity.
+Command in isolated snapshot:
+rtk proxy go test -count=1 -v ./internal/services/insights -run TestCheckerDI1ExactDemoEvidence
+Exit 1:
+merchant="cloud storage" classification="other" want="subscription" annual=300.00
+merchant="autoloan finance" classification="other" want="bill" annual=300.00
+Both fail with reason "Recurring pattern without positive subscription or bill evidence".
+
+F1: Synthetic Description="Cloud Storage",
+OriginalDescription="CLOUDBOX*STORAGE PLAN CLOUDBOX.COM CA",
+Category="Electronics & Software": three monthly $25 outflows.
+The brief requires Cloud Storage true; design requires recognizing the demo.
+classification.go:20-26 selects the original description, whose bank descriptor
+is unrecognized. Friendly-description-only worker fixtures miss this case.
+
+F2: Synthetic Description="AutoLoan Finance",
+OriginalDescription="AUTOLOAN FINANCE BILL PMT", Category="Auto Payment":
+three monthly $25 outflows. The design requires loans in recurring bills.
+classification.go:30,35 recognizes neither this category nor AUTOLOAN as
+the two-word "auto loan" phrase.
+Both are classification gaps, not missing rows or understated all-recurring totals.
+Exact fixtures were obtained from checker-second's verdict after the lead
+reported its findings; this checker independently ran the reproduction above.
+Probe: internal/services/insights/zz_checker_di1_test.go in the isolated snapshot.
+
+The worker's simpler fixtures and UI/MCP parity test do pass:
+rtk proxy go test -count=1 ./internal/services/insights ./internal/handlers/insights ./internal/services/mcpsvc/spend ./internal/templates ./internal/handlers/dashboard ./internal/services/mcpsvc/ledger ./internal/services/accounts
+Exit 0, seven "ok budget2/internal/..." package lines.
+Read TestDI1PositiveEvidence, TestDI1OriginalEvidenceAndAnnotation,
+TestDI1UncappedTotals, TestDI1OtherRecurringVisible, and the modified
+TestRenderInsightsSubscriptionInitial and UncappedResults assertions.
+They exercise the named simple positives/exclusions, original evidence,
+renames, retention and MCP filtering; they omit F1/F2's original bank strings.
+
+2. FAIL for required classifier coverage; shared-producer wiring verified.
+Command:
+rtk proxy bash -c 'rg -n "DetectRecurringAt\(|DetectRecurring\(|ClassifyRecurring\(|IsSubscription\(" internal --glob "!*_test.go"'
+Output enumerated:
+- insights/recurring.go:51 wrapper delegates to ClassifyRecurring;
+  :423 detector classifies every retained result.
+- handlers/insights/handlers.go:153 main model and :293 standalone partial.
+- mcpsvc/spend/recurring.go:72 row classifier and :151 detector.
+- handlers/dashboard/accounts_card.go:254 detector for projections.
+- mcpsvc/ledger/accounts.go:353 explicit and :369 default projection detector.
+UI groups consume detector classification; MCP consumes the same classifier.
+Executable parity checks passed for covered fixtures, but sharing a producer
+also shares the incorrect F1/F2 result. No separate classifier divergence alleged.
+
+3. PASS on exercised retention, merchant identity and estimate scope.
+The worker TestDI1UncappedTotals asserts 22 rows, groups 1 subscription /
+1 bill / 20 other, annual 25320, monthly 2110, subscriptions monthly 10;
+SDK in-memory MCP rows match merchants, reasons, classifications and annual
+estimates, reject duplicates, and subscriptions_only returns one row / annual 120.
+TestDetectRecurringPaymentsAt_UncappedResults asserts exactly 25 retained series.
+Both passed in the uncached package command above.
+
+Additional checker commands in isolated snapshot:
+rtk proxy go test -count=1 -v ./internal/handlers/insights -run TestCheckerDI1
+Exit 0, TestCheckerDI1RenderedRetention PASS:
+"rendered Monthly Recurring=$2,110.00; annual=$25,320.00; subscriptions=$10.00 / 1 active; other rows=20; standalone rows=22; merchants and shared category annotations retained"
+Assertions target actual template output: adjacent labeled KPI strings, all
+20 other merchant spans, 22 category annotations despite one shared label,
+all 22 standalone rows and classification/reason text, and merchant-based links.
+Initial probe expectations assumed title case and literal '+' in the HTML;
+observed lowercase merchant labels and '&#43;' corrected the harness only.
+These were not product defects.
+
+rtk proxy go test -count=1 -v ./internal/handlers/dashboard ./internal/services/mcpsvc/ledger -run TestCheckerDI1
+Exit 0, both TestCheckerDI1ProjectionRetention tests PASS:
+"dashboard: retained 22 classified series, annual=25320, projected minimum=2890 (5000 - 2110)"
+"explicit: retained 22 classified series, annual=25320, projected minimum=2890 (5000 - 2110)"
+"default: retained 22 classified series, annual=25320, projected minimum=2890 (5000 - 2110)"
+Each probe supplies detected results to accounts.Project with a synthetic $5000
+anchor; no account, transfer or storage implementation changes.
+The full focused suites include cadence/freshness/history and account tests.
+No claim of exhaustive fractional-cent reconciliation or future DI2-4 semantics.
+
+4. PASS — Package-scoped validation, per the lead's explicit scope override.
+rtk proxy make -f Makefile -f /tmp/DI1-focused.mk check
+Exit 0, final line: "✓ all checks passed".
+The temporary supplemental makefile narrows vet, staticcheck, govulncheck,
+test and build to the seven packages listed in criterion 1. It retains the
+repository check target's dependencies and unmodified css-verify recipe.
+Tests use -count=1. Output includes:
+"No vulnerabilities found."
+"tailwind.css is up to date"
+seven uncached package passes and successful focused go build.
+This is a scoped composite check, not a claim to have run an unmodified
+whole-repository check or go build ./.... Full integration belongs to the lead.
+DI1 is Tier 2; no DI1 executable oracle was present/required.
+
+5. PASS — Manifest/report present and reconciled.
+Read .swarm/DI-run/reports/DI1.1.md: contains commands, consumer enumeration
+and red/green evidence. Historical pre-edit command execution is worker-reported;
+fresh checker evidence is separately recorded here.
+Command in isolated snapshot:
+rtk proxy bash -c 'git apply --reverse --check /tmp/DI1.1-review.diff && printf "Frozen diff reverse-check PASS\n"; git apply --numstat /tmp/DI1.1-review.diff'
+Exit 0: "Frozen diff reverse-check PASS"; numstat enumerates 14 files.
+Sorted diff-header paths compared with sorted manifest via diff -u:
+"Manifest equals frozen diff: 14 paths PASS".
+Read-only shell matching of manifest paths against .swarm/DI-run/critical.globs:
+"Critical path matches: 0".
+
+REGRESSION-TEST MUTATION EVIDENCE
+In /tmp/DI1-checker-mutant.TiaUlj only, restored recurring.go and
+pages/insights.html to archive baseline using apply_patch; left worker tests.
+rtk proxy go test -count=1 -v ./internal/services/insights ./internal/handlers/insights ./internal/templates -run 'TestDI1PositiveEvidence|TestDI1UncappedTotals|TestDetectRecurringPaymentsAt_UncappedResults|TestDI1OtherRecurringVisible|TestRenderInsightsSubscriptionInitial'
+Exit 1 with behavioral assertion failures:
+- Auto Loan/Travel/Fuel/Pets/ATM/Dining/Home Maintenance/Unknown become true.
+- "expected all 25 results, got 20".
+- totals annual=24000 monthly=2000 subscriptions=0; want 25320,2110,10.
+- missing other heading, merchant, reason and amounts.
+- subscription badge "T" or "旅" instead of merchant "O"; merchant label absent.
+
+Then mutated classifier input to grouped Description instead of Transactions:
+rtk proxy go test -count=1 -v ./internal/services/insights -run TestDI1OriginalEvidenceAndAnnotation
+Exit 1: Spotify original evidence yields other instead of subscription;
+Auto Loan original evidence yields other instead of bill. The wrapper was
+also still at baseline in this run; direct classifier assertions independently fail.
+
+Restored service files to frozen DI1, then blanked only the MCP row reason:
+rtk proxy go test -count=1 -v ./internal/handlers/insights -run TestDI1UncappedTotals
+Exit 1: recurring_di1_test.go:101 "UI/MCP mismatch", including Netflix row
+with empty Reason against nonempty UI ClassificationReason.
+Thus the parity assertions are executed, not merely present after an earlier check.
+
+SCOPE / LIMITS
+Frozen diff is confined to the authorized 12 Go/template files plus the
+worker report and manifest. Critical paths untouched. Foreign working changes
+in DI6 server wiring, inventory tests, uirefresh, page-refresh.js and base.html
+were excluded; docs/demo-assistant.md and planning/run files are not DI1 edits.
+No future findings layout, period/forecast work, browser/theme audit or JS
+execution is claimed. Classification lives in Go; DI1 changes no JS.
+Synthetic rendered/projection probes remain in scratch for lead promotion
+to durable tests if desired. Known Landlock helper failure was bypassed
+with scoped escalation for scratch patches and this verdict only.
+Lead owns escalation scan, adjudication, re-dispatch and gate state.

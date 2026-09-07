@@ -1,0 +1,834 @@
+
+<!DOCTYPE html>
+<html lang="en" class="light">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insights - simpleBudget</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+
+    
+    <script src="/static/vendor/htmx.min.js"></script>
+
+    
+    <script src="/static/vendor/plotly.min.js"></script>
+
+    
+    <link href="/static/css/tailwind.css" rel="stylesheet">
+
+    
+    <script>
+            (function () {
+                const theme = localStorage.getItem('theme');
+                if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                    document.documentElement.classList.remove('light');
+                    document.documentElement.classList.add('dark');
+                }
+            })();
+    </script>
+
+    
+    <link href="/static/css/styles.css" rel="stylesheet">
+
+    <style>
+         
+        .htmx-request .htmx-indicator,
+        .htmx-request.htmx-indicator {
+            display: inline-block;
+        }
+
+        .htmx-indicator {
+            display: none;
+        }
+
+         
+        .htmx-swapping {
+            opacity: 0.5;
+            transition: opacity 0.2s ease-in-out;
+        }
+
+         
+        .chart-container {
+            min-height: 300px;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 dark:bg-gray-900 min-h-screen transition-colors duration-200">
+    
+    <header>
+    <nav
+        class="bg-gradient-to-r from-accent-strong to-accent-strong dark:from-gray-800 dark:to-gray-900 text-white shadow-lg">
+        <div class="container mx-auto px-4">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center space-x-4">
+                    <a href="/" class="text-xl md:text-2xl font-light tracking-wide whitespace-nowrap">
+                        simpleBudget
+                    </a>
+                </div>
+
+                <div class="hidden xl:flex items-center gap-6">
+                    <div class="flex items-center gap-2" role="group" aria-labelledby="nav-group-money">
+                        <span id="nav-group-money" class="text-label uppercase text-white/60">Money</span>
+                        <a href="/dashboard?end=2026-06-28&amp;start=2026-06-01"  class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors ">
+                            Dashboard
+                        </a>
+                        <a href="/explorer?end=2026-06-28&amp;start=2026-06-01"  class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors ">
+                            Explorer
+                        </a>
+                        <a href="/insights?end=2026-06-28&amp;start=2026-06-01" aria-current="page" class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors bg-white/20">
+                            Insights
+                        </a>
+                        <a href="/major-expenses?end=2026-06-28&amp;start=2026-06-01"  class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors ">
+                            Major Expenses
+                        </a>
+                    </div>
+
+                    <div class="h-6 w-px bg-white/20" aria-hidden="true"></div>
+
+                    <div class="flex items-center gap-2" role="group" aria-labelledby="nav-group-plan">
+                        <span id="nav-group-plan" class="text-label uppercase text-white/60">Plan</span>
+                        <a href="/whatif"  class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors ">
+                            What-If
+                        </a>
+                    </div>
+
+                    <div class="h-6 w-px bg-white/20" aria-hidden="true"></div>
+
+                    <div class="flex items-center gap-2" role="group" aria-labelledby="nav-group-setup">
+                        <span id="nav-group-setup" class="text-label uppercase text-white/60">Setup</span>
+                        <a href="/accounts"  class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors ">
+                            Accounts
+                        </a>
+                        <a href="/transfers"  class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors ">
+                            Transfers
+                        </a>
+                        <a href="/filemanager"  class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors ">
+                            File Manager
+                        </a>
+                        
+                    </div>
+
+                    
+                    <button id="theme-toggle" class="p-2 rounded-md hover:bg-white/10 transition-colors"
+                        title="Toggle dark mode" aria-label="Toggle dark mode">
+                        
+                        <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z">
+                            </path>
+                        </svg>
+                        
+                        <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z">
+                            </path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-1 xl:hidden">
+                    <button id="theme-toggle-mobile" class="p-2 rounded-md hover:bg-white/10 transition-colors" title="Toggle dark mode" aria-label="Toggle dark mode">
+                        <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                        <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                    </button>
+                    <button id="mobile-nav-toggle" class="p-2 rounded-md hover:bg-white/10 transition-colors" aria-label="Open navigation menu" aria-expanded="false" aria-controls="mobile-nav">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div id="mobile-nav" class="hidden xl:hidden pb-3 space-y-4">
+                <div role="group" aria-labelledby="mobile-nav-group-money">
+                    <p id="mobile-nav-group-money" class="px-3 text-label uppercase text-white/60">Money</p>
+                    <div class="mt-1 space-y-1">
+                        <a href="/dashboard?end=2026-06-28&amp;start=2026-06-01"  class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 ">Dashboard</a>
+                        <a href="/explorer?end=2026-06-28&amp;start=2026-06-01"  class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 ">Explorer</a>
+                        <a href="/insights?end=2026-06-28&amp;start=2026-06-01" aria-current="page" class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 bg-white/20">Insights</a>
+                        <a href="/major-expenses?end=2026-06-28&amp;start=2026-06-01"  class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 ">Major Expenses</a>
+                    </div>
+                </div>
+                <div role="group" aria-labelledby="mobile-nav-group-plan">
+                    <p id="mobile-nav-group-plan" class="px-3 text-label uppercase text-white/60">Plan</p>
+                    <div class="mt-1 space-y-1">
+                        <a href="/whatif"  class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 ">What-If</a>
+                    </div>
+                </div>
+                <div role="group" aria-labelledby="mobile-nav-group-setup">
+                    <p id="mobile-nav-group-setup" class="px-3 text-label uppercase text-white/60">Setup</p>
+                    <div class="mt-1 space-y-1">
+                        <a href="/accounts"  class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 ">Accounts</a>
+                        <a href="/transfers"  class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 ">Transfers</a>
+                        <a href="/filemanager"  class="block px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 ">File Manager</a>
+                        
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+    </header>
+
+    
+    <main class="container mx-auto px-4 py-6">
+        
+        
+<h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100 mb-4">Insights</h1>
+<div id="insights-wrapper" class="space-y-6">
+    
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        <form id="insights-date-filter"
+              hx-get="/insights" hx-target="#insights-wrapper" hx-select="#insights-wrapper"
+              hx-swap="outerHTML" hx-push-url="true" hx-trigger="change" hx-indicator="#insights-loading"
+              class="flex flex-wrap items-center gap-4">
+
+            
+            <input type="hidden" name="preset" value="">
+            
+
+
+
+
+    <div>
+        <label for="insights-date-start" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
+        <input type="date" id="insights-date-start" name="start" value="2026-06-01" min="2026-01-28" max="2026-06-28"
+            class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
+    </div>
+    <div>
+        <label for="insights-date-end" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
+        <input type="date" id="insights-date-end" name="end" value="2026-06-28" min="2026-01-28" max="2026-06-28"
+            class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
+    </div>
+    
+
+
+<div class="flex flex-wrap gap-1 items-center">
+    
+    <button type="button" data-step="-1" title="Step back" aria-label="Step back"
+        class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+    </button>
+    
+    
+    <button type="button" data-preset="1m"
+        class="insight-preset-btn min-w-[24px] min-h-[24px] px-3 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">1M</button>
+    
+    <button type="button" data-preset="2m"
+        class="insight-preset-btn min-w-[24px] min-h-[24px] px-3 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">2M</button>
+    
+    <button type="button" data-preset="3m"
+        class="insight-preset-btn min-w-[24px] min-h-[24px] px-3 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">3M</button>
+    
+    <button type="button" data-preset="6m"
+        class="insight-preset-btn min-w-[24px] min-h-[24px] px-3 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">6M</button>
+    
+    <button type="button" data-preset="12m"
+        class="insight-preset-btn min-w-[24px] min-h-[24px] px-3 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">12M</button>
+    
+    <button type="button" data-preset="all"
+        class="insight-preset-btn min-w-[24px] min-h-[24px] px-3 py-1 text-sm rounded-md transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">All</button>
+    
+    
+    <button type="button" data-step="1" title="Step forward" aria-label="Step forward"
+        class="px-2 py-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+    </button>
+    
+</div>
+
+
+
+
+            <span id="insights-loading" class="htmx-indicator text-sm text-gray-600 dark:text-gray-400">Updating Insights…</span>
+        </form>
+    </div>
+
+
+    <div id="period-context">
+
+<section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <p class="text-sm text-gray-700 dark:text-gray-300">Selected period: 2026-06-01 to 2026-06-28 (28 calendar days)</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Prior period: 2026-05-04 to 2026-05-31 (28 calendar days)</p>
+    
+    <p class="text-sm text-gray-700 dark:text-gray-300">Latest transaction: 2026-06-28</p>
+    
+    <details open>
+        <summary class="text-sm text-gray-700 dark:text-gray-300">Data freshness</summary>
+        <p class="text-sm text-gray-700 dark:text-gray-300">Data is more than seven calendar days old (70 days). Current-month forecast is unavailable.</p>
+    </details>
+    
+    
+    
+    <p class="text-sm text-gray-600 dark:text-gray-400">First and last transaction dates are evidence bounds, not proof that all accounts or transactions were imported.</p>
+</section>
+
+</div>
+    
+    <section id="insights-change" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="change-heading">
+        <h2 id="change-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100">What changed</h2>
+        <p class="text-sm text-gray-700 dark:text-gray-300">Actual net spending across all outflows, including refunds and excluding transfers.</p>
+        <p class="text-sm text-gray-700 dark:text-gray-300">Selected period: <span class="num font-semibold">$220.00</span> · Prior period: <span class="num">$220.00</span></p>
+        
+        <p class="text-gray-800 dark:text-gray-100">Dollar difference: 
+<span class="num">$0.00 no dollar change</span>
+ · 
+<span class="text-gray-600 dark:text-gray-400">0.0%</span>
+</p>
+        <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Largest contributors</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Grouped by Categories. Up to three largest absolute dollar changes; these are not a complete reconciliation of all spending.</p>
+        <ul class="divide-y divide-gray-200 dark:divide-gray-700">
+            
+            <li class="py-3 flex flex-wrap justify-between gap-2" data-contributor="Dining">
+                <a class="text-accent underline" href="/explorer?category=Dining&amp;start=2026-06-01&amp;end=2026-06-28&amp;type=Outflow">Dining</a>
+                <span class="num text-gray-800 dark:text-gray-100">
+<span class="num">$0.00 no dollar change</span>
+ · 
+<span class="text-gray-600 dark:text-gray-400">0.0%</span>
+</span>
+            </li>
+            
+        </ul>
+        
+    </section>
+    <section id="insights-findings" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="findings-heading">
+        <h2 id="findings-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100">Review these transactions</h2>
+        <p class="text-sm text-gray-700 dark:text-gray-300">11 findings in the selected period. A transaction can have more than one finding type.</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Detection uses loaded active history. Each finding below is tied to an actual transaction in the selected period; price-creep evidence can extend beyond that period.</p>
+        
+        <ul id="findings-preview" class="divide-y divide-gray-200 dark:divide-gray-700">
+<li id="finding-price-creep-06362a89ccaba70a" data-finding-type="price-creep" data-finding-hash="06362a89ccaba70a" class="py-4 space-y-2">
+    <div class="flex flex-wrap justify-between gap-2">
+        <a href="/explorer?category=Dining&amp;end=2026-06-28&amp;search=MerchantF&#43;Coffee&amp;start=2026-06-01&amp;type=Outflow" class="text-accent underline break-words">MerchantF Coffee</a>
+        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: -$20.00 outflow</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-400">2026-06-28 · Dining</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Price creep · Median of first three vs last three charges: $10.00 → $20.00 (100.0% increase), 2026-01-28 to 2026-06-28. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.</p>
+</li>
+
+<li id="finding-price-creep-4f7e7bcd9904599b" data-finding-type="price-creep" data-finding-hash="4f7e7bcd9904599b" class="py-4 space-y-2">
+    <div class="flex flex-wrap justify-between gap-2">
+        <a href="/explorer?category=Dining&amp;end=2026-06-28&amp;search=MerchantE&#43;Coffee&amp;start=2026-06-01&amp;type=Outflow" class="text-accent underline break-words">MerchantE Coffee</a>
+        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: -$20.00 outflow</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-400">2026-06-28 · Dining</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Price creep · Median of first three vs last three charges: $10.00 → $20.00 (100.0% increase), 2026-01-28 to 2026-06-28. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.</p>
+</li>
+
+<li id="finding-price-creep-569276981ca6a99e" data-finding-type="price-creep" data-finding-hash="569276981ca6a99e" class="py-4 space-y-2">
+    <div class="flex flex-wrap justify-between gap-2">
+        <a href="/explorer?category=Dining&amp;end=2026-06-28&amp;search=MerchantG&#43;Coffee&amp;start=2026-06-01&amp;type=Outflow" class="text-accent underline break-words">MerchantG Coffee</a>
+        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: -$20.00 outflow</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-400">2026-06-28 · Dining</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Price creep · Median of first three vs last three charges: $10.00 → $20.00 (100.0% increase), 2026-01-28 to 2026-06-28. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.</p>
+</li>
+
+<li id="finding-price-creep-8e34a3fc00986f70" data-finding-type="price-creep" data-finding-hash="8e34a3fc00986f70" class="py-4 space-y-2">
+    <div class="flex flex-wrap justify-between gap-2">
+        <a href="/explorer?category=Dining&amp;end=2026-06-28&amp;search=MerchantC&#43;Coffee&amp;start=2026-06-01&amp;type=Outflow" class="text-accent underline break-words">MerchantC Coffee</a>
+        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: -$20.00 outflow</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-400">2026-06-28 · Dining</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Price creep · Median of first three vs last three charges: $10.00 → $20.00 (100.0% increase), 2026-01-28 to 2026-06-28. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.</p>
+</li>
+
+<li id="finding-price-creep-986bb2c4c2b80055" data-finding-type="price-creep" data-finding-hash="986bb2c4c2b80055" class="py-4 space-y-2">
+    <div class="flex flex-wrap justify-between gap-2">
+        <a href="/explorer?category=Dining&amp;end=2026-06-28&amp;search=MerchantD&#43;Coffee&amp;start=2026-06-01&amp;type=Outflow" class="text-accent underline break-words">MerchantD Coffee</a>
+        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: -$20.00 outflow</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-400">2026-06-28 · Dining</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Price creep · Median of first three vs last three charges: $10.00 → $20.00 (100.0% increase), 2026-01-28 to 2026-06-28. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.</p>
+</li>
+</ul>
+        
+        <details id="all-findings" class="border-t border-gray-200 dark:border-gray-700 pt-3">
+            <summary class="text-accent cursor-pointer">View all 11 findings (6 more)</summary>
+            <ul class="divide-y divide-gray-200 dark:divide-gray-700">
+<li id="finding-price-creep-af87cd538d91d92c" data-finding-type="price-creep" data-finding-hash="af87cd538d91d92c" class="py-4 space-y-2">
+    <div class="flex flex-wrap justify-between gap-2">
+        <a href="/explorer?category=Dining&amp;end=2026-06-28&amp;search=MerchantB&#43;Coffee&amp;start=2026-06-01&amp;type=Outflow" class="text-accent underline break-words">MerchantB Coffee</a>
+        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: -$20.00 outflow</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-400">2026-06-28 · Dining</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Price creep · Median of first three vs last three charges: $10.00 → $20.00 (100.0% increase), 2026-01-28 to 2026-06-28. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.</p>
+</li>
+
+<li id="finding-price-creep-c48663f13c2dd871" data-finding-type="price-creep" data-finding-hash="c48663f13c2dd871" class="py-4 space-y-2">
+    <div class="flex flex-wrap justify-between gap-2">
+        <a href="/explorer?category=Dining&amp;end=2026-06-28&amp;search=MerchantH&#43;Coffee&amp;start=2026-06-01&amp;type=Outflow" class="text-accent underline break-words">MerchantH Coffee</a>
+        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: -$20.00 outflow</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-400">2026-06-28 · Dining</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Price creep · Median of first three vs last three charges: $10.00 → $20.00 (100.0% increase), 2026-01-28 to 2026-06-28. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.</p>
+</li>
+
+<li id="finding-price-creep-c9325c61cd7d4ef3" data-finding-type="price-creep" data-finding-hash="c9325c61cd7d4ef3" class="py-4 space-y-2">
+    <div class="flex flex-wrap justify-between gap-2">
+        <a href="/explorer?category=Dining&amp;end=2026-06-28&amp;search=MerchantI&#43;Coffee&amp;start=2026-06-01&amp;type=Outflow" class="text-accent underline break-words">MerchantI Coffee</a>
+        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: -$20.00 outflow</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-400">2026-06-28 · Dining</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Price creep · Median of first three vs last three charges: $10.00 → $20.00 (100.0% increase), 2026-01-28 to 2026-06-28. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.</p>
+</li>
+
+<li id="finding-price-creep-d1263b78c9d55355" data-finding-type="price-creep" data-finding-hash="d1263b78c9d55355" class="py-4 space-y-2">
+    <div class="flex flex-wrap justify-between gap-2">
+        <a href="/explorer?category=Dining&amp;end=2026-06-28&amp;search=MerchantJ&#43;Coffee&amp;start=2026-06-01&amp;type=Outflow" class="text-accent underline break-words">MerchantJ Coffee</a>
+        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: -$20.00 outflow</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-400">2026-06-28 · Dining</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Price creep · Median of first three vs last three charges: $10.00 → $20.00 (100.0% increase), 2026-01-28 to 2026-06-28. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.</p>
+</li>
+
+<li id="finding-price-creep-d1f92e8ae8e95b35" data-finding-type="price-creep" data-finding-hash="d1f92e8ae8e95b35" class="py-4 space-y-2">
+    <div class="flex flex-wrap justify-between gap-2">
+        <a href="/explorer?category=Dining&amp;end=2026-06-28&amp;search=MerchantA&#43;Coffee&amp;start=2026-06-01&amp;type=Outflow" class="text-accent underline break-words">MerchantA Coffee</a>
+        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: -$20.00 outflow</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-400">2026-06-28 · Dining</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Price creep · Median of first three vs last three charges: $10.00 → $20.00 (100.0% increase), 2026-01-28 to 2026-06-28. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.</p>
+</li>
+
+<li id="finding-price-creep-e2d44f99bf649f70" data-finding-type="price-creep" data-finding-hash="e2d44f99bf649f70" class="py-4 space-y-2">
+    <div class="flex flex-wrap justify-between gap-2">
+        <a href="/explorer?category=Dining&amp;end=2026-06-28&amp;search=MerchantK&#43;Coffee&amp;start=2026-06-01&amp;type=Outflow" class="text-accent underline break-words">MerchantK Coffee</a>
+        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: -$20.00 outflow</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-400">2026-06-28 · Dining</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Price creep · Median of first three vs last three charges: $10.00 → $20.00 (100.0% increase), 2026-01-28 to 2026-06-28. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.</p>
+</li>
+</ul>
+        </details>
+        
+        
+    </section>
+    <section id="insights-recurring" class="space-y-4" aria-labelledby="recurring-heading">
+        <div class="space-y-2">
+            <h2 id="recurring-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100">Detected recurring spending</h2>
+            <p class="text-sm text-gray-700 dark:text-gray-300">Estimates from history through 2026-06-28, not actual selected-period spending or confirmed obligations. All detected recurring series are shown without a row limit.</p>
+            <p class="text-sm text-gray-700 dark:text-gray-300">Retained estimates: <span class="num">$196.68</span> monthly · <span class="num">$2,360.27</span> annual. Totals sum displayed estimates. Monthly and annual figures are rounded separately.</p>
+        </div>
+        
+<section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="recurring-subscriptions">
+    <h3 id="recurring-subscriptions" class="text-base font-semibold text-gray-800 dark:text-gray-100">Detected subscriptions</h3>
+    <p class="text-sm text-gray-700 dark:text-gray-300">0 retained series · Estimated monthly $0.00 · Estimated annual $0.00</p>
+    <p class="text-sm text-gray-600 dark:text-gray-400">No detected payments in this group. Future commitments may not be represented in the available history.</p>
+</section>
+
+<section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="recurring-bills">
+    <h3 id="recurring-bills" class="text-base font-semibold text-gray-800 dark:text-gray-100">Recurring bills</h3>
+    <p class="text-sm text-gray-700 dark:text-gray-300">0 retained series · Estimated monthly $0.00 · Estimated annual $0.00</p>
+    <p class="text-sm text-gray-600 dark:text-gray-400">No detected payments in this group. Future commitments may not be represented in the available history.</p>
+</section>
+
+<section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="recurring-other">
+    <h3 id="recurring-other" class="text-base font-semibold text-gray-800 dark:text-gray-100">Other recurring spending</h3>
+    <p class="text-sm text-gray-700 dark:text-gray-300">11 retained series · Estimated monthly $196.68 · Estimated annual $2,360.27</p>
+    
+    <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Other recurring spending estimates">
+    <table class="w-full min-w-[640px]">
+        <thead><tr class="border-b border-gray-200 dark:border-gray-700">
+            <th scope="col" class="text-left p-3 text-sm text-gray-600 dark:text-gray-400">Merchant and evidence</th>
+            <th scope="col" class="text-right p-3 text-sm text-gray-600 dark:text-gray-400">Estimated payment</th>
+            <th scope="col" class="text-right p-3 text-sm text-gray-600 dark:text-gray-400">Estimated monthly</th>
+            <th scope="col" class="text-right p-3 text-sm text-gray-600 dark:text-gray-400">Estimated annual</th>
+        </tr></thead>
+        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+        
+        <tr>
+            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+                <a class="text-accent underline" href="/explorer?search=merchantb&#43;coffee&amp;type=Outflow&amp;start=2026-06-01&amp;end=2026-06-28"><span>merchantb coffee</span></a>
+                
+                <p>Retail, everyday spending, or conflicting original transaction evidence</p>
+                <p>6 occurrences · ongoing · Last observed 2026-06-28</p>
+                <p>Expected payment estimate as of 2026-06-28: 2026-07-28 · Detection confidence 90%</p>
+            </td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$15.00</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$17.88</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$214.57</td>
+        </tr>
+        
+        <tr>
+            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+                <a class="text-accent underline" href="/explorer?search=merchantd&#43;coffee&amp;type=Outflow&amp;start=2026-06-01&amp;end=2026-06-28"><span>merchantd coffee</span></a>
+                
+                <p>Retail, everyday spending, or conflicting original transaction evidence</p>
+                <p>6 occurrences · ongoing · Last observed 2026-06-28</p>
+                <p>Expected payment estimate as of 2026-06-28: 2026-07-28 · Detection confidence 90%</p>
+            </td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$15.00</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$17.88</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$214.57</td>
+        </tr>
+        
+        <tr>
+            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+                <a class="text-accent underline" href="/explorer?search=merchanti&#43;coffee&amp;type=Outflow&amp;start=2026-06-01&amp;end=2026-06-28"><span>merchanti coffee</span></a>
+                
+                <p>Retail, everyday spending, or conflicting original transaction evidence</p>
+                <p>6 occurrences · ongoing · Last observed 2026-06-28</p>
+                <p>Expected payment estimate as of 2026-06-28: 2026-07-28 · Detection confidence 90%</p>
+            </td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$15.00</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$17.88</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$214.57</td>
+        </tr>
+        
+        <tr>
+            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+                <a class="text-accent underline" href="/explorer?search=merchantk&#43;coffee&amp;type=Outflow&amp;start=2026-06-01&amp;end=2026-06-28"><span>merchantk coffee</span></a>
+                
+                <p>Retail, everyday spending, or conflicting original transaction evidence</p>
+                <p>6 occurrences · ongoing · Last observed 2026-06-28</p>
+                <p>Expected payment estimate as of 2026-06-28: 2026-07-28 · Detection confidence 90%</p>
+            </td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$15.00</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$17.88</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$214.57</td>
+        </tr>
+        
+        <tr>
+            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+                <a class="text-accent underline" href="/explorer?search=merchanta&#43;coffee&amp;type=Outflow&amp;start=2026-06-01&amp;end=2026-06-28"><span>merchanta coffee</span></a>
+                
+                <p>Retail, everyday spending, or conflicting original transaction evidence</p>
+                <p>6 occurrences · ongoing · Last observed 2026-06-28</p>
+                <p>Expected payment estimate as of 2026-06-28: 2026-07-28 · Detection confidence 90%</p>
+            </td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$15.00</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$17.88</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$214.57</td>
+        </tr>
+        
+        <tr>
+            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+                <a class="text-accent underline" href="/explorer?search=merchantc&#43;coffee&amp;type=Outflow&amp;start=2026-06-01&amp;end=2026-06-28"><span>merchantc coffee</span></a>
+                
+                <p>Retail, everyday spending, or conflicting original transaction evidence</p>
+                <p>6 occurrences · ongoing · Last observed 2026-06-28</p>
+                <p>Expected payment estimate as of 2026-06-28: 2026-07-28 · Detection confidence 90%</p>
+            </td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$15.00</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$17.88</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$214.57</td>
+        </tr>
+        
+        <tr>
+            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+                <a class="text-accent underline" href="/explorer?search=merchante&#43;coffee&amp;type=Outflow&amp;start=2026-06-01&amp;end=2026-06-28"><span>merchante coffee</span></a>
+                
+                <p>Retail, everyday spending, or conflicting original transaction evidence</p>
+                <p>6 occurrences · ongoing · Last observed 2026-06-28</p>
+                <p>Expected payment estimate as of 2026-06-28: 2026-07-28 · Detection confidence 90%</p>
+            </td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$15.00</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$17.88</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$214.57</td>
+        </tr>
+        
+        <tr>
+            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+                <a class="text-accent underline" href="/explorer?search=merchantg&#43;coffee&amp;type=Outflow&amp;start=2026-06-01&amp;end=2026-06-28"><span>merchantg coffee</span></a>
+                
+                <p>Retail, everyday spending, or conflicting original transaction evidence</p>
+                <p>6 occurrences · ongoing · Last observed 2026-06-28</p>
+                <p>Expected payment estimate as of 2026-06-28: 2026-07-28 · Detection confidence 90%</p>
+            </td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$15.00</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$17.88</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$214.57</td>
+        </tr>
+        
+        <tr>
+            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+                <a class="text-accent underline" href="/explorer?search=merchanth&#43;coffee&amp;type=Outflow&amp;start=2026-06-01&amp;end=2026-06-28"><span>merchanth coffee</span></a>
+                
+                <p>Retail, everyday spending, or conflicting original transaction evidence</p>
+                <p>6 occurrences · ongoing · Last observed 2026-06-28</p>
+                <p>Expected payment estimate as of 2026-06-28: 2026-07-28 · Detection confidence 90%</p>
+            </td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$15.00</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$17.88</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$214.57</td>
+        </tr>
+        
+        <tr>
+            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+                <a class="text-accent underline" href="/explorer?search=merchantf&#43;coffee&amp;type=Outflow&amp;start=2026-06-01&amp;end=2026-06-28"><span>merchantf coffee</span></a>
+                
+                <p>Retail, everyday spending, or conflicting original transaction evidence</p>
+                <p>6 occurrences · ongoing · Last observed 2026-06-28</p>
+                <p>Expected payment estimate as of 2026-06-28: 2026-07-28 · Detection confidence 90%</p>
+            </td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$15.00</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$17.88</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$214.57</td>
+        </tr>
+        
+        <tr>
+            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+                <a class="text-accent underline" href="/explorer?search=merchantj&#43;coffee&amp;type=Outflow&amp;start=2026-06-01&amp;end=2026-06-28"><span>merchantj coffee</span></a>
+                
+                <p>Retail, everyday spending, or conflicting original transaction evidence</p>
+                <p>6 occurrences · ongoing · Last observed 2026-06-28</p>
+                <p>Expected payment estimate as of 2026-06-28: 2026-07-28 · Detection confidence 90%</p>
+            </td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$15.00</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$17.88</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">$214.57</td>
+        </tr>
+        
+        </tbody>
+    </table>
+    </div>
+    
+</section>
+
+    </section>
+    
+    <section id="insights-supporting" class="space-y-4" aria-labelledby="supporting-heading">
+        <h2 id="supporting-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100">Supporting charts and tables</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Spending trends</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Compare the selected and prior periods by Categories. Exact values and changes are in the adjacent table.</p>
+            
+            <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Spending trends chart">
+            <div id="chart-trends" class="chart-container min-w-[640px]" hx-get="/insights/trends/chart?start=2026-06-01&amp;end=2026-06-28" hx-trigger="load" hx-swap="none"><p class="text-sm text-gray-600 dark:text-gray-400">Loading chart…</p></div>
+            </div>
+            
+<div class="overflow-x-auto" tabindex="0" role="region" aria-label="Spending trend values">
+<table id="category-trends-table" class="w-full min-w-[640px]">
+    <caption class="text-left text-sm text-gray-600 dark:text-gray-400 py-3">Selected 2026-06-01 to 2026-06-28; prior 2026-05-04 to 2026-05-31</caption>
+    <thead><tr class="border-b border-gray-200 dark:border-gray-700">
+        
+        <th scope="col" class="p-3 text-left text-sm text-gray-600 dark:text-gray-400"><button type="button" data-sort-fn="sortTrendsTable" data-sort="category" class="flex items-center gap-1">Category<span class="sort-icon" data-col="category"></span></button></th>
+        
+        <th scope="col" class="p-3 text-left text-sm text-gray-600 dark:text-gray-400"><button type="button" data-sort-fn="sortTrendsTable" data-sort="current" class="flex items-center gap-1">Selected<span class="sort-icon" data-col="current"></span></button></th>
+        
+        <th scope="col" class="p-3 text-left text-sm text-gray-600 dark:text-gray-400"><button type="button" data-sort-fn="sortTrendsTable" data-sort="previous" class="flex items-center gap-1">Prior<span class="sort-icon" data-col="previous"></span></button></th>
+        
+        <th scope="col" class="p-3 text-left text-sm text-gray-600 dark:text-gray-400"><button type="button" data-sort-fn="sortTrendsTable" data-sort="change" class="flex items-center gap-1">Dollar change<span class="sort-icon" data-col="change"></span></button></th>
+        
+    </tr></thead>
+    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+    
+    <tr data-category="Dining" data-current="220" data-previous="220" data-change="0">
+        <td class="p-3 text-sm"><a class="text-accent underline" href="/explorer?category=Dining&amp;start=2026-06-01&amp;end=2026-06-28&amp;type=Outflow">Dining</a></td>
+        <td class="p-3 text-sm num text-gray-800 dark:text-gray-100">$220.00</td>
+        <td class="p-3 text-sm num text-gray-800 dark:text-gray-100">$220.00</td>
+        <td class="p-3 text-sm text-gray-800 dark:text-gray-100">
+<span class="num">$0.00 no dollar change</span>
+ · 
+<span class="text-gray-600 dark:text-gray-400">0.0%</span>
+</td>
+    </tr>
+    
+    </tbody>
+</table>
+</div>
+
+            
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Income sources</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Recorded income in the selected period.</p>
+            
+<div class="overflow-y-auto max-h-96" tabindex="0" role="region" aria-label="Income sources">
+    
+    <div class="p-8 text-center text-gray-600 dark:text-gray-400">
+        No income patterns detected.
+    </div>
+    
+</div>
+
+        </div>
+        
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+    <div class="p-4 border-b dark:border-gray-700 flex items-center justify-between">
+        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"></path>
+            </svg>
+            Anomalies
+        </h3>
+        <span class="text-sm text-gray-600 dark:text-gray-400">0 in this period</span>
+    </div>
+    <p class="px-4 pt-3 text-body-sm text-gray-600 dark:text-gray-400">
+        Anomalies are detected across your full transaction history — not just the selected period — so peer
+        comparisons stay stable and a long-standing recurring bill isn't repeatedly flagged as "new merchant" just
+        because the date range is narrow. Only anomalies dated within the selected period are listed below.
+    </p>
+    <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Selected-period anomalies table">
+        
+        <div class="p-8 text-center text-gray-600 dark:text-gray-400">
+            <svg class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"></path>
+            </svg>
+            <p>No anomalies in this period.</p>
+        </div>
+        
+    </div>
+</div>
+
+        
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+    <div class="p-4 border-b dark:border-gray-700 flex items-center justify-between">
+        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.25 18L9 11.25l4.306 4.306a11.95 11.95 0 015.814-5.518l2.74-1.22m0 0l-5.94-2.281m5.94 2.28l-2.28 5.941"></path>
+            </svg>
+            Price Creep
+        </h3>
+        <span class="text-sm text-gray-600 dark:text-gray-400">11 detected</span>
+    </div>
+    <p class="px-4 pt-3 text-body-sm text-gray-600 dark:text-gray-400">
+        Price creep compares each recurring merchant's earliest charges to its most recent charges across your full
+        transaction history, regardless of the selected date range.
+    </p>
+    <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Whole-history price creep table">
+        
+        <table id="pricecreep-table" class="w-full">
+            <thead class="bg-gray-50 dark:bg-gray-900">
+                <tr>
+                    <th scope="col" class="text-left p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Merchant</th>
+                    <th scope="col" class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">First &rarr; Current</th>
+                    <th scope="col" class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Change</th>
+                    <th scope="col" class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Occurrences</th>
+                    <th scope="col" class="text-left p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Since</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                
+                <tr class="hover:bg-negative-soft transition-colors">
+                    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="merchanta coffee">merchanta coffee</td>
+                    <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200 whitespace-nowrap">$10.00 &rarr; $20.00</td>
+                    <td class="p-3 text-sm text-right font-medium text-negative">&#43;100.0%</td>
+                    <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">6</td>
+                    <td class="p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Jan 28, 2026</td>
+                </tr>
+                
+                <tr class="hover:bg-negative-soft transition-colors">
+                    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="merchantb coffee">merchantb coffee</td>
+                    <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200 whitespace-nowrap">$10.00 &rarr; $20.00</td>
+                    <td class="p-3 text-sm text-right font-medium text-negative">&#43;100.0%</td>
+                    <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">6</td>
+                    <td class="p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Jan 28, 2026</td>
+                </tr>
+                
+                <tr class="hover:bg-negative-soft transition-colors">
+                    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="merchantc coffee">merchantc coffee</td>
+                    <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200 whitespace-nowrap">$10.00 &rarr; $20.00</td>
+                    <td class="p-3 text-sm text-right font-medium text-negative">&#43;100.0%</td>
+                    <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">6</td>
+                    <td class="p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Jan 28, 2026</td>
+                </tr>
+                
+                <tr class="hover:bg-negative-soft transition-colors">
+                    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="merchantd coffee">merchantd coffee</td>
+                    <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200 whitespace-nowrap">$10.00 &rarr; $20.00</td>
+                    <td class="p-3 text-sm text-right font-medium text-negative">&#43;100.0%</td>
+                    <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">6</td>
+                    <td class="p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Jan 28, 2026</td>
+                </tr>
+                
+                <tr class="hover:bg-negative-soft transition-colors">
+                    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="merchante coffee">merchante coffee</td>
+                    <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200 whitespace-nowrap">$10.00 &rarr; $20.00</td>
+                    <td class="p-3 text-sm text-right font-medium text-negative">&#43;100.0%</td>
+                    <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">6</td>
+                    <td class="p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Jan 28, 2026</td>
+                </tr>
+                
+                <tr class="hover:bg-negative-soft transition-colors">
+                    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="merchantf coffee">merchantf coffee</td>
+                    <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200 whitespace-nowrap">$10.00 &rarr; $20.00</td>
+                    <td class="p-3 text-sm text-right font-medium text-negative">&#43;100.0%</td>
+                    <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">6</td>
+                    <td class="p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Jan 28, 2026</td>
+                </tr>
+                
+                <tr class="hover:bg-negative-soft transition-colors">
+                    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="merchantg coffee">merchantg coffee</td>
+                    <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200 whitespace-nowrap">$10.00 &rarr; $20.00</td>
+                    <td class="p-3 text-sm text-right font-medium text-negative">&#43;100.0%</td>
+                    <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">6</td>
+                    <td class="p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Jan 28, 2026</td>
+                </tr>
+                
+                <tr class="hover:bg-negative-soft transition-colors">
+                    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="merchanth coffee">merchanth coffee</td>
+                    <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200 whitespace-nowrap">$10.00 &rarr; $20.00</td>
+                    <td class="p-3 text-sm text-right font-medium text-negative">&#43;100.0%</td>
+                    <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">6</td>
+                    <td class="p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Jan 28, 2026</td>
+                </tr>
+                
+                <tr class="hover:bg-negative-soft transition-colors">
+                    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="merchanti coffee">merchanti coffee</td>
+                    <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200 whitespace-nowrap">$10.00 &rarr; $20.00</td>
+                    <td class="p-3 text-sm text-right font-medium text-negative">&#43;100.0%</td>
+                    <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">6</td>
+                    <td class="p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Jan 28, 2026</td>
+                </tr>
+                
+                <tr class="hover:bg-negative-soft transition-colors">
+                    <td class="p-3 text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="merchantj coffee">merchantj coffee</td>
+                    <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200 whitespace-nowrap">$10.00 &rarr; $20.00</td>
+                    <td class="p-3 text-sm text-right font-medium text-negative">&#43;100.0%</td>
+                    <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">6</td>
+                    <td class="p-3 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">Jan 28, 2026</td>
+                </tr>
+                
+            </tbody>
+        </table>
+        
+        <p class="p-3 text-body-sm text-center text-gray-600 dark:text-gray-400">Showing top 10 of 11 merchants with price creep.</p>
+        
+        
+    </div>
+</div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Spending pace</h3>
+            
+            <p class="text-sm text-gray-700 dark:text-gray-300">Selected-period daily average: <span class="num">$7.86</span> · Prior-period daily average: <span class="num">$7.86</span></p>
+            
+            
+
+<p class="text-sm text-gray-700 dark:text-gray-300">Forecast unavailable</p>
+<p class="text-sm text-gray-600 dark:text-gray-400">Selected range does not include the current month from its start through today</p>
+
+
+        </div>
+    </section>
+</div>
+<script src="/static/js/insights.js" defer></script>
+
+        
+    </main>
+
+    
+    
+    <footer class="bg-gray-800 dark:bg-gray-950 text-gray-400 py-4 mt-8">
+        <div class="container mx-auto px-4 text-center text-sm">
+            simpleBudget &copy; 2026
+        </div>
+    </footer>
+    
+
+    
+    <script src="/static/js/charts.js"></script>
+    <script src="/static/js/whatif-tabs.js"></script>
+    
+    <script src="/static/js/interactions.js"></script>
+
+    
+    
+
+    
+    <script src="/static/js/base.js"></script>
+    <script src="/static/js/page-refresh.js"></script>
+</body>
+
+</html>

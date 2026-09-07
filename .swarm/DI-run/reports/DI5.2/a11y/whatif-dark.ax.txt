@@ -1,0 +1,496 @@
+- banner:
+  - navigation:
+    - link "simpleBudget":
+      - /url: /
+    - group "Money":
+      - text: Money
+      - link "Dashboard":
+        - /url: /dashboard
+      - link "Explorer":
+        - /url: /explorer
+      - link "Insights":
+        - /url: /insights
+      - link "Major Expenses":
+        - /url: /major-expenses
+    - group "Plan":
+      - text: Plan
+      - link "What-If":
+        - /url: /whatif
+    - group "Setup":
+      - text: Setup
+      - link "Accounts":
+        - /url: /accounts
+      - link "Transfers":
+        - /url: /transfers
+      - link "File Manager":
+        - /url: /filemanager
+      - link "Duplicates 1":
+        - /url: /duplicates
+    - button "Toggle dark mode":
+      - img
+- main:
+  - heading "What-If Analysis" [level=1]
+  - text: "Scenario:"
+  - combobox "Scenario:":
+    - option "Current Plan" [selected]
+  - button "New":
+    - img
+    - text: New
+  - button "Money In / Out" [expanded]:
+    - text: Money In / Out
+    - img
+  - region "Money In / Out":
+    - heading "Portfolio & Expenses" [level=2]
+    - button "Sync from Dashboard…":
+      - img
+      - text: Sync from Dashboard…
+    - text: Portfolio Value
+    - combobox "Portfolio value slider range":
+      - option "$0-10K"
+      - option "$0-50K"
+      - option "$0-100K"
+      - option "$0-500K"
+      - option "$0-1M" [selected]
+      - option "$0-5M"
+      - option "$0-20M"
+    - slider "Portfolio Value": "1000000"
+    - text: $1,000,000 Monthly Living Expenses
+    - slider "Monthly Living Expenses": "4400"
+    - text: $4,400
+    - paragraph: "In today's dollars; inflation is applied during projection. Excludes healthcare premiums and property tax — those are entered below and added on top. Plan total today: $5,400/mo."
+    - text: Monthly Property Tax
+    - spinbutton "Monthly Property Tax": "350"
+    - paragraph: Annual bill ÷ 12. Leave 0 if you rent or own outright with no tax.
+    - text: Property Tax Inflation %
+    - spinbutton "Property Tax Inflation %": "2.0"
+    - paragraph: Annual rate (default 4%). Tracks assessment + levy growth.
+    - text: Projection Years
+    - slider "Projection Years": "30"
+    - text: 30 years
+    - heading "Income Sources" [level=2]
+    - text: Your Social Security - $2850/mo from SS Optimizer Already claiming at age 67 Spouse Social Security - $1800/mo from SS Optimizer Already claiming at age 65
+    - textbox "Name (e.g., Social Security)"
+    - spinbutton "Monthly $"
+    - text: Starts yr (0=now)
+    - spinbutton "Starts yr (0=now)": "0"
+    - text: Ends yr (blank=never)
+    - spinbutton "Ends yr (blank=never)"
+    - checkbox "Apply COLA (2%/yr)"
+    - text: Apply COLA (2%/yr)
+    - button "Add Income"
+    - heading "Healthcare Costs" [level=2]
+    - button "+ Add Person"
+    - text: Demo Husband Age 67
+    - combobox "Demo Husband current health coverage":
+      - option "Employer"
+      - option "ACA"
+      - option "Medicare" [selected]
+    - button "Remove"
+    - text: Person
+    - combobox "Person":
+      - option "Manual Entry"
+      - option "Demo Husband (Age 67)" [selected]
+      - option "Demo Wife (Age 65)"
+    - text: Source Linked to canonical person Monthly Cost $350
+    - slider "Monthly Cost": "350"
+    - text: Medicare Inflation 4.5%
+    - slider "Medicare Inflation": "4.5"
+    - text: Late-life care starts at age
+    - spinbutton "Late-life care starts at age"
+    - text: Care monthly cost (today's $)
+    - spinbutton "Care monthly cost (today's $)"
+    - paragraph: Assisted living / home care, in today's dollars. Inflates at this person's post-Medicare healthcare rate and runs to the end of the projection.
+    - text: Demo Wife Age 65
+    - combobox "Demo Wife current health coverage":
+      - option "Employer"
+      - option "ACA"
+      - option "Medicare" [selected]
+    - button "Remove"
+    - text: Person
+    - combobox "Person":
+      - option "Manual Entry"
+      - option "Demo Husband (Age 67)"
+      - option "Demo Wife (Age 65)" [selected]
+    - text: Source Linked to canonical person Monthly Cost $300
+    - slider "Monthly Cost": "300"
+    - text: Medicare Inflation 4.5%
+    - slider "Medicare Inflation": "4.5"
+    - text: Late-life care starts at age
+    - spinbutton "Late-life care starts at age"
+    - text: Care monthly cost (today's $)
+    - spinbutton "Care monthly cost (today's $)"
+    - paragraph: Assisted living / home care, in today's dollars. Inflates at this person's post-Medicare healthcare rate and runs to the end of the projection.
+    - text: "Total Monthly Healthcare: $650/mo"
+    - heading "Big Ticket Items" [level=2]
+    - text: One-time events
+    - paragraph: No big ticket items added
+    - textbox "Name (e.g., Home Sale)"
+    - text: $
+    - spinbutton "Amount"
+    - text: Year (0=now)
+    - spinbutton "Year (0=now)": "0"
+    - text: Type
+    - combobox "Type":
+      - option "Income" [selected]
+      - option "Expense"
+    - text: Tax
+    - combobox "Tax":
+      - option "None" [selected]
+      - option "Ordinary"
+      - option "Cap Gains"
+    - textbox "Notes (optional)"
+    - button "Add Item"
+    - heading "One-Time Expenses" [level=2]
+    - text: Roof, car, wedding...
+    - paragraph: No one-time expenses added
+    - text: Description
+    - textbox "Description":
+      - /placeholder: e.g., New Roof
+    - text: Projection year (0 = 2026)
+    - spinbutton "Projection year (0 = 2026)": "0"
+    - text: Amount (today's dollars) $
+    - spinbutton "Amount (today's dollars)"
+    - button "Add one-time expense"
+    - heading "Additional Expenses" [level=2]
+    - paragraph: No additional expenses added
+    - textbox "Name (e.g., Travel)"
+    - spinbutton "Monthly $"
+    - text: Starts yr (0=now)
+    - spinbutton "Starts yr (0=now)": "0"
+    - text: Ends yr (blank=never)
+    - spinbutton "Ends yr (blank=never)"
+    - checkbox "Inflation" [checked]
+    - text: Inflation
+    - checkbox "Discretionary"
+    - text: Discretionary
+    - button "Add Expense"
+  - button "Assumptions" [expanded]:
+    - text: Assumptions
+    - img
+  - region "Assumptions":
+    - heading "Rate Assumptions" [level=2]
+    - text: Projection Start Date
+    - textbox "Projection Start Date": 2026-08
+    - text: Persons
+    - button "+ Add Person"
+    - text: Name
+    - textbox "Name": Demo Husband
+    - text: Birth Month
+    - textbox "Birth Month": 1959-06
+    - text: Role Primary Derived Age Age 67 Name
+    - textbox "Name": Demo Wife
+    - text: Birth Month
+    - textbox "Birth Month": 1961-03
+    - text: Role
+    - combobox "Role":
+      - option "Spouse" [selected]
+      - option "Other"
+    - text: Derived Age Age 65
+    - button "Remove"
+    - text: Spending Phase Based On
+    - combobox "Spending Phase Based On":
+      - option "Younger Person (conservative)"
+      - option "Older Person" [selected]
+      - option "Your Age Only"
+      - option "Spouse Age Only"
+    - paragraph: Which person's age triggers Go-Go/Slow-Go/No-Go phase transitions
+    - text: Portfolio Allocation Must equal 100% Tax-Deferred
+    - spinbutton "Tax-Deferred": "70"
+    - text: "% 401k/IRA Roth"
+    - spinbutton "Roth": "10"
+    - text: "% Roth IRA/401k Taxable 20% Brokerage"
+    - paragraph: This split only affects returns when accounts have different asset allocations below.
+    - text: Projection Timing
+    - combobox "Projection Timing":
+      - option "End of month" [selected]
+      - option "Mid-month"
+      - option "Start of month"
+    - paragraph: Controls whether growth is applied before, around, or after monthly withdrawals and deposits.
+    - text: RMD Timing
+    - combobox "RMD Timing":
+      - option "Start of year (conservative)" [selected]
+      - option "Mid year (recommended)"
+      - option "End of year"
+    - paragraph: When during the year RMDs are taken. Mid-year approximates a typical taxpayer who batches the withdrawal during the year. Start-of-year is conservative for portfolio growth.
+    - checkbox "Spouse is sole IRA beneficiary" [checked]
+    - text: Spouse is sole IRA beneficiary
+    - paragraph: When your spouse is your sole beneficiary and more than 10 years younger, RMDs use the IRS Joint Life and Last Survivor Table (larger divisors, smaller RMDs) instead of the Uniform Lifetime Table. Has no effect otherwise.
+    - text: Filing Status
+    - combobox "Filing Status":
+      - option "Single"
+      - option "Married Filing Jointly" [selected]
+      - option "Married Filing Separately"
+      - option "Head of Household"
+    - paragraph: Used for federal brackets, standard deduction, IRMAA thresholds, and Social Security taxation.
+    - text: State Income Tax Rate %
+    - spinbutton "State Income Tax Rate %": "5.50"
+    - paragraph:
+      - text: Flat rate applied to ordinary income. Enter
+      - code: "0"
+      - text: for no-income-tax states (FL, TX, WA, etc.). Leaving the field blank flags this scenario as unconfigured.
+    - text: Taxable Account Assumptions Optional Phase 4 inputs Dividend Yield %
+    - spinbutton "Dividend Yield %": "0.0"
+    - text: Qualified Share %
+    - spinbutton "Qualified Share %": "100"
+    - text: Cap Gains Dist. %
+    - spinbutton "Cap Gains Dist. %": "0.0"
+    - text: Cost Basis $
+    - spinbutton "Cost Basis $": "180000"
+    - paragraph: Leave blank and the projection assumes no unrealized gain, understating the tax on every taxable withdrawal. Enter 0 if the position is fully appreciated.
+    - paragraph: Dividends and capital-gains distributions are treated as taxable cash events and reinvested unless spent.
+    - text: Marketplace Health Coverage Only if retiring before 65 Tax Household Size
+    - spinbutton "Tax Household Size": "2"
+    - text: Premium Tax Credit $/yr
+    - spinbutton "Premium Tax Credit $/yr": "0"
+    - checkbox "Credits paid in advance to the insurer. If so, income over the cliff claws back what has already been paid this year — repayment is uncapped at and above 400% of the poverty level."
+    - text: Credits paid in advance to the insurer. If so, income over the cliff claws back what has already been paid this year — repayment is uncapped at and above 400% of the poverty level.
+    - paragraph:
+      - text: The subsidy cliff is measured against ACA MAGI, which counts
+      - emphasis: all
+      - text: Social Security benefits, not just the taxable part. COBRA counts as employer coverage and forfeits the credit at any income.
+    - text: Delay Tax-Deferred Withdrawals
+    - slider "Delay Tax-Deferred Withdrawals": "0"
+    - text: No delay
+    - paragraph: Cover expenses from income, taxable, and Roth first. RMDs at 73 still apply.
+    - text: "Asset Allocation by Account Each must equal 100% Tax-Deferred (401k/IRA) $700K Bonds: 25% Stocks"
+    - spinbutton "Stocks": "70"
+    - text: "% Cash"
+    - spinbutton "Cash": "5"
+    - text: "% Roth (Roth IRA/401k) $100K Bonds: 10% Stocks"
+    - spinbutton "Stocks": "90"
+    - text: "% Cash"
+    - spinbutton "Cash": "0"
+    - text: "% Year Roth IRA First Funded"
+    - spinbutton "Year Roth IRA First Funded"
+    - paragraph: IRS 5-year rule for tax-free Roth earnings. Leave blank if unknown; projections assume the clock started in the projection start year.
+    - text: "You have a Roth balance but have not set the first-funded year. Projections assume the 5-year clock starts in the projection start year. Taxable (Brokerage) $200K Bonds: 20% Stocks"
+    - spinbutton "Stocks": "75"
+    - text: "% Cash"
+    - spinbutton "Cash": "5"
+    - text: "% Glide Path"
+    - checkbox "Shift stock allocation over time"
+    - text: Shift stock allocation over time Inflation Rate (%)
+    - slider "Inflation Rate (%)": "3"
+    - text: 3.0% Spending Model
+    - paragraph: Using phase-based spending model.
+    - paragraph: Configure phases in the Spending Phases card below.
+    - text: Investment Return Override 0% = use allocation
+    - slider "Investment Return Override": "6.5"
+    - text: Fixed 6.5% (overrides allocation)
+    - heading "Retirement Spending Phases" [level=2]
+    - checkbox "Enable phases" [checked]
+    - text: Enable phases
+    - paragraph: Research shows spending naturally decreases through retirement. Phase-based model is active (3 phases). Dollar amounts are in today's dollars; inflation is applied during projection. Healthcare and late-life care are modeled separately and are not reduced by these multipliers.
+    - text: Go-Go Retirement start
+    - paragraph: "Active retirement: travel, hobbies, dining out"
+    - text: Spending
+    - slider "Spending": "1"
+    - text: 100% $4,400/mo Slow-Go Older age 75+
+    - button "Remove phase":
+      - img
+    - paragraph: "Reduced activity: less travel, more home-based"
+    - text: Age
+    - spinbutton "Age": "75"
+    - text: Spending
+    - slider "Spending": "0.9"
+    - text: 90% $3,960/mo No-Go Older age 85+
+    - button "Remove phase":
+      - img
+    - paragraph: "Limited mobility: basic needs focus"
+    - text: Age
+    - spinbutton "Age": "85"
+    - text: Spending
+    - slider "Spending": "0.85"
+    - text: 85% $3,740/mo
+    - button "Add Phase":
+      - img
+      - text: Add Phase
+    - button "Reset to Defaults"
+    - heading "Spending Trajectory" [level=3]
+    - button "Show"
+  - button "Strategies" [expanded]:
+    - text: Strategies
+    - img
+  - region "Strategies":
+    - heading "Drop/rise guardrails (simple)" [level=2]
+    - paragraph: These rules adjust your living-expense budget. Healthcare, property tax, and other expense lines are not automatically cut. This does not separately protect essential expenses.
+    - paragraph: Cuts the living-expense budget when the portfolio drops from peak; raises it when the portfolio rises above baseline. This is a simplified guardrail — not the four-rule Guyton-Klinger (2006) model.
+    - checkbox "Enable spending guardrails" [checked]
+    - text: Enable spending guardrails
+    - paragraph: Floor (cut spending when portfolio drops)
+    - text: Drop %
+    - spinbutton "Drop %": "20"
+    - paragraph: from peak
+    - text: Cut %
+    - spinbutton "Cut %": "10"
+    - paragraph: spending reduction
+    - paragraph: Ceiling (raise spending when portfolio rises)
+    - text: Rise %
+    - spinbutton "Rise %": "20"
+    - paragraph: above baseline
+    - text: Raise %
+    - spinbutton "Raise %": "5"
+    - paragraph: spending increase
+    - text: Min spending %
+    - spinbutton "Min spending %": "80"
+    - text: Max spending %
+    - spinbutton "Max spending %": "120"
+    - paragraph: The living-expense budget multiplier never drops below 80% or exceeds 120% of the planned living-expense budget. This multiplier does not ensure spending can be funded.
+    - button "Apply Guardrails"
+    - heading "Roth Conversion Strategy" [level=2]
+    - text: Optional tax optimization
+    - checkbox "Enable Roth Conversions"
+    - text: Enable Roth Conversions
+    - heading "Scenario Chain" [level=2]
+    - text: Sequential plans
+    - paragraph: Run other scenarios later in life without resetting balances
+    - button "Add Step"
+    - heading "SS Claiming Age Optimizer" [level=2]
+    - paragraph: Enter your estimated monthly benefit at full retirement age (PIA) to compare claiming ages 62-70.
+    - text: Your Monthly Benefit $
+    - spinbutton "Your Monthly Benefit": "2850"
+    - paragraph: The amount you currently receive each month
+    - text: FRA
+    - combobox "FRA":
+      - option "66"
+      - option "67" [selected]
+    - text: COLA %/yr
+    - spinbutton "COLA %/yr": "2.0"
+    - text: Claim Age
+    - combobox "Claim Age":
+      - option "Analysis only"
+      - option "62"
+      - option "63"
+      - option "64"
+      - option "65"
+      - option "66"
+      - option "67" [selected]
+      - option "68"
+      - option "69"
+      - option "70"
+    - text: Spouse Monthly Benefit at FRA $
+    - spinbutton "Spouse Monthly Benefit at FRA": "1800"
+    - text: Spouse FRA
+    - combobox "Spouse FRA":
+      - option "66"
+      - option "67" [selected]
+    - text: Spouse Claim Age
+    - combobox "Spouse Claim Age":
+      - option "Analysis only"
+      - option "62"
+      - option "63"
+      - option "64"
+      - option "65" [selected]
+      - option "66"
+      - option "67"
+      - option "68"
+      - option "69"
+      - option "70"
+    - button "Compare Claiming Ages"
+  - heading "Funded through Jul 2056" [level=2]
+  - paragraph: Base projection funds your planned lifestyle under these assumptions for 30 years
+  - text: "Monte Carlo: avoids depletion 100.0% Est. Taxes $344,451 lifetime cost End Balance $3,737,845"
+  - paragraph: Needed from portfolio after estimated taxes and RMDs
+  - paragraph: $750/mo · current funding need
+  - paragraph: "Additional withdrawal rate after RMDs: 0.9%"
+  - paragraph: Selected year 0 · nominal dollars
+  - paragraph: $750/mo · funding need
+  - paragraph: "Additional withdrawal rate after RMDs: 0.9%"
+  - paragraph: A positive gap is a funding need after income, estimated taxes and RMDs; it is not necessarily unpaid spending. RMDs are portfolio distributions.
+  - paragraph: "First projection year net portfolio outflow: $9,410 for the year (nominal). Includes RMDs, net of reinvested surplus."
+  - region "Simulated lifestyle outcomes":
+    - heading "Simulated lifestyle outcomes" [level=2]
+    - paragraph: Observed outcomes under your configured spending plan and guardrails, across each run's modeled horizon; these are conditional model results, not guarantees.
+    - term: Funded without living-budget cuts
+    - definition:
+      - strong: 29.2%
+      - text: · 292 / 1000 runs
+    - term: Funded with living-budget cuts
+    - definition:
+      - strong: 70.8%
+      - text: · 708 / 1000 runs
+    - term: Funding shortfall
+    - definition:
+      - strong: 0.0%
+      - text: · 0 / 1000 runs
+    - paragraph: Funding shortfall means some spending went unpaid or the portfolio depleted. Avoiding depletion alone can include unpaid spending, so the depletion-avoidance rate may differ. Scheduled spending phases are part of the plan, not circuit-breaker cuts.
+    - heading "Among runs with cuts · 708 / 1000 runs (70.8%)" [level=3]
+    - paragraph: "Median largest living-budget cut: 11.4%; median total time below plan: 16.0 years."
+    - group: More cut depth and duration details
+    - paragraph: Guardrails adjust the living-expense budget. Healthcare, property tax, and other expense lines are not automatically cut. This does not separately protect essential expenses.
+  - tablist "What-if results":
+    - tab "Overview" [selected]
+    - tab "Cash Flow"
+    - tab "Risk"
+    - tab "Taxes & RMD"
+    - tab "Strategies"
+  - tabpanel "Overview":
+    - heading "Portfolio Longevity" [level=2]
+    - paragraph: After-tax projection. Toggle between future dollars and today's dollars.
+    - group "Display dollars mode":
+      - button "Nominal" [pressed]
+      - button "Today's Dollars"
+    - button "+ Compare without guardrails"
+    - img: RMD starts 0 5 10 15 20 25 $0 $1,000,000 $2,000,000 $3,000,000 $4,000,000
+    - img: Portfolio Balance Key events Guardrail cuts / raises Portfolio Projection Years Balance ($)
+    - img
+    - paragraph: Viewing future dollars. Real mode removes 58.7% of inflation distortion from the final balance.
+    - paragraph: Taxes consumed 6.5% of modeled retirement cash flow.
+    - paragraph: "Cumulative inflation over the projection: 142.1%."
+    - paragraph: Model assumptions
+    - paragraph: After-tax cash flow and spending
+    - paragraph: Average-cost basis for taxable sales
+    - paragraph: Annual Roth conversions post at the year boundary when enabled
+    - paragraph: Monthly compounding with end-of-month cash flow timing
+    - paragraph: Portfolio Longevity
+    - paragraph: 30+ years
+    - paragraph: Final Balance (Nominal)
+    - paragraph: $3,737,845
+    - heading "Monthly Expenses Today" [level=2]
+    - paragraph: Living expenses come from the slider; healthcare from the Healthcare card; property tax from its field. Income, taxes, and the monthly gap are under Cash Flow.
+    - text: Expenses $5,400.00 Living Expenses $4,400.00/mo Healthcare $650.00/mo Demo Husband (Medicare) $350.00/mo Demo Wife (Medicare) $300.00/mo Property Tax $350.00/mo
+    - link "Full cash flow →":
+      - /url: "#"
+    - heading "Approximate failure thresholds" [level=2]
+    - paragraph: One assumption changes at a time; all other settings stay fixed.
+    - heading "Investment Return" [level=3]
+    - paragraph: "Current: 6.5%"
+    - text: Larger modeled margin
+    - paragraph: No depletion found within the tested range.
+    - paragraph:
+      - text: "Tested range:"
+      - strong: "-5.0% to 6.5%"
+    - paragraph: "Modeled margin: 11.5 pts"
+    - heading "Inflation Rate" [level=3]
+    - paragraph: "Current: 3.0%"
+    - text: Larger modeled margin
+    - paragraph:
+      - text: Approximate transition near
+      - strong: 7.3%
+    - paragraph:
+      - text: "Tested range:"
+      - strong: 3.0% to 15.0%
+    - paragraph: "Modeled margin: 4.3 pts"
+    - heading "Monthly Expenses" [level=3]
+    - paragraph: "Current: $4,400.00/mo"
+    - text: Larger modeled margin
+    - paragraph:
+      - text: Approximate transition near
+      - strong: $7,850.00/mo
+    - paragraph:
+      - text: "Tested range:"
+      - strong: $4,400.00/mo to $13,200.00/mo
+    - paragraph: "Modeled margin: 78.4%"
+    - heading "Portfolio Value" [level=3]
+    - paragraph: "Current: $1,000,000.00"
+    - text: Larger modeled margin
+    - paragraph:
+      - text: Approximate transition near
+      - strong: $171,000.00
+    - paragraph:
+      - text: "Tested range:"
+      - strong: $0.00 to $1,000,000.00
+    - paragraph: "Modeled margin: 82.9%"
+  - button "Quick Adjust"
+- contentinfo: simpleBudget © 2026
+- img

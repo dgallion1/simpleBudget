@@ -121,7 +121,7 @@ func TestHandleDashboard_PlanExclusionWiring(t *testing.T) {
 	end := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
 	want := 1500.0 / metrics.MonthsBetween(start, end)
 
-	got := extractDollarAfter(t, body, "Monthly Living Expenses</p>")
+	got := extractDollarAfter(t, body, "Monthly Living Expenses</h3>")
 	if math.Abs(got-want) > 0.01 {
 		t.Errorf("rendered Monthly Living Expenses = %.2f, want %.2f (rent only, converted to a monthly rate; handleDashboard must wire planSyncExclusions into metrics.Calculate): %s",
 			got, want, trunc(body, 2000))

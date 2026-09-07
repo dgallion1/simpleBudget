@@ -1,0 +1,180 @@
+- banner:
+  - navigation:
+    - link "simpleBudget":
+      - /url: /
+    - group "Money":
+      - text: Money
+      - link "Dashboard":
+        - /url: /dashboard
+      - link "Explorer":
+        - /url: /explorer
+      - link "Insights":
+        - /url: /insights
+      - link "Major Expenses":
+        - /url: /major-expenses
+    - group "Plan":
+      - text: Plan
+      - link "What-If":
+        - /url: /whatif
+    - group "Setup":
+      - text: Setup
+      - link "Accounts":
+        - /url: /accounts
+      - link "Transfers":
+        - /url: /transfers
+      - link "File Manager":
+        - /url: /filemanager
+    - button "Toggle dark mode":
+      - img
+- main:
+  - heading "Accounts" [level=1]
+  - paragraph:
+    - text: Tell the app which CSV files belong to which account. A file is matched against each account’s patterns in ascending account-ID order; the first match wins. Files matching no account load as
+    - emphasis: unassigned
+    - text: — they are still visible, but their rows carry no account attribution.
+  - status
+  - status
+  - region "Add an account":
+    - heading "Add an account" [level=2]
+    - button "Add an account"
+  - region "Your accounts":
+    - heading "Your accounts" [level=2]
+    - list:
+      - listitem:
+        - heading "Demo Checking (first match wins)" [level=3]
+        - paragraph: demo-checking · checking
+        - term: "Matched files:"
+        - definition: "2"
+        - term: "Latest anchor:"
+        - definition: Aug 28, 2026 · $18,432.10
+        - button "Edit Demo Checking"
+        - heading "Matched files" [level=4]
+        - list:
+          - listitem: demo-checking_2026-03-01_to_2026-06-15.csv
+          - listitem: demo-checking_2026-06-01_to_2026-08-28.csv
+        - heading "Balance anchors" [level=4]
+        - paragraph:
+          - text: An anchor records the balance at the
+          - strong: end
+          - text: of the anchor day. A transaction dated on the anchor day is already reflected in the amount and is not added again when rolling the balance forward.
+        - table "Balance anchors for Demo Checking":
+          - caption: Balance anchors for Demo Checking
+          - rowgroup:
+            - row "Date Amount Note Actions":
+              - columnheader "Date"
+              - columnheader "Amount"
+              - columnheader "Note"
+              - columnheader "Actions"
+          - rowgroup:
+            - row "Aug 28, 2026 $18,432.10 Demo anchor — synthetic data Delete anchor dated Aug 28, 2026":
+              - cell "Aug 28, 2026"
+              - cell "$18,432.10"
+              - cell "Demo anchor — synthetic data"
+              - cell "Delete anchor dated Aug 28, 2026":
+                - button "Delete anchor dated Aug 28, 2026": Delete
+        - text: Anchor date (required)
+        - textbox "Anchor date (required)"
+        - paragraph: "Format: YYYY-MM-DD."
+        - text: Amount (required)
+        - spinbutton "Amount (required)"
+        - paragraph:
+          - text: Dollars, bank convention (positive = money you have), e.g.
+          - code: "4210.55"
+          - text: .
+        - text: Note (optional)
+        - textbox "Note (optional)"
+        - button "Add anchor"
+        - button "Delete account Demo Checking (asks for confirmation)": Delete account
+      - listitem:
+        - heading "Demo Credit Card" [level=3]
+        - paragraph: demo-credit-card · credit
+        - term: "Matched files:"
+        - definition: "2"
+        - term: "Latest anchor:"
+        - definition: Aug 28, 2026 · -$1,204.55
+        - button "Edit Demo Credit Card"
+        - heading "Matched files" [level=4]
+        - list:
+          - listitem: demo-credit_2026-03-01_to_2026-06-15.csv
+          - listitem: demo-credit_2026-06-01_to_2026-08-28.csv
+        - heading "Balance anchors" [level=4]
+        - paragraph:
+          - text: An anchor records the balance at the
+          - strong: end
+          - text: of the anchor day. A transaction dated on the anchor day is already reflected in the amount and is not added again when rolling the balance forward.
+        - table "Balance anchors for Demo Credit Card":
+          - caption: Balance anchors for Demo Credit Card
+          - rowgroup:
+            - row "Date Amount Note Actions":
+              - columnheader "Date"
+              - columnheader "Amount"
+              - columnheader "Note"
+              - columnheader "Actions"
+          - rowgroup:
+            - row "Aug 28, 2026 -$1,204.55 Demo anchor — synthetic data Delete anchor dated Aug 28, 2026":
+              - cell "Aug 28, 2026"
+              - cell "-$1,204.55"
+              - cell "Demo anchor — synthetic data"
+              - cell "Delete anchor dated Aug 28, 2026":
+                - button "Delete anchor dated Aug 28, 2026": Delete
+        - text: Anchor date (required)
+        - textbox "Anchor date (required)"
+        - paragraph: "Format: YYYY-MM-DD."
+        - text: Amount (required)
+        - spinbutton "Amount (required)"
+        - paragraph:
+          - text: Dollars, bank convention (positive = money you have), e.g.
+          - code: "4210.55"
+          - text: .
+        - text: Note (optional)
+        - textbox "Note (optional)"
+        - button "Add anchor"
+        - button "Delete account Demo Credit Card (asks for confirmation)": Delete account
+      - listitem:
+        - heading "Demo Health Checking" [level=3]
+        - paragraph: demo-health-checking · checking
+        - term: "Matched files:"
+        - definition: "1"
+        - term: "Latest anchor:"
+        - definition: Aug 28, 2026 · $3,215.40
+        - button "Edit Demo Health Checking"
+        - heading "Matched files" [level=4]
+        - list:
+          - listitem: demo-health_2026-03-01_to_2026-08-28.csv
+        - heading "Balance anchors" [level=4]
+        - paragraph:
+          - text: An anchor records the balance at the
+          - strong: end
+          - text: of the anchor day. A transaction dated on the anchor day is already reflected in the amount and is not added again when rolling the balance forward.
+        - table "Balance anchors for Demo Health Checking":
+          - caption: Balance anchors for Demo Health Checking
+          - rowgroup:
+            - row "Date Amount Note Actions":
+              - columnheader "Date"
+              - columnheader "Amount"
+              - columnheader "Note"
+              - columnheader "Actions"
+          - rowgroup:
+            - row "Aug 28, 2026 $3,215.40 Demo anchor — synthetic data Delete anchor dated Aug 28, 2026":
+              - cell "Aug 28, 2026"
+              - cell "$3,215.40"
+              - cell "Demo anchor — synthetic data"
+              - cell "Delete anchor dated Aug 28, 2026":
+                - button "Delete anchor dated Aug 28, 2026": Delete
+        - text: Anchor date (required)
+        - textbox "Anchor date (required)"
+        - paragraph: "Format: YYYY-MM-DD."
+        - text: Amount (required)
+        - spinbutton "Amount (required)"
+        - paragraph:
+          - text: Dollars, bank convention (positive = money you have), e.g.
+          - code: "4210.55"
+          - text: .
+        - text: Note (optional)
+        - textbox "Note (optional)"
+        - button "Add anchor"
+        - button "Delete account Demo Health Checking (asks for confirmation)": Delete account
+  - region "Unassigned files":
+    - heading "Unassigned files" [level=2]
+    - paragraph: Every CSV file in the data directory matches an account, or no CSV files are present.
+- contentinfo: simpleBudget © 2026

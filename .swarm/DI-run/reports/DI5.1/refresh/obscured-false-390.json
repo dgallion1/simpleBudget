@@ -1,0 +1,52 @@
+[
+  {
+    "id": "",
+    "tag": "BUTTON",
+    "text": "Income details",
+    "rect": {
+      "x": 33,
+      "y": 852,
+      "width": 96.5625,
+      "height": 20,
+      "top": 852,
+      "right": 129.5625,
+      "bottom": 872,
+      "left": 33
+    },
+    "notice": {
+      "x": 24,
+      "y": 738,
+      "width": 350,
+      "height": 146,
+      "top": 738,
+      "right": 374,
+      "bottom": 884,
+      "left": 24
+    }
+  },
+  {
+    "id": "",
+    "tag": "A",
+    "text": "Budget details",
+    "rect": {
+      "x": 33,
+      "y": 763,
+      "width": 94.90625,
+      "height": 20,
+      "top": 763,
+      "right": 127.90625,
+      "bottom": 783,
+      "left": 33
+    },
+    "notice": {
+      "x": 24,
+      "y": 738,
+      "width": 350,
+      "height": 146,
+      "top": 738,
+      "right": 374,
+      "bottom": 884,
+      "left": 24
+    }
+  }
+]

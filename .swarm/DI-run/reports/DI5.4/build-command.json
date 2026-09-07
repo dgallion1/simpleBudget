@@ -1,0 +1,17 @@
+{
+  "name": "build",
+  "cwd": "/tmp/DI5-fourth-worker.1ptHqE",
+  "command": [
+    "rtk",
+    "proxy",
+    "go",
+    "build",
+    "-buildvcs=false",
+    "./..."
+  ],
+  "start": "2026-09-07T11:50:46.858Z",
+  "end": "2026-09-07T11:50:47.479Z",
+  "exit": 0,
+  "signal": null,
+  "env": {}
+}

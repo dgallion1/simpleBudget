@@ -1,0 +1,1031 @@
+=== RUN   TestDI5EvidenceBoundaries
+=== RUN   TestDI5EvidenceBoundaries/POS_CLOUDBOX*STORAGE_PLAN_CLOUDBOX.COM_CAElectronics_&_Software
+=== RUN   TestDI5EvidenceBoundaries/cloudbox/storage-plan
+=== RUN   TestDI5EvidenceBoundaries/NOTCLOUDBOX_STORAGE_PLAN
+=== RUN   TestDI5EvidenceBoundaries/CLOUDBOX_STORAGE_PLANT
+=== RUN   TestDI5EvidenceBoundaries/CLOUDBOX_STORAGE
+=== RUN   TestDI5EvidenceBoundaries/TARGET_CLOUDBOX_STORAGE_PLAN
+=== RUN   TestDI5EvidenceBoundaries/CLOUDBOX_STORAGE_PLANShopping
+=== RUN   TestDI5EvidenceBoundaries/CLOUDBOX_STORAGE_PLANUtilities
+=== RUN   TestDI5EvidenceBoundaries/POS_AUTOLOAN_FINANCE_BILL_PMTAuto_Payment
+=== RUN   TestDI5EvidenceBoundaries/NOTAUTOLOAN_FINANCE_BILL_PMTAuto_Payment
+=== RUN   TestDI5EvidenceBoundaries/AUTOLOAN_FINANCE_BILL_PMTSAuto_Payment
+=== RUN   TestDI5EvidenceBoundaries/AUTOLOAN_FINANCE_BILL_PMTSubscriptions
+=== RUN   TestDI5EvidenceBoundaries/TARGET_AUTOLOAN_FINANCE_BILL_PMTShopping
+=== RUN   TestDI5EvidenceBoundaries/NETFLIX.COMEntertainment
+=== RUN   TestDI5EvidenceBoundaries/NotNetflixEntertainment
+--- PASS: TestDI5EvidenceBoundaries (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/POS_CLOUDBOX*STORAGE_PLAN_CLOUDBOX.COM_CAElectronics_&_Software (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/cloudbox/storage-plan (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/NOTCLOUDBOX_STORAGE_PLAN (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/CLOUDBOX_STORAGE_PLANT (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/CLOUDBOX_STORAGE (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/TARGET_CLOUDBOX_STORAGE_PLAN (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/CLOUDBOX_STORAGE_PLANShopping (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/CLOUDBOX_STORAGE_PLANUtilities (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/POS_AUTOLOAN_FINANCE_BILL_PMTAuto_Payment (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/NOTAUTOLOAN_FINANCE_BILL_PMTAuto_Payment (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/AUTOLOAN_FINANCE_BILL_PMTSAuto_Payment (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/AUTOLOAN_FINANCE_BILL_PMTSubscriptions (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/TARGET_AUTOLOAN_FINANCE_BILL_PMTShopping (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/NETFLIX.COMEntertainment (0.00s)
+    --- PASS: TestDI5EvidenceBoundaries/NotNetflixEntertainment (0.00s)
+=== RUN   TestDI5CivilNowAndForecastBounds
+    forecast_bounds_di5_test.go:33: local Sept7 23:30 remains Sept7; projected 300 through today; future data and earlier selection unavailable; civil day includes UTC date-only row
+--- PASS: TestDI5CivilNowAndForecastBounds (0.00s)
+=== RUN   TestDI5CivilCoverageBoundaries
+--- PASS: TestDI5CivilCoverageBoundaries (0.00s)
+=== RUN   TestDI5CalendarMatrix
+--- PASS: TestDI5CalendarMatrix (0.00s)
+=== RUN   TestDI5ForecastNoBorrowing
+--- PASS: TestDI5ForecastNoBorrowing (0.00s)
+=== RUN   TestDI5CadenceAndMerchantRetention
+--- PASS: TestDI5CadenceAndMerchantRetention (0.00s)
+PASS
+ok  	budget2/internal/services/insights	0.005s
+=== RUN   TestDI5DashboardConsumers
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+    period_consumers_di5_test.go:35: /dashboard default vs explicit January: byte-identical=true
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+    period_consumers_di5_test.go:35: /dashboard/kpis default vs explicit January: byte-identical=true
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+    period_consumers_di5_test.go:35: /dashboard/charts/data/major-expense default vs explicit January: byte-identical=true
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+    period_consumers_di5_test.go:35: /dashboard/charts/data/spending-trend default vs explicit January: byte-identical=true
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+    period_consumers_di5_test.go:35: /dashboard/charts/data/merchants default vs explicit January: byte-identical=true
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+    period_consumers_di5_test.go:35: /dashboard/charts/data/cumulative default vs explicit January: byte-identical=true
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+    period_consumers_di5_test.go:35: /dashboard/charts/data/budget-vs-actual default vs explicit January: byte-identical=true
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+    period_consumers_di5_test.go:35: /dashboard/major-expense?name=Unmatched default vs explicit January: byte-identical=true
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+    period_consumers_di5_test.go:35: /dashboard/kpi/expenses default vs explicit January: byte-identical=true
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+    period_consumers_di5_test.go:35: /dashboard/kpi/expenses/month/2026-01 default vs explicit January: byte-identical=true
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+    period_consumers_di5_test.go:35: /dashboard/kpi/expenses/export default vs explicit January: byte-identical=true
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1141286807
+2026/09/07 07:52:10 Loaded 3 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 3
+    period_consumers_di5_test.go:53: KPI signed expenses=-50; rendered CSV=2026-01,-50.00; prior-year sentinel excluded
+--- PASS: TestDI5DashboardConsumers (0.00s)
+=== RUN   TestDI5ProjectionRetention
+    recurring_di5_test.go:44: dashboard: retained 22 classified series, annual=25320, projected minimum=2890 (5000 - 2110)
+--- PASS: TestDI5ProjectionRetention (0.00s)
+=== RUN   TestDI5MoneySurfaces
+=== RUN   TestDI5MoneySurfaces/fractional
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2498271507
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2498271507
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2498271507
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2498271507
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2498271507
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2498271507
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2498271507
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:53: full/HTMX/detail/month/CSV exact values: [$10.01 $0.00 $10.01]
+=== RUN   TestDI5MoneySurfaces/boundary
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1338747732
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1338747732
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1338747732
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1338747732
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1338747732
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1338747732
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1338747732
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:53: full/HTMX/detail/month/CSV exact values: [$2.67 $0.00 $2.67]
+=== RUN   TestDI5MoneySurfaces/refund
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-3152954433
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-3152954433
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-3152954433
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-3152954433
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-3152954433
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-3152954433
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-3152954433
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:53: full/HTMX/detail/month/CSV exact values: [$10.00 -$2.00 $12.00]
+=== RUN   TestDI5MoneySurfaces/zero
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-233028468
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-233028468
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-233028468
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-233028468
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-233028468
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-233028468
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-233028468
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:53: full/HTMX/detail/month/CSV exact values: [$10.00 $10.00 $0.00]
+--- PASS: TestDI5MoneySurfaces (0.08s)
+    --- PASS: TestDI5MoneySurfaces/fractional (0.02s)
+    --- PASS: TestDI5MoneySurfaces/boundary (0.02s)
+    --- PASS: TestDI5MoneySurfaces/refund (0.02s)
+    --- PASS: TestDI5MoneySurfaces/zero (0.02s)
+=== RUN   TestDI5MonthlyRenderedResidual
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-3749971320
+2026/09/07 07:52:10 Loaded 2 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 2 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 2
+    reporting_di5_test.go:80: expenses total=$0.01 rows=$0.00/$0.00 explicit adjustment=$0.01
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-3749971320
+2026/09/07 07:52:10 Loaded 2 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 2 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 2
+    reporting_di5_test.go:80: savings total=-$0.01 rows=$0.00/$0.00 explicit adjustment=-$0.01
+--- PASS: TestDI5MonthlyRenderedResidual (0.01s)
+=== RUN   TestDI5RenderedResiduals
+=== RUN   TestDI5RenderedResiduals/0.004
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2125235697
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2125235697
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2125235697
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=0.004 kind=income rowCents=0 adjustmentCents=1 totalCents=1
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2125235697
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=0.004 kind=expenses rowCents=0 adjustmentCents=1 totalCents=1
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2125235697
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=0.004 kind=savings rowCents=0 adjustmentCents=0 totalCents=0
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-2125235697
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=0.004 kind=living rowCents=0 adjustmentCents=1 totalCents=1
+=== RUN   TestDI5RenderedResiduals/0.006
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-4293379156
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-4293379156
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-4293379156
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=0.006 kind=income rowCents=2 adjustmentCents=-1 totalCents=1
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-4293379156
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=0.006 kind=expenses rowCents=0 adjustmentCents=1 totalCents=1
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-4293379156
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=0.006 kind=savings rowCents=2 adjustmentCents=-2 totalCents=0
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-4293379156
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=0.006 kind=living rowCents=0 adjustmentCents=1 totalCents=1
+=== RUN   TestDI5RenderedResiduals/2.675
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1947179063
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1947179063
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1947179063
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=2.675 kind=income rowCents=534 adjustmentCents=1 totalCents=535
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1947179063
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=2.675 kind=expenses rowCents=0 adjustmentCents=1 totalCents=1
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1947179063
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=2.675 kind=savings rowCents=534 adjustmentCents=0 totalCents=534
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-1947179063
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=2.675 kind=living rowCents=0 adjustmentCents=1 totalCents=1
+=== RUN   TestDI5RenderedResiduals/10.006
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-748067926
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-748067926
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-748067926
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=10.006 kind=income rowCents=2002 adjustmentCents=-1 totalCents=2001
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-748067926
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=10.006 kind=expenses rowCents=0 adjustmentCents=1 totalCents=1
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-748067926
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=10.006 kind=savings rowCents=2002 adjustmentCents=-2 totalCents=2000
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/dashboard-test-748067926
+2026/09/07 07:52:10 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 4
+    reporting_di5_test.go:157: fixture=10.006 kind=living rowCents=0 adjustmentCents=1 totalCents=1
+--- PASS: TestDI5RenderedResiduals (0.08s)
+    --- PASS: TestDI5RenderedResiduals/0.004 (0.02s)
+    --- PASS: TestDI5RenderedResiduals/0.006 (0.02s)
+    --- PASS: TestDI5RenderedResiduals/2.675 (0.02s)
+    --- PASS: TestDI5RenderedResiduals/10.006 (0.02s)
+PASS
+ok  	budget2/internal/handlers/dashboard	0.186s
+=== RUN   TestDI5RenderedEstimateSums
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+--- PASS: TestDI5RenderedEstimateSums (0.02s)
+=== RUN   TestDI5HTTPFindingsLinks
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:10 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 66
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:10 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 66
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:10 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 66
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:10 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 66
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:10 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 66
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:10 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 66
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:10 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 66
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:10 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 66
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:10 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 66
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:10 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 66
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:10 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 66
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:10 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 66
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+    http_links_di5_test.go:73: HX=false findings=11 preview=5 remaining=6; every rendered URL returns its actual hash
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:11 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 66
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:11 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 66
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:11 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 66
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:11 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 66
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:11 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 66
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:11 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 66
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:11 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 66
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:11 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 66
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:11 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 66
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:11 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 66
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:11 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 66
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5HTTPFindingsLinks714548643/001
+2026/09/07 07:52:11 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 66 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 66
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+    http_links_di5_test.go:73: HX=true findings=11 preview=5 remaining=6; every rendered URL returns its actual hash
+--- PASS: TestDI5HTTPFindingsLinks (0.48s)
+=== RUN   TestDI5RenderedFractional
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+    http_links_di5_test.go:98: rendered signed aggregates $10.01/$0.00 delta+$10.01; displayed estimates monthly$0.02 annual$0.12; 2.675->$2.67; no negative zero
+--- PASS: TestDI5RenderedFractional (0.01s)
+=== RUN   TestDI5GroupingLinksAndPartials
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5GroupingLinksAndPartials1397518089/001
+2026/09/07 07:52:11 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5GroupingLinksAndPartials1397518089/001
+2026/09/07 07:52:11 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5GroupingLinksAndPartials1397518089/001
+2026/09/07 07:52:11 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5GroupingLinksAndPartials1397518089/001
+2026/09/07 07:52:11 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+    http_links_di5_test.go:175: full selected bounds present, 2 actual ID/merchant Explorer links matched selected transaction and excluded unmatched row
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5GroupingLinksAndPartials1397518089/001
+2026/09/07 07:52:11 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5GroupingLinksAndPartials1397518089/001
+2026/09/07 07:52:11 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5GroupingLinksAndPartials1397518089/001
+2026/09/07 07:52:11 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+    http_links_di5_test.go:175: HX selected bounds present, 2 actual ID/merchant Explorer links matched selected transaction and excluded unmatched row
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5GroupingLinksAndPartials1397518089/001
+2026/09/07 07:52:11 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5GroupingLinksAndPartials1397518089/001
+2026/09/07 07:52:11 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+    http_links_di5_test.go:175: trends selected bounds present, 1 actual ID/merchant Explorer links matched selected transaction and excluded unmatched row
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5GroupingLinksAndPartials1397518089/001
+2026/09/07 07:52:11 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5GroupingLinksAndPartials1397518089/001
+2026/09/07 07:52:11 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+    http_links_di5_test.go:175: recurring selected bounds present, 1 actual ID/merchant Explorer links matched selected transaction and excluded unmatched row
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5GroupingLinksAndPartials1397518089/001
+2026/09/07 07:52:11 Loaded 4 transactions from test.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+    http_links_di5_test.go:175: income selected bounds present, 0 actual ID/merchant Explorer links matched selected transaction and excluded unmatched row
+--- PASS: TestDI5GroupingLinksAndPartials (0.20s)
+=== RUN   TestDI5CreepTieMedianAndHistory
+--- PASS: TestDI5CreepTieMedianAndHistory (0.00s)
+=== RUN   TestDI5RecurringRenderedRetention
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+--- PASS: TestDI5RecurringRenderedRetention (0.02s)
+PASS
+ok  	budget2/internal/handlers/insights	0.731s
+=== RUN   TestDI5RenderedBoundaries
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+    period_boundaries_di5_test.go:47: rendered clamp 31 vs 28 days; current=-$50.00 prior=$30.00 delta=-$80.00
+--- PASS: TestDI5RenderedBoundaries (0.01s)
+PASS
+ok  	budget2/internal/templates	0.017s
+=== RUN   TestDI5GroupingInvariant
+    grouping_di5_test.go:60: split=false top=1 expense=0.004 expenseTotal=0.01 net=10 adjustment=0
+    grouping_di5_test.go:60: split=false top=1 expense=0.006 expenseTotal=0.01 net=10 adjustment=0
+    grouping_di5_test.go:60: split=false top=1 expense=-0.004 expenseTotal=-0.01 net=10.02 adjustment=0
+    grouping_di5_test.go:60: split=false top=1 expense=-0.006 expenseTotal=-0.01 net=10.02 adjustment=0
+    grouping_di5_test.go:60: split=false top=10 expense=0.004 expenseTotal=0.01 net=10 adjustment=0
+    grouping_di5_test.go:60: split=false top=10 expense=0.006 expenseTotal=0.01 net=10 adjustment=0
+    grouping_di5_test.go:60: split=false top=10 expense=-0.004 expenseTotal=-0.01 net=10.02 adjustment=0
+    grouping_di5_test.go:60: split=false top=10 expense=-0.006 expenseTotal=-0.01 net=10.02 adjustment=0
+    grouping_di5_test.go:60: split=true top=1 expense=0.004 expenseTotal=0.01 net=10 adjustment=0.01
+    grouping_di5_test.go:60: split=true top=1 expense=0.006 expenseTotal=0.01 net=10 adjustment=-0.01
+    grouping_di5_test.go:60: split=true top=1 expense=-0.004 expenseTotal=-0.01 net=10.02 adjustment=-0.01
+    grouping_di5_test.go:60: split=true top=1 expense=-0.006 expenseTotal=-0.01 net=10.02 adjustment=0.01
+    grouping_di5_test.go:60: split=true top=10 expense=0.004 expenseTotal=0.01 net=10 adjustment=0.01
+    grouping_di5_test.go:60: split=true top=10 expense=0.006 expenseTotal=0.01 net=10 adjustment=-0.01
+    grouping_di5_test.go:60: split=true top=10 expense=-0.004 expenseTotal=-0.01 net=10.02 adjustment=-0.01
+    grouping_di5_test.go:60: split=true top=10 expense=-0.006 expenseTotal=-0.01 net=10.02 adjustment=0.01
+--- PASS: TestDI5GroupingInvariant (0.04s)
+PASS
+ok  	budget2/internal/services/mcpsvc/spend	0.049s
+=== RUN   TestDI5ProjectionRetention
+    recurring_di5_test.go:44: explicit: retained 22 classified series, annual=25320, projected minimum=2890 (5000 - 2110)
+    recurring_di5_test.go:44: default: retained 22 classified series, annual=25320, projected minimum=2890 (5000 - 2110)
+--- PASS: TestDI5ProjectionRetention (0.00s)
+PASS
+ok  	budget2/internal/services/mcpsvc/ledger	0.005s
+=== RUN   TestDI5SecondCrossMoney
+=== RUN   TestDI5SecondCrossMoney/split_charges
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_charges552360615/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 "GET http://example.com/dashboard?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 32204B in 22.072137ms
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_charges552360615/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 "GET http://example.com/dashboard/kpis?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 7993B in 10.384972ms
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_charges552360615/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 17.794332ms
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_charges552360615/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 17.931298ms
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_charges552360615/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_charges552360615/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+    cross_money_di5_test.go:139: four HTTP surfaces plus assembled MCP top1/top10: income=$10.01 spending=$0.01 balance=$10.00; two exact months reconcile
+=== RUN   TestDI5SecondCrossMoney/split_credits
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_credits2923060541/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 "GET http://example.com/dashboard?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 32181B in 17.955472ms
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_credits2923060541/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 "GET http://example.com/dashboard/kpis?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 7970B in 11.231996ms
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_credits2923060541/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24655B in 16.924225ms
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_credits2923060541/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24655B in 17.079596ms
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_credits2923060541/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_credits2923060541/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+    cross_money_di5_test.go:139: four HTTP surfaces plus assembled MCP top1/top10: income=$10.01 spending=-$0.01 balance=$10.02; two exact months reconcile
+=== RUN   TestDI5SecondCrossMoney/tie
+2026/09/07 07:52:10 Templates loaded successfully: 65 files
+2026/09/07 07:52:10 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneytie1329989700/001
+2026/09/07 07:52:10 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:10 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:10 Total transactions after processing: 5
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 32202B in 17.202937ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneytie1329989700/001
+2026/09/07 07:52:11 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 5
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard/kpis?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 7991B in 11.302677ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneytie1329989700/001
+2026/09/07 07:52:11 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 5
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 16.930968ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneytie1329989700/001
+2026/09/07 07:52:11 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 5
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 16.880714ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneytie1329989700/001
+2026/09/07 07:52:11 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 5
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneytie1329989700/001
+2026/09/07 07:52:11 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 5
+    cross_money_di5_test.go:139: four HTTP surfaces plus assembled MCP top1/top10: income=$2.67 spending=$0.01 balance=$2.66; two exact months reconcile
+=== RUN   TestDI5SecondCrossMoney/displayed_neutral
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneydisplayed_neutral1110414804/001
+2026/09/07 07:52:11 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 5
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 32204B in 18.169503ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneydisplayed_neutral1110414804/001
+2026/09/07 07:52:11 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 5
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard/kpis?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 7993B in 10.810267ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneydisplayed_neutral1110414804/001
+2026/09/07 07:52:11 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 5
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 15.203179ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneydisplayed_neutral1110414804/001
+2026/09/07 07:52:11 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 5
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 17.805633ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneydisplayed_neutral1110414804/001
+2026/09/07 07:52:11 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 5
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneydisplayed_neutral1110414804/001
+2026/09/07 07:52:11 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 5 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 5
+    cross_money_di5_test.go:139: four HTTP surfaces plus assembled MCP top1/top10: income=$0.01 spending=$0.01 balance=$0.00; two exact months reconcile
+--- PASS: TestDI5SecondCrossMoney (0.35s)
+    --- PASS: TestDI5SecondCrossMoney/split_charges (0.09s)
+    --- PASS: TestDI5SecondCrossMoney/split_credits (0.09s)
+    --- PASS: TestDI5SecondCrossMoney/tie (0.09s)
+    --- PASS: TestDI5SecondCrossMoney/displayed_neutral (0.08s)
+=== RUN   TestDI5SameDateEdgeMatrix
+=== RUN   TestDI5SameDateEdgeMatrix/historical
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixhistorical1745873960/001
+2026/09/07 07:52:11 Loaded 4 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard?start=2020-07-01&end=2020-07-31 HTTP/1.1" from 192.0.2.1:1234 - 200 32123B in 19.46789ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixhistorical1745873960/001
+2026/09/07 07:52:11 Loaded 4 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard/kpis?start=2020-07-01&end=2020-07-31 HTTP/1.1" from 192.0.2.1:1234 - 200 7912B in 10.434194ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixhistorical1745873960/001
+2026/09/07 07:52:11 Loaded 4 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-07-01&end=2020-07-31 HTTP/1.1" from 192.0.2.1:1234 - 200 28098B in 18.787499ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixhistorical1745873960/001
+2026/09/07 07:52:11 Loaded 4 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-07-01&end=2020-07-31 HTTP/1.1" from 192.0.2.1:1234 - 200 28098B in 17.137194ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixhistorical1745873960/001
+2026/09/07 07:52:11 Loaded 4 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixhistorical1745873960/001
+2026/09/07 07:52:11 Loaded 4 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 4 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 4
+    same_date_di5_test.go:137: historical full/partial/Insights/HX net=$30.00; tool same-date history=true; historical forecast unavailable
+=== RUN   TestDI5SameDateEdgeMatrix/custom_refund
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixcustom_refund353415816/001
+2026/09/07 07:52:11 Loaded 3 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 3
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard?start=2020-07-10&end=2020-07-20 HTTP/1.1" from 192.0.2.1:1234 - 200 32100B in 19.677472ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixcustom_refund353415816/001
+2026/09/07 07:52:11 Loaded 3 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 3
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard/kpis?start=2020-07-10&end=2020-07-20 HTTP/1.1" from 192.0.2.1:1234 - 200 7889B in 10.951591ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixcustom_refund353415816/001
+2026/09/07 07:52:11 Loaded 3 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 3
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-07-10&end=2020-07-20 HTTP/1.1" from 192.0.2.1:1234 - 200 28100B in 19.671992ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixcustom_refund353415816/001
+2026/09/07 07:52:11 Loaded 3 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 3
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-07-10&end=2020-07-20 HTTP/1.1" from 192.0.2.1:1234 - 200 28100B in 16.377734ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixcustom_refund353415816/001
+2026/09/07 07:52:11 Loaded 3 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 3
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixcustom_refund353415816/001
+2026/09/07 07:52:11 Loaded 3 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 3 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 3
+    same_date_di5_test.go:137: custom refund full/partial/Insights/HX net=-$50.00; tool same-date history=true; historical forecast unavailable
+=== RUN   TestDI5SameDateEdgeMatrix/incomplete_month
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixincomplete_month1454583032/001
+2026/09/07 07:52:11 Loaded 2 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 2 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 2
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 32113B in 18.959901ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixincomplete_month1454583032/001
+2026/09/07 07:52:11 Loaded 2 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 2 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 2
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard/kpis?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 7902B in 11.564517ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixincomplete_month1454583032/001
+2026/09/07 07:52:11 Loaded 2 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 2 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 2
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 28059B in 22.034358ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixincomplete_month1454583032/001
+2026/09/07 07:52:11 Loaded 2 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 2 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 2
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 28059B in 17.378374ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixincomplete_month1454583032/001
+2026/09/07 07:52:11 Loaded 2 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 2 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 2
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixincomplete_month1454583032/001
+2026/09/07 07:52:11 Loaded 2 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 2 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 2
+    same_date_di5_test.go:137: incomplete month full/partial/Insights/HX net=$12.34; tool same-date history=true; historical forecast unavailable
+=== RUN   TestDI5SameDateEdgeMatrix/no_history
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixno_history2599606907/001
+2026/09/07 07:52:11 Loaded 1 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 1 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 1
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 32197B in 16.516413ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixno_history2599606907/001
+2026/09/07 07:52:11 Loaded 1 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 1 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 1
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard/kpis?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 7987B in 11.907177ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixno_history2599606907/001
+2026/09/07 07:52:11 Loaded 1 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 1 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 1
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 24655B in 17.327639ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixno_history2599606907/001
+2026/09/07 07:52:11 Loaded 1 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 1 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 1
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 24655B in 17.010817ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixno_history2599606907/001
+2026/09/07 07:52:11 Loaded 1 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 1 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 1
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixno_history2599606907/001
+2026/09/07 07:52:11 Loaded 1 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 1 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 1
+    same_date_di5_test.go:137: no history full/partial/Insights/HX net=$12.34; tool same-date history=false; historical forecast unavailable
+=== RUN   TestDI5SameDateEdgeMatrix/empty_selection
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixempty_selection3441026577/001
+2026/09/07 07:52:11 Loaded 1 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 1 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 1
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 30418B in 18.751892ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixempty_selection3441026577/001
+2026/09/07 07:52:11 Loaded 1 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 1 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 1
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard/kpis?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 6208B in 11.126018ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixempty_selection3441026577/001
+2026/09/07 07:52:11 Loaded 1 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 1 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 1
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 16.70694ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixempty_selection3441026577/001
+2026/09/07 07:52:11 Loaded 1 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 1 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 1
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 16.804552ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixempty_selection3441026577/001
+2026/09/07 07:52:11 Loaded 1 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 1 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 1
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixempty_selection3441026577/001
+2026/09/07 07:52:11 Loaded 1 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 1 transactions in 1 files are not assigned to any account
+2026/09/07 07:52:11 Total transactions after processing: 1
+    same_date_di5_test.go:137: empty selection full/partial/Insights/HX net=$0.00; tool same-date history=false; historical forecast unavailable
+=== RUN   TestDI5SameDateEdgeMatrix/empty_data
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixempty_data2336784017/001
+2026/09/07 07:52:11 Loaded 0 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 No transactions loaded from CSV files - returning empty dataset
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 28651B in 18.288576ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixempty_data2336784017/001
+2026/09/07 07:52:11 Loaded 0 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 No transactions loaded from CSV files - returning empty dataset
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/dashboard/kpis?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 5915B in 12.211226ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixempty_data2336784017/001
+2026/09/07 07:52:11 Loaded 0 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 No transactions loaded from CSV files - returning empty dataset
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 24413B in 15.898258ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixempty_data2336784017/001
+2026/09/07 07:52:11 Loaded 0 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 No transactions loaded from CSV files - returning empty dataset
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+2026/09/07 07:52:11 "GET http://example.com/insights?start=2020-08-01&end=2020-08-28 HTTP/1.1" from 192.0.2.1:1234 - 200 24413B in 14.352748ms
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixempty_data2336784017/001
+2026/09/07 07:52:11 Loaded 0 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 No transactions loaded from CSV files - returning empty dataset
+2026/09/07 07:52:11 Found 1 CSV files in /tmp/TestDI5SameDateEdgeMatrixempty_data2336784017/001
+2026/09/07 07:52:11 Loaded 0 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 07:52:11 No transactions loaded from CSV files - returning empty dataset
+    same_date_di5_test.go:137: empty data full/partial/Insights/HX net=$0.00; tool same-date history=false; historical forecast unavailable
+--- PASS: TestDI5SameDateEdgeMatrix (0.52s)
+    --- PASS: TestDI5SameDateEdgeMatrix/historical (0.09s)
+    --- PASS: TestDI5SameDateEdgeMatrix/custom_refund (0.09s)
+    --- PASS: TestDI5SameDateEdgeMatrix/incomplete_month (0.09s)
+    --- PASS: TestDI5SameDateEdgeMatrix/no_history (0.09s)
+    --- PASS: TestDI5SameDateEdgeMatrix/empty_selection (0.09s)
+    --- PASS: TestDI5SameDateEdgeMatrix/empty_data (0.08s)
+=== RUN   TestDI5SavedDataUnchanged
+2026/09/07 07:52:11 Templates loaded successfully: 65 files
+    saved_data_di5_test.go:85: saved-data SHA256 and file inventory unchanged across 3 actual MCP refresh calls and route reads: 1 files
+--- PASS: TestDI5SavedDataUnchanged (0.02s)
+PASS
+ok  	budget2/cmd/server	0.900s

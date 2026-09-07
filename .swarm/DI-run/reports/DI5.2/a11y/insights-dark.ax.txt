@@ -1,0 +1,470 @@
+- banner:
+  - navigation:
+    - link "simpleBudget":
+      - /url: /
+    - group "Money":
+      - text: Money
+      - link "Dashboard":
+        - /url: /dashboard?end=2026-08-28&start=2026-03-01
+      - link "Explorer":
+        - /url: /explorer?end=2026-08-28&start=2026-03-01
+      - link "Insights":
+        - /url: /insights?end=2026-08-28&start=2026-03-01
+      - link "Major Expenses":
+        - /url: /major-expenses?end=2026-08-28&start=2026-03-01
+    - group "Plan":
+      - text: Plan
+      - link "What-If":
+        - /url: /whatif
+    - group "Setup":
+      - text: Setup
+      - link "Accounts":
+        - /url: /accounts
+      - link "Transfers":
+        - /url: /transfers
+      - link "File Manager":
+        - /url: /filemanager
+      - link "Duplicates 1":
+        - /url: /duplicates
+    - button "Toggle dark mode":
+      - img
+- main:
+  - heading "Insights" [level=1]
+  - text: From
+  - textbox "From": 2026-03-01
+  - text: To
+  - textbox "To": 2026-08-28
+  - button "Step back"
+  - button "1M"
+  - button "2M"
+  - button "3M"
+  - button "6M"
+  - button "12M"
+  - button "All"
+  - button "Step forward"
+  - paragraph: "Selected period: 2026-03-01 to 2026-08-28 (181 calendar days)"
+  - paragraph: "Prior period: 2025-09-01 to 2026-02-28 (181 calendar days)"
+  - paragraph: "Latest transaction: 2026-08-28"
+  - group:
+    - text: Data freshness
+    - paragraph: Data is more than seven calendar days old (9 days). Current-month forecast is unavailable.
+  - paragraph: Not enough history to compare
+  - paragraph: First and last transaction dates are evidence bounds, not proof that all accounts or transactions were imported.
+  - region "What changed":
+    - heading "What changed" [level=2]
+    - paragraph: Actual net spending across all outflows, including refunds and excluding transfers.
+    - paragraph: "Selected period: $32,057.26"
+    - paragraph: Not enough history to compare
+  - region "Review these transactions":
+    - heading "Review these transactions" [level=2]
+    - paragraph: 5 findings in the selected period. A transaction can have more than one finding type.
+    - paragraph: Detection uses loaded active history. Each finding below is tied to an actual transaction in the selected period; price-creep evidence can extend beyond that period.
+    - list:
+      - listitem:
+        - link "Amazon":
+          - /url: /explorer?category=Shopping&end=2026-08-28&search=Amazon&start=2026-03-01&type=Outflow
+        - text: "Actual transaction: -$40.65 outflow"
+        - paragraph: "2026-08-26 · Shopping · Major Expense: Shopping & Household Supplies"
+        - paragraph: "Price creep · Median of first three vs last three charges: $34.84 → $40.65 (16.7% increase), 2026-03-05 to 2026-08-26. The linked transaction is the latest in this full-history group; its actual amount may differ from the median."
+      - listitem:
+        - link "Pet Palace":
+          - /url: /explorer?category=Pet+Food+%26+Supplies&end=2026-08-28&search=Pet+Palace&start=2026-03-01&type=Outflow
+        - text: "Actual transaction: -$82.67 outflow"
+        - paragraph: "2026-08-16 · Pet Food & Supplies · Major Expense: Pets"
+        - paragraph: "Price creep · Median of first three vs last three charges: $70.24 → $82.67 (17.7% increase), 2026-03-16 to 2026-08-16. The linked transaction is the latest in this full-history group; its actual amount may differ from the median."
+      - listitem:
+        - link "Home Appliance Co":
+          - /url: /explorer?category=Home+Improvement&end=2026-08-28&search=Home+Appliance+Co&start=2026-03-01&type=Outflow
+        - text: "Actual transaction: -$899.00 outflow"
+        - paragraph: "2026-07-15 · Home Improvement · Major Expense: Home Maintenance & Appliances"
+        - paragraph: New merchant · medium severity
+      - listitem:
+        - link "Town Tax Office":
+          - /url: /explorer?category=Taxes&end=2026-08-28&search=Town+Tax+Office&start=2026-03-01&type=Outflow
+        - text: "Actual transaction: -$2,100.00 outflow"
+        - paragraph: "2026-04-14 · Taxes · Major Expense: Property Taxes"
+        - paragraph: New merchant · medium severity
+      - listitem:
+        - link "Home Mortgage":
+          - /url: /explorer?category=Mortgage&end=2026-08-28&search=Home+Mortgage&start=2026-03-01&type=Outflow
+        - text: "Actual transaction: -$1,250.00 outflow"
+        - paragraph: "2026-03-01 · Mortgage · Major Expense: Mortgage"
+        - paragraph: New merchant · medium severity
+  - region "Detected recurring spending":
+    - heading "Detected recurring spending" [level=2]
+    - paragraph: Estimates from history through 2026-08-28, not actual selected-period spending or confirmed obligations. All detected recurring series are shown without a row limit.
+    - paragraph: "Retained estimates: $5,009.58 monthly · $60,114.71 annual. Totals sum displayed estimates. Monthly and annual figures are rounded separately."
+    - region "Detected subscriptions":
+      - heading "Detected subscriptions" [level=3]
+      - paragraph: 3 retained series · Estimated monthly $30.47 · Estimated annual $365.64
+      - region "Detected subscriptions estimates":
+        - table:
+          - rowgroup:
+            - row "Merchant and evidence Estimated payment Estimated monthly Estimated annual":
+              - columnheader "Merchant and evidence"
+              - columnheader "Estimated payment"
+              - columnheader "Estimated monthly"
+              - columnheader "Estimated annual"
+          - rowgroup:
+            - 'row "netflix Major Expense: Subscriptions Known subscription service or subscription-specific original transaction category 6 occurrences · monthly · Last observed 2026-08-08 Expected payment estimate as of 2026-08-28: 2026-09-08 · Detection confidence 98% $15.49 $15.49 $185.88"':
+              - 'cell "netflix Major Expense: Subscriptions Known subscription service or subscription-specific original transaction category 6 occurrences · monthly · Last observed 2026-08-08 Expected payment estimate as of 2026-08-28: 2026-09-08 · Detection confidence 98%"':
+                - link "netflix":
+                  - /url: /explorer?search=netflix&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Subscriptions"
+                - paragraph: Known subscription service or subscription-specific original transaction category
+                - paragraph: 6 occurrences · monthly · Last observed 2026-08-08
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-08 · Detection confidence 98%"
+              - cell "$15.49"
+              - cell "$15.49"
+              - cell "$185.88"
+            - 'row "spotify Major Expense: Subscriptions Known subscription service or subscription-specific original transaction category 6 occurrences · monthly · Last observed 2026-08-11 Expected payment estimate as of 2026-08-28: 2026-09-11 · Detection confidence 98% $11.99 $11.99 $143.88"':
+              - 'cell "spotify Major Expense: Subscriptions Known subscription service or subscription-specific original transaction category 6 occurrences · monthly · Last observed 2026-08-11 Expected payment estimate as of 2026-08-28: 2026-09-11 · Detection confidence 98%"':
+                - link "spotify":
+                  - /url: /explorer?search=spotify&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Subscriptions"
+                - paragraph: Known subscription service or subscription-specific original transaction category
+                - paragraph: 6 occurrences · monthly · Last observed 2026-08-11
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-11 · Detection confidence 98%"
+              - cell "$11.99"
+              - cell "$11.99"
+              - cell "$143.88"
+            - 'row "cloud storage Major Expense: Subscriptions Known subscription service or subscription-specific original transaction category 6 occurrences · monthly · Last observed 2026-08-02 Expected payment estimate as of 2026-08-28: 2026-09-02 · Detection confidence 98% $2.99 $2.99 $35.88"':
+              - 'cell "cloud storage Major Expense: Subscriptions Known subscription service or subscription-specific original transaction category 6 occurrences · monthly · Last observed 2026-08-02 Expected payment estimate as of 2026-08-28: 2026-09-02 · Detection confidence 98%"':
+                - link "cloud storage":
+                  - /url: /explorer?search=cloud+storage&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Subscriptions"
+                - paragraph: Known subscription service or subscription-specific original transaction category
+                - paragraph: 6 occurrences · monthly · Last observed 2026-08-02
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-02 · Detection confidence 98%"
+              - cell "$2.99"
+              - cell "$2.99"
+              - cell "$35.88"
+    - region "Recurring bills":
+      - heading "Recurring bills" [level=3]
+      - paragraph: 7 retained series · Estimated monthly $2,349.58 · Estimated annual $28,194.92
+      - region "Recurring bills estimates":
+        - table:
+          - rowgroup:
+            - row "Merchant and evidence Estimated payment Estimated monthly Estimated annual":
+              - columnheader "Merchant and evidence"
+              - columnheader "Estimated payment"
+              - columnheader "Estimated monthly"
+              - columnheader "Estimated annual"
+          - rowgroup:
+            - 'row "home mortgage Major Expense: Mortgage Bill or utility evidence in original merchant or transaction category 6 occurrences · monthly · Last observed 2026-08-01 Expected payment estimate as of 2026-08-28: 2026-09-01 · Detection confidence 98% $1,250.00 $1,250.00 $15,000.00"':
+              - 'cell "home mortgage Major Expense: Mortgage Bill or utility evidence in original merchant or transaction category 6 occurrences · monthly · Last observed 2026-08-01 Expected payment estimate as of 2026-08-28: 2026-09-01 · Detection confidence 98%"':
+                - link "home mortgage":
+                  - /url: /explorer?search=home+mortgage&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Mortgage"
+                - paragraph: Bill or utility evidence in original merchant or transaction category
+                - paragraph: 6 occurrences · monthly · Last observed 2026-08-01
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-01 · Detection confidence 98%"
+              - cell "$1,250.00"
+              - cell "$1,250.00"
+              - cell "$15,000.00"
+            - 'row "autoloan finance Major Expense: Auto Loan Bill or utility evidence in original merchant or transaction category 6 occurrences · monthly · Last observed 2026-08-07 Expected payment estimate as of 2026-08-28: 2026-09-07 · Detection confidence 98% $412.00 $412.00 $4,944.00"':
+              - 'cell "autoloan finance Major Expense: Auto Loan Bill or utility evidence in original merchant or transaction category 6 occurrences · monthly · Last observed 2026-08-07 Expected payment estimate as of 2026-08-28: 2026-09-07 · Detection confidence 98%"':
+                - link "autoloan finance":
+                  - /url: /explorer?search=autoloan+finance&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Auto Loan"
+                - paragraph: Bill or utility evidence in original merchant or transaction category
+                - paragraph: 6 occurrences · monthly · Last observed 2026-08-07
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-07 · Detection confidence 98%"
+              - cell "$412.00"
+              - cell "$412.00"
+              - cell "$4,944.00"
+            - 'row "demo gas and electric Major Expense: Utilities Bill or utility evidence in original merchant or transaction category 6 occurrences · ongoing · Last observed 2026-08-20 Expected payment estimate as of 2026-08-28: 2026-09-19 · Detection confidence 90% $251.67 $296.09 $3,553.04"':
+              - 'cell "demo gas and electric Major Expense: Utilities Bill or utility evidence in original merchant or transaction category 6 occurrences · ongoing · Last observed 2026-08-20 Expected payment estimate as of 2026-08-28: 2026-09-19 · Detection confidence 90%"':
+                - link "demo gas and electric":
+                  - /url: /explorer?search=demo+gas+and+electric&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Utilities"
+                - paragraph: Bill or utility evidence in original merchant or transaction category
+                - paragraph: 6 occurrences · ongoing · Last observed 2026-08-20
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-19 · Detection confidence 90%"
+              - cell "$251.67"
+              - cell "$296.09"
+              - cell "$3,553.04"
+            - 'row "home insurance Major Expense: Home Insurance Bill or utility evidence in original merchant or transaction category 6 occurrences · monthly · Last observed 2026-08-06 Expected payment estimate as of 2026-08-28: 2026-09-06 · Detection confidence 98% $150.00 $150.00 $1,800.00"':
+              - 'cell "home insurance Major Expense: Home Insurance Bill or utility evidence in original merchant or transaction category 6 occurrences · monthly · Last observed 2026-08-06 Expected payment estimate as of 2026-08-28: 2026-09-06 · Detection confidence 98%"':
+                - link "home insurance":
+                  - /url: /explorer?search=home+insurance&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Home Insurance"
+                - paragraph: Bill or utility evidence in original merchant or transaction category
+                - paragraph: 6 occurrences · monthly · Last observed 2026-08-06
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-06 · Detection confidence 98%"
+              - cell "$150.00"
+              - cell "$150.00"
+              - cell "$1,800.00"
+            - 'row "auto insurance Major Expense: Auto Insurance Bill or utility evidence in original merchant or transaction category 6 occurrences · monthly · Last observed 2026-08-09 Expected payment estimate as of 2026-08-28: 2026-09-09 · Detection confidence 98% $140.00 $140.00 $1,680.00"':
+              - 'cell "auto insurance Major Expense: Auto Insurance Bill or utility evidence in original merchant or transaction category 6 occurrences · monthly · Last observed 2026-08-09 Expected payment estimate as of 2026-08-28: 2026-09-09 · Detection confidence 98%"':
+                - link "auto insurance":
+                  - /url: /explorer?search=auto+insurance&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Auto Insurance"
+                - paragraph: Bill or utility evidence in original merchant or transaction category
+                - paragraph: 6 occurrences · monthly · Last observed 2026-08-09
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-09 · Detection confidence 98%"
+              - cell "$140.00"
+              - cell "$140.00"
+              - cell "$1,680.00"
+            - 'row "fiberco internet Major Expense: Internet Bill or utility evidence in original merchant or transaction category 6 occurrences · monthly · Last observed 2026-08-15 Expected payment estimate as of 2026-08-28: 2026-09-15 · Detection confidence 98% $79.99 $79.99 $959.88"':
+              - 'cell "fiberco internet Major Expense: Internet Bill or utility evidence in original merchant or transaction category 6 occurrences · monthly · Last observed 2026-08-15 Expected payment estimate as of 2026-08-28: 2026-09-15 · Detection confidence 98%"':
+                - link "fiberco internet":
+                  - /url: /explorer?search=fiberco+internet&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Internet"
+                - paragraph: Bill or utility evidence in original merchant or transaction category
+                - paragraph: 6 occurrences · monthly · Last observed 2026-08-15
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-15 · Detection confidence 98%"
+              - cell "$79.99"
+              - cell "$79.99"
+              - cell "$959.88"
+            - 'row "county water authority Major Expense: Utilities Bill or utility evidence in original merchant or transaction category 6 occurrences · monthly · Last observed 2026-08-21 Expected payment estimate as of 2026-08-28: 2026-09-21 · Detection confidence 98% $21.50 $21.50 $258.00"':
+              - 'cell "county water authority Major Expense: Utilities Bill or utility evidence in original merchant or transaction category 6 occurrences · monthly · Last observed 2026-08-21 Expected payment estimate as of 2026-08-28: 2026-09-21 · Detection confidence 98%"':
+                - link "county water authority":
+                  - /url: /explorer?search=county+water+authority&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Utilities"
+                - paragraph: Bill or utility evidence in original merchant or transaction category
+                - paragraph: 6 occurrences · monthly · Last observed 2026-08-21
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-21 · Detection confidence 98%"
+              - cell "$21.50"
+              - cell "$21.50"
+              - cell "$258.00"
+    - region "Other recurring spending":
+      - heading "Other recurring spending" [level=3]
+      - paragraph: 12 retained series · Estimated monthly $2,629.53 · Estimated annual $31,554.15
+      - region "Other recurring spending estimates":
+        - table:
+          - rowgroup:
+            - row "Merchant and evidence Estimated payment Estimated monthly Estimated annual":
+              - columnheader "Merchant and evidence"
+              - columnheader "Estimated payment"
+              - columnheader "Estimated monthly"
+              - columnheader "Estimated annual"
+          - rowgroup:
+            - 'row "healthfirst insurance Major Expense: Medicare & Health Insurance Recurring pattern without positive subscription or bill evidence 6 occurrences · monthly · Last observed 2026-08-03 Expected payment estimate as of 2026-08-28: 2026-09-03 · Detection confidence 98% $650.00 $650.00 $7,800.00"':
+              - 'cell "healthfirst insurance Major Expense: Medicare & Health Insurance Recurring pattern without positive subscription or bill evidence 6 occurrences · monthly · Last observed 2026-08-03 Expected payment estimate as of 2026-08-28: 2026-09-03 · Detection confidence 98%"':
+                - link "healthfirst insurance":
+                  - /url: /explorer?search=healthfirst+insurance&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Medicare & Health Insurance"
+                - paragraph: Recurring pattern without positive subscription or bill evidence
+                - paragraph: 6 occurrences · monthly · Last observed 2026-08-03
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-03 · Detection confidence 98%"
+              - cell "$650.00"
+              - cell "$650.00"
+              - cell "$7,800.00"
+            - 'row "retirement travel Major Expense: Travel & Hobbies Retail, everyday spending, or conflicting original transaction evidence 6 occurrences · monthly · Last observed 2026-08-12 Expected payment estimate as of 2026-08-28: 2026-09-12 · Detection confidence 98% $550.00 $550.00 $6,600.00"':
+              - 'cell "retirement travel Major Expense: Travel & Hobbies Retail, everyday spending, or conflicting original transaction evidence 6 occurrences · monthly · Last observed 2026-08-12 Expected payment estimate as of 2026-08-28: 2026-09-12 · Detection confidence 98%"':
+                - link "retirement travel":
+                  - /url: /explorer?search=retirement+travel&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Travel & Hobbies"
+                - paragraph: Retail, everyday spending, or conflicting original transaction evidence
+                - paragraph: 6 occurrences · monthly · Last observed 2026-08-12
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-12 · Detection confidence 98%"
+              - cell "$550.00"
+              - cell "$550.00"
+              - cell "$6,600.00"
+            - 'row "greenleaf market Major Expense: Groceries Retail, everyday spending, or conflicting original transaction evidence 27 occurrences · ongoing · Last observed 2026-08-27 Expected payment estimate as of 2026-08-28: 2026-09-02 · Detection confidence 90% $103.13 $471.94 $5,663.23"':
+              - 'cell "greenleaf market Major Expense: Groceries Retail, everyday spending, or conflicting original transaction evidence 27 occurrences · ongoing · Last observed 2026-08-27 Expected payment estimate as of 2026-08-28: 2026-09-02 · Detection confidence 90%"':
+                - link "greenleaf market":
+                  - /url: /explorer?search=greenleaf+market&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Groceries"
+                - paragraph: Retail, everyday spending, or conflicting original transaction evidence
+                - paragraph: 27 occurrences · ongoing · Last observed 2026-08-27
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-02 · Detection confidence 90%"
+              - cell "$103.13"
+              - cell "$471.94"
+              - cell "$5,663.23"
+            - 'row "home maintenance Major Expense: Home Maintenance & Appliances Recurring pattern without positive subscription or bill evidence 6 occurrences · monthly · Last observed 2026-08-22 Expected payment estimate as of 2026-08-28: 2026-09-22 · Detection confidence 98% $300.00 $300.00 $3,600.00"':
+              - 'cell "home maintenance Major Expense: Home Maintenance & Appliances Recurring pattern without positive subscription or bill evidence 6 occurrences · monthly · Last observed 2026-08-22 Expected payment estimate as of 2026-08-28: 2026-09-22 · Detection confidence 98%"':
+                - link "home maintenance":
+                  - /url: /explorer?search=home+maintenance&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Home Maintenance & Appliances"
+                - paragraph: Recurring pattern without positive subscription or bill evidence
+                - paragraph: 6 occurrences · monthly · Last observed 2026-08-22
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-22 · Detection confidence 98%"
+              - cell "$300.00"
+              - cell "$300.00"
+              - cell "$3,600.00"
+            - 'row "amazon Major Expense: Shopping & Household Supplies Retail, everyday spending, or conflicting original transaction evidence 20 occurrences · ongoing · Last observed 2026-08-26 Expected payment estimate as of 2026-08-28: 2026-09-04 · Detection confidence 90% $50.05 $172.58 $2,070.95"':
+              - 'cell "amazon Major Expense: Shopping & Household Supplies Retail, everyday spending, or conflicting original transaction evidence 20 occurrences · ongoing · Last observed 2026-08-26 Expected payment estimate as of 2026-08-28: 2026-09-04 · Detection confidence 90%"':
+                - link "amazon":
+                  - /url: /explorer?search=amazon&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Shopping & Household Supplies"
+                - paragraph: Retail, everyday spending, or conflicting original transaction evidence
+                - paragraph: 20 occurrences · ongoing · Last observed 2026-08-26
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-04 · Detection confidence 90%"
+              - cell "$50.05"
+              - cell "$172.58"
+              - cell "$2,070.95"
+            - 'row "atm withdrawal Major Expense: Cash Spending Retail, everyday spending, or conflicting original transaction evidence 4 occurrences · ongoing · Last observed 2026-08-12 Expected payment estimate as of 2026-08-28: 2026-09-17 · Detection confidence 90% $100.00 $109.09 $1,309.09"':
+              - 'cell "atm withdrawal Major Expense: Cash Spending Retail, everyday spending, or conflicting original transaction evidence 4 occurrences · ongoing · Last observed 2026-08-12 Expected payment estimate as of 2026-08-28: 2026-09-17 · Detection confidence 90%"':
+                - link "atm withdrawal":
+                  - /url: /explorer?search=atm+withdrawal&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Cash Spending"
+                - paragraph: Retail, everyday spending, or conflicting original transaction evidence
+                - paragraph: 4 occurrences · ongoing · Last observed 2026-08-12
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-17 · Detection confidence 90%"
+              - cell "$100.00"
+              - cell "$109.09"
+              - cell "$1,309.09"
+            - 'row "fuel stop Major Expense: Fuel Recurring pattern without positive subscription or bill evidence 12 occurrences · ongoing · Last observed 2026-08-23 Expected payment estimate as of 2026-08-28: 2026-09-07 · Detection confidence 90% $49.08 $105.80 $1,269.61"':
+              - 'cell "fuel stop Major Expense: Fuel Recurring pattern without positive subscription or bill evidence 12 occurrences · ongoing · Last observed 2026-08-23 Expected payment estimate as of 2026-08-28: 2026-09-07 · Detection confidence 90%"':
+                - link "fuel stop":
+                  - /url: /explorer?search=fuel+stop&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Fuel"
+                - paragraph: Recurring pattern without positive subscription or bill evidence
+                - paragraph: 12 occurrences · ongoing · Last observed 2026-08-23
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-07 · Detection confidence 90%"
+              - cell "$49.08"
+              - cell "$105.80"
+              - cell "$1,269.61"
+            - 'row "pet palace Major Expense: Pets Recurring pattern without positive subscription or bill evidence 6 occurrences · ongoing · Last observed 2026-08-16 Expected payment estimate as of 2026-08-28: 2026-09-15 · Detection confidence 90% $76.28 $89.74 $1,076.85"':
+              - 'cell "pet palace Major Expense: Pets Recurring pattern without positive subscription or bill evidence 6 occurrences · ongoing · Last observed 2026-08-16 Expected payment estimate as of 2026-08-28: 2026-09-15 · Detection confidence 90%"':
+                - link "pet palace":
+                  - /url: /explorer?search=pet+palace&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Pets"
+                - paragraph: Recurring pattern without positive subscription or bill evidence
+                - paragraph: 6 occurrences · ongoing · Last observed 2026-08-16
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-15 · Detection confidence 90%"
+              - cell "$76.28"
+              - cell "$89.74"
+              - cell "$1,076.85"
+            - 'row "noodle house Major Expense: Dining Out Recurring pattern without positive subscription or bill evidence 6 occurrences · ongoing · Last observed 2026-08-14 Expected payment estimate as of 2026-08-28: 2026-09-13 · Detection confidence 90% $56.27 $66.20 $794.42"':
+              - 'cell "noodle house Major Expense: Dining Out Recurring pattern without positive subscription or bill evidence 6 occurrences · ongoing · Last observed 2026-08-14 Expected payment estimate as of 2026-08-28: 2026-09-13 · Detection confidence 90%"':
+                - link "noodle house":
+                  - /url: /explorer?search=noodle+house&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Dining Out"
+                - paragraph: Recurring pattern without positive subscription or bill evidence
+                - paragraph: 6 occurrences · ongoing · Last observed 2026-08-14
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-13 · Detection confidence 90%"
+              - cell "$56.27"
+              - cell "$66.20"
+              - cell "$794.42"
+            - 'row "grubhub Major Expense: Dining Out Retail, everyday spending, or conflicting original transaction evidence 4 occurrences · ongoing · Last observed 2026-07-21 Expected payment estimate as of 2026-08-28: 2026-08-30 · Detection confidence 80% $47.24 $46.47 $557.59"':
+              - 'cell "grubhub Major Expense: Dining Out Retail, everyday spending, or conflicting original transaction evidence 4 occurrences · ongoing · Last observed 2026-07-21 Expected payment estimate as of 2026-08-28: 2026-08-30 · Detection confidence 80%"':
+                - link "grubhub":
+                  - /url: /explorer?search=grubhub&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Dining Out"
+                - paragraph: Retail, everyday spending, or conflicting original transaction evidence
+                - paragraph: 4 occurrences · ongoing · Last observed 2026-07-21
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-08-30 · Detection confidence 80%"
+              - cell "$47.24"
+              - cell "$46.47"
+              - cell "$557.59"
+            - 'row "corner pharmacy Major Expense: Pharmacy & Medical Supplies Recurring pattern without positive subscription or bill evidence 7 occurrences · ongoing · Last observed 2026-08-28 Expected payment estimate as of 2026-08-28: 2026-09-23 · Detection confidence 90% $30.40 $39.66 $475.87"':
+              - 'cell "corner pharmacy Major Expense: Pharmacy & Medical Supplies Recurring pattern without positive subscription or bill evidence 7 occurrences · ongoing · Last observed 2026-08-28 Expected payment estimate as of 2026-08-28: 2026-09-23 · Detection confidence 90%"':
+                - link "corner pharmacy":
+                  - /url: /explorer?search=corner+pharmacy&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Pharmacy & Medical Supplies"
+                - paragraph: Recurring pattern without positive subscription or bill evidence
+                - paragraph: 7 occurrences · ongoing · Last observed 2026-08-28
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-23 · Detection confidence 90%"
+              - cell "$30.40"
+              - cell "$39.66"
+              - cell "$475.87"
+            - 'row "pizza palace Major Expense: Dining Out Recurring pattern without positive subscription or bill evidence 4 occurrences · ongoing · Last observed 2026-08-06 Expected payment estimate as of 2026-08-28: 2026-09-26 · Detection confidence 90% $35.76 $28.05 $336.54"':
+              - 'cell "pizza palace Major Expense: Dining Out Recurring pattern without positive subscription or bill evidence 4 occurrences · ongoing · Last observed 2026-08-06 Expected payment estimate as of 2026-08-28: 2026-09-26 · Detection confidence 90%"':
+                - link "pizza palace":
+                  - /url: /explorer?search=pizza+palace&type=Outflow&start=2026-03-01&end=2026-08-28
+                - paragraph: "Major Expense: Dining Out"
+                - paragraph: Recurring pattern without positive subscription or bill evidence
+                - paragraph: 4 occurrences · ongoing · Last observed 2026-08-06
+                - paragraph: "Expected payment estimate as of 2026-08-28: 2026-09-26 · Detection confidence 90%"
+              - cell "$35.76"
+              - cell "$28.05"
+              - cell "$336.54"
+  - region "Supporting charts and tables":
+    - heading "Supporting charts and tables" [level=2]
+    - heading "Spending trends" [level=3]
+    - paragraph: Compare the selected and prior periods by Major Expenses (unmatched outflows excluded). Exact values and changes are in the adjacent table.
+    - paragraph: Not enough history or category activity to show a comparison chart.
+    - heading "Income sources" [level=3]
+    - paragraph: Recorded income in the selected period.
+    - region "Income sources":
+      - table:
+        - rowgroup:
+          - row "Source Avg Freq Total":
+            - columnheader "Source"
+            - columnheader "Avg"
+            - columnheader "Freq"
+            - columnheader "Total"
+        - rowgroup:
+          - row "social security 6 occurrences $2,850.00 monthly $17,100.00":
+            - cell "social security 6 occurrences"
+            - cell "$2,850.00"
+            - cell "monthly"
+            - cell "$17,100.00"
+          - row "social security - spouse 6 occurrences $1,560.00 monthly $9,360.00":
+            - cell "social security - spouse 6 occurrences"
+            - cell "$1,560.00"
+            - cell "monthly"
+            - cell "$9,360.00"
+          - row "interest paid 12 occurrences $0.12 irregular $1.47":
+            - cell "interest paid 12 occurrences"
+            - cell "$0.12"
+            - cell "irregular"
+            - cell "$1.47"
+    - heading "Anomalies" [level=3]
+    - text: 3 in this period
+    - paragraph: Anomalies are detected across your full transaction history — not just the selected period — so peer comparisons stay stable and a long-standing recurring bill isn't repeatedly flagged as "new merchant" just because the date range is narrow. Only anomalies dated within the selected period are listed below.
+    - region "Selected-period anomalies table":
+      - table:
+        - rowgroup:
+          - row "Date Description Category Amount Method Severity":
+            - columnheader "Date"
+            - columnheader "Description"
+            - columnheader "Category"
+            - columnheader "Amount"
+            - columnheader "Method"
+            - columnheader "Severity"
+        - rowgroup:
+          - row "Apr 14, 2026 Town Tax Office Taxes -$2,100.00 New merchant Medium":
+            - cell "Apr 14, 2026"
+            - cell "Town Tax Office"
+            - cell "Taxes"
+            - cell "-$2,100.00"
+            - cell "New merchant"
+            - cell "Medium"
+          - row "Mar 1, 2026 Home Mortgage Mortgage -$1,250.00 New merchant Medium":
+            - cell "Mar 1, 2026"
+            - cell "Home Mortgage"
+            - cell "Mortgage"
+            - cell "-$1,250.00"
+            - cell "New merchant"
+            - cell "Medium"
+          - row "Jul 15, 2026 Home Appliance Co Home Improvement -$899.00 New merchant Medium":
+            - cell "Jul 15, 2026"
+            - cell "Home Appliance Co"
+            - cell "Home Improvement"
+            - cell "-$899.00"
+            - cell "New merchant"
+            - cell "Medium"
+    - heading "Price Creep" [level=3]
+    - text: 2 detected
+    - paragraph: Price creep compares each recurring merchant's earliest charges to its most recent charges across your full transaction history, regardless of the selected date range.
+    - region "Whole-history price creep table":
+      - table:
+        - rowgroup:
+          - row "Merchant First → Current Change Occurrences Since":
+            - columnheader "Merchant"
+            - columnheader "First → Current"
+            - columnheader "Change"
+            - columnheader "Occurrences"
+            - columnheader "Since"
+        - rowgroup:
+          - row "pet palace $70.24 → $82.67 +17.7% 6 Mar 16, 2026":
+            - cell "pet palace"
+            - cell "$70.24 → $82.67"
+            - cell "+17.7%"
+            - cell "6"
+            - cell "Mar 16, 2026"
+          - row "amazon $34.84 → $40.65 +16.7% 19 Mar 5, 2026":
+            - cell "amazon"
+            - cell "$34.84 → $40.65"
+            - cell "+16.7%"
+            - cell "19"
+            - cell "Mar 5, 2026"
+    - heading "Spending pace" [level=3]
+    - paragraph: "Selected-period daily average: $177.11"
+    - paragraph: Forecast unavailable
+    - paragraph: Selected range does not include the current month from its start through today
+- contentinfo: simpleBudget © 2026

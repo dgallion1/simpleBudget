@@ -12,12 +12,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// trendsFixture covers two adjacent equal-length windows: January (prior)
+// trendsFixture covers two adjacent calendar months: January (prior)
 // and February (current). Dining doubles between them; Groceries is flat. A
 // monthly paycheck runs through both. It also plants a December 2025 Dining
-// charge that predates the ACTUAL previous window CategoryTrends compares
-// against -- for a Feb 1-28 (28-day) current window, that window is Jan
-// 4-31, not the whole of January or "everything before February" -- so a
+// charge that predates the previous calendar month: for Feb 1-28, that
+// window is Jan 1-31, not "everything before February" -- so a
 // window-honest comparison must exclude it from previous_amount, while a
 // bug that compared the current window against ALL prior history would
 // wrongly fold it in. Its description deliberately avoids "bistro" so it
@@ -58,16 +57,14 @@ func TestGetTrendsComparesTheWindowAgainstThePrecedingOne(t *testing.T) {
 	}
 
 	// Pins the actual comparison window, not just the totals it produces:
-	// for a 28-day current window (Feb 1-28 inclusive), CategoryTrends'
-	// own "immediately preceding window of equal length" math is Jan 4-31
-	// (duration = 27 days; prevStart = currentStart - duration - 1 day),
-	// NOT the whole of January and NOT "everything before February". A
+	// the full February calendar month compares with the full January
+	// calendar month, NOT "everything before February". A
 	// test that only checked the resulting totals could pass even if the
 	// tool secretly compared against all prior history, since (absent the
 	// December plant in trendsFixture) there is nothing before Jan 10
 	// either way -- see trendsFixture's doc comment.
-	if out.PreviousStart != "2026-01-04" || out.PreviousEnd != "2026-01-31" {
-		t.Errorf("previous window = [%s, %s], want [2026-01-04, 2026-01-31]", out.PreviousStart, out.PreviousEnd)
+	if out.PreviousStart != "2026-01-01" || out.PreviousEnd != "2026-01-31" {
+		t.Errorf("previous window = [%s, %s], want [2026-01-01, 2026-01-31]", out.PreviousStart, out.PreviousEnd)
 	}
 
 	byCat := map[string]categoryTrendRow{}
@@ -80,7 +77,7 @@ func TestGetTrendsComparesTheWindowAgainstThePrecedingOne(t *testing.T) {
 	}
 	// previous_amount must be 100 (the Jan 10 BISTRO charge only) and NOT
 	// 1000 (100 + the Dec 15 OLD STEAKHOUSE plant) -- the December charge
-	// falls before Jan 4, outside the actual previous window, so an
+	// falls before Jan 1, outside the actual previous window, so an
 	// all-prior-history comparison would fail this exact assertion.
 	if dining.CurrentAmount != 200 || dining.PreviousAmount != 100 {
 		t.Errorf("Dining current/previous = %v/%v, want 200/100", dining.CurrentAmount, dining.PreviousAmount)

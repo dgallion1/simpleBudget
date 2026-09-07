@@ -1,0 +1,76 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DI4
+ATTEMPT: 1
+---
+Independent primary tests review. One established defect: F1, criterion 5.
+No deployment, gate, ledger, git, production, or real-data changes performed.
+
+Snapshot and scope
+- Reviewed /tmp/DI4-checker-tests.xGOWIK, copied from immutable /tmp/budget2-DI4-base.KPl7oY with ONLY the 26 DI4.1 manifest paths overlaid. The authorized archive-based baseline has no .git; no git operations were used.
+- Canonical design, ACCESSIBILITY.md, task criteria and worker report were read; worker green claims were not used as independent evidence.
+- Actual app/test/generated-CSS scope is nine files: internal/handlers/insights/{handlers.go,investigation.go,investigation_di4_test.go}; web/static/{js/insights.js,css/tailwind.css}; web/templates/pages/insights.html; web/templates/components/{anomalies-section.html,pricecreep-section.html,insights-investigation.html}.
+- Remaining manifest paths are evidence/manifest/build artifacts, including tmp/tailwind.check.css and duplicate .swarm/manifests/DI4.1.files.
+- Executed rtk proxy bash -c 'diff -qr /tmp/budget2-DI4-base.KPl7oY/internal internal; diff -qr /tmp/budget2-DI4-base.KPl7oY/web web; diff -qr /tmp/budget2-DI4-base.KPl7oY/cmd cmd; cat .swarm/DI-run/manifests/DI4.1.files; cat .swarm/critical.globs'.
+  Output reconciles those nine paths plus my explicitly separate zz_checker_di4_test.go. No cmd differences or critical-glob source changes.
+- A cmp loop over each internal/* and web/* manifest path reported "All nine source/test/CSS manifest paths match frozen source". No live whole-tree copy.
+
+Commands below ran in the snapshot unless another directory is stated.
+A. rtk proxy go test -count=1 -v ./internal/handlers/insights -run '^TestCheckerDI4RecurringLimitWording$'
+   Exit 1, independently reproduced twice after resumption. tmp/checker-F1.log retains final output.
+B. rtk proxy go test -count=1 -v ./internal/handlers/insights -run '^Test(DI4|CheckerDI4(HTTPFindingsLinks|RenderedFractional|GroupingLinksAndPartials))'
+   Exit 0; tmp/checker-functional.log retains output.
+C. rtk proxy bash -c 'make -f Makefile -f /tmp/DI4-focused.mk check && go build -o tmp/budget2 ./cmd/server'
+   Exit 0. This invokes the repo composite target, overriding only vet/static/vuln/test package lists to Insights handlers, templates, insights/anomalies/pricecreep/merchants/metrics services and mcpsvc/spend. Tests use -count=1. Composite test skips checker-prefixed scratch tests; A and B execute those independently, including the known failure. CSS verification remains the repo target.
+   Output: "No vulnerabilities found", zero reachable vulnerabilities, "tailwind.css is up to date", eight package ok lines, "all checks passed"; build succeeded. Vulnerability scan also notes four imported-package and five required-module vulnerabilities not called by these packages; no broader security claim.
+D. rtk proxy bash -c 'DI4_OUTPUT=/tmp/DI4-checker-tests.xGOWIK/tmp/browser-evidence node tmp/checker-browser.cjs'
+   Exit 0. Single batch, real isolated server 127.0.0.1:18975, copied authorized synthetic fixture; widths 390/768/1440, light/dark. Independent results in tmp/browser-evidence/DI4-browser.json and screenshots.
+E. rtk proxy node tmp/checker-disclosure.cjs
+   Exit 0. Both themes: preview=5, remaining=6, enterOpens=true, spaceCloses=true. Uses actual HTML emitted by B's eleven-group HTTP fixture.
+F. In /tmp/DI4-mutant.210RZv:
+   rtk proxy go test -count=1 -v ./internal/handlers/insights -run '^TestDI4(MoneyAndContributors|FindingsCompleteStableAndAnchored)$'
+   Exit 1 after reversing absolute-dollar sort and limiting creeps to ten. Failures: "dollar ranking" and "want 11 creeps + 1 anomaly, got 11".
+   rtk proxy go test -count=1 -v ./internal/handlers/insights -run '^TestCheckerDI4RenderedFractional$'
+   Exit 1 after changing group monthly summation from displayed rows to raw annual/12: missing rendered $0.02 monthly. These are disposable mutations, not changes to the review snapshot or shared source.
+
+Criterion results
+1. Comparison bounds, top three absolute-dollar contributors, stable category ties, no-history/no-findings: supported by B.
+   Read all assertions in investigation_di4_test.go. TestDI4InvestigationRendered checks full/HX selected August and prior July bounds, rendered $100/$200; TestDI4MoneyAndContributors checks signed refund/transfer exclusion, rendered $243/$251/-$8 and Alpha/Zulu/Refund order with exactly three contributors; TestDI4EmptyHistoryRendered checks actual missing-data guidance and absent invented comparison. F proves ranking/count guards detect their intended defects.
+   Independent rendered fractional probe: selected $10.01, prior $0.00, difference +$10.01 after signed refund, transfer excluded. Canonical 2.675 displays $2.67, not a new math.Round rule. Initial scratch expectation $2.68 was corrected after reading models/money.go; this was a harness error, not a finding.
+
+2. Context, What changed, findings, recurring groups, supporting order: supported by B's ordered renderer markers, and D's actual heading lists. Both full and HX use the investigation. No repeated compatibility tiles were found in the live renderer branch.
+
+3. Findings completeness, dedup, anchors and usable destinations: supported by B and E.
+   Author assertions cover hash+type dedup (same hash/different types retained), rejection of invented/out-of-period hashes, stable reversed-input ordering, latest full-history creep anchor not pulled backward into May, and eleven detector groups including subset-name/end-day-noon fixtures.
+   Independent HTTP fixture renders eleven findings in BOTH full and HX: five preview and six remaining. Every rendered finding URL was requested through the actual Explorer router and returned its actual data-hash. Not just URL parsing.
+   E proves the six remaining real results are keyboard-reachable via native details in both themes. Full-history detector scope and median-versus-actual copy were inspected in the rendering templates. Existing supporting tables retain separately labeled history scope.
+   F proves restoring the ten-row cap breaks the meaningful assertion.
+
+4. Merchant-first labels, separate monthly/annual estimates, historical reference and grouping drilldowns: supported by B.
+   TestCheckerDI4GroupingLinksAndPartials requests full, HX, standalone trends, recurring and income. All retain selected dates. Full/HX each follow two actual Major Expense ID links; trends follows one; recurring follows one merchant link. Explorer includes the intended selected transaction and excludes the unmatched row. ID is actual-power-id while label is Power & Light; this is not a same-name/id fixture.
+   Recurring standalone contains "Expected payment estimate as of 2026-08-31"; renderer places merchant before secondary Major Expense label. Full/HX expose unmatched-outflow exclusion and non-reconciliation scope.
+   Fractional renderer probe asserts grand monthly $0.02 versus independently rounded annual $0.12, shared payment precision, and no negative zero. Author group assertions cover the two displayed row estimates. F rejects raw group summation.
+
+5. Recurring scope/retention and HX replacement: FAIL F1.
+   web/templates/pages/insights.html:81 claims "The detector retains up to 20 series".
+   web/templates/components/insights-investigation.html:82 claims "detector limit: 20 series".
+   A constructs 22 real recurring merchants across three months. Actual full, HX and standalone renders each contain 22 recurring rows and each fail the false-limit assertion. Unknown merchants are retained; this is inaccurate new scope wording, NOT actual data truncation.
+   Worker report DI4.1.md:16 repeats the false maximum. Remove/correct the two user-facing limit claims and the report; preserve the accepted uncapped detector.
+   HX replacement otherwise supported by D: context changes, one wrapper, date-filtered findings links updated, focus restored, subsequent preset still operates. Initial chart traces match table amounts at every tested row.
+
+6. Scoped tests, generated assets, build and responsive/theme behavior: supported by C/D.
+   Retained DI1/DI2 service and MCP package tests ran fresh, including uncapped retention, exact-bank classification, calendar periods/history/forecast and reporting cases.
+   D: no horizontal page overflow at all six combinations; zero checked axe/label violations; no page JS errors; correct focus, refreshed links and functioning presets. Contrast computation uses harness-selected theme surfaces; not a comprehensive manual a11y audit. E's HTML fixture isolates native disclosure, not end-to-end server navigation; actual Explorer navigation is tested by B. Named a11y/second lanes and lead gate remain separate mandatory acceptance steps. No Tier3 oracle claimed.
+
+Preserved consumers
+Full /insights and HX share insights-content; /insights/recurring, /insights/trends and /insights/income use new context-bearing standalone partials. Contributors and findings navigate to /explorer; chart requests and supporting trend table share period data. Existing get_recurring and precision/detector sources are unchanged.
+Executed cmp against accepted baseline for internal/services/insights/recurring.go, internal/services/metrics/reporting.go and internal/services/mcpsvc/spend/recurring.go: all byte-identical. Whole internal comparison likewise shows no service/model changes. No storage or MCP schema change.
+
+Promotion locations
+- /tmp/DI4-checker-tests.xGOWIK/internal/handlers/insights/zz_checker_di4_test.go:
+  TestCheckerDI4RecurringLimitWording (F1); TestCheckerDI4HTTPFindingsLinks; TestCheckerDI4RenderedFractional; TestCheckerDI4GroupingLinksAndPartials.
+- /tmp/DI4-checker-tests.xGOWIK/tmp/checker-disclosure.cjs and tmp/findings-fixture.html.
+- /tmp/DI4-checker-tests.xGOWIK/tmp/checker-browser.cjs and tmp/browser-evidence/.
+- Mutations only in /tmp/DI4-mutant.210RZv.
+No additional concrete in-scope defect established. This FAIL is for criterion 5/F1; lead owns concession, redispatch, named checks, gate and deployment.

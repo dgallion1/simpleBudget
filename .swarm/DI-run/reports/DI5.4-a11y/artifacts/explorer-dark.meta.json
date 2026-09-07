@@ -1,0 +1,157 @@
+{
+  "id": "explorer-dark",
+  "route": "/explorer",
+  "theme": "dark",
+  "requestedURL": "http://127.0.0.1:18873/explorer",
+  "responses": [],
+  "requestFailures": [],
+  "blocked": [],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "status": 200,
+  "finalURL": "http://127.0.0.1:18873/explorer",
+  "dom": {
+    "title": "Data Explorer - simpleBudget",
+    "theme": "dark",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "headings": [
+      {
+        "tag": "H1",
+        "id": "",
+        "text": "Data Explorer"
+      }
+    ],
+    "landmarks": [
+      {
+        "name": "main",
+        "count": 1
+      },
+      {
+        "name": "nav",
+        "count": 1
+      },
+      {
+        "name": "header",
+        "count": 1
+      },
+      {
+        "name": "footer",
+        "count": 0
+      }
+    ],
+    "unscopedHeaders": [],
+    "forms": [
+      {
+        "tag": "INPUT",
+        "id": "search-input",
+        "type": "text",
+        "required": false,
+        "label": "",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "explorer-category-filter",
+        "type": "select-one",
+        "required": false,
+        "label": "Category",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "explorer-major-expense-filter",
+        "type": "select-one",
+        "required": false,
+        "label": "Major Expense",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "explorer-type-filter",
+        "type": "select-one",
+        "required": false,
+        "label": "Type",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "explorer-date-start",
+        "type": "date",
+        "required": false,
+        "label": "From",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "explorer-date-end",
+        "type": "date",
+        "required": false,
+        "label": "To",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      }
+    ],
+    "clickable": [],
+    "live": [],
+    "hiddenText": [],
+    "images": [],
+    "dialogs": [],
+    "animations": [],
+    "charts": [],
+    "nav": [
+      {
+        "text": "simpleBudget",
+        "href": "/"
+      },
+      {
+        "text": "Dashboard",
+        "href": "/dashboard?end=2026-08-28&start=2026-03-01"
+      },
+      {
+        "text": "Explorer",
+        "href": "/explorer?end=2026-08-28&start=2026-03-01"
+      },
+      {
+        "text": "Insights",
+        "href": "/insights?end=2026-08-28&start=2026-03-01"
+      },
+      {
+        "text": "Major Expenses",
+        "href": "/major-expenses?end=2026-08-28&start=2026-03-01"
+      },
+      {
+        "text": "What-If",
+        "href": "/whatif"
+      },
+      {
+        "text": "Accounts",
+        "href": "/accounts"
+      },
+      {
+        "text": "Transfers",
+        "href": "/transfers"
+      },
+      {
+        "text": "File Manager",
+        "href": "/filemanager"
+      },
+      {
+        "text": "Duplicates\n                            1",
+        "href": "/duplicates"
+      }
+    ]
+  },
+  "htmlFile": "explorer-dark.html"
+}

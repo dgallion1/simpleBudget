@@ -1,0 +1,67 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DI3
+ATTEMPT: 1
+---
+Independent primary tests review. Criteria are the five DI3 task checkboxes plus the lead's monetary-display/monthly-residual rulings and approved design/global constraints. Root SPEC is absent; canonical design and ACCESSIBILITY.md read. No author PASS claim used as evidence.
+
+Isolation and scope
+- Snapshot: /tmp/DI3-checker-tests.eHC5LI, copied from immutable /tmp/budget2-DI3-base.rhoTJM with ONLY DI3.1 manifest overlay. No subsequent source recopy. Accepted DI1/DI2/DI6 are baseline; DI4 excluded.
+- Read /tmp/DI3-attempt1-review.diff. A read-only node byte comparison recursively enumerating cmd/internal/web in baseline and snapshot, excluding the named scratch probe, asserted changed paths equal the source manifest: "SCOPE PASS: 18 source/test/CSS changes equal manifest; no critical production path changed".
+- The 18 changes are dashboard handlers/verdict and focused tests, reporting.go, spend summary.go/insights.go and rounding tests, dashboard.js, three Dashboard templates, tailwind.css, and two Dashboard assertions in cmd/server/main_test.go. Evidence/manifest paths account for the remaining manifest entries. No storage/retirement-engine/account/transfer/confirmation production changes. No DI3 tier3 accept.sh exists; task is Tier 2.
+- No shared source, ledger, index, branch, or real-data changes; no subagents. Only shared write is this verdict. Synthetic data copied from /tmp/budget2-DI-demo.mfLral/data to snapshot/tmp/demo-data. Own server used 127.0.0.1:18973 and separate scratch import/backup directories; stopped after verification. Neither :8080 nor :8081 touched.
+
+Commands (all prefixed rtk proxy; cwd snapshot unless stated)
+A. go test -count=1 ./internal/handlers/dashboard ./internal/services/metrics ./internal/services/mcpsvc/spend ./internal/templates ./cmd/server
+   All five packages returned ok.
+B. make -f Makefile -f /tmp/DI3-focused.mk check
+   Supplemental scratch Makefile scopes vet/staticcheck/govulncheck/test to the same five packages and sets test -count=1; original css-verify recipe and check dependency graph retained. Exit 0: "No vulnerabilities found", "tailwind.css is up to date", five uncached package ok lines, "all checks passed". Dependency scan notes 8 imported-package and 1 required-module vulnerabilities not called by this code. Outdated caniuse-lite advisory only. This is package-scoped composite evidence, NOT a full-tree check claim.
+C. go build -o /tmp/DI3-checker-tests.eHC5LI/tmp/budget2 ./cmd/server
+   Exit 0; binary served the isolated browser fixtures.
+D. go test -count=1 -v ./internal/handlers/dashboard -run '^TestCheckerDI3'
+   Exit 0. Scratch assertions extract the actual adjacent rendered values, parse CSV records, and inspect specific monthly table rows. Log tmp/checker-money.log.
+E. go test -count=1 -v ./internal/services/mcpsvc/spend -run '^TestDI3'
+   Exit 0: TestDI3SummaryReportingRounding/{fractional,boundary,refund,zero} and TestDI3SummaryMonthlyAdjustment PASS. Assertions read; actual SDK CallTool structured output checked.
+F. go test -count=1 -v ./internal/handlers/dashboard -run 'Test(DI3|DI2|AccountsCard_(Stale|NoAnchor)|CoverageStart|DashboardKPIs_TargetProvenance|DashboardVerdictBar_Rendered|HandleKPIMonthDetail_Clips|ResolveDateRange|BuildCumulativeChartData)'
+   Exit 0, dashboard 0.284s. Named results retained in tmp/checker-retained.log.
+G. env DI3_EVIDENCE=/tmp/DI3-checker-tests.eHC5LI/tmp node tmp/checker-browser.cjs
+   Exit 0. Worker harness assertions read, scratch port changed, table count strengthened to exactly five, and every chart-table cell compared with the plotted series/target values. Log tmp/checker-browser.log; fresh screenshot/JSON files under tmp.
+H. env DI3_EVIDENCE=/tmp/DI3-checker-tests.eHC5LI/tmp DI3_A11Y=1 node tmp/checker-browser.cjs
+   Exit 0; violations=[] in all six viewport/theme states.
+I. node --check web/static/js/dashboard.js; node --test web/static/js/page-refresh.test.cjs
+   Syntax exit 0; seven refresh regressions pass, zero failed/skipped.
+
+Criterion 1 — PASS: real renderer, missing/empty/refund/fractional/stale fixtures.
+D asserts exact income/spending/cash-flow strings across full page, HTMX, income/expense/savings detail, savings month drilldown, and CSV:
+- 10.006 / 0.004 => [$10.01 $0.00 $10.01].
+- 2.675 / 0.004 => [$2.67 $0.00 $2.67].
+- Income 10, purchase 1, outflow credit 3 => [$10.00 -$2.00 $12.00].
+- 10.001 / 10.004 => [$10.00 $10.00 $0.00].
+Out-of-range February income 999 cannot leak into January; no-plan actuals and What-If link asserted. E independently checks the same MCP monetary cases and positive-zero normalization.
+F passes TestDI3EmptySelection (no matched/green verdict), TestDI3HealthcareNoCoverage, TestAccountsCard_Stale, TestAccountsCard_NoAnchor, and retained DI2 date/history renderer fixtures. Relevant assertions read. Scratch refund fixture initially used an existing income keyword; calibrated to established "Boutique Store Credit" outflow shape before using results. This was a harness issue, not a DI3 defect.
+
+Criterion 2 — PASS: four same-period figures, details/provenance and shared rounding.
+D verifies actual headline components and matching detail/month/CSV totals. G asserts exactly four primary h2 headings at all widths/themes. F passes visible phase target provenance, full-ledger healthcare coverage at full/partial/chart consumers, suppressed-duplicate coverage, and rendered separately modeled-cost/net-refund exclusion regressions. Budget classification/target policies were not changed.
+D additionally asserts two months each 0.004: expense Total $0.01, exact monthly rows $0.00/$0.00, exactly one $0.01 adjustment; cash-flow Total -$0.01 with rows $0.00/$0.00 and one -$0.01 adjustment. E asserts actual MCP total=0.01, both monthly rows=0, adjustment=0.01.
+Source consumer enumeration via rg ReportingCashFlow/ReportingMoney/round2 and exact diff: BuildBudgetVerdict -> full/HTMX headline and explanation; KPI detail monthly/period totals; month drilldown components; CSV monthly rows; cumulative chart running aggregate; MCP summarize_spending totals/monthly residual. Shared spend round2 also serves category/merchant/month rows, recurring estimates, trends/income/velocity, anomalies and price-creep amounts/metadata; the full spend package ran uncached.
+Raw ledger/metrics unchanged. Existing five chart scopes retained. MCP description explicitly includes monthly adjustment and top-N/per-row-rounding limitations. CSV retains its existing columns and no invented period-total row.
+
+Criterion 3 — PASS: sign-aware explanation, neutral zero, no invented withdrawals.
+F TestDI3RenderedCashFlow checks the exact positive/negative/neutral explanations in full/partial rendering and portfolio-withdrawal disclaimer; all four subcases PASS. D checks exact zero displayed balance. G synthetic page shows -$5,595.79 with "Spending not covered by recorded income" and income $26,461.47 versus spending $32,057.26. Screenshot inspection confirms What-If, not cash flow, owns long-term sustainability explanation.
+
+Criterion 4 — PASS: retained dated accounts/charts, details and selected range navigation.
+F covers stale/unknown anchors, full-ledger coverage, default/explicit/invalid/YTD dates, year civil history and month clipping; all PASS. G checks modal opening, focus trap, Escape/focus return and updated Insights start/end after HTMX selection. All five chart alternatives match every plotted cell: budget 19 rows including target, Major Expense 9, spending trend 5, top spending 10, cumulative 144, in each of six states. No claim that six-month charts cover the longer selected period. Relevant details remain navigable; no DI4 anchor/layout requirement imported.
+
+Criterion 5 — PASS in primary tests lane: generated assets, responsive/render/client behavior.
+B/C/I provide composite CSS/build/static/JS evidence. G reports scrollWidth equals viewport at 390/768/1440, no overflow descendants, one h1, four primary figures, five chart disclosures, keyboard modal/import-picker/HTMX flows in both themes. H reports zero automated axe WCAG violations across six states. Fresh light-mobile and dark-desktop screenshots inspected. Existing tokens/components preserved in exact diff.
+These are executable primary-lane checks, not a substitute for named checker-a11y judgment: automated axe does not establish every chart-stroke contrast ratio or every unrelated workflow. No uploads/restores were performed; filechooser was cleared.
+
+Regression strength
+- In /tmp/DI3-checker-mutation only, changed ReportingCashFlow balance back to independently rounded raw income-spending. Ran go test -count=1 ./internal/handlers/dashboard ./internal/services/mcpsvc/spend -run '^TestDI3': exit 1 for the intended defect. Renderer got $10.00 instead of $10.01; CSV ended 10.00; cumulative ended 10 instead of 10.01; MCP got income=10.01 spend=0 net=10.
+- Restored that scratch mutation, then zeroed UI/MCP monthly residual adapters. Ran go test -count=1 ./internal/handlers/dashboard ./internal/services/mcpsvc/spend -run '^TestDI3.*(Adjustment|Residual)': exit 1, TestDI3MonthlyAdjustmentRendered and TestDI3SummaryMonthlyAdjustment failed for missing/zero residual. Log /tmp/DI3-residual-mutation.log.
+- Unmutated snapshot passed D/E/F; no mutation entered shared source.
+
+Findings: No concrete in-scope blocker established.
+Promotion candidates: /tmp/DI3-checker-tests.eHC5LI/internal/handlers/dashboard/zz_checker_di3_test.go (exact component/detail/month/CSV and exact monthly residual rows); /tmp/DI3-checker-tests.eHC5LI/tmp/checker-browser.cjs (all plotted/table cells, exactly five charts).
+Verification-before-completion skill used. Legacy Landlock required scoped escalated RTK execution. Lead retains acceptance/deployment/gate authority.

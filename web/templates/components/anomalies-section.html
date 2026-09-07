@@ -14,7 +14,7 @@
         comparisons stay stable and a long-standing recurring bill isn't repeatedly flagged as "new merchant" just
         because the date range is narrow. Only anomalies dated within the selected period are listed below.
     </p>
-    <div class="overflow-x-auto">
+    <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Selected-period anomalies table">
         {{if .Anomalies}}
         <table id="anomalies-table" class="w-full">
             <thead class="bg-gray-50 dark:bg-gray-900">

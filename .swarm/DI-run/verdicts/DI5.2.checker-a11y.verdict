@@ -1,0 +1,102 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: DI5
+ATTEMPT: 2
+---
+
+Scope: final DI5 accessibility lane, frozen production behavior. DI5.1 F1 remains upheld historically and is corrected by attempt2. A new attempt2 focus-restoration regression blocks this verdict. This is not an invented acceptance verdict for the other lanes' full Go/race work, nor a full manual WCAG certification. No production, git, ledger, real data or deployment changes were made.
+
+FAILURES
+
+F2 — ACCESSIBILITY.md point 10, HTMX focus restoration; also relevant to point 9 keyboard continuity. web/static/js/page-refresh.js:32-49.
+With the pending Page refresh notice's Keep editing button focused, an actual HTMX outerHTML replacement of main detaches and remounts the same notice. The same button and region survive, but document.activeElement becomes BODY, not the button or a sensible element inside the replaced region. Observed in light and dark, 390x900. The button is visibly present at x157.1875,y176,width120.578125,height42 after replacement, but no longer has keyboard focus. This is focus loss, not another overlay obstruction.
+
+Independent real-render counterfactual command (cwd /tmp/DI5-2-a11y.6qv3pb):
+  rtk proxy bash -lc 'set -o pipefail; node main-focus.cjs |& tee checker-evidence/main-focus.log'
+Exit 1 at the explicit assertion: "constitution 10: restore focus after main swap". Four states completed before the assertion: previous script/light and dark retained the identical BUTTON; final script/light and dark returned BODY with sameButton=false, insideMain=false, buttonConnected=true, sameRegion=true, count=1.
+
+The probe loads the actual isolated Dashboard handler/template render with all its scripts and real CSS. A GET-only intercepted /checker-main response uses the actual rendered main bytes; real htmx.ajax performs the outerHTML swap. Only the refresh API response is controlled to request the notice. This exercises the explicitly required main-replacement lifecycle; it does not claim that an ordinary Dashboard date request replaces main (that request updates KPIs and passes separately). The replacement response is a captured render, so this probe is NOT evidence about persistence of server-replaced input values. No server write or real app request occurs. The old/final counterfactual changes only the served page-refresh.js bytes, preserving the final Dashboard, CSS, scripts, viewport and swap.
+
+Artifacts: checker-evidence/main-focus.json, main-focus.log, main-focus-{old,final}-{false,true}-{before,after}.png. The final light screenshot was inspected; the missing focus is established by activeElement/node identity, not by screenshot inference alone. Earlier corroboration used the worker's synthetic layout fixture with an independently added focused-notice state: focused-remount.cjs and checker-evidence/focused-remount/. That collector completed both themes; main-focus.cjs adds the explicit failing assertion and actual Dashboard render.
+
+Attribution: this is introduced by attempt2 placing the notice inside main. Previous page-refresh.js SHA256 e4f515e7adcd11c4bad42d5ec1207a37809203e19899c25591d9574cb3e5aca8 leaves it outside the replaced main and retains focus. Current SHA256 97cb7c8c57d9bf9a885a8d0f86fea68a2a3d5f8377c071ed906997220c3e2ecf remounts it after focus has already fallen to BODY. The afterSwap handler reads document.activeElement too late to retain the detached button's focus. The scoped new code is:
+
+@@ -29,6 +29,24 @@
++    function mountNotice() {
++        if (!notice || notice.isConnected) return;
++        var focus = document.activeElement;
++        var parent = document.querySelector('main') || document.body;
++        parent.insertBefore(notice, parent.firstChild);
++        // Insertion can push an editing control below the viewport. Keep that
++        // same control visible without moving keyboard focus to the notice.
++        if (focus && focus !== document.body && focus.isConnected) {
++            var rect = focus.getBoundingClientRect();
++            if (rect.top < 0 || rect.bottom > window.innerHeight ||
++                rect.left < 0 || rect.right > window.innerWidth) {
++                focus.scrollIntoView({block: 'nearest', inline: 'nearest', behavior: 'instant'});
++            }
++        }
++    }
++    // A main replacement can detach the pending region. Reuse its existing
++    // status and handlers; unrelated partial swaps must not repeat it.
++    document.addEventListener('htmx:afterSwap', mountNotice);
+
+Full unified delta is checker-evidence/production.diff. Read-only `rtk proxy git -C /home/darrell/bin/ai/budget2/.worktrees/dashboard-insights diff master -- web/static/js/page-refresh.js` is empty because the file is not tracked in master; `git ... cat-file -e master:web/static/js/page-refresh.js` explicitly reports it absent. An empty tracked diff is not byte-identity proof. The immutable prior-script counterfactual above establishes the narrower attempt2 introduction directly. No claim that this issue existed at original69e484a.
+
+SNAPSHOT / EXACT-SOURCE ASSOCIATION
+
+Scratch root S=/tmp/DI5-2-a11y.6qv3pb. Constructed from immutable /tmp/budget2-DI4-base.KPl7oY with ONLY frozen DI4.2 then cumulative DI5.2 manifest paths overlaid, not a whole live-tree copy. Synthetic data copied with cp -aL from /tmp/budget2-DI-demo.mfLral/data to S/runtime/data; separate imports/backups; isolated server18809 and captured-render listener18810. Both stopped at handoff (`rtk proxy kill 2721665 2740368`; scoped ss check found no listeners on those ports).
+
+Read canonical approved design, DI5.2 brief/report, DI5.1 evidence/promotion report, DI6 brief, all17 ACCESSIBILITY.md points and both manifests. Browser skill and its explicitly authorized fresh-context headless fallback were used; verification-before-completion required fresh final assertions. No user browser session, upload, external navigation or real/demo8080/8081 access.
+
+`rtk proxy node freeze-check.cjs` exit0 immediately before verdict: 373/373 manifest files match live frozen bytes and initial snapshot provenance. checker-evidence/final-freeze.json preserves every hash. checker-evidence/provenance.json compares 678 prior full-site inventoried source/config/standard files: only page-refresh.js and page-refresh.test.cjs differ. All templates, other production sources and CSS remain byte-identical, allowing the prior actual full-site captures/manual inventory to be associated rather than asserted from worker claims.
+Unchanged tailwind.css SHA256 f09162945444f745061980d04d5d3eafd8c7c9d67c178381837555429adb6c5c; kpis.html SHA256 b59581cea9b37fdb4efd2f169c176c31312ecf067f5f20616e5600912ea4b5f3.
+Promotion inventory checker-evidence/promotion-inventory.json: all193 DI5.1 manifest paths retained; 17 promoted Go test files and 22 top-level TestDI5 functions inventoried. Tests are supporting evidence, not a substitute for the independent failing trace.
+
+EXECUTED CORRECTION / REGRESSION EVIDENCE
+
+Commands below run in S. Browser script prerequisites are the cached Playwright/Chrome/axe locations in notice-check.cjs and main-focus.cjs; no dependency download required. Isolated server built with `rtk proxy go build -buildvcs=false -o checker-server ./cmd/server` (exit0), launched with BUDGET_DEBUG=true, BUDGET_LISTEN_ADDR=127.0.0.1:18809, BUDGET_DATA_DIR=S/runtime/data, BUDGET2_BACKUP_DIR=S/runtime/backups, BUDGET2_IMPORT_DIR=S/runtime/imports, BUDGET_TEMPLATES_DIR=S/web/templates and BUDGET_STATIC_DIR=S/web/static. Replace S by the absolute scratch root in commands.
+
+1. `rtk proxy node --test web/static/js/page-refresh.test.cjs`: exit0,10/10, freshly repeated. Seven established groups plus placement/remount/fallback groups pass. These tests do not cover focused notice-button detachment.
+2. `rtk proxy env DI5_BASE=http://127.0.0.1:18809 DI5_OUTPUT=/tmp/DI5-2-a11y.6qv3pb/checker-evidence/promoted-focus node .swarm/DI-run/reports/DI5-focus-obstruction.cjs`: exit0, six all-scripts-active states, light/dark390/768/1440. hits=[] throughout,46/46/54 Tab stops by width, all four previously obstructed detail labels explicitly found. Full-rectangle and nine hit-point proof, no baseline allowlist. Arrival retains focused input/value/visibility. DI5.1 F1 correction proven.
+3. `rtk proxy env DI5_SOURCE_ROOT=/tmp/DI5-2-a11y.6qv3pb DI5_OUTPUT=/tmp/DI5-2-a11y.6qv3pb/checker-evidence/layout node .swarm/DI-run/reports/DI5-refresh-layout.cjs`: exit0,12 main/fallback x theme x width states. Actual shared JS/CSS/HTMX synthetic layout fixture; same input focus remains exposed, same notice/status survive partial and main swaps, dismissal removes both. Notice-button focus during main replacement was missing from this otherwise-green coverage and is F2 above.
+4. `rtk proxy env DI5_BASE=http://127.0.0.1:18809 DI5_SOURCE_ROOT=/tmp/DI5-2-a11y.6qv3pb DI5_OUTPUT=/tmp/DI5-2-a11y.6qv3pb/checker-evidence/lifecycle node .swarm/DI-run/reports/DI5-refresh-browser.cjs`: exit0,six states, zero obstructions under strict unconditional assertions. Refusal, restart, acceptance, clean reload/URL/hash and dismissal pass. This isolates refresh JS on actual rendered HTML; command2 supplies the full-active-script obstruction proof.
+5. `rtk proxy node notice-check.cjs`: independent real Dashboard trace, both themes390. Actual /dashboard/kpis?start=2026-07-01&end=2026-08-28 HTMX update retains exact notice/status nodes, zero reinsertion mutations and one region; dirty date value retained. Keyboard refusal, Tab/Enter dismissal, focus return to date control and epoch reset pass. Notice new-region axe violations0; readable normal-flow wrapping and visible button focus screenshots inspected. Artifacts independent.json, notice-*.png/.ax.txt/.axe.json.
+6. `rtk proxy node shared-notice.cjs`:18 actual route/theme states at1440, all scripts active. Seven initially editable pages preserve focused-control identity, visibility and unchanged value with static notice and zero new-region axe violations. Transfers and Duplicates have no initially editable controls; recorded as such, not manufactured. Output shared-notice.json.
+7. Fresh CLI actual-render audit:
+   rtk proxy bash -lc 'set -o pipefail; npx --no-install @axe-core/cli http://127.0.0.1:18810/light.html http://127.0.0.1:18810/dark.html --tags wcag2a,wcag2aa,wcag21a,wcag21aa,wcag22aa --chrome-path /tmp/DI5-a11y-baseline.Yd8pno/chrome-1440.sh --chromedriver-path /home/darrell/.config/nvm/versions/node/v24.12.0/lib/node_modules/@axe-core/cli/node_modules/chromedriver/lib/chromedriver/chromedriver --chrome-options=--no-sandbox --save checker-evidence/notice-cli.json --exit | tee checker-evidence/notice-cli.log'
+   Exit0,zero violations on both actual post-render Dashboard notice pages with project's real unchanged stylesheet. Scripts removed only after DOM capture. CLI1440 complements interactive390 checks; not guessed template HTML.
+8. `rtk proxy bash -lc 'set -o pipefail; go test -count=1 -v ./internal/handlers/dashboard ./internal/handlers/insights ./internal/templates -run "^TestDI5" | tee checker-evidence/render-promotions.log'`: exit0. Focused promoted real renderer consumers, period bounds, monetary residuals, 22 recurring rows, estimates and findings tests pass. Full Go/race acceptance belongs to the lead/tests lane.
+
+FULL-SITE PREPARATION ASSOCIATION / ALL17
+
+Independent prior root P=/tmp/DI5-final-a11y.JYHU8N, not the worker's browser report. P/PREPARATION.md records exact commands and limitations; final source equality is independently proven above. P/artifacts/axe-command.json supplies exact npx argv. Commands executed there: `rtk proxy node baseline.cjs`, `rtk proxy node run-axe.cjs`, `rtk proxy node manual.cjs` then `rtk proxy env REMAINING=1 node manual.cjs`, `rtk proxy node responsive.cjs`.
+All nine nav routes (/dashboard,/explorer,/insights,/major-expenses,/whatif,/accounts,/transfers,/filemanager,/duplicates), light/dark1440:18 actual handler renders, HTTP200, no load/page errors, zero axe violations,20 incomplete results/464 node occurrences retained. Manual association includes65 Tab presses per route/theme, AX/name/label/heading/chart inventory and visually inspected contact sheets. Dashboard/Insights responsive12states cover390/768/1440 both themes, oneh1 and no overflow. Prior populated Insights and Dashboard detailed chart/modal checks remain in /tmp/DI4-a11y.m9xka6, /tmp/DI4-2-a11y.kTazMP and /tmp/DI3-a11y.mBCqsi; do not construe the current no-history Insights selection as populated-chart coverage.
+
+1 Structure: P baseline/manual/responsive headings/main/nav/header inventories; oneh1. No new structural node except semantic notice region.
+2 Tables: P table/axe inventory and preserved Insights sort semantics. Explorer header relationships remain an automated incomplete observation.
+3 Controls: P role/native control Tab inventory; fresh notice controls are native buttons with visible names, activated via keyboard in command5.
+4 Labels: P explicit-label/name audit; nine inherited association gaps below. No new input or label source delta.
+5 Errors: P Accounts/Transfers/Filemanager live/error markup inspection; no prohibited write submissions performed, so no universal validation-announcement claim. Refresh refusal/status traced freshly.
+6 Required/format text: P input metadata retained; inherited What-If placeholder gaps below; no new form fields.
+7 Contrast: P both-theme axe/screenshots and fresh notice CLI/interactive audits. Visible currentColor borders/outlines reviewed. Automated incomplete cases remain limitations, not concealed PASSes.
+8 Noncolor meaning: P status/sign AX inventory plus fresh notice warning text; no color-only new message.
+9 Keyboard: P Tab inventory and fresh commands2,4,5; original fully obscured focus corrected in all six strict states. Main-remount continuity fails F2.
+10 HTMX focus: real KPI partial same-node/announcement checks pass command5; independent actual-main replacement loses focused button and FAILS main-focus.cjs.
+11 Chart alternatives: P and preserved detailed Dashboard/Insights evidence; new refresh code has no chart delta. Existing What-If equivalence caveat remains below.
+12 Theme parity: P both-theme nine-page render evidence plus all fresh six-state notice checks. F2 reproduces in both themes, not a theme-specific defect.
+13 Money semantics: P AX/sign context plus command8 actual renderer promotions; production monetary sources byte-identical. No arithmetic certification inferred from a11y automation.
+14 Banners: command4/5 dirty refusal/dismissal/new revision/epoch traces; removal and signal-scoped recurrence pass. No claim every legacy site banner lifecycle was activated.
+15 Motion: P reduced-motion metadata and inherited observations; fresh contexts reduced-motion. New placement's visibility scroll explicitly uses instant, no motion-only feedback.
+16 Hidden/AT parity: P hidden-summary inventory; command5 exact region/status both removed after dismissal/reset; same-node KPI update avoids reinsertion. Main remount retains nodes but not focus (F2); retained node identity alone does not prove focus restoration or actual spoken announcement counts.
+17 Modals: refreshed notice is nonmodal and does not block page. Preserved Dashboard modal focus/trap/Escape/return evidence applies to byte-identical modal sources. No absent Filemanager conditional modal was fabricated or deemed passing.
+
+OBSERVATIONS / LIMITATIONS
+
+O1: Original DI5.1 F1 attribution is not withdrawn: P/FOCUS-ATTRIBUTION.md and P/artifacts/obstruction contain original69e484a, preDI3 and prior-final traces/hashes. Original/preDI3 detail paths were unobstructed; DI3 detail positions plus DI6 overlay introduced the old failure. Command2 proves correction now. Matching the accepted DI3 baseline alone was never used to excuse it.
+O2: Original-to-run provenance for unchanged Explorer search, Major Expenses search and seven What-If quick-add explicit-label gaps is checker-evidence/legacy-original.json (entire affected template hashes equal69e484a). What-If chart alternative completeness remains an inherited observation: its annual table does not automatically prove equivalence to all monthly/per-source series. Existing Major Expenses sr-only summary and motion caveats remain in baseline report. These are not introduced attempt2 failures or a baseline allowlist for focus obstruction.
+O3: Zero automated violations is not full manual certification: incomplete contrast/table rules retained, no destructive/write flow executed, no live screen-reader speech measurement, no universal conditional-modal/validation coverage claim. These limits do not weaken the explicit point10 failure.
+O4: New main-focus.cjs should be considered for durable promotion; it asserts a state absent from current green layout tests. It and all auxiliary probes/artifacts are only in S, not production. Re-run with isolated server18809 as documented; old counterfactual prerequisite is P/web/static/js/page-refresh.js. Preserve that exact old hash alongside the probe if promoted.
+
+Result: FAIL for newly introduced F2 production focus loss. Original F1 repair and listed fresh regression checks pass. No fix attempted. Lead owns adjudication, gates and any deployment.

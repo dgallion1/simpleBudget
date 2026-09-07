@@ -1,0 +1,148 @@
+=== RUN   TestDI5SecondCrossMoney
+=== RUN   TestDI5SecondCrossMoney/split_charges
+2026/09/07 08:10:01 Templates loaded successfully: 65 files
+2026/09/07 08:10:01 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_charges1707608657/001
+2026/09/07 08:10:01 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:01 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:01 Total transactions after processing: 5
+2026/09/07 08:10:01 Templates loaded successfully: 65 files
+2026/09/07 08:10:01 "GET http://example.com/dashboard?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 32204B in 139.301009ms
+2026/09/07 08:10:01 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_charges1707608657/001
+2026/09/07 08:10:01 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:01 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:01 Total transactions after processing: 5
+2026/09/07 08:10:01 Templates loaded successfully: 65 files
+2026/09/07 08:10:01 "GET http://example.com/dashboard/kpis?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 7993B in 113.623939ms
+2026/09/07 08:10:01 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_charges1707608657/001
+2026/09/07 08:10:01 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:01 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:01 Total transactions after processing: 5
+2026/09/07 08:10:01 Templates loaded successfully: 65 files
+2026/09/07 08:10:01 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 128.405676ms
+2026/09/07 08:10:01 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_charges1707608657/001
+2026/09/07 08:10:01 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:01 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:01 Total transactions after processing: 5
+2026/09/07 08:10:01 Templates loaded successfully: 65 files
+2026/09/07 08:10:01 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 132.568871ms
+2026/09/07 08:10:01 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_charges1707608657/001
+2026/09/07 08:10:01 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:01 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:01 Total transactions after processing: 5
+2026/09/07 08:10:01 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_charges1707608657/001
+2026/09/07 08:10:01 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:01 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:01 Total transactions after processing: 5
+    cross_money_di5_test.go:139: four HTTP surfaces plus assembled MCP top1/top10: income=$10.01 spending=$0.01 balance=$10.00; two exact months reconcile
+=== RUN   TestDI5SecondCrossMoney/split_credits
+2026/09/07 08:10:01 Templates loaded successfully: 65 files
+2026/09/07 08:10:01 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_credits1471504775/001
+2026/09/07 08:10:01 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:01 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:01 Total transactions after processing: 5
+2026/09/07 08:10:02 Templates loaded successfully: 65 files
+2026/09/07 08:10:02 "GET http://example.com/dashboard?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 32181B in 136.244417ms
+2026/09/07 08:10:02 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_credits1471504775/001
+2026/09/07 08:10:02 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:02 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:02 Total transactions after processing: 5
+2026/09/07 08:10:02 Templates loaded successfully: 65 files
+2026/09/07 08:10:02 "GET http://example.com/dashboard/kpis?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 7970B in 107.938621ms
+2026/09/07 08:10:02 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_credits1471504775/001
+2026/09/07 08:10:02 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:02 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:02 Total transactions after processing: 5
+2026/09/07 08:10:02 Templates loaded successfully: 65 files
+2026/09/07 08:10:02 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24655B in 140.043247ms
+2026/09/07 08:10:02 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_credits1471504775/001
+2026/09/07 08:10:02 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:02 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:02 Total transactions after processing: 5
+2026/09/07 08:10:02 Templates loaded successfully: 65 files
+2026/09/07 08:10:02 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24655B in 132.353526ms
+2026/09/07 08:10:02 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_credits1471504775/001
+2026/09/07 08:10:02 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:02 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:02 Total transactions after processing: 5
+2026/09/07 08:10:02 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneysplit_credits1471504775/001
+2026/09/07 08:10:02 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:02 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:02 Total transactions after processing: 5
+    cross_money_di5_test.go:139: four HTTP surfaces plus assembled MCP top1/top10: income=$10.01 spending=-$0.01 balance=$10.02; two exact months reconcile
+=== RUN   TestDI5SecondCrossMoney/tie
+2026/09/07 08:10:02 Templates loaded successfully: 65 files
+2026/09/07 08:10:02 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneytie1511729239/001
+2026/09/07 08:10:02 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:02 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:02 Total transactions after processing: 5
+2026/09/07 08:10:02 Templates loaded successfully: 65 files
+2026/09/07 08:10:02 "GET http://example.com/dashboard?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 32202B in 125.613422ms
+2026/09/07 08:10:02 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneytie1511729239/001
+2026/09/07 08:10:02 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:02 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:02 Total transactions after processing: 5
+2026/09/07 08:10:02 Templates loaded successfully: 65 files
+2026/09/07 08:10:02 "GET http://example.com/dashboard/kpis?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 7991B in 109.716547ms
+2026/09/07 08:10:02 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneytie1511729239/001
+2026/09/07 08:10:02 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:02 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:02 Total transactions after processing: 5
+2026/09/07 08:10:02 Templates loaded successfully: 65 files
+2026/09/07 08:10:03 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 127.753279ms
+2026/09/07 08:10:03 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneytie1511729239/001
+2026/09/07 08:10:03 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:03 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:03 Total transactions after processing: 5
+2026/09/07 08:10:03 Templates loaded successfully: 65 files
+2026/09/07 08:10:03 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 134.100804ms
+2026/09/07 08:10:03 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneytie1511729239/001
+2026/09/07 08:10:03 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:03 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:03 Total transactions after processing: 5
+2026/09/07 08:10:03 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneytie1511729239/001
+2026/09/07 08:10:03 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:03 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:03 Total transactions after processing: 5
+    cross_money_di5_test.go:139: four HTTP surfaces plus assembled MCP top1/top10: income=$2.67 spending=$0.01 balance=$2.66; two exact months reconcile
+=== RUN   TestDI5SecondCrossMoney/displayed_neutral
+2026/09/07 08:10:03 Templates loaded successfully: 65 files
+2026/09/07 08:10:03 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneydisplayed_neutral972468570/001
+2026/09/07 08:10:03 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:03 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:03 Total transactions after processing: 5
+2026/09/07 08:10:03 Templates loaded successfully: 65 files
+2026/09/07 08:10:03 "GET http://example.com/dashboard?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 32204B in 132.843499ms
+2026/09/07 08:10:03 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneydisplayed_neutral972468570/001
+2026/09/07 08:10:03 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:03 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:03 Total transactions after processing: 5
+2026/09/07 08:10:03 Templates loaded successfully: 65 files
+2026/09/07 08:10:03 "GET http://example.com/dashboard/kpis?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 7993B in 107.717595ms
+2026/09/07 08:10:03 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneydisplayed_neutral972468570/001
+2026/09/07 08:10:03 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:03 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:03 Total transactions after processing: 5
+2026/09/07 08:10:03 Templates loaded successfully: 65 files
+2026/09/07 08:10:03 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 128.843561ms
+2026/09/07 08:10:03 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneydisplayed_neutral972468570/001
+2026/09/07 08:10:03 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:03 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:03 Total transactions after processing: 5
+2026/09/07 08:10:03 Templates loaded successfully: 65 files
+2026/09/07 08:10:03 "GET http://example.com/insights?start=2020-01-01&end=2020-02-29 HTTP/1.1" from 192.0.2.1:1234 - 200 24654B in 121.586154ms
+2026/09/07 08:10:03 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneydisplayed_neutral972468570/001
+2026/09/07 08:10:03 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:03 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:03 Total transactions after processing: 5
+2026/09/07 08:10:03 Found 1 CSV files in /tmp/TestDI5SecondCrossMoneydisplayed_neutral972468570/001
+2026/09/07 08:10:03 Loaded 5 transactions from synthetic.csv (unassigned: no account matches this file)
+2026/09/07 08:10:03 5 transactions in 1 files are not assigned to any account
+2026/09/07 08:10:03 Total transactions after processing: 5
+    cross_money_di5_test.go:139: four HTTP surfaces plus assembled MCP top1/top10: income=$0.01 spending=$0.01 balance=$0.00; two exact months reconcile
+--- PASS: TestDI5SecondCrossMoney (2.87s)
+    --- PASS: TestDI5SecondCrossMoney/split_charges (0.74s)
+    --- PASS: TestDI5SecondCrossMoney/split_credits (0.73s)
+    --- PASS: TestDI5SecondCrossMoney/tie (0.71s)
+    --- PASS: TestDI5SecondCrossMoney/displayed_neutral (0.69s)
+PASS
+ok  	budget2/cmd/server	3.884s

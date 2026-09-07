@@ -1,0 +1,195 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: DI3
+ATTEMPT: 1
+---
+FAILURES
+F1 — WCAG 2.5.3 Label in Name (WCAG 2.2 AA baseline in ACCESSIBILITY.md).
+File: web/templates/pages/dashboard.html:26.
+The newly focusable import drop zone visibly reads:
+  Or drop CSV or backup ZIP files anywhere on this page, or click to browse
+Its new aria-label instead supplies:
+  Choose CSV or backup ZIP files to import
+The accessible name does not contain the visible label, including the action
+text "click to browse". Speech-input users cannot reliably address the control
+using its displayed label. Enter and Space keyboard activation themselves work.
+
+Reproduction: `rtk proxy node focused.cjs` from /tmp/DI3-a11y.mBCqsi.
+This loads the actual Dashboard from the isolated synthetic server, injects
+axe-core, and explicitly runs rule label-content-name-mismatch. BOTH themes
+produce a violation targeting #drop-zone: "Text inside the element is not
+included in the accessible name". The probe separately records visible text,
+aria-label and keyboard activation. Exact evidence: focused.json.
+Standard reference: https://www.w3.org/WAI/WCAG22/Understanding/label-in-name.html
+
+Attribution: `rtk proxy git diff master -- web/templates/pages/dashboard.html`
+in the source worktree, plus comparison to /tmp/budget2-DI3-base.rhoTJM and
+/tmp/DI3-attempt1-review.diff, all identify the role/tabindex/aria-label as DI3
+additions. This is introduced by DI3, not an accepted DI1/DI2/DI6 defect.
+Relevant unified diff (unchanged visible label follows this hunk):
+--- a/web/templates/pages/dashboard.html
++++ b/web/templates/pages/dashboard.html
+@@ -26,3 +26,3 @@
+-    <div id="drop-zone"
++    <div id="drop-zone" role="button" tabindex="0" aria-label="Choose CSV or backup ZIP files to import"
+         class="border border-dashed border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-center transition-all duration-200 bg-gray-50 dark:bg-gray-800 hover:border-accent hover:bg-accent-soft cursor-pointer">
+-        <input type="file" id="file-input" accept=".csv,.zip" class="hidden">
++        <input type="file" id="file-input" aria-label="CSV or backup ZIP files" accept=".csv,.zip" class="hidden">
+
+SCOPE / ISOLATION
+Read approved docs/superpowers/specs/2026-09-06-dashboard-insights-design.md
+(canonical design; no root SPEC assumed), all 17 ACCESSIBILITY.md points,
+DI3.1 author report and manifest. Author claims were not treated as verdicts.
+Reviewed supplied 18-file /tmp/DI3-attempt1-review.diff alongside own diffs.
+Snapshot: /tmp/DI3-a11y.mBCqsi, copied with `rtk proxy bash -c` / cp -a from
+immutable /tmp/budget2-DI3-base.rhoTJM, overlaid ONLY DI3.1 manifest paths.
+No whole-live-tree copy. Accepted DI1/DI2/DI6 remain baseline; DI4 excluded.
+Browser skill already read in this conversation; authorized fresh-context
+headless Chrome/Playwright fallback used, no user browser session.
+
+EXECUTABLE EVIDENCE / COMMANDS
+A. `rtk proxy go build -o /tmp/DI3-a11y.mBCqsi/di3-server ./cmd/server`
+   Exit 0. Server built from the snapshot. Copied ONLY authorized synthetic
+   /tmp/budget2-DI-demo.mfLral/data with cp -aL into snapshot/runtime/data.
+   Started ./di3-server with BUDGET_LISTEN_ADDR=127.0.0.1:18786,
+   BUDGET_DATA_DIR=/tmp/DI3-a11y.mBCqsi/runtime/data,
+   BUDGET2_BACKUP_DIR=/tmp/DI3-a11y.mBCqsi/runtime/backups,
+   BUDGET2_IMPORT_DIR=/tmp/DI3-a11y.mBCqsi/runtime/imports,
+   BUDGET_TEMPLATES_DIR=/tmp/DI3-a11y.mBCqsi/web/templates,
+   BUDGET_STATIC_DIR=/tmp/DI3-a11y.mBCqsi/web/static.
+   Startup confirmed synthetic path and :18786. Never touched :8080/:8081,
+   real data, deployment, source, git state, ledger or gates. No subagents.
+B. `rtk proxy node a11y.cjs`
+   Completed six light/dark x 390/768/1440 states, height 900. Actual Go
+   handler/template output, actual built CSS, actual local Plotly/HTMX/JS.
+   Browser requests limited to isolated origin. This is an executable traced
+   accessibility review, not an assertion from template source or guessed HTML.
+   Each state: exactly one h1 and four primary h2 labels; no page horizontal
+   overflow (390/768/1440 respectively), including all chart disclosures open;
+   five chart alternatives, exact row/value parity with rendered Plotly traces
+   plus budget target shape; scoped column headers; keyboard disclosure opening.
+   Five KPI detail buttons per state: keyboard Enter, named aria-modal dialog,
+   focus inside, 14 forward/backward Tab steps contained, Escape closes and
+   restores invoking button. Cash-flow modal axe: no violations, no unscoped
+   headers or document overflow; mobile panel 358x547.
+   Actual date change -> HTMX response -> date input retains focus; Insights
+   href updates to start=2026-08-01 with selected end. Five chart disclosures
+   remain after asynchronous replot. Chart fonts correctly switch from
+   #374151 light to #e5e7eb dark for all five charts.
+   Artifacts: results.json; {light,dark}-{390,768,1440}.json, .ax.txt, .png;
+   corresponding -axe.json, -modal-axe.json and -modal.png.
+C. `rtk proxy npx --no-install @axe-core/cli
+   http://127.0.0.1:18787/light.html http://127.0.0.1:18787/dark.html
+   --chrome-path /home/darrell/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome
+   --chromedriver-path /home/darrell/.config/nvm/versions/node/v24.12.0/lib/node_modules/@axe-core/cli/node_modules/chromedriver/lib/chromedriver/chromedriver
+   --chrome-options=--no-sandbox,--window-size=390,900
+   --save cli-axe.json --exit`
+   Exit 0, zero default-rule violations on both pages. :18787 served B's
+   saved actual rendered DOM after chart population/disclosure opening,
+   with scripts removed and original built stylesheets. No hand-built page.
+   CLI viewport flags are not the six-state evidence; B controls exact sizes.
+   Default axe does NOT include the focused label-name rule that proves F1.
+D. `rtk proxy node focused.cjs`
+   F1 reproduced in light/dark. Fresh-context Enter (light) and Space (dark)
+   opened native file chooser; chose no files. Native drop-zone focus is
+   visibly outlined, including a contrasting white ring in dark mode despite
+   computed outlineColor reporting black (screenshot verified).
+   Actual new overview/detail/disclosure text colors measured against rendered
+   backgrounds; relative-luminance calculation via `rtk proxy node -e`:
+   minimum sampled ratio 5.2059:1 light / 6.3843:1 dark, none below 4.5:1.
+   New button focus rings use #4f46e5 light / #a5b4fc dark, 2px. Meaningful
+   passive-card outlines are not misclassified as interactive-control borders.
+E. `rtk proxy node scroll-probe.cjs`
+   Mobile default axe in B flagged scrollable-region-focusable on two new
+   chart-table wrappers. Actual keyboard trace resolves these flags for the
+   tested browser: Tab from each summary focuses its wrapper; ArrowRight
+   changes scrollLeft from 0 to 7/8px. Both themes; clientWidth326,
+   scrollWidth336. Thus this is NOT a proved WCAG 2.1.1 failure in Chrome.
+   Evidence scroll-probe.json; optional broader browser coverage is observation.
+F. `rtk proxy node capture.cjs`
+   Saved six focused overview captures from the actual rendered artifacts.
+   All six visually inspected: one/two/four columns at 390/768/1440, readable
+   figures/text, consistent light/dark styling, no clipping. Also inspected
+   both mobile modal images and dark drop-zone focus image. No polishing loop.
+
+ALL 17 CONSTITUTION POINTS
+1 PASS (B): one h1, four overview h2s, h2 Budget details then h3 Living/
+  Healthcare; retained main/nav/header/footer. Modal now uses h2. No new
+  skipped heading levels observed.
+2 PASS (B): new chart data tables have three scope=col headers. Detail-modal
+  tables retain scoped headers and native month buttons. No layout tables added.
+3 PASS keyboard semantics (B,D), with separate F1 name failure: native KPI
+  buttons act; What-If/Insights/anchor links navigate; drop zone has role and
+  focusability and real Enter/Space activation.
+4 PASS (B/source): existing From/To labels remain associated; new Compare
+  label uses matching for/id. File input gains a name. F1 concerns the
+  visible button label, not absence of an input name.
+5 N/A to new form behavior: no new validation or error handling. Import
+  failure workflow unchanged; no file uploads performed.
+6 PASS applicable controls/source: existing explicit date labels and native
+  date controls retained; import CSV/ZIP format stated visibly. No added
+  required fields or placeholder-only formats.
+7 PASS new text/focus (B,D,F); baseline chart-color observations below.
+  All sampled new text clears 4.5:1; visible focus rings in both themes.
+8 PASS (B,F): cash-flow shortfall/plan over-under/refund interpretation is
+  explicit text, not color alone. No unsupported portfolio-withdrawal claim.
+9 PASS tested keyboard reachability (B,D,E): KPI controls/disclosures,
+  modal trap/Escape/return, date controls, Enter/Space import. Table scrolling
+  actually works by keyboard in tested Chrome. F1 separately blocks voice
+  control's visible-label matching under WCAG 2.5.3.
+10 PASS applicable HTMX trace (B): date input survives the actual KPI swap
+  with focus; modal opening places focus and closing returns it. No new
+  persisted-data-changing action or replacement form workflow introduced.
+11 PASS new alternatives (B): all five Plotly charts have adjacent native
+  data disclosures matching plotted values/series and target reference line.
+  Captions explicitly limit rows to plotted time/category scope. Existing
+  chart takeaways/descriptions retained, not a new financial forecast.
+12 PASS new theme parity (B,D,F): text, controls, focus and layout work in
+  both themes; chart label/axis colors re-theme. Baseline colors noted below.
+13 PASS reviewed semantics (B/source): negative cash flow has visible
+  "Spending not covered by recorded income" explanation; net-credit branch
+  states refunds exceeded spending. Chart alternatives preserve signed values
+  with series/category context. No new screen-reader-only signed-money fiction.
+14 N/A new banners: period freshness, unassigned-file and DI6 notices are
+  accepted baseline components, unchanged in DI3. No new banner added.
+15 PASS new content: disclosures/tables/KPI controls add no animated transition
+  or motion-only feedback. B ran with prefers-reduced-motion:reduce. Existing
+  drop-zone color transition remains 0.2s; byte-identical baseline class,
+  not introduced by DI3 and not classified as a new motion failure.
+16 PASS new disclosures/source: native details suppression affects visible
+  and accessibility channels together; generated tables contain meaningful
+  plotted values, not hidden-only junk. No aria-hidden hiding new prose.
+17 PASS (B): all five tested detail routes expose named role=dialog,
+  aria-modal=true, focus entry/trap/Escape/return in every theme/viewport.
+  Month drilldown implementation unchanged; primary owns broader route tests.
+
+OBSERVATIONS (non-blocking)
+- Default mobile axe flagged two scroll containers, but actual Chrome Tab/
+  ArrowRight operation succeeded (E). Consider explicit focusability for
+  browsers without automatic scroll-container focus; no unsupported failure
+  inferred for untested browsers.
+- PRE-EXISTING chart palette contrast: Living bars #9ca3af on white measure
+  2.5388:1; spending-decrease green #22c55e on white 2.2786:1. Both colors and
+  relevant chart markup are unchanged from master/immutable baseline (same
+  handler literals at baseline lines1127/1508; `git diff master --
+  web/static/js/charts.js web/templates/components/budget-vs-actual.html`
+  empty in source). Reserve for DI5; DI3 added equivalent text tables.
+- Automated chart-text contrast includes incomplete overlapping-SVG cases;
+  default zero-violation output is not claimed as comprehensive chart contrast.
+- Initial combined scratch flow timed out waiting for filechooser after a
+  date edit. Isolated fresh-context Enter and Space both passed. Kept this
+  as an inconclusive combined-probe issue, not a fabricated application FAIL;
+  final six-state core covers date and modal behavior independently.
+- No OS screen-reader speech or speech-recognition product was executed.
+  F1 rests on rendered name/text evidence and the normative label requirement;
+  other accessibility consequences are explicitly synthetic browser traces.
+
+PROMOTION / HANDOFF
+Promote /tmp/DI3-a11y.mBCqsi/focused.cjs's label-content-name-mismatch check
+and exact rendered name/text assertion into a focused durable regression.
+Other probes: a11y.cjs, scroll-probe.cjs, capture.cjs in the same snapshot;
+all generated evidence remains there for lead review. No source fix applied.
+Known legacy-Landlock failure required scoped escalated rtk/apply_patch for
+scratch probes and this sole worktree write; no automatic approval rejection.
+Lead owns any remediation, re-dispatch, gates and deployment.

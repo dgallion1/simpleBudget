@@ -7,16 +7,17 @@
 // this page has two independently-sortable tables), and the row/tile
 // elements that navigate to the Explorer with a filter — delegated since
 // these rows are re-rendered by htmx swaps.
-document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('#insights-date-filter [data-step]').forEach(function (btn) {
-        btn.addEventListener('click', function () { shiftInsightWindow(parseInt(btn.dataset.step, 10)); });
-    });
-    document.querySelectorAll('#insights-date-filter .insight-preset-btn[data-preset]').forEach(function (btn) {
-        btn.addEventListener('click', function () { setInsightPreset(btn.dataset.preset); });
-    });
+document.addEventListener('input', function (e) {
+    if (e.target.matches('#insights-date-filter input[type="date"]')) {
+        e.target.form.querySelector('input[name="preset"]').value = '';
+    }
 });
 
 document.addEventListener('click', function (e) {
+    const step = e.target.closest('#insights-date-filter [data-step]');
+    if (step) { shiftInsightWindow(parseInt(step.dataset.step, 10)); return; }
+    const preset = e.target.closest('#insights-date-filter .insight-preset-btn[data-preset]');
+    if (preset) { setInsightPreset(preset.dataset.preset); return; }
     var sortEl = e.target.closest('[data-sort-fn]');
     if (sortEl) {
         var fn = sortEl.getAttribute('data-sort-fn');
@@ -282,14 +283,51 @@ function shiftInsightWindow(direction) {
     });
 }
 
-// Preset clearing is now handled via inline oninput handlers on date inputs
+// Preset clearing is delegated above so it survives replacement.
+
+// Date controls are replaced with the entire investigation, including findings.
+// Preserve keyboard position for both native inputs and delegated preset buttons.
+let insightFocusSelector = null;
+document.body.addEventListener('htmx:beforeRequest', function (evt) {
+    if (!evt.detail.target || evt.detail.target.id !== 'insights-wrapper') return;
+    const active = document.activeElement;
+    insightFocusSelector = null;
+    if (!active || !active.closest('#insights-date-filter')) return;
+    if (active.id) insightFocusSelector = '#' + active.id;
+    else if (active.dataset.preset) insightFocusSelector = '#insights-date-filter [data-preset="' + active.dataset.preset + '"]';
+    else if (active.dataset.step) insightFocusSelector = '#insights-date-filter [data-step="' + active.dataset.step + '"]';
+});
+document.body.addEventListener('htmx:afterSwap', function (evt) {
+    if (!evt.detail.target || evt.detail.target.id !== 'insights-wrapper') return;
+    const next = insightFocusSelector && document.querySelector(insightFocusSelector);
+    if (next) next.focus({preventScroll: true});
+    insightFocusSelector = null;
+});
 
 // Handle chart data responses
+function insightChartMarkers() {
+    const css = getComputedStyle(document.documentElement);
+    const accent = 'rgb(' + css.getPropertyValue('--accent').trim().split(/\s+/).join(',') + ')';
+    const prior = document.documentElement.classList.contains('dark') ? '#9ca3af' : '#6b7280';
+    return [{color: accent}, {color: prior, pattern: {shape: '/'}}];
+}
+
+window.addEventListener('themechange', function () {
+    const chart = document.getElementById('chart-trends');
+    if (chart && chart.data && window.Plotly) {
+        const markers = insightChartMarkers();
+        Plotly.restyle(chart, {marker: markers});
+    }
+});
+
 document.body.addEventListener('htmx:afterRequest', function(evt) {
     const target = evt.detail.target;
     if (target && target.id === 'chart-trends') {
         try {
             const data = JSON.parse(evt.detail.xhr.responseText);
+            const markers = insightChartMarkers();
+            data.data.forEach((trace, i) => { trace.marker = markers[i]; });
+            data.layout.height = Math.max(360, data.data[0].x.length * 38 + 120);
             renderChart('chart-trends', data);
         } catch (e) {
             console.error('Error parsing chart data:', e);

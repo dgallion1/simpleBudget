@@ -1,0 +1,414 @@
+{
+  "id": "accounts-light",
+  "route": "/accounts",
+  "theme": "light",
+  "requestedURL": "http://127.0.0.1:18873/accounts",
+  "responses": [],
+  "requestFailures": [],
+  "blocked": [],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "status": 200,
+  "finalURL": "http://127.0.0.1:18873/accounts",
+  "dom": {
+    "title": "Accounts - simpleBudget",
+    "theme": "light",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "headings": [
+      {
+        "tag": "H1",
+        "id": "",
+        "text": "Accounts"
+      },
+      {
+        "tag": "H2",
+        "id": "accounts-new-heading",
+        "text": "Add an account"
+      },
+      {
+        "tag": "H2",
+        "id": "accounts-list-heading",
+        "text": "Your accounts"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "text": "Demo Checking (first match wins)"
+      },
+      {
+        "tag": "H4",
+        "id": "",
+        "text": "Matched files"
+      },
+      {
+        "tag": "H4",
+        "id": "",
+        "text": "Balance anchors"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "text": "Demo Credit Card"
+      },
+      {
+        "tag": "H4",
+        "id": "",
+        "text": "Matched files"
+      },
+      {
+        "tag": "H4",
+        "id": "",
+        "text": "Balance anchors"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "text": "Demo Health Checking"
+      },
+      {
+        "tag": "H4",
+        "id": "",
+        "text": "Matched files"
+      },
+      {
+        "tag": "H4",
+        "id": "",
+        "text": "Balance anchors"
+      },
+      {
+        "tag": "H2",
+        "id": "accounts-unassigned-heading",
+        "text": "Unassigned files"
+      }
+    ],
+    "landmarks": [
+      {
+        "name": "main",
+        "count": 1
+      },
+      {
+        "name": "nav",
+        "count": 1
+      },
+      {
+        "name": "header",
+        "count": 1
+      },
+      {
+        "name": "footer",
+        "count": 1
+      }
+    ],
+    "unscopedHeaders": [],
+    "forms": [
+      {
+        "tag": "INPUT",
+        "id": "acct-anchor-date-demo-checking",
+        "type": "date",
+        "required": true,
+        "label": "Anchor date *\n                                (required)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": "acct-anchor-date-help-demo-checking"
+      },
+      {
+        "tag": "INPUT",
+        "id": "acct-anchor-amount-demo-checking",
+        "type": "number",
+        "required": true,
+        "label": "Amount *\n                                (required)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": "acct-anchor-amount-help-demo-checking"
+      },
+      {
+        "tag": "INPUT",
+        "id": "acct-anchor-note-demo-checking",
+        "type": "text",
+        "required": false,
+        "label": "Note (optional)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "acct-anchor-date-demo-credit-card",
+        "type": "date",
+        "required": true,
+        "label": "Anchor date *\n                                (required)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": "acct-anchor-date-help-demo-credit-card"
+      },
+      {
+        "tag": "INPUT",
+        "id": "acct-anchor-amount-demo-credit-card",
+        "type": "number",
+        "required": true,
+        "label": "Amount *\n                                (required)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": "acct-anchor-amount-help-demo-credit-card"
+      },
+      {
+        "tag": "INPUT",
+        "id": "acct-anchor-note-demo-credit-card",
+        "type": "text",
+        "required": false,
+        "label": "Note (optional)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "acct-anchor-date-demo-health-checking",
+        "type": "date",
+        "required": true,
+        "label": "Anchor date *\n                                (required)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": "acct-anchor-date-help-demo-health-checking"
+      },
+      {
+        "tag": "INPUT",
+        "id": "acct-anchor-amount-demo-health-checking",
+        "type": "number",
+        "required": true,
+        "label": "Amount *\n                                (required)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": "acct-anchor-amount-help-demo-health-checking"
+      },
+      {
+        "tag": "INPUT",
+        "id": "acct-anchor-note-demo-health-checking",
+        "type": "text",
+        "required": false,
+        "label": "Note (optional)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      }
+    ],
+    "clickable": [],
+    "live": [
+      {
+        "tag": "DIV",
+        "id": "accounts-error-region",
+        "text": "",
+        "visible": true,
+        "live": "polite"
+      },
+      {
+        "tag": "DIV",
+        "id": "accounts-warnings-region",
+        "text": "",
+        "visible": true,
+        "live": "polite"
+      }
+    ],
+    "hiddenText": [
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "*"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "(required)"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "*"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "(required)"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "Demo Checking"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "*"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "(required)"
+      },
+      {
+        "tag": "CAPTION",
+        "id": "",
+        "text": "Balance anchors for Demo Checking"
+      },
+      {
+        "tag": "TH",
+        "id": "",
+        "text": "Actions"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "*"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "(required)"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "*"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "(required)"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "Demo Credit Card"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "*"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "(required)"
+      },
+      {
+        "tag": "CAPTION",
+        "id": "",
+        "text": "Balance anchors for Demo Credit Card"
+      },
+      {
+        "tag": "TH",
+        "id": "",
+        "text": "Actions"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "*"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "(required)"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "*"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "(required)"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "Demo Health Checking"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "*"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "(required)"
+      },
+      {
+        "tag": "CAPTION",
+        "id": "",
+        "text": "Balance anchors for Demo Health Checking"
+      },
+      {
+        "tag": "TH",
+        "id": "",
+        "text": "Actions"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "*"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "(required)"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "*"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "(required)"
+      }
+    ],
+    "images": [],
+    "dialogs": [],
+    "animations": [],
+    "charts": [],
+    "nav": [
+      {
+        "text": "simpleBudget",
+        "href": "/"
+      },
+      {
+        "text": "Dashboard",
+        "href": "/dashboard"
+      },
+      {
+        "text": "Explorer",
+        "href": "/explorer"
+      },
+      {
+        "text": "Insights",
+        "href": "/insights"
+      },
+      {
+        "text": "Major Expenses",
+        "href": "/major-expenses"
+      },
+      {
+        "text": "What-If",
+        "href": "/whatif"
+      },
+      {
+        "text": "Accounts",
+        "href": "/accounts"
+      },
+      {
+        "text": "Transfers",
+        "href": "/transfers"
+      },
+      {
+        "text": "File Manager",
+        "href": "/filemanager"
+      }
+    ]
+  },
+  "htmlFile": "accounts-light.html"
+}

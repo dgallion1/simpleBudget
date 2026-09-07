@@ -1,0 +1,95 @@
+{{define "insights-dollar-change"}}
+<span class="num">{{if gt .Amount 0.0}}+{{end}}{{formatMoney .Amount}} {{if gt .Amount 0.0}}increase{{else if lt .Amount 0.0}}decrease{{else}}no dollar change{{end}}</span>
+{{end}}
+
+{{define "insights-change-cell"}}
+<span class="{{if eq .Direction "up"}}text-negative{{else if eq .Direction "down"}}text-positive{{else}}text-gray-600 dark:text-gray-400{{end}}">{{if eq .Kind "new"}}new{{else if eq .Kind "none"}}no change{{else if eq .Kind "dollar"}}dollar comparison{{else}}{{if gt .Percent 0.0}}+{{end}}{{printf "%.1f" .Percent}}%{{end}}</span>
+{{end}}
+
+{{define "insights-finding"}}
+<li id="finding-{{.Type}}-{{.Transaction.Hash}}" data-finding-type="{{.Type}}" data-finding-hash="{{.Transaction.Hash}}" class="py-4 space-y-2">
+    <div class="flex flex-wrap justify-between gap-2">
+        <a href="{{.URL}}" class="text-accent underline break-words">{{or .Transaction.DisplayName .Transaction.Description}}</a>
+        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: {{formatMoney .Transaction.Amount}} outflow</span>
+    </div>
+    <p class="text-sm text-gray-600 dark:text-gray-400">{{.Transaction.Date.Format "2006-01-02"}} · {{.Transaction.Category}}{{if .Transaction.MajorExpenseName}} · Major Expense: {{.Transaction.MajorExpenseName}}{{end}}</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">{{.Label}} · {{.Evidence}}{{with .Creep}}: {{formatMoney .FirstAmount}} → {{formatMoney .CurrentAmount}} ({{printf "%.1f" .PctChange}}% increase), {{.FirstDate.Format "2006-01-02"}} to {{.LastDate.Format "2006-01-02"}}. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.{{end}}</p>
+</li>
+{{end}}
+
+{{define "insights-recurring-group"}}
+<section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="recurring-{{.Group.ID}}">
+    <h3 id="recurring-{{.Group.ID}}" class="text-base font-semibold text-gray-800 dark:text-gray-100">{{.Group.Label}}</h3>
+    <p class="text-sm text-gray-700 dark:text-gray-300">{{len .Group.Rows}} retained series · Estimated monthly {{formatMoney .Group.Monthly}} · Estimated annual {{formatMoney .Group.Annual}}</p>
+    {{if .Group.Rows}}
+    <div class="overflow-x-auto" tabindex="0" role="region" aria-label="{{.Group.Label}} estimates">
+    <table class="w-full min-w-[640px]">
+        <thead><tr class="border-b border-gray-200 dark:border-gray-700">
+            <th scope="col" class="text-left p-3 text-sm text-gray-600 dark:text-gray-400">Merchant and evidence</th>
+            <th scope="col" class="text-right p-3 text-sm text-gray-600 dark:text-gray-400">Estimated payment</th>
+            <th scope="col" class="text-right p-3 text-sm text-gray-600 dark:text-gray-400">Estimated monthly</th>
+            <th scope="col" class="text-right p-3 text-sm text-gray-600 dark:text-gray-400">Estimated annual</th>
+        </tr></thead>
+        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+        {{range .Group.Rows}}
+        <tr>
+            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+                <a class="text-accent underline" href="/explorer?search={{urlquery .Description}}&amp;type=Outflow&amp;start={{$.StartDate}}&amp;end={{$.EndDate}}"><span>{{.Description}}</span></a>
+                {{if .MajorExpenseName}}<p>Major Expense: {{.MajorExpenseName}}</p>{{end}}
+                <p>{{.ClassificationReason}}</p>
+                <p>{{.Occurrences}} occurrences · {{.Frequency}} · Last observed {{.LastDate.Format "2006-01-02"}}</p>
+                <p>Expected payment estimate as of {{$.Period.SelectedEnd.Format "2006-01-02"}}: {{.NextExpected.Format "2006-01-02"}} · Detection confidence {{printf "%.0f" (mul .Confidence 100.0)}}%</p>
+            </td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">{{formatMoney .PaymentEstimate}}</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">{{formatMoney .MonthlyEstimate}}</td>
+            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">{{formatMoney .AnnualEstimate}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+    </div>
+    {{else}}<p class="text-sm text-gray-600 dark:text-gray-400">No detected payments in this group. Future commitments may not be represented in the available history.</p>{{end}}
+</section>
+{{end}}
+
+{{define "insights-trends-table"}}
+<div class="overflow-x-auto" tabindex="0" role="region" aria-label="Spending trend values">
+<table id="category-trends-table" class="w-full min-w-[640px]">
+    <caption class="text-left text-sm text-gray-600 dark:text-gray-400 py-3">Selected {{.Period.SelectedStart.Format "2006-01-02"}} to {{.Period.SelectedEnd.Format "2006-01-02"}}; prior {{.Period.PreviousStart.Format "2006-01-02"}} to {{.Period.PreviousEnd.Format "2006-01-02"}}</caption>
+    <thead><tr class="border-b border-gray-200 dark:border-gray-700">
+        {{range (slice (dict "Key" "category" "Label" "Category") (dict "Key" "current" "Label" "Selected") (dict "Key" "previous" "Label" "Prior") (dict "Key" "change" "Label" "Dollar change"))}}
+        <th scope="col" class="p-3 text-left text-sm text-gray-600 dark:text-gray-400"><button type="button" data-sort-fn="sortTrendsTable" data-sort="{{.Key}}" class="flex items-center gap-1">{{.Label}}<span class="sort-icon" data-col="{{.Key}}"></span></button></th>
+        {{end}}
+    </tr></thead>
+    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+    {{range .CategoryTrends}}
+    <tr data-category="{{.Category}}" data-current="{{.CurrentAmount}}" data-previous="{{.PreviousAmount}}" data-change="{{.Change.Amount}}">
+        <td class="p-3 text-sm"><a class="text-accent underline" href="/explorer?{{if index $.GroupIDs .Category}}majorExpense={{urlquery (index $.GroupIDs .Category)}}{{else}}category={{urlquery .Category}}{{end}}&amp;start={{$.Period.SelectedStart.Format "2006-01-02"}}&amp;end={{$.Period.SelectedEnd.Format "2006-01-02"}}&amp;type=Outflow">{{.Category}}</a></td>
+        <td class="p-3 text-sm num text-gray-800 dark:text-gray-100">{{formatMoney .CurrentAmount}}</td>
+        <td class="p-3 text-sm num text-gray-800 dark:text-gray-100">{{formatMoney .PreviousAmount}}</td>
+        <td class="p-3 text-sm text-gray-800 dark:text-gray-100">{{template "insights-dollar-change" .Change}} · {{template "insights-change-cell" .Change}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+</div>
+{{end}}
+
+{{define "insights-recurring-partial"}}
+{{template "shared/period-context" .}}
+<section class="space-y-4">
+    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Detected recurring spending</h2>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Estimates through {{.Period.SelectedEnd.Format "2006-01-02"}}, not actual selected-period spending or confirmed obligations. All detected recurring series are shown without a row limit. Totals sum displayed estimates. Monthly and annual figures are rounded separately.</p>
+    {{range .Groups}}{{template "insights-recurring-group" (dict "Group" . "Period" $.Period "StartDate" $.StartDate "EndDate" $.EndDate)}}{{end}}
+</section>
+{{end}}
+
+{{define "insights-income-partial"}}
+{{template "shared/period-context" .}}
+{{template "income-patterns" .}}
+{{end}}
+
+{{define "insights-trends-partial"}}
+{{template "shared/period-context" .}}
+{{template "insights-trends-table" .}}
+{{end}}

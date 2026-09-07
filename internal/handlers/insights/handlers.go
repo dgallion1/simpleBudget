@@ -149,19 +149,27 @@ func priceCreepForDisplay(allData *models.TransactionSet) ([]pricecreep.Creep, i
 }
 
 func calculateInsights(allData, filtered *models.TransactionSet, startDate, endDate time.Time) *models.InsightsData {
+	return calculateInsightsAt(allData, filtered, startDate, endDate, insightsNow())
+}
+
+func calculateInsightsAt(allData, filtered *models.TransactionSet, startDate, endDate, now time.Time) *models.InsightsData {
+	period := insightssvc.BuildPeriodContext(allData, startDate, endDate, now)
 	// Detect recurring patterns against all data so short date ranges still find them
 	recurring := annotateRecurringWithMajorExpense(insightssvc.DetectRecurringAt(allData, endDate))
-	trends := loadAndAnalyzeTrends(allData, startDate, endDate)
+	trends := loadAndAnalyzeTrendsForPeriod(allData, period)
 	income := insightssvc.IncomePatterns(filtered)
-	velocity := insightssvc.SpendingVelocity(filtered, allData)
+	velocity := insightssvc.SpendingVelocityForPeriod(allData, period)
 
-	// Split recurring payments into subscriptions and bills
-	var subscriptions, bills []models.RecurringPayment
+	// Keep every detected series in exactly one evidence-based group.
+	var subscriptions, bills, other []models.RecurringPayment
 	for _, r := range recurring {
-		if insightssvc.IsSubscription(r) {
+		switch r.Classification {
+		case models.RecurringSubscription:
 			subscriptions = append(subscriptions, r)
-		} else {
+		case models.RecurringBill:
 			bills = append(bills, r)
+		default:
+			other = append(other, r)
 		}
 	}
 
@@ -180,8 +188,10 @@ func calculateInsights(allData, filtered *models.TransactionSet, startDate, endD
 	}
 
 	return &models.InsightsData{
+		Period:               &period,
 		RecurringPayments:    bills,
 		Subscriptions:        subscriptions,
+		OtherRecurring:       other,
 		CategoryTrends:       trends,
 		IncomePatterns:       income,
 		Velocity:             velocity,
@@ -219,33 +229,27 @@ func handleInsights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
+	active := data.Active()
+	now := insightsNow()
+	period := insightsPeriod(active, r, now)
+	startDate, endDate := period.SelectedStart, period.SelectedEnd
+	minDate, maxDate := active.MinDate(), active.MaxDate()
+	if minDate.IsZero() {
+		minDate = period.SelectedStart
+	}
+	if maxDate.IsZero() {
+		maxDate = period.SelectedEnd
+	}
 	preset := r.URL.Query().Get("preset")
-
-	minDate := data.MinDate()
-	maxDate := data.MaxDate()
-
-	var startDate, endDate time.Time
-	if startStr != "" {
-		startDate, _ = time.Parse("2006-01-02", startStr)
-	} else {
-		startDate = maxDate.AddDate(0, -12, 0)
-		if startDate.Before(minDate) {
-			startDate = minDate
-		}
+	if r.URL.Query().Get("start") == "" {
 		preset = "12m"
 	}
-	if endStr != "" {
-		endDate, _ = time.Parse("2006-01-02", endStr)
-	} else {
-		endDate = maxDate
+	filtered := insightssvc.TransactionsForPeriod(active, startDate, endDate)
+	insights := calculateInsightsAt(active, filtered, startDate, endDate, now)
+	paceVerdict := BuildPaceVerdict(nil)
+	if period.HistoryAvailable {
+		paceVerdict = BuildPaceVerdict(insights.Velocity)
 	}
-
-	active := data.Active()
-	filtered := active.FilterByDateRange(startDate, endDate)
-
-	insights := calculateInsights(active, filtered, startDate, endDate)
 
 	// Anomalies and price creep both run against the full active history
 	// (not `filtered`) — see anomaliesForPeriod / priceCreepForDisplay doc
@@ -258,7 +262,9 @@ func handleInsights(w http.ResponseWriter, r *http.Request) {
 		"Title":           "Insights",
 		"ActiveTab":       "insights",
 		"Insights":        insights,
-		"PaceVerdict":     BuildPaceVerdict(insights.Velocity),
+		"Investigation":   buildInvestigation(active, insights),
+		"PaceVerdict":     paceVerdict,
+		"Period":          period,
 		"StartDate":       startDate.Format("2006-01-02"),
 		"EndDate":         endDate.Format("2006-01-02"),
 		"MinDate":         minDate.Format("2006-01-02"),
@@ -286,7 +292,11 @@ func handleRecurringPartial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recurring := annotateRecurringWithMajorExpense(insightssvc.DetectRecurringAt(data.Active(), data.MaxDate()))
+	active := data.Active()
+	period := insightsPeriod(active, r, insightsNow())
+	selected := insightssvc.TransactionsForPeriod(active, period.SelectedStart, period.SelectedEnd)
+	insights := calculateInsightsAt(active, selected, period.SelectedStart, period.SelectedEnd, insightsNow())
+	recurring := append(append(append([]models.RecurringPayment{}, insights.Subscriptions...), insights.RecurringPayments...), insights.OtherRecurring...)
 
 	var totalRecurring float64
 	for _, r := range recurring {
@@ -294,13 +304,17 @@ func handleRecurringPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	partialData := map[string]interface{}{
+		"Period":            period,
+		"Groups":            recurringGroups(insights),
+		"StartDate":         period.SelectedStart.Format("2006-01-02"),
+		"EndDate":           period.SelectedEnd.Format("2006-01-02"),
 		"RecurringPayments": recurring,
 		"TotalRecurring":    totalRecurring,
 		"MonthlyRecurring":  totalRecurring / 12,
 	}
 
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "recurring-payments", partialData)
+		_ = renderer.RenderPartial(w, "insights-recurring-partial", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)
@@ -314,27 +328,17 @@ func handleTrendsPartial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
-
-	startDate, _ := time.Parse("2006-01-02", startStr)
-	endDate, _ := time.Parse("2006-01-02", endStr)
-
-	if startDate.IsZero() {
-		startDate = data.MaxDate().AddDate(0, -1, 0)
-	}
-	if endDate.IsZero() {
-		endDate = data.MaxDate()
-	}
-
-	trends := loadAndAnalyzeTrends(data.Active(), startDate, endDate)
+	period := insightsPeriod(data, r, insightsNow())
+	trends := loadAndAnalyzeTrendsForPeriod(data.Active(), period)
 
 	partialData := map[string]interface{}{
 		"CategoryTrends": trends,
+		"Period":         period,
 	}
 
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "category-trends", partialData)
+		partialData["GroupIDs"] = buildInvestigation(data.Active(), &models.InsightsData{Period: &period}).GroupIDs
+		_ = renderer.RenderPartial(w, "insights-trends-partial", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)
@@ -348,25 +352,13 @@ func handleTrendsChartData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
+	period := insightsPeriod(data, r, insightsNow())
+	trends := loadAndAnalyzeTrendsForPeriod(data.Active(), period)
 
-	startDate, _ := time.Parse("2006-01-02", startStr)
-	endDate, _ := time.Parse("2006-01-02", endStr)
-
-	if startDate.IsZero() {
-		startDate = data.MaxDate().AddDate(0, -1, 0)
-	}
-	if endDate.IsZero() {
-		endDate = data.MaxDate()
-	}
-
-	trends := loadAndAnalyzeTrends(data.Active(), startDate, endDate)
-
-	var categories []string
-	var currentValues []float64
-	var previousValues []float64
-	var colors []string
+	categories := []string{}
+	currentValues := []float64{}
+	previousValues := []float64{}
+	colors := []string{}
 
 	for _, t := range trends {
 		categories = append(categories, t.Category)
@@ -382,17 +374,18 @@ func handleTrendsChartData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	chartData := map[string]interface{}{
+		"period": period,
 		"data": []map[string]interface{}{
 			{
 				"type":   "bar",
-				"name":   "Current Period",
+				"name":   period.SelectedStart.Format("2006-01-02") + " to " + period.SelectedEnd.Format("2006-01-02"),
 				"x":      categories,
 				"y":      currentValues,
 				"marker": map[string]interface{}{"color": colors},
 			},
 			{
 				"type":   "bar",
-				"name":   "Previous Period",
+				"name":   period.PreviousStart.Format("2006-01-02") + " to " + period.PreviousEnd.Format("2006-01-02"),
 				"x":      categories,
 				"y":      previousValues,
 				"marker": map[string]string{"color": "#94a3b8"},
@@ -414,25 +407,12 @@ func handleVelocityPartial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
-
-	startDate, _ := time.Parse("2006-01-02", startStr)
-	endDate, _ := time.Parse("2006-01-02", endStr)
-
-	if startDate.IsZero() {
-		startDate = data.MinDate()
-	}
-	if endDate.IsZero() {
-		endDate = data.MaxDate()
-	}
-
-	active := data.Active()
-	filtered := active.FilterByDateRange(startDate, endDate)
-	velocity := insightssvc.SpendingVelocity(filtered, active)
+	period := insightsPeriod(data, r, insightsNow())
+	velocity := insightssvc.SpendingVelocityForPeriod(data.Active(), period)
 
 	partialData := map[string]interface{}{
 		"Velocity": velocity,
+		"Period":   period,
 	}
 
 	if renderer != nil {
@@ -450,7 +430,8 @@ func handleIncomePartial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	income := insightssvc.IncomePatterns(data.Active())
+	period := insightsPeriod(data.Active(), r, insightsNow())
+	income := insightssvc.IncomePatterns(insightssvc.TransactionsForPeriod(data.Active(), period.SelectedStart, period.SelectedEnd))
 
 	var regularTotal float64
 	for _, ip := range income {
@@ -462,10 +443,11 @@ func handleIncomePartial(w http.ResponseWriter, r *http.Request) {
 	partialData := map[string]interface{}{
 		"IncomePatterns":     income,
 		"RegularIncomeTotal": regularTotal,
+		"Period":             period,
 	}
 
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "income-patterns", partialData)
+		_ = renderer.RenderPartial(w, "insights-income-partial", partialData)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(partialData)

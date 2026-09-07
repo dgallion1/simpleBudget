@@ -1,0 +1,106 @@
+{
+  "id": "duplicates-dark",
+  "route": "/duplicates",
+  "theme": "dark",
+  "requestedURL": "http://127.0.0.1:18873/duplicates",
+  "responses": [],
+  "requestFailures": [],
+  "blocked": [],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "status": 200,
+  "finalURL": "http://127.0.0.1:18873/duplicates",
+  "dom": {
+    "title": "Duplicates - simpleBudget",
+    "theme": "dark",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "headings": [
+      {
+        "tag": "H1",
+        "id": "",
+        "text": "Duplicate Review"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Unresolved (1)"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Suppressed"
+      }
+    ],
+    "landmarks": [
+      {
+        "name": "main",
+        "count": 1
+      },
+      {
+        "name": "nav",
+        "count": 1
+      },
+      {
+        "name": "header",
+        "count": 2
+      },
+      {
+        "name": "footer",
+        "count": 1
+      }
+    ],
+    "unscopedHeaders": [],
+    "forms": [],
+    "clickable": [],
+    "live": [],
+    "hiddenText": [],
+    "images": [],
+    "dialogs": [],
+    "animations": [],
+    "charts": [],
+    "nav": [
+      {
+        "text": "simpleBudget",
+        "href": "/"
+      },
+      {
+        "text": "Dashboard",
+        "href": "/dashboard"
+      },
+      {
+        "text": "Explorer",
+        "href": "/explorer"
+      },
+      {
+        "text": "Insights",
+        "href": "/insights"
+      },
+      {
+        "text": "Major Expenses",
+        "href": "/major-expenses"
+      },
+      {
+        "text": "What-If",
+        "href": "/whatif"
+      },
+      {
+        "text": "Accounts",
+        "href": "/accounts"
+      },
+      {
+        "text": "Transfers",
+        "href": "/transfers"
+      },
+      {
+        "text": "File Manager",
+        "href": "/filemanager"
+      },
+      {
+        "text": "Duplicates\n                            1",
+        "href": "/duplicates"
+      }
+    ]
+  },
+  "htmlFile": "duplicates-dark.html"
+}

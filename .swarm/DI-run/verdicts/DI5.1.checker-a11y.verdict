@@ -1,0 +1,53 @@
+TASK: DI5
+ATTEMPT: 1
+CHECKER: checker-a11y
+FAMILY: anthropic
+VERDICT: FAIL
+---
+Scope: confirmed production accessibility behavior in final DI1–6 integration, explicitly authorized by lead before author test/evidence freeze. This verdict does NOT assess, accept, or invent failures in unfinished DI5 tests, browser integration scripts or final manifest. Production remains accepted DI4.2 plus accepted DI6. Lead has conceded F1. No fixes, production edits, git changes, ledger edits, gates or deployment performed by checker.
+
+FAILURE F1 — focused Dashboard detail controls completely hidden by automatic refresh notice
+Constitution point 9; WCAG 2.2 AA 2.4.11 Focus Not Obscured (Minimum), also invisible focus indicator under 2.4.7. A keyboard user edits the From date; a refresh revision causes the production dirty-edit notice to appear. Normal Tab navigation subsequently focuses detail controls entirely behind that opaque fixed notice. They remain focused and operable but neither the component nor its focus indicator is visible. Reproduces with ALL application scripts active, not merely the worker's script-stripped refresh harness.
+
+Production locations: web/static/js/page-refresh.js:39 creates fixed bottom-4/right-4/left-6/z-50 notice; :72 appends it without preventing coverage of newly focused content. Affected DI3 controls in web/templates/components/kpis.html:12 Income details, :24 Cash-flow details, :41 Budget details, :72 Healthcare details.
+
+Observed rectangles in both light and dark, viewport height 900 (x,y,width,height; CSS px):
+390 Income details: component (33,852,96.5625,20), notice (24,738,350,146), scrollY=0.
+390 Budget details: component (33,763,94.90625,20), notice (24,738,350,146), scrollY=563.
+768 Cash-flow details: component (33,847,111.1875,20), notice (24,762,728,122), scrollY=0.
+768 Healthcare details: component (392,795,118.40625,20), notice (24,762,728,122), scrollY=502.
+Each component rectangle is fully contained inside the notice. Nine elementFromPoint samples per component all hit notice descendants, not the focused element. Actual screenshots inspected confirm full visual coverage. Exact geometry matches the worker's four reported targets. The additional 'Plan explanation and comparison' sampled candidate is EXCLUDED: its left edge at x=16 extends beyond notice x=24, so it is partly visible. Point sampling alone is not sufficient to call that a 2.4.11 failure.
+
+The notice is automatic system content, not a disclosure directly opened by this keyboard user. Reaching Keep editing later does not satisfy immediate unobscured focus. W3C explicitly describes completely covering sticky notifications as failures: https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html .
+
+Independent executable attribution — original / pre-DI3 / final
+1. Original created using `rtk proxy bash -lc 'p=$(mktemp -d /tmp/DI5-origin-a11y.XXXXXX); git archive 69e484a | tar -x -C "$p"; mkdir -p "$p/runtime/backups" "$p/runtime/imports"; cp -aL /tmp/budget2-DI-demo.mfLral/data "$p/runtime/data"; echo "$p"'` in live worktree (read-only git archive). Result /tmp/DI5-origin-a11y.Qrxr81; `rtk proxy go build -o origin-server ./cmd/server` there. `rtk proxy git ls-tree -r --name-only 69e484a -- web/static/js/page-refresh.js` produces no entry; original source contains no Page refresh script/endpoint/notice. Actual original Tab traces show no corresponding obstruction.
+2. Pre-DI3 created via `cp -a /tmp/budget2-DI3-base.rhoTJM/.` into fresh /tmp/DI5-preDI3-a11y.L68g1L, with same synthetic-data-only copy and separate import/backup dirs; `rtk proxy go build -o pre-server ./cmd/server`. This immutable snapshot already has DI6. Actual notice was triggered, with no fully obscured components in the four tested width/theme traces.
+3. Final /tmp/DI5-final-a11y.JYHU8N is immutable /tmp/budget2-DI4-base.KPl7oY plus ONLY cumulative DI4.2 manifest overlay, never whole-live-tree copy; `rtk proxy go build -o final-server ./cmd/server`. Four confirmed controls obscured in both themes.
+4. `rtk proxy node focus-obstruction.cjs` in final snapshot: actual original and final servers, both themes, widths390/768. `rtk proxy node focus-preDI3.cjs`: same trace on pre-DI3. Both completed exit0 (evidence collectors record violations; their successful execution is NOT a product PASS). Exact route /dashboard?start=2026-08-01&end=2026-08-28; input filled 2026-07-01. Only /api/ui-refresh response mocked with controlled epoch/revision; production notice JS, full page JS/HTMX, templates, CSS and normal Tab/scroll behavior remain active. No fake notice or hidden-control mutation.
+5. Read-only attribution commands, rerun at verdict boundary:
+   `rtk proxy git diff 69e484a -- web/templates/components/kpis.html web/static/js/page-refresh.js`
+   `rtk proxy git diff master -- web/templates/components/kpis.html web/static/js/page-refresh.js`
+   `rtk proxy sha256sum /tmp/DI5-origin-a11y.Qrxr81/web/templates/components/kpis.html /tmp/DI5-preDI3-a11y.L68g1L/web/templates/components/kpis.html /tmp/DI5-final-a11y.JYHU8N/web/templates/components/kpis.html /tmp/DI5-preDI3-a11y.L68g1L/web/static/js/page-refresh.js /tmp/DI5-final-a11y.JYHU8N/web/static/js/page-refresh.js`
+   `rtk proxy cmp /tmp/DI5-preDI3-a11y.L68g1L/web/static/js/page-refresh.js /tmp/DI5-final-a11y.JYHU8N/web/static/js/page-refresh.js` exits0.
+Original and pre-DI3 KPI template SHA256 both 0459b5834574108a8212e33696663e243661fb09eec39405f245e428437c1cd0. Pre-DI3 and final refresh JS SHA256 both e4f515e7adcd11c4bad42d5ec1207a37809203e19899c25591d9574cb3e5aca8; absent original. DI3 changes KPI focus targets from larger tiles to smaller detail controls and changes layout. The covering overlay is DI6. Therefore F1 is a run-introduced DI3–DI6 integration regression, observable after DI3, NOT pre-existing merely because the accepted DI3-era baseline also contains it. Earlier accepted checker results missed this cross-feature state; they do not clear F1.
+
+Current production hash confirmation
+Fresh read-only SHA256 comparison of all 299 non-Go-test files in the audited source/config/constitution inventory against frozen live worktree: zero differences. Full per-path hashes and timestamp in /tmp/DI5-final-a11y.JYHU8N/artifacts/obstruction/final-freeze-hashes.json. This confirms the audited production input is still current; it is not a DI5 final-test-manifest acceptance check. Key SHA256 values:
+web/templates/components/kpis.html b59581cea9b37fdb4efd2f169c176c31312ecf067f5f20616e5600912ea4b5f3
+web/static/js/page-refresh.js e4f515e7adcd11c4bad42d5ec1207a37809203e19899c25591d9574cb3e5aca8
+web/static/css/tailwind.css f09162945444f745061980d04d5d3eafd8c7c9d67c178381837555429adb6c5c
+web/static/css/styles.css 2128e66326f1080a237fecbb3531ec2ea3293d82ebcf0f0fbb106caae6f3caf3
+web/templates/layouts/base.html 16019f58797fe797debc4d181021312927b304a531a17e02bbdc368237d8777d
+web/static/js/dashboard.js 872b8d1d5f932fabd5445a41ad68a75e12eeddb8d6f317153143d99a1c9c4bd4
+ACCESSIBILITY.md 5eaf322961a8af9da9579ccdaabd89728cb442f3eedd9b0142fc1866ebd1e0b4
+
+Full-site preparation association, not blanket certification
+Read exact reports/DI5-a11y-baseline.md; final actual-render audit prepared independently of worker integration scripts. Commands `rtk proxy node baseline.cjs`, `rtk proxy node run-axe.cjs`, `rtk proxy node manual.cjs` and remainder-only `rtk proxy env REMAINING=1 node manual.cjs`, `rtk proxy node responsive.cjs` in final snapshot. All nine nav routes dashboard/explorer/insights/major-expenses/whatif/accounts/transfers/filemanager/duplicates, both themes1440: 18 HTTP200 actual-render captures, zero load failures; npx @axe-core/cli WCAG audit exit0, zero automated violations, 20 incomplete rules/464 node occurrences. Explicit label-name audit zero; 65-step Tab inventory per page/theme. Twelve Dashboard/Insights theme/viewport states at390/768/1440 have no document overflow. These initial-state audits did not trigger the dirty refresh overlay; they do not contradict F1.
+All17 point-by-point preparation and limitations are in PREPARATION.md: structure, tables, native controls, label association, validation/form formats, contrast/non-color meaning, focus/HTMX, chart alternatives/themes, signed currency, banners/motion/suppression/dialogs. Prior DI3/DI4/DI6 accepted detailed evidence is associated only for unchanged scoped behavior, not used to excuse the newly demonstrated combined state. Validation writes/destructive actions were not exercised. Baseline input-label gaps and What-If chart-alternative uncertainty remain OBSERVATIONS rather than extra invented failures. Only F1 determines this FAIL.
+
+Evidence locations / durable promotion
+Root /tmp/DI5-final-a11y.JYHU8N. FOCUS-ATTRIBUTION.md contains factual synthesis. artifacts/obstruction/results.json (original/current full traces); preDI3.json (counterfactual actual notice); verified.json (full versus partial coverage); current-*-390/768-*.png screenshots; provenance.json; final-freeze-hashes.json; final-original-diff.txt and final-master-diff.txt contain unified diffs. Fullsite artifacts/ contains raw axe.json/axe-cli.log/axe-command.json, source-hashes.json, baseline-attribution.json, per-route HTML/AX/screenshots/metadata, manual.json, responsive.json and preparation-summary.json.
+Promote focus-obstruction.cjs and focus-preDI3.cjs into a durable regression through the authorized worker, retaining full rectangle containment AND actual topmost-element/visual checks. Do not baseline-allowlist the four confirmed obstructions. Do not count partially exposed summary as completely obscured.
+
+Servers used only dedicated loopback current18799/original18800/preDI318801 (fullsite preparation18797/18798); synthetic copied data, independent import/backup dirs. Runtime args use BUDGET_DEBUG=true plus per-snapshot BUDGET_DATA_DIR/BUDGET2_BACKUP_DIR/BUDGET2_IMPORT_DIR/BUDGET_TEMPLATES_DIR/BUDGET_STATIC_DIR and dedicated BUDGET_LISTEN_ADDR. All servers stopped; ss confirms no listeners on those ports. No 8080/8081, real/demo requests, uploads, real data or user sessions. Browser skill/authorized headless fallback used; no subagents. Only this verdict written to live worktree in this turn.

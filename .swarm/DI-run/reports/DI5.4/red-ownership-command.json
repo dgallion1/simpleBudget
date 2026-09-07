@@ -1,0 +1,18 @@
+{
+  "name": "red-ownership",
+  "cwd": "/tmp/DI5-fourth-worker.1ptHqE",
+  "command": [
+    "rtk",
+    "proxy",
+    "node",
+    ".swarm/DI-run/reports/DI5-focus-ownership.cjs"
+  ],
+  "start": "2026-09-07T11:48:11.642Z",
+  "end": "2026-09-07T11:49:19.092Z",
+  "exit": 1,
+  "signal": null,
+  "env": {
+    "DI5_BASE": "http://127.0.0.1:18864",
+    "DI5_OUTPUT": "/tmp/DI5-fourth-worker.1ptHqE/.swarm/DI-run/reports/DI5.4/red-ownership"
+  }
+}

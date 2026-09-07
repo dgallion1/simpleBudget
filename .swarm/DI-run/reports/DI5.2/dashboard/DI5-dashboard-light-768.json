@@ -1,0 +1,12 @@
+{
+  "dark": false,
+  "width": 768,
+  "dimensions": {
+    "width": 768,
+    "scroll": 768,
+    "overflow": []
+  },
+  "figures": "Recorded income\n\n$26,461.47\n\nIncome details\nNet spending\n\n$32,057.26\n\nIncludes refunds and separately modeled costs.\n\nSpending details\nCash-flow balance\n\n-$5,595.79\n\nSpending not covered by recorded income\n\nCash-flow details\nSpending versus plan\n\n$8,559.37 under\n\nLiving and healthcare for this period. Separately modeled costs are outside this comparison.\n\nBudget details",
+  "chartTables": 5,
+  "keyboard": "five dialogs open/forward-backward trap/Escape/return; open disclosure overflow/scroll; selected-range HTMX focus and Insights link"
+}

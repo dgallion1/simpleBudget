@@ -1,0 +1,52 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: DI5
+ATTEMPT: 4
+TIER: 3
+---
+Scope: user-reopened fallback-focus correction and regression safety only.
+No in-scope defect found. Prior failures retained; this is not a retroactive
+acceptance of DI5.1/2/3 or an unrelated fullsite accessibility certification.
+
+Independent completed evidence, not author/lead result transcription:
+Snapshot /tmp/DI5-fourth-second.7yOyBT copied only immutable candidate.
+Detailed supporting report: second-evidence/REPORT.md under that snapshot;
+exact commands, assertions, provenance, runner correction and limits recorded.
+
+From snapshot:
+rtk proxy env DI5_SOURCE_ROOT=/tmp/DI5-fourth-second.7yOyBT DI5_BASE=http://127.0.0.1:18876 DI5_OUTPUT=/tmp/DI5-fourth-second.7yOyBT/second-evidence/oracle bash /home/darrell/bin/ai/budget2/.worktrees/dashboard-insights/.swarm/DI-run/tier3/DI5/accept.sh
+Exit0,750/750 focus transitions,10/10 VM groups,6/6 strict all-scripts-active
+F1 states,12/12 layout,6/6 lifecycle, final ORACLE PASS. Full log oracle.log.
+rtk proxy env DI5_BASE=http://127.0.0.1:18876 DI5_OUTPUT=/tmp/DI5-fourth-second.7yOyBT/second-evidence/ownership node .swarm/DI-run/reports/DI5-focus-ownership.cjs
+Exit0,252/252. Actual same-button focus through main inner/outer swap/settlement,
+delayed/cancelled non-theft, fallback dismissal/reset, post-blur cleanup pass.
+rtk proxy env DI5_SOURCE_ROOT=/tmp/DI5-fourth-second.7yOyBT DI5_OUTPUT=/tmp/DI5-fourth-second.7yOyBT/second-evidence/fallback node .swarm/DI-run/reports/DI5-fallback-lifecycle.cjs
+Exit0,65/65. Existing tabindex preserved, repeated fallback, same-value external
+writes and synchronous blur ownership pass. Independent asynchronous-blur
+variant also65/65; exact runnable command in REPORT.md, JSON fallback-async/.
+
+rtk proxy go test -count=1 ./internal/services/insights ./internal/handlers/dashboard ./internal/handlers/insights ./internal/templates ./internal/services/mcpsvc/spend ./internal/services/mcpsvc/ledger ./cmd/server -run '^TestDI5'
+Exit0, all seven packages, log go.log. Additional standalone promoted
+TestDI5SecondCrossMoney run exit0; original assertions unchanged after gofmt
+comparison except attribution comment. Build isolated second-server exit0.
+
+Source proof: recursive cmd/internal diffs against immutable failed attempt3
+empty; web differs only fallback block in page-refresh.js. All18 Go unchanged.
+Canonical source cmp all cmd/internal/web passes. Final source.sha256 check
+passes. JS hash d1875b727a3cf990a059538e443e7f1e1dfab799da1d2672dd61d9d7e8a5e115.
+Durable test diff exactly authorized temporal expectation plus24 blur checks;
+no earlier exact focus/value/status/region assertion removed. Oracle hashes
+match immutable calibrated contract (recorded in report).
+
+Criteria: retain MAIN focus until blur PASS; preserve existing/later attributes
+including identical writes PASS; no new positive stop/trap PASS; remount,
+cancel/delay/outside-focus non-theft PASS; original refresh/dirty/URL/epoch/AT
+guards PASS. ACCESSIBILITY9/10/16 supported by actual browser transitions.
+No reliance on previous incomplete browser work or baseline allowlist.
+
+Only supplied immutable copy used; dedicated synthetic data/backups/imports.
+Server127.0.0.1:18876 PID2874872 stopped, process exit0 and no listener confirmed.
+No real8080/demo8081, production/Git/ledger/deployment edits or subagents.
+Only this verdict written to real worktree; supporting report/probes/logs in
+scratch. Lead retains Tier3 oracle log, gate and deployment authority.

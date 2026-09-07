@@ -1,0 +1,1098 @@
+[
+  {
+    "version": "original",
+    "dark": false,
+    "width": 390,
+    "calls": 0,
+    "hits": []
+  },
+  {
+    "version": "original",
+    "dark": false,
+    "width": 768,
+    "calls": 0,
+    "hits": []
+  },
+  {
+    "version": "original",
+    "dark": true,
+    "width": 390,
+    "calls": 0,
+    "hits": []
+  },
+  {
+    "version": "original",
+    "dark": true,
+    "width": 768,
+    "calls": 0,
+    "hits": []
+  },
+  {
+    "version": "current",
+    "dark": false,
+    "width": 390,
+    "calls": 3,
+    "hits": [
+      {
+        "tag": "BUTTON",
+        "text": "Income details",
+        "key": "income",
+        "rect": {
+          "x": 33,
+          "y": 852,
+          "width": 96.5625,
+          "height": 20,
+          "top": 852,
+          "right": 129.5625,
+          "bottom": 872,
+          "left": 33
+        },
+        "notice": {
+          "x": 24,
+          "y": 738,
+          "width": 350,
+          "height": 146,
+          "top": 738,
+          "right": 374,
+          "bottom": 884,
+          "left": 24
+        },
+        "scroll": 0,
+        "outline": "rgb(16, 16, 16) auto 1px",
+        "points": [
+          {
+            "x": 47.484375,
+            "y": 855,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 47.484375,
+            "y": 862,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 47.484375,
+            "y": 869,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 81.28125,
+            "y": 855,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 81.28125,
+            "y": 862,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 81.28125,
+            "y": 869,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 115.078125,
+            "y": 855,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 115.078125,
+            "y": 862,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 115.078125,
+            "y": 869,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          }
+        ],
+        "covered": true,
+        "isRefresh": false,
+        "fullyContained": true
+      },
+      {
+        "tag": "A",
+        "text": "Budget details",
+        "rect": {
+          "x": 33,
+          "y": 763,
+          "width": 94.90625,
+          "height": 20,
+          "top": 763,
+          "right": 127.90625,
+          "bottom": 783,
+          "left": 33
+        },
+        "notice": {
+          "x": 24,
+          "y": 738,
+          "width": 350,
+          "height": 146,
+          "top": 738,
+          "right": 374,
+          "bottom": 884,
+          "left": 24
+        },
+        "scroll": 563,
+        "outline": "rgb(16, 16, 16) auto 1px",
+        "points": [
+          {
+            "x": 47.2359375,
+            "y": 766,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 47.2359375,
+            "y": 773,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 47.2359375,
+            "y": 780,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 80.453125,
+            "y": 766,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 80.453125,
+            "y": 773,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 80.453125,
+            "y": 780,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 113.6703125,
+            "y": 766,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 113.6703125,
+            "y": 773,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 113.6703125,
+            "y": 780,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          }
+        ],
+        "covered": true,
+        "isRefresh": false,
+        "fullyContained": true
+      }
+    ]
+  },
+  {
+    "version": "current",
+    "dark": false,
+    "width": 768,
+    "calls": 3,
+    "hits": [
+      {
+        "tag": "BUTTON",
+        "text": "Cash-flow details",
+        "key": "savings",
+        "rect": {
+          "x": 33,
+          "y": 847,
+          "width": 111.1875,
+          "height": 20,
+          "top": 847,
+          "right": 144.1875,
+          "bottom": 867,
+          "left": 33
+        },
+        "notice": {
+          "x": 24,
+          "y": 762,
+          "width": 728,
+          "height": 122,
+          "top": 762,
+          "right": 752,
+          "bottom": 884,
+          "left": 24
+        },
+        "scroll": 0,
+        "outline": "rgb(16, 16, 16) auto 1px",
+        "points": [
+          {
+            "x": 49.678124999999994,
+            "y": 850,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 49.678124999999994,
+            "y": 857,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 49.678124999999994,
+            "y": 864,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 88.59375,
+            "y": 850,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 88.59375,
+            "y": 857,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 88.59375,
+            "y": 864,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 127.50937499999999,
+            "y": 850,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 127.50937499999999,
+            "y": 857,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 127.50937499999999,
+            "y": 864,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          }
+        ],
+        "covered": true,
+        "isRefresh": false,
+        "fullyContained": true
+      },
+      {
+        "tag": "BUTTON",
+        "text": "Healthcare details",
+        "key": "healthcare",
+        "rect": {
+          "x": 392,
+          "y": 795,
+          "width": 118.40625,
+          "height": 20,
+          "top": 795,
+          "right": 510.40625,
+          "bottom": 815,
+          "left": 392
+        },
+        "notice": {
+          "x": 24,
+          "y": 762,
+          "width": 728,
+          "height": 122,
+          "top": 762,
+          "right": 752,
+          "bottom": 884,
+          "left": 24
+        },
+        "scroll": 502,
+        "outline": "rgb(16, 16, 16) auto 1px",
+        "points": [
+          {
+            "x": 409.7609375,
+            "y": 798,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 409.7609375,
+            "y": 805,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 409.7609375,
+            "y": 812,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 451.203125,
+            "y": 798,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 451.203125,
+            "y": 805,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 451.203125,
+            "y": 812,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 492.6453125,
+            "y": 798,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 492.6453125,
+            "y": 805,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 492.6453125,
+            "y": 812,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          }
+        ],
+        "covered": true,
+        "isRefresh": false,
+        "fullyContained": true
+      },
+      {
+        "tag": "SUMMARY",
+        "text": "Plan explanation and comparison",
+        "rect": {
+          "x": 16,
+          "y": 828,
+          "width": 736,
+          "height": 20,
+          "top": 828,
+          "right": 752,
+          "bottom": 848,
+          "left": 16
+        },
+        "notice": {
+          "x": 24,
+          "y": 762,
+          "width": 728,
+          "height": 122,
+          "top": 762,
+          "right": 752,
+          "bottom": 884,
+          "left": 24
+        },
+        "scroll": 502,
+        "outline": "rgb(16, 16, 16) auto 1px",
+        "points": [
+          {
+            "x": 126.39999999999999,
+            "y": 831,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 126.39999999999999,
+            "y": 838,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 126.39999999999999,
+            "y": 845,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 384,
+            "y": 831,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 384,
+            "y": 838,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 384,
+            "y": 845,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 641.6,
+            "y": 831,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 641.6,
+            "y": 838,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 641.6,
+            "y": 845,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          }
+        ],
+        "covered": true,
+        "isRefresh": false,
+        "fullyContained": false
+      }
+    ]
+  },
+  {
+    "version": "current",
+    "dark": true,
+    "width": 390,
+    "calls": 4,
+    "hits": [
+      {
+        "tag": "BUTTON",
+        "text": "Income details",
+        "key": "income",
+        "rect": {
+          "x": 33,
+          "y": 852,
+          "width": 96.5625,
+          "height": 20,
+          "top": 852,
+          "right": 129.5625,
+          "bottom": 872,
+          "left": 33
+        },
+        "notice": {
+          "x": 24,
+          "y": 738,
+          "width": 350,
+          "height": 146,
+          "top": 738,
+          "right": 374,
+          "bottom": 884,
+          "left": 24
+        },
+        "scroll": 0,
+        "outline": "rgb(16, 16, 16) auto 1px",
+        "points": [
+          {
+            "x": 47.484375,
+            "y": 855,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 47.484375,
+            "y": 862,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 47.484375,
+            "y": 869,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 81.28125,
+            "y": 855,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 81.28125,
+            "y": 862,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 81.28125,
+            "y": 869,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 115.078125,
+            "y": 855,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 115.078125,
+            "y": 862,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 115.078125,
+            "y": 869,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          }
+        ],
+        "covered": true,
+        "isRefresh": false,
+        "fullyContained": true
+      },
+      {
+        "tag": "A",
+        "text": "Budget details",
+        "rect": {
+          "x": 33,
+          "y": 763,
+          "width": 94.90625,
+          "height": 20,
+          "top": 763,
+          "right": 127.90625,
+          "bottom": 783,
+          "left": 33
+        },
+        "notice": {
+          "x": 24,
+          "y": 738,
+          "width": 350,
+          "height": 146,
+          "top": 738,
+          "right": 374,
+          "bottom": 884,
+          "left": 24
+        },
+        "scroll": 563,
+        "outline": "rgb(16, 16, 16) auto 1px",
+        "points": [
+          {
+            "x": 47.2359375,
+            "y": 766,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 47.2359375,
+            "y": 773,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 47.2359375,
+            "y": 780,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 80.453125,
+            "y": 766,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 80.453125,
+            "y": 773,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 80.453125,
+            "y": 780,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 113.6703125,
+            "y": 766,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 113.6703125,
+            "y": 773,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 113.6703125,
+            "y": 780,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          }
+        ],
+        "covered": true,
+        "isRefresh": false,
+        "fullyContained": true
+      }
+    ]
+  },
+  {
+    "version": "current",
+    "dark": true,
+    "width": 768,
+    "calls": 3,
+    "hits": [
+      {
+        "tag": "BUTTON",
+        "text": "Cash-flow details",
+        "key": "savings",
+        "rect": {
+          "x": 33,
+          "y": 847,
+          "width": 111.1875,
+          "height": 20,
+          "top": 847,
+          "right": 144.1875,
+          "bottom": 867,
+          "left": 33
+        },
+        "notice": {
+          "x": 24,
+          "y": 762,
+          "width": 728,
+          "height": 122,
+          "top": 762,
+          "right": 752,
+          "bottom": 884,
+          "left": 24
+        },
+        "scroll": 0,
+        "outline": "rgb(16, 16, 16) auto 1px",
+        "points": [
+          {
+            "x": 49.678124999999994,
+            "y": 850,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 49.678124999999994,
+            "y": 857,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 49.678124999999994,
+            "y": 864,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 88.59375,
+            "y": 850,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 88.59375,
+            "y": 857,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 88.59375,
+            "y": 864,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 127.50937499999999,
+            "y": 850,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 127.50937499999999,
+            "y": 857,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 127.50937499999999,
+            "y": 864,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          }
+        ],
+        "covered": true,
+        "isRefresh": false,
+        "fullyContained": true
+      },
+      {
+        "tag": "BUTTON",
+        "text": "Healthcare details",
+        "key": "healthcare",
+        "rect": {
+          "x": 392,
+          "y": 795,
+          "width": 118.40625,
+          "height": 20,
+          "top": 795,
+          "right": 510.40625,
+          "bottom": 815,
+          "left": 392
+        },
+        "notice": {
+          "x": 24,
+          "y": 762,
+          "width": 728,
+          "height": 122,
+          "top": 762,
+          "right": 752,
+          "bottom": 884,
+          "left": 24
+        },
+        "scroll": 502,
+        "outline": "rgb(16, 16, 16) auto 1px",
+        "points": [
+          {
+            "x": 409.7609375,
+            "y": 798,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 409.7609375,
+            "y": 805,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 409.7609375,
+            "y": 812,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 451.203125,
+            "y": 798,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 451.203125,
+            "y": 805,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 451.203125,
+            "y": 812,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 492.6453125,
+            "y": 798,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 492.6453125,
+            "y": 805,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 492.6453125,
+            "y": 812,
+            "hit": "P",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          }
+        ],
+        "covered": true,
+        "isRefresh": false,
+        "fullyContained": true
+      },
+      {
+        "tag": "SUMMARY",
+        "text": "Plan explanation and comparison",
+        "rect": {
+          "x": 16,
+          "y": 828,
+          "width": 736,
+          "height": 20,
+          "top": 828,
+          "right": 752,
+          "bottom": 848,
+          "left": 16
+        },
+        "notice": {
+          "x": 24,
+          "y": 762,
+          "width": 728,
+          "height": 122,
+          "top": 762,
+          "right": 752,
+          "bottom": 884,
+          "left": 24
+        },
+        "scroll": 502,
+        "outline": "rgb(16, 16, 16) auto 1px",
+        "points": [
+          {
+            "x": 126.39999999999999,
+            "y": 831,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 126.39999999999999,
+            "y": 838,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 126.39999999999999,
+            "y": 845,
+            "hit": "BUTTON",
+            "text": "Refresh page",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 384,
+            "y": 831,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 384,
+            "y": 838,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 384,
+            "y": 845,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 641.6,
+            "y": 831,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 641.6,
+            "y": 838,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          },
+          {
+            "x": 641.6,
+            "y": 845,
+            "hit": "SECTION",
+            "text": "A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved e",
+            "self": false,
+            "notice": true
+          }
+        ],
+        "covered": true,
+        "isRefresh": false,
+        "fullyContained": false
+      }
+    ]
+  }
+]

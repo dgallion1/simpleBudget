@@ -1,0 +1,2103 @@
+{"route":"/dashboard","dark":false,"width":390,"checks":21,"failures":7}
+{"route":"/explorer","dark":false,"width":390,"checks":13,"failures":2}
+{"route":"/insights","dark":false,"width":390,"checks":13,"failures":2}
+{"route":"/major-expenses","dark":false,"width":390,"checks":13,"failures":2}
+{"route":"/whatif","dark":false,"width":390,"checks":13,"failures":2}
+{"route":"/accounts","dark":false,"width":390,"checks":13,"failures":2}
+{"route":"/transfers","dark":false,"width":390,"checks":13,"failures":2}
+{"route":"/filemanager","dark":false,"width":390,"checks":13,"failures":2}
+{"route":"/duplicates","dark":false,"width":390,"checks":13,"failures":2}
+{"route":"/dashboard","dark":false,"width":768,"checks":21,"failures":7}
+{"route":"/explorer","dark":false,"width":768,"checks":13,"failures":2}
+{"route":"/insights","dark":false,"width":768,"checks":13,"failures":2}
+{"route":"/major-expenses","dark":false,"width":768,"checks":13,"failures":2}
+{"route":"/whatif","dark":false,"width":768,"checks":13,"failures":2}
+{"route":"/accounts","dark":false,"width":768,"checks":13,"failures":2}
+{"route":"/transfers","dark":false,"width":768,"checks":13,"failures":2}
+{"route":"/filemanager","dark":false,"width":768,"checks":13,"failures":2}
+{"route":"/duplicates","dark":false,"width":768,"checks":13,"failures":2}
+{"route":"/dashboard","dark":false,"width":1440,"checks":21,"failures":7}
+{"route":"/explorer","dark":false,"width":1440,"checks":13,"failures":2}
+{"route":"/insights","dark":false,"width":1440,"checks":13,"failures":2}
+{"route":"/major-expenses","dark":false,"width":1440,"checks":13,"failures":2}
+{"route":"/whatif","dark":false,"width":1440,"checks":13,"failures":2}
+{"route":"/accounts","dark":false,"width":1440,"checks":13,"failures":2}
+{"route":"/transfers","dark":false,"width":1440,"checks":13,"failures":2}
+{"route":"/filemanager","dark":false,"width":1440,"checks":13,"failures":2}
+{"route":"/duplicates","dark":false,"width":1440,"checks":13,"failures":2}
+{"route":"/dashboard","dark":true,"width":390,"checks":21,"failures":7}
+{"route":"/explorer","dark":true,"width":390,"checks":13,"failures":2}
+{"route":"/insights","dark":true,"width":390,"checks":13,"failures":2}
+{"route":"/major-expenses","dark":true,"width":390,"checks":13,"failures":2}
+{"route":"/whatif","dark":true,"width":390,"checks":13,"failures":2}
+{"route":"/accounts","dark":true,"width":390,"checks":13,"failures":2}
+{"route":"/transfers","dark":true,"width":390,"checks":13,"failures":2}
+{"route":"/filemanager","dark":true,"width":390,"checks":13,"failures":2}
+{"route":"/duplicates","dark":true,"width":390,"checks":13,"failures":2}
+{"route":"/dashboard","dark":true,"width":768,"checks":21,"failures":7}
+{"route":"/explorer","dark":true,"width":768,"checks":13,"failures":2}
+{"route":"/insights","dark":true,"width":768,"checks":13,"failures":2}
+{"route":"/major-expenses","dark":true,"width":768,"checks":13,"failures":2}
+{"route":"/whatif","dark":true,"width":768,"checks":13,"failures":2}
+{"route":"/accounts","dark":true,"width":768,"checks":13,"failures":2}
+{"route":"/transfers","dark":true,"width":768,"checks":13,"failures":2}
+{"route":"/filemanager","dark":true,"width":768,"checks":13,"failures":2}
+{"route":"/duplicates","dark":true,"width":768,"checks":13,"failures":2}
+{"route":"/dashboard","dark":true,"width":1440,"checks":21,"failures":7}
+{"route":"/explorer","dark":true,"width":1440,"checks":13,"failures":2}
+{"route":"/insights","dark":true,"width":1440,"checks":13,"failures":2}
+{"route":"/major-expenses","dark":true,"width":1440,"checks":13,"failures":2}
+{"route":"/whatif","dark":true,"width":1440,"checks":13,"failures":2}
+{"route":"/accounts","dark":true,"width":1440,"checks":13,"failures":2}
+{"route":"/transfers","dark":true,"width":1440,"checks":13,"failures":2}
+{"route":"/filemanager","dark":true,"width":1440,"checks":13,"failures":2}
+{"route":"/duplicates","dark":true,"width":1440,"checks":13,"failures":2}
+AssertionError [ERR_ASSERTION]: focus-transition contract violations
++ actual - expected
+
++ [
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: false,
++     name: 'innerHTML preserves Refresh page focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 390
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: false,
++     name: 'innerHTML preserves Keep editing focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 390
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: false,
++     name: 'outerHTML preserves Refresh page focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 390
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: false,
++     name: 'outerHTML preserves Keep editing focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'dismiss safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/explorer',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/explorer',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/insights',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/insights',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/major-expenses',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/major-expenses',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/whatif',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/whatif',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/accounts',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/accounts',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/transfers',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/transfers',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/filemanager',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/filemanager',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/duplicates',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/duplicates',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: false,
++     name: 'innerHTML preserves Refresh page focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 768
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: false,
++     name: 'innerHTML preserves Keep editing focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 768
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: false,
++     name: 'outerHTML preserves Refresh page focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 768
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: false,
++     name: 'outerHTML preserves Keep editing focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'dismiss safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/explorer',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/explorer',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/insights',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/insights',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/major-expenses',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/major-expenses',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/whatif',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/whatif',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/accounts',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/accounts',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/transfers',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/transfers',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/filemanager',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/filemanager',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/duplicates',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/duplicates',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: false,
++     name: 'innerHTML preserves Refresh page focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: false,
++     name: 'innerHTML preserves Keep editing focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: false,
++     name: 'outerHTML preserves Refresh page focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: false,
++     name: 'outerHTML preserves Keep editing focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'dismiss safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/explorer',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/explorer',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/insights',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/insights',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/major-expenses',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/major-expenses',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/whatif',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/whatif',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/accounts',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/accounts',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/transfers',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/transfers',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/filemanager',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/filemanager',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/duplicates',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: false,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/duplicates',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: true,
++     name: 'innerHTML preserves Refresh page focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 390
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: true,
++     name: 'innerHTML preserves Keep editing focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 390
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: true,
++     name: 'outerHTML preserves Refresh page focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 390
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: true,
++     name: 'outerHTML preserves Keep editing focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'dismiss safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/explorer',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/explorer',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/insights',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/insights',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/major-expenses',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/major-expenses',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/whatif',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/whatif',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/accounts',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/accounts',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/transfers',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/transfers',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/filemanager',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/filemanager',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/duplicates',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/duplicates',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 390
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: true,
++     name: 'innerHTML preserves Refresh page focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 768
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: true,
++     name: 'innerHTML preserves Keep editing focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 768
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: true,
++     name: 'outerHTML preserves Refresh page focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 768
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: true,
++     name: 'outerHTML preserves Keep editing focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'dismiss safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/explorer',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/explorer',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/insights',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/insights',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/major-expenses',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/major-expenses',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/whatif',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/whatif',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/accounts',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/accounts',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/transfers',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/transfers',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/filemanager',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/filemanager',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/duplicates',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/duplicates',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 768
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: true,
++     name: 'innerHTML preserves Refresh page focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: true,
++     name: 'innerHTML preserves Keep editing focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: true,
++     name: 'outerHTML preserves Refresh page focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     connected: true,
++     count: 1,
++     dark: true,
++     name: 'outerHTML preserves Keep editing focus and identity',
++     ok: false,
++     region: true,
++     route: '/dashboard',
++     same: false,
++     status: true,
++     text: '\n' +
++       '    \n' +
++       '    \n' +
++       '    \n' +
++       '        \n' +
++       '            \n' +
++       '                \n' +
++       '                    \n' +
++       '    ',
++     visible: false,
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'dismiss safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/explorer',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/explorer',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/insights',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/insights',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/major-expenses',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/major-expenses',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/whatif',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/whatif',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/accounts',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/accounts',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/transfers',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/transfers',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/filemanager',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/filemanager',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Refresh page focused',
++     ok: false,
++     route: '/duplicates',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   },
++   {
++     active: 'BODY',
++     count: 0,
++     dark: true,
++     inside: false,
++     name: 'epoch safely removes while Keep editing focused',
++     ok: false,
++     route: '/duplicates',
++     same: false,
++     status: false,
++     value: 'unsaved',
++     width: 1440
++   }
++ ]
+- []
+
+    at /home/darrell/bin/ai/budget2/.worktrees/dashboard-insights/.swarm/DI-run/tier3/DI5/focus-transitions.cjs:88:9 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

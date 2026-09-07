@@ -1,0 +1,147 @@
+{"route":"/dashboard","dark":false,"width":390,"checks":18,"failures":1}
+{"route":"/explorer","dark":false,"width":390,"checks":12,"failures":0}
+{"route":"/insights","dark":false,"width":390,"checks":12,"failures":0}
+{"route":"/major-expenses","dark":false,"width":390,"checks":12,"failures":0}
+{"route":"/whatif","dark":false,"width":390,"checks":12,"failures":0}
+{"route":"/accounts","dark":false,"width":390,"checks":12,"failures":0}
+{"route":"/transfers","dark":false,"width":390,"checks":12,"failures":0}
+{"route":"/filemanager","dark":false,"width":390,"checks":12,"failures":0}
+{"route":"/duplicates","dark":false,"width":390,"checks":12,"failures":0}
+{"route":"/dashboard","dark":false,"width":768,"checks":18,"failures":1}
+{"route":"/explorer","dark":false,"width":768,"checks":12,"failures":0}
+{"route":"/insights","dark":false,"width":768,"checks":12,"failures":0}
+{"route":"/major-expenses","dark":false,"width":768,"checks":12,"failures":0}
+{"route":"/whatif","dark":false,"width":768,"checks":12,"failures":0}
+{"route":"/accounts","dark":false,"width":768,"checks":12,"failures":0}
+{"route":"/transfers","dark":false,"width":768,"checks":12,"failures":0}
+{"route":"/filemanager","dark":false,"width":768,"checks":12,"failures":0}
+{"route":"/duplicates","dark":false,"width":768,"checks":12,"failures":0}
+{"route":"/dashboard","dark":false,"width":1440,"checks":18,"failures":1}
+{"route":"/explorer","dark":false,"width":1440,"checks":12,"failures":0}
+{"route":"/insights","dark":false,"width":1440,"checks":12,"failures":0}
+{"route":"/major-expenses","dark":false,"width":1440,"checks":12,"failures":0}
+{"route":"/whatif","dark":false,"width":1440,"checks":12,"failures":0}
+{"route":"/accounts","dark":false,"width":1440,"checks":12,"failures":0}
+{"route":"/transfers","dark":false,"width":1440,"checks":12,"failures":0}
+{"route":"/filemanager","dark":false,"width":1440,"checks":12,"failures":0}
+{"route":"/duplicates","dark":false,"width":1440,"checks":12,"failures":0}
+{"route":"/dashboard","dark":true,"width":390,"checks":18,"failures":1}
+{"route":"/explorer","dark":true,"width":390,"checks":12,"failures":0}
+{"route":"/insights","dark":true,"width":390,"checks":12,"failures":0}
+{"route":"/major-expenses","dark":true,"width":390,"checks":12,"failures":0}
+{"route":"/whatif","dark":true,"width":390,"checks":12,"failures":0}
+{"route":"/accounts","dark":true,"width":390,"checks":12,"failures":0}
+{"route":"/transfers","dark":true,"width":390,"checks":12,"failures":0}
+{"route":"/filemanager","dark":true,"width":390,"checks":12,"failures":0}
+{"route":"/duplicates","dark":true,"width":390,"checks":12,"failures":0}
+{"route":"/dashboard","dark":true,"width":768,"checks":18,"failures":1}
+{"route":"/explorer","dark":true,"width":768,"checks":12,"failures":0}
+{"route":"/insights","dark":true,"width":768,"checks":12,"failures":0}
+{"route":"/major-expenses","dark":true,"width":768,"checks":12,"failures":0}
+{"route":"/whatif","dark":true,"width":768,"checks":12,"failures":0}
+{"route":"/accounts","dark":true,"width":768,"checks":12,"failures":0}
+{"route":"/transfers","dark":true,"width":768,"checks":12,"failures":0}
+{"route":"/filemanager","dark":true,"width":768,"checks":12,"failures":0}
+{"route":"/duplicates","dark":true,"width":768,"checks":12,"failures":0}
+{"route":"/dashboard","dark":true,"width":1440,"checks":18,"failures":1}
+{"route":"/explorer","dark":true,"width":1440,"checks":12,"failures":0}
+{"route":"/insights","dark":true,"width":1440,"checks":12,"failures":0}
+{"route":"/major-expenses","dark":true,"width":1440,"checks":12,"failures":0}
+{"route":"/whatif","dark":true,"width":1440,"checks":12,"failures":0}
+{"route":"/accounts","dark":true,"width":1440,"checks":12,"failures":0}
+{"route":"/transfers","dark":true,"width":1440,"checks":12,"failures":0}
+{"route":"/filemanager","dark":true,"width":1440,"checks":12,"failures":0}
+{"route":"/duplicates","dark":true,"width":1440,"checks":12,"failures":0}
+AssertionError [ERR_ASSERTION]: focus-transition contract violations
++ actual - expected
+
++ [
++   {
++     active: 'MAIN',
++     count: 0,
++     dark: false,
++     inside: true,
++     name: 'dismiss safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'saved',
++     width: 390
++   },
++   {
++     active: 'MAIN',
++     count: 0,
++     dark: false,
++     inside: true,
++     name: 'dismiss safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'saved',
++     width: 768
++   },
++   {
++     active: 'MAIN',
++     count: 0,
++     dark: false,
++     inside: true,
++     name: 'dismiss safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'saved',
++     width: 1440
++   },
++   {
++     active: 'MAIN',
++     count: 0,
++     dark: true,
++     inside: true,
++     name: 'dismiss safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'saved',
++     width: 390
++   },
++   {
++     active: 'MAIN',
++     count: 0,
++     dark: true,
++     inside: true,
++     name: 'dismiss safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'saved',
++     width: 768
++   },
++   {
++     active: 'MAIN',
++     count: 0,
++     dark: true,
++     inside: true,
++     name: 'dismiss safely removes while Refresh page focused',
++     ok: false,
++     route: '/dashboard',
++     same: false,
++     status: false,
++     value: 'saved',
++     width: 1440
++   }
++ ]
+- []
+
+    at /home/darrell/bin/ai/budget2/.worktrees/dashboard-insights/.swarm/DI-run/tier3/DI5/focus-transitions.cjs:76:9 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

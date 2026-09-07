@@ -1,0 +1,16 @@
+{
+  "name": "css",
+  "cwd": "/tmp/DI5-fourth-worker.1ptHqE",
+  "command": [
+    "rtk",
+    "proxy",
+    "make",
+    "COMMIT=di5-frozen",
+    "css-verify"
+  ],
+  "start": "2026-09-07T11:52:11.728Z",
+  "end": "2026-09-07T11:52:12.975Z",
+  "exit": 0,
+  "signal": null,
+  "env": {}
+}

@@ -1,0 +1,15 @@
+--- /tmp/DI5-final-worker.btR0cu/.swarm/DI-run/reports/DI5-focus-ownership.cjs	2026-09-06 23:33:31.083023856 -0400
++++ .swarm/DI-run/reports/DI5-focus-ownership.cjs	2026-09-07 07:47:26.971500766 -0400
+@@ -76,7 +76,11 @@
+    if(removal==='dismiss')await notice.getByRole('button',{name:'Keep editing'}).evaluate(e=>e.click());
+    else{epoch+='x';revision=0;await signal();}
+    const r=await p.evaluate(()=>({tag:document.activeElement.tagName,id:document.activeElement.id,original:document.activeElement===window.originalEdit,main:document.activeElement===document.querySelector('main')||document.activeElement===document.querySelector('main h1'),tabindex:document.activeElement.getAttribute('tabindex'),same:document.activeElement===window.expectedFocus,region:!!document.querySelector('section[aria-label="Page refresh"]'),status:window.keptStatus.isConnected,value:document.querySelector('#di53-edit').value}));
+-   check(!r.region&&!r.status&&r.value==='unsaved'&&(action==='outside'?r.same:replaced?r.main&&r.tabindex===null:r.original),removal+' owned focus '+action+' replaced='+replaced,r);
++   check(!r.region&&!r.status&&r.value==='unsaved'&&(action==='outside'?r.same:replaced?r.main&&r.tabindex==='-1':r.original),removal+' owned focus '+action+' replaced='+replaced,r);
++   if(replaced&&action!=='outside'){
++    await outside.focus();
++    check(await p.locator('main').evaluate(e=>e.getAttribute('tabindex')===null),'fallback tabindex cleaned after blur '+removal+'/'+action);
++   }
+    await p.evaluate(()=>{document.dispatchEvent(new CustomEvent('htmx:afterSwap'));document.dispatchEvent(new CustomEvent('htmx:afterSettle'));});await signal();
+    check(await notice.count()===0,'no stale resurrection '+removal+'/'+action+'/'+replaced);
+   }

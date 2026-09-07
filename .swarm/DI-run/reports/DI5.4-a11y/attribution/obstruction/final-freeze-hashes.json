@@ -1,0 +1,1532 @@
+{
+  "checkedAt": "2026-09-07T02:17:40.686Z",
+  "compared": 299,
+  "differences": [],
+  "keyHashes": [
+    {
+      "path": "web/templates/components/kpis.html",
+      "sha256": "b59581cea9b37fdb4efd2f169c176c31312ecf067f5f20616e5600912ea4b5f3"
+    },
+    {
+      "path": "web/static/js/page-refresh.js",
+      "sha256": "e4f515e7adcd11c4bad42d5ec1207a37809203e19899c25591d9574cb3e5aca8"
+    },
+    {
+      "path": "web/static/css/tailwind.css",
+      "sha256": "f09162945444f745061980d04d5d3eafd8c7c9d67c178381837555429adb6c5c"
+    },
+    {
+      "path": "web/static/css/styles.css",
+      "sha256": "2128e66326f1080a237fecbb3531ec2ea3293d82ebcf0f0fbb106caae6f3caf3"
+    },
+    {
+      "path": "web/templates/layouts/base.html",
+      "sha256": "16019f58797fe797debc4d181021312927b304a531a17e02bbdc368237d8777d"
+    },
+    {
+      "path": "web/static/js/dashboard.js",
+      "sha256": "872b8d1d5f932fabd5445a41ad68a75e12eeddb8d6f317153143d99a1c9c4bd4"
+    },
+    {
+      "path": "ACCESSIBILITY.md",
+      "sha256": "5eaf322961a8af9da9579ccdaabd89728cb442f3eedd9b0142fc1866ebd1e0b4"
+    }
+  ],
+  "files": [
+    {
+      "path": "cmd/enrich-amazon/main.go",
+      "audited": "ccb90de353827122abd513e7d8aaa905506f414aad96ed3e586fcb75270b1364",
+      "current": "ccb90de353827122abd513e7d8aaa905506f414aad96ed3e586fcb75270b1364"
+    },
+    {
+      "path": "cmd/server/main.go",
+      "audited": "75e55eafc49ee2a1044003bc01221c911cf6ce6a696079fcac3a11b20776fd3e",
+      "current": "75e55eafc49ee2a1044003bc01221c911cf6ce6a696079fcac3a11b20776fd3e"
+    },
+    {
+      "path": "cmd/validate/main.go",
+      "audited": "1869ec300defdcee34253c8e1a2e1c0af19a2e13dfa711f12212ca3df9e734a8",
+      "current": "1869ec300defdcee34253c8e1a2e1c0af19a2e13dfa711f12212ca3df9e734a8"
+    },
+    {
+      "path": "internal/config/config.go",
+      "audited": "30170fa69c3b798b5df196b39977bb7cb2b415c1963c102e43933a8b1064c689",
+      "current": "30170fa69c3b798b5df196b39977bb7cb2b415c1963c102e43933a8b1064c689"
+    },
+    {
+      "path": "internal/handlers/accounts/handlers.go",
+      "audited": "89fbd6a8a53a2ecb0214a5731b097f2aa4a7b62d04666569d2d31083655d1d1f",
+      "current": "89fbd6a8a53a2ecb0214a5731b097f2aa4a7b62d04666569d2d31083655d1d1f"
+    },
+    {
+      "path": "internal/handlers/accounts/testdata/js/warnings_dom_harness.js",
+      "audited": "87974cedd9aff9f96ad1afd6d882078670ba453453a3c81ce2b8600d3394f405",
+      "current": "87974cedd9aff9f96ad1afd6d882078670ba453453a3c81ce2b8600d3394f405"
+    },
+    {
+      "path": "internal/handlers/approval/handlers.go",
+      "audited": "efc70975d775c9c92d0d895cf2988c7bed0e6bc33a89afa71a6293b80365492b",
+      "current": "efc70975d775c9c92d0d895cf2988c7bed0e6bc33a89afa71a6293b80365492b"
+    },
+    {
+      "path": "internal/handlers/backup/handlers.go",
+      "audited": "c4e6656d7f20cac8017eb634de4bf8fa731b35d6f79b3f4eed87cd96208a07a7",
+      "current": "c4e6656d7f20cac8017eb634de4bf8fa731b35d6f79b3f4eed87cd96208a07a7"
+    },
+    {
+      "path": "internal/handlers/dashboard/accounts_card.go",
+      "audited": "416def1cbbc5b991813052ce89205d25eae8e118c29f188c30885026567e1a13",
+      "current": "416def1cbbc5b991813052ce89205d25eae8e118c29f188c30885026567e1a13"
+    },
+    {
+      "path": "internal/handlers/dashboard/handlers.go",
+      "audited": "763b95ac1ba8c151dfc627d94b8456e56ed20e248a659170f6af6627410785de",
+      "current": "763b95ac1ba8c151dfc627d94b8456e56ed20e248a659170f6af6627410785de"
+    },
+    {
+      "path": "internal/handlers/dashboard/period.go",
+      "audited": "e417242f8c501f5f1b4ddf0ed9de991701f786ef0de35b4f86ded603e9548e62",
+      "current": "e417242f8c501f5f1b4ddf0ed9de991701f786ef0de35b4f86ded603e9548e62"
+    },
+    {
+      "path": "internal/handlers/dashboard/verdict.go",
+      "audited": "be61e797f34fba9664781963a816f5ba0349ceb7c424b1f84cf7586f157d7005",
+      "current": "be61e797f34fba9664781963a816f5ba0349ceb7c424b1f84cf7586f157d7005"
+    },
+    {
+      "path": "internal/handlers/duplicates/handlers.go",
+      "audited": "27173920aab77ab6672d6a9102e6a00ef72cca200c5632d864d1e2c7b08c61d6",
+      "current": "27173920aab77ab6672d6a9102e6a00ef72cca200c5632d864d1e2c7b08c61d6"
+    },
+    {
+      "path": "internal/handlers/explorer/handlers.go",
+      "audited": "b27e49cd7b02308324f270b8e7581d1f6b3152f8a50cc0676733f513dcaf1946",
+      "current": "b27e49cd7b02308324f270b8e7581d1f6b3152f8a50cc0676733f513dcaf1946"
+    },
+    {
+      "path": "internal/handlers/insights/handlers.go",
+      "audited": "a6a4a3581475b846537940953c193dcf2a4435229b12006c292122a3e415029e",
+      "current": "a6a4a3581475b846537940953c193dcf2a4435229b12006c292122a3e415029e"
+    },
+    {
+      "path": "internal/handlers/insights/investigation.go",
+      "audited": "bb57433308c15bdc583c24391302419ce0ddf398aaf41af8a8ad28d1c11814b8",
+      "current": "bb57433308c15bdc583c24391302419ce0ddf398aaf41af8a8ad28d1c11814b8"
+    },
+    {
+      "path": "internal/handlers/insights/period.go",
+      "audited": "3c76f478f88ca466202add2a1d6aa3eb1d0b2695b7f377f1a8ef52ff242fb4cd",
+      "current": "3c76f478f88ca466202add2a1d6aa3eb1d0b2695b7f377f1a8ef52ff242fb4cd"
+    },
+    {
+      "path": "internal/handlers/insights/verdict.go",
+      "audited": "e44cf4d9d7826d524f11b02f1ebccae18c493371f93ddc413146063b54d0042a",
+      "current": "e44cf4d9d7826d524f11b02f1ebccae18c493371f93ddc413146063b54d0042a"
+    },
+    {
+      "path": "internal/handlers/majorexpenses/handlers.go",
+      "audited": "958e0f56dc4fc986d8d0f8206c2d81ca71503391670114df29e8a2ef5c21d134",
+      "current": "958e0f56dc4fc986d8d0f8206c2d81ca71503391670114df29e8a2ef5c21d134"
+    },
+    {
+      "path": "internal/handlers/majorexpenses/verdict.go",
+      "audited": "0f6363a4810764c9a679b11881bcae44463d34bbf8722322a9bb5b08bcc0096c",
+      "current": "0f6363a4810764c9a679b11881bcae44463d34bbf8722322a9bb5b08bcc0096c"
+    },
+    {
+      "path": "internal/handlers/transfers/handlers.go",
+      "audited": "ee94a0d30053c22870c0a116509e71682f3e0fb1b7caf620c803acf2964adeb8",
+      "current": "ee94a0d30053c22870c0a116509e71682f3e0fb1b7caf620c803acf2964adeb8"
+    },
+    {
+      "path": "internal/handlers/whatif/form_spec.go",
+      "audited": "f480946f0cf035cff7e247dcd954168198039fdcf4440afa9423a0d846ccca58",
+      "current": "f480946f0cf035cff7e247dcd954168198039fdcf4440afa9423a0d846ccca58"
+    },
+    {
+      "path": "internal/handlers/whatif/handlers.go",
+      "audited": "9901d0c934d42a19b37ec07fc8a038348c68f30e4671aab26510dfb585135505",
+      "current": "9901d0c934d42a19b37ec07fc8a038348c68f30e4671aab26510dfb585135505"
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_healthcare.go",
+      "audited": "ad18fc6250eceacb579541af5e149481dec5510c4e3a27f9e29db003a07f4a78",
+      "current": "ad18fc6250eceacb579541af5e149481dec5510c4e3a27f9e29db003a07f4a78"
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_income_expense.go",
+      "audited": "8c83f6f19f595d63a322be1b6aef7dc34ea6f3c1afdde192f0e59bd9c785bd50",
+      "current": "8c83f6f19f595d63a322be1b6aef7dc34ea6f3c1afdde192f0e59bd9c785bd50"
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_live.go",
+      "audited": "c35feb3376e0c1eb36288f6c23975b5a9e4c0d4a25d0ac490954ae61b7b61b0d",
+      "current": "c35feb3376e0c1eb36288f6c23975b5a9e4c0d4a25d0ac490954ae61b7b61b0d"
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_rates.go",
+      "audited": "fdf6b978fa1d091ba53a5dd366e73de6d8c7febd874d7a2c2327e6a2a102fa2c",
+      "current": "fdf6b978fa1d091ba53a5dd366e73de6d8c7febd874d7a2c2327e6a2a102fa2c"
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_scenarios.go",
+      "audited": "761f5d173d863a2c3dad4e860fc85228feccc2580f64a60333b1ceacd60b6d6d",
+      "current": "761f5d173d863a2c3dad4e860fc85228feccc2580f64a60333b1ceacd60b6d6d"
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_sweep.go",
+      "audited": "4c46e5267a6a76bb25355ce3535d8b91af76f1474271bbb9344d975d651e2787",
+      "current": "4c46e5267a6a76bb25355ce3535d8b91af76f1474271bbb9344d975d651e2787"
+    },
+    {
+      "path": "internal/handlers/whatif/living_expenses_phase_note.go",
+      "audited": "924d497fd7e312543aef5fbc51317569bed04190bfb17f9e342fc8715160b567",
+      "current": "924d497fd7e312543aef5fbc51317569bed04190bfb17f9e342fc8715160b567"
+    },
+    {
+      "path": "internal/handlers/whatif/spending_trajectory.go",
+      "audited": "01e376c3a742b1d9f313afe247d74c21bb8ccddbed05a915e83c3b7d11344492",
+      "current": "01e376c3a742b1d9f313afe247d74c21bb8ccddbed05a915e83c3b7d11344492"
+    },
+    {
+      "path": "internal/handlers/whatif/sync.go",
+      "audited": "30a0f0919819c89f549b00b951608f9dee59fc1cd473560aeae007a9ce583a9b",
+      "current": "30a0f0919819c89f549b00b951608f9dee59fc1cd473560aeae007a9ce583a9b"
+    },
+    {
+      "path": "internal/handlers/whatif/verdict.go",
+      "audited": "dde4e2e1cae8efb2cb640cf9b21c69de315a84b69f762cbd05f753fdc22187ac",
+      "current": "dde4e2e1cae8efb2cb640cf9b21c69de315a84b69f762cbd05f753fdc22187ac"
+    },
+    {
+      "path": "internal/http/http.go",
+      "audited": "b39dbd4bd30e0772139add08385fe1cb100d560b6a4087d1d987deae99047e0e",
+      "current": "b39dbd4bd30e0772139add08385fe1cb100d560b6a4087d1d987deae99047e0e"
+    },
+    {
+      "path": "internal/models/aca.go",
+      "audited": "df9b4d6c0c3ef343a09a810a8b79046ae1e542a4816670bb103e3cc9a2e6f901",
+      "current": "df9b4d6c0c3ef343a09a810a8b79046ae1e542a4816670bb103e3cc9a2e6f901"
+    },
+    {
+      "path": "internal/models/account.go",
+      "audited": "70f552abf00c6c346f7fb288f2da15c2dab627e34028ce0764650da179745eda",
+      "current": "70f552abf00c6c346f7fb288f2da15c2dab627e34028ce0764650da179745eda"
+    },
+    {
+      "path": "internal/models/dashboard.go",
+      "audited": "aad3afbb44eae771ae8f41d6f16adc6ec9409832e7a811647ae38c0318190760",
+      "current": "aad3afbb44eae771ae8f41d6f16adc6ec9409832e7a811647ae38c0318190760"
+    },
+    {
+      "path": "internal/models/doc.go",
+      "audited": "e7f9ffa62bd8c31c4c134a883d67cf12ce7e4693dcee51643543293b8c48e4ab",
+      "current": "e7f9ffa62bd8c31c4c134a883d67cf12ce7e4693dcee51643543293b8c48e4ab"
+    },
+    {
+      "path": "internal/models/health.go",
+      "audited": "6f1821337d7b07881dcb5a581af63dded7ea01af8d435859d82f4dfd22d579ee",
+      "current": "6f1821337d7b07881dcb5a581af63dded7ea01af8d435859d82f4dfd22d579ee"
+    },
+    {
+      "path": "internal/models/healthcare.go",
+      "audited": "f1e49199d1957b6a80d2f95c29b91ba4d913819b37f99941bf1c5191b5b12f9f",
+      "current": "f1e49199d1957b6a80d2f95c29b91ba4d913819b37f99941bf1c5191b5b12f9f"
+    },
+    {
+      "path": "internal/models/income_source.go",
+      "audited": "d3df750277ebaf15c1f7290635cad4df7fefa20b8c5d63589f562647ba8c0cd6",
+      "current": "d3df750277ebaf15c1f7290635cad4df7fefa20b8c5d63589f562647ba8c0cd6"
+    },
+    {
+      "path": "internal/models/insights.go",
+      "audited": "1a34fd95df930fc8df076d8bafcc2813c1478e7fe14741a4bd0965133a5838b4",
+      "current": "1a34fd95df930fc8df076d8bafcc2813c1478e7fe14741a4bd0965133a5838b4"
+    },
+    {
+      "path": "internal/models/major_expense.go",
+      "audited": "ef269a82fe3df543d4d7187ed09ed6c13c099f8e07cb2b283fd507c85a7e9de0",
+      "current": "ef269a82fe3df543d4d7187ed09ed6c13c099f8e07cb2b283fd507c85a7e9de0"
+    },
+    {
+      "path": "internal/models/money.go",
+      "audited": "f42182d820370446cb4048c5793ceeb2ecb04286387e2247d2e19ded37dadcf9",
+      "current": "f42182d820370446cb4048c5793ceeb2ecb04286387e2247d2e19ded37dadcf9"
+    },
+    {
+      "path": "internal/models/one_time_expense.go",
+      "audited": "c4594fedb806d3d2ca5ad8def9f62e0ea8ccd08e3ac3a4f840cf7f89810a0432",
+      "current": "c4594fedb806d3d2ca5ad8def9f62e0ea8ccd08e3ac3a4f840cf7f89810a0432"
+    },
+    {
+      "path": "internal/models/ptr.go",
+      "audited": "b014f6823330351447d469a623860e727cf54008f20b8ba919339e9fb2425284",
+      "current": "b014f6823330351447d469a623860e727cf54008f20b8ba919339e9fb2425284"
+    },
+    {
+      "path": "internal/models/transaction.go",
+      "audited": "6950b87dff6f866c53dd6b311ba911d9f9872b0a6864fc890d8a473bb5781405",
+      "current": "6950b87dff6f866c53dd6b311ba911d9f9872b0a6864fc890d8a473bb5781405"
+    },
+    {
+      "path": "internal/models/user_profile.go",
+      "audited": "951b91f31e0f1e853c9bc976ea9d0f93aed1be6934d1ef60a73dc2d1e994981e",
+      "current": "951b91f31e0f1e853c9bc976ea9d0f93aed1be6934d1ef60a73dc2d1e994981e"
+    },
+    {
+      "path": "internal/models/whatif.go",
+      "audited": "652026bbaa2910adc216d47e27d8aa1ad012204ec2cafa2d8ba970d6acc8254b",
+      "current": "652026bbaa2910adc216d47e27d8aa1ad012204ec2cafa2d8ba970d6acc8254b"
+    },
+    {
+      "path": "internal/services/accounts/accounts.go",
+      "audited": "2f2fbf656b7e2f80c56fa190141cf6f35f80e94600ef90828f7452e624ca5645",
+      "current": "2f2fbf656b7e2f80c56fa190141cf6f35f80e94600ef90828f7452e624ca5645"
+    },
+    {
+      "path": "internal/services/accounts/balance.go",
+      "audited": "9c69246e2f396fdca38fc54a7bc69a06d1d567f857a00a8ed738916be3b81749",
+      "current": "9c69246e2f396fdca38fc54a7bc69a06d1d567f857a00a8ed738916be3b81749"
+    },
+    {
+      "path": "internal/services/accounts/projection.go",
+      "audited": "54ecbe7b2fe4ce9a5c1df58478d1dade0d57911a1dc831c4c5060ea15a779d68",
+      "current": "54ecbe7b2fe4ce9a5c1df58478d1dade0d57911a1dc831c4c5060ea15a779d68"
+    },
+    {
+      "path": "internal/services/amazon/matcher.go",
+      "audited": "4562690b46d1ad010d873798536b6116a698a9f968d45bb57f5a3e52ac544618",
+      "current": "4562690b46d1ad010d873798536b6116a698a9f968d45bb57f5a3e52ac544618"
+    },
+    {
+      "path": "internal/services/amazon/order.go",
+      "audited": "4946bb22c4fdcf7389ed3f63778b8f38ec10f215de0972450651d71dc5498f99",
+      "current": "4946bb22c4fdcf7389ed3f63778b8f38ec10f215de0972450651d71dc5498f99"
+    },
+    {
+      "path": "internal/services/anomalies/anomalies.go",
+      "audited": "436b1616feb26097c27152ca00cb89e8fba4087ee28ef6b019e4958d3e4d2267",
+      "current": "436b1616feb26097c27152ca00cb89e8fba4087ee28ef6b019e4958d3e4d2267"
+    },
+    {
+      "path": "internal/services/backup/clock.go",
+      "audited": "eb141723f091ab434c7fd63196f61d6b9d076c084e8d36868b5192eee12f0c05",
+      "current": "eb141723f091ab434c7fd63196f61d6b9d076c084e8d36868b5192eee12f0c05"
+    },
+    {
+      "path": "internal/services/backup/list.go",
+      "audited": "9367a773c2a47a51f42b26701c1846e78b6802b3b1235253f90b5be83ccc50b0",
+      "current": "9367a773c2a47a51f42b26701c1846e78b6802b3b1235253f90b5be83ccc50b0"
+    },
+    {
+      "path": "internal/services/backup/meta.go",
+      "audited": "267f5787108c62e58beb35baad94e49d7c528053f06c2ed8caa5dc9b0d6fafb8",
+      "current": "267f5787108c62e58beb35baad94e49d7c528053f06c2ed8caa5dc9b0d6fafb8"
+    },
+    {
+      "path": "internal/services/backup/retention.go",
+      "audited": "6f84202ffa5f4fcf1deba94ab2e2eeed2e729a1ceade1d6ddf63d32e4027e9a8",
+      "current": "6f84202ffa5f4fcf1deba94ab2e2eeed2e729a1ceade1d6ddf63d32e4027e9a8"
+    },
+    {
+      "path": "internal/services/backup/scheduler.go",
+      "audited": "3beed6f3d9694556671a696d0b1d78b53ccede02d4a365584c70a5d506be3004",
+      "current": "3beed6f3d9694556671a696d0b1d78b53ccede02d4a365584c70a5d506be3004"
+    },
+    {
+      "path": "internal/services/backup/service.go",
+      "audited": "e948e56abad20f6331582cea3a103a2ca4d9b3cf22c9b1903e4a7d9e219032c1",
+      "current": "e948e56abad20f6331582cea3a103a2ca4d9b3cf22c9b1903e4a7d9e219032c1"
+    },
+    {
+      "path": "internal/services/backup/snapshot.go",
+      "audited": "f57f34070bcab737979a3aa57cd1841665198a7c1b9da87ca59e668f804143de",
+      "current": "f57f34070bcab737979a3aa57cd1841665198a7c1b9da87ca59e668f804143de"
+    },
+    {
+      "path": "internal/services/classifier/classifier.go",
+      "audited": "e71c4775f1b6870fb5a8e49270da1362b0bb4dcaf7d2997b563131168eac4836",
+      "current": "e71c4775f1b6870fb5a8e49270da1362b0bb4dcaf7d2997b563131168eac4836"
+    },
+    {
+      "path": "internal/services/dataloader/amazon_enrichment.go",
+      "audited": "7b59a604e74f6a6a8f4046236565943e9fa349c3ac63f2709f6b863535478a2f",
+      "current": "7b59a604e74f6a6a8f4046236565943e9fa349c3ac63f2709f6b863535478a2f"
+    },
+    {
+      "path": "internal/services/dataloader/duplicate_decisions.go",
+      "audited": "74eb1463b005f0f4ee95434e954c2b5907cdbabca07c3c2bb9991860c4586482",
+      "current": "74eb1463b005f0f4ee95434e954c2b5907cdbabca07c3c2bb9991860c4586482"
+    },
+    {
+      "path": "internal/services/dataloader/loader.go",
+      "audited": "f08fe0d47d200f67f49c2f96be43162c812a44106a46b4355b961a3edc74de90",
+      "current": "f08fe0d47d200f67f49c2f96be43162c812a44106a46b4355b961a3edc74de90"
+    },
+    {
+      "path": "internal/services/dataloader/major_expense_names.go",
+      "audited": "77aff3ebb55274df48daa234ec3219a9800acbcac17d6b4b8e50707f4784748b",
+      "current": "77aff3ebb55274df48daa234ec3219a9800acbcac17d6b4b8e50707f4784748b"
+    },
+    {
+      "path": "internal/services/dataloader/major_expenses.go",
+      "audited": "114919c064441b7233c6dbac7b543080c7af0705dea3e45f28edb671454a2b0e",
+      "current": "114919c064441b7233c6dbac7b543080c7af0705dea3e45f28edb671454a2b0e"
+    },
+    {
+      "path": "internal/services/dataloader/near_duplicates.go",
+      "audited": "6f3bfc2c4db8fcba6272b06c0ec2fa9ba3cb6afbc3ceeaf721f60932a6a85d20",
+      "current": "6f3bfc2c4db8fcba6272b06c0ec2fa9ba3cb6afbc3ceeaf721f60932a6a85d20"
+    },
+    {
+      "path": "internal/services/dataloader/stable_id.go",
+      "audited": "94f49775e82c3cad6b58bbf07b2254a8c96da53a6ff6858a426376b88911e513",
+      "current": "94f49775e82c3cad6b58bbf07b2254a8c96da53a6ff6858a426376b88911e513"
+    },
+    {
+      "path": "internal/services/dataloader/transaction_pins.go",
+      "audited": "eda736ba833612956fbfc7a1edbc922ba49bd1be7d6bd3566e865f6c2e491430",
+      "current": "eda736ba833612956fbfc7a1edbc922ba49bd1be7d6bd3566e865f6c2e491430"
+    },
+    {
+      "path": "internal/services/dataloader/transfer_decisions.go",
+      "audited": "ff3c5e0d83a197e733f1e60784561d963263c7c3d8c27034b4f0211428ecea87",
+      "current": "ff3c5e0d83a197e733f1e60784561d963263c7c3d8c27034b4f0211428ecea87"
+    },
+    {
+      "path": "internal/services/dataloader/transfers.go",
+      "audited": "4a243b3e01ee0ba3b0677328d9c206d45a419471f4ad68ebd4699a059cb746b2",
+      "current": "4a243b3e01ee0ba3b0677328d9c206d45a419471f4ad68ebd4699a059cb746b2"
+    },
+    {
+      "path": "internal/services/insights/classification.go",
+      "audited": "37bcc56c2414b75bc9e569a65e3c69c151f44d00475e305005ead7cf124a9de5",
+      "current": "37bcc56c2414b75bc9e569a65e3c69c151f44d00475e305005ead7cf124a9de5"
+    },
+    {
+      "path": "internal/services/insights/period.go",
+      "audited": "9a4dad3ad1297b77419c76f432c7603553be40b3e4f7806fbb8ee036c6eb7531",
+      "current": "9a4dad3ad1297b77419c76f432c7603553be40b3e4f7806fbb8ee036c6eb7531"
+    },
+    {
+      "path": "internal/services/insights/recurring.go",
+      "audited": "c2444ce737bcbdab9285ede335018a1a593a11e23843b9cf801b288ddeb79abc",
+      "current": "c2444ce737bcbdab9285ede335018a1a593a11e23843b9cf801b288ddeb79abc"
+    },
+    {
+      "path": "internal/services/insights/trends.go",
+      "audited": "0f70ba3e8a876340e633459086063d85a88f3417008b678426ae33afc3b81c4a",
+      "current": "0f70ba3e8a876340e633459086063d85a88f3417008b678426ae33afc3b81c4a"
+    },
+    {
+      "path": "internal/services/majorexpenses/engine.go",
+      "audited": "cb188eab2cc7bfc864edce81b4df7c8096b864b9ad998b5919c9ed58ce931b28",
+      "current": "cb188eab2cc7bfc864edce81b4df7c8096b864b9ad998b5919c9ed58ce931b28"
+    },
+    {
+      "path": "internal/services/majorexpenses/validate.go",
+      "audited": "99745ea9ab046b35a09b465d798c97b72682c982e949f7b10e740bfdd64b9501",
+      "current": "99745ea9ab046b35a09b465d798c97b72682c982e949f7b10e740bfdd64b9501"
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/approval.go",
+      "audited": "dc161c83d69bccd2baff70f84ebfac2112ed223a7a9797eda4fb7f5109a98f7b",
+      "current": "dc161c83d69bccd2baff70f84ebfac2112ed223a7a9797eda4fb7f5109a98f7b"
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/backup.go",
+      "audited": "6d614368f8f3def89df63cac2e848e04e2b29e38b21404ad0f5d9dd8ccf94592",
+      "current": "6d614368f8f3def89df63cac2e848e04e2b29e38b21404ad0f5d9dd8ccf94592"
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/duplicates.go",
+      "audited": "e3535b86709279d8a9e1f5f859f0421119b2de5360d42e978e9ff4fb19b21e6e",
+      "current": "e3535b86709279d8a9e1f5f859f0421119b2de5360d42e978e9ff4fb19b21e6e"
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/files.go",
+      "audited": "243bac6d7d41c20e203547ebf345e7c898be8cb23270ff396125af1fd8b5000c",
+      "current": "243bac6d7d41c20e203547ebf345e7c898be8cb23270ff396125af1fd8b5000c"
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/register.go",
+      "audited": "b062a239128b470934c205892b34d4bef01c0d6af7237f60d17db05148bc772f",
+      "current": "b062a239128b470934c205892b34d4bef01c0d6af7237f60d17db05148bc772f"
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/resolve.go",
+      "audited": "33413258009f59a8722f40886c2952e6dd22f9bdb315b2af39e8a709280908d2",
+      "current": "33413258009f59a8722f40886c2952e6dd22f9bdb315b2af39e8a709280908d2"
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/restore.go",
+      "audited": "da1f167ee40fb33d4203c593c214a097533ae6941af3ef5178a3102d917e8303",
+      "current": "da1f167ee40fb33d4203c593c214a097533ae6941af3ef5178a3102d917e8303"
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/shutdown.go",
+      "audited": "d4b8a60ee648d73b963c36ebba35e9f50a91068f2eaa78e34fc14b6b01eb9c2a",
+      "current": "d4b8a60ee648d73b963c36ebba35e9f50a91068f2eaa78e34fc14b6b01eb9c2a"
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/status.go",
+      "audited": "ca1288e72c231f84eee4ea7825a5a83223870f0197ff7e9a0ae86fa390cc7f18",
+      "current": "ca1288e72c231f84eee4ea7825a5a83223870f0197ff7e9a0ae86fa390cc7f18"
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/undo.go",
+      "audited": "1e6f944aee9f62d7a8fc78a452892422a371868acc03c9597d1a008552067e61",
+      "current": "1e6f944aee9f62d7a8fc78a452892422a371868acc03c9597d1a008552067e61"
+    },
+    {
+      "path": "internal/services/mcpsvc/confirm/approvals.go",
+      "audited": "7f2c9f35805c55ee8c27add6b9ab8b66d2e4999f62e2477a04e792756e7268b2",
+      "current": "7f2c9f35805c55ee8c27add6b9ab8b66d2e4999f62e2477a04e792756e7268b2"
+    },
+    {
+      "path": "internal/services/mcpsvc/confirm/ask.go",
+      "audited": "7da00c481d47df57d2053bc62bce44654f6a43bd9d5f7d519332b4b593f6566d",
+      "current": "7da00c481d47df57d2053bc62bce44654f6a43bd9d5f7d519332b4b593f6566d"
+    },
+    {
+      "path": "internal/services/mcpsvc/confirm/confirm.go",
+      "audited": "aeee5abd2f9623a4581d0d06520cc5bbef00e649e86491974a5fea2a824a93ce",
+      "current": "aeee5abd2f9623a4581d0d06520cc5bbef00e649e86491974a5fea2a824a93ce"
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/delete.go",
+      "audited": "e57d967bb52ba6885f4398e512fe7d6a8c5d852c2b906d9af16630a04a2b415b",
+      "current": "e57d967bb52ba6885f4398e512fe7d6a8c5d852c2b906d9af16630a04a2b415b"
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/exceptions.go",
+      "audited": "858b7ba5a4d48eea3a3cc1a32ada21273f0b79892909eaf99af0e13f4101d6d2",
+      "current": "858b7ba5a4d48eea3a3cc1a32ada21273f0b79892909eaf99af0e13f4101d6d2"
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/expenses.go",
+      "audited": "e9da433c9896b8ef6a6053b10f26d1251f601e9fe39f9bb30f86ccc292b12219",
+      "current": "e9da433c9896b8ef6a6053b10f26d1251f601e9fe39f9bb30f86ccc292b12219"
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/pins.go",
+      "audited": "41ffc40cec0a890a9264517d7a5f89943c5ccdf508270e328cb221251da25297",
+      "current": "41ffc40cec0a890a9264517d7a5f89943c5ccdf508270e328cb221251da25297"
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/register.go",
+      "audited": "02baa07a39b0cd5a263498fc2227d5e83780dc534110aa0a07e1feca9705eedc",
+      "current": "02baa07a39b0cd5a263498fc2227d5e83780dc534110aa0a07e1feca9705eedc"
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/upsert.go",
+      "audited": "8a860257cb65acf5f228c405e2bd81cb1c50f45f835b79471c0b38284cb30dbc",
+      "current": "8a860257cb65acf5f228c405e2bd81cb1c50f45f835b79471c0b38284cb30dbc"
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/accounts.go",
+      "audited": "4fa7b67ef63275daf494e987e01fcca356890281e5593c7c628e88267949e63f",
+      "current": "4fa7b67ef63275daf494e987e01fcca356890281e5593c7c628e88267949e63f"
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/anchor.go",
+      "audited": "06c86d975f61b5c39dd64e2155b99b32b46abe1b775b87ccbc7437f55651eb8f",
+      "current": "06c86d975f61b5c39dd64e2155b99b32b46abe1b775b87ccbc7437f55651eb8f"
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/approval.go",
+      "audited": "a5ae1dcef7e8e14f998003aae72d209c5a76bab23768dd510d0b41d9bb832e17",
+      "current": "a5ae1dcef7e8e14f998003aae72d209c5a76bab23768dd510d0b41d9bb832e17"
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/helpers.go",
+      "audited": "0bca0ba380bc0aff2a0831feda364ba075941c7d98cede1d919672fc79d260f8",
+      "current": "0bca0ba380bc0aff2a0831feda364ba075941c7d98cede1d919672fc79d260f8"
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/register.go",
+      "audited": "ec5900bf3164dc9345e5fba71d5c2bd59325bf5983ff97a9bc5e8321fc4b8cd2",
+      "current": "ec5900bf3164dc9345e5fba71d5c2bd59325bf5983ff97a9bc5e8321fc4b8cd2"
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/resolve.go",
+      "audited": "8b4103c40cfef7874f2e790aa4648dcdfc963e7bd0fce741c4bce1206aa5b981",
+      "current": "8b4103c40cfef7874f2e790aa4648dcdfc963e7bd0fce741c4bce1206aa5b981"
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/suspected.go",
+      "audited": "f7a8d55ef2f2ceaa0022550ba4bbb4049c5a4c9314e2fba812e4fdfe7b28caf9",
+      "current": "f7a8d55ef2f2ceaa0022550ba4bbb4049c5a4c9314e2fba812e4fdfe7b28caf9"
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/transfers.go",
+      "audited": "f9bcc9b1b3842e8fa73fec56216bb7413998d52711a404e44751c49434a510d5",
+      "current": "f9bcc9b1b3842e8fa73fec56216bb7413998d52711a404e44751c49434a510d5"
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/months.go",
+      "audited": "eccd75e4f61cc98460f6129c109c55a13d644b9f114d7c45832fdcd3da4f8c1b",
+      "current": "eccd75e4f61cc98460f6129c109c55a13d644b9f114d7c45832fdcd3da4f8c1b"
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/overrides.go",
+      "audited": "19bc3c2cc2b7a07ad3f5b7588a411fbb7491563b2e9cfa7388fabc3ed35db983",
+      "current": "19bc3c2cc2b7a07ad3f5b7588a411fbb7491563b2e9cfa7388fabc3ed35db983"
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/register.go",
+      "audited": "376886492012c6198ff3004f8ed0861401a363b7efd2aa355bb35096cb8d6e69",
+      "current": "376886492012c6198ff3004f8ed0861401a363b7efd2aa355bb35096cb8d6e69"
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/scenarios.go",
+      "audited": "85c4e61c04cf339c2aaade666a9930420c0dc8371275eb973edfbd1dabae3f4c",
+      "current": "85c4e61c04cf339c2aaade666a9930420c0dc8371275eb973edfbd1dabae3f4c"
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/view.go",
+      "audited": "db499ecf7e5fdd3799b711d27324bcbdd5d46ff725b8b58d0f07a2e5815d9752",
+      "current": "db499ecf7e5fdd3799b711d27324bcbdd5d46ff725b8b58d0f07a2e5815d9752"
+    },
+    {
+      "path": "internal/services/mcpsvc/server.go",
+      "audited": "934dd599792d76842b17bc153e08cfd4483e20165df8b8ce59c9a74cef622b82",
+      "current": "934dd599792d76842b17bc153e08cfd4483e20165df8b8ce59c9a74cef622b82"
+    },
+    {
+      "path": "internal/services/mcpsvc/snapshot/snapshot.go",
+      "audited": "b956115b22ab7ed6b4d5c89e863620b28176cfb2c5af12d9a5f8bb688ea20f10",
+      "current": "b956115b22ab7ed6b4d5c89e863620b28176cfb2c5af12d9a5f8bb688ea20f10"
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/insights.go",
+      "audited": "7338de2280ce98217f7ece03f6184efcdfab15b86a971e243f40257fa95ea7ba",
+      "current": "7338de2280ce98217f7ece03f6184efcdfab15b86a971e243f40257fa95ea7ba"
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/insights_tools.go",
+      "audited": "1c63f58c407b971e58517af8a61d1c9b21681dea99e09b466f77fd20a56a5d2f",
+      "current": "1c63f58c407b971e58517af8a61d1c9b21681dea99e09b466f77fd20a56a5d2f"
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/recurring.go",
+      "audited": "e4506699ead0979bf9dc9a42e46747ed6730c015af5efa61aa26985e5e20423d",
+      "current": "e4506699ead0979bf9dc9a42e46747ed6730c015af5efa61aa26985e5e20423d"
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/register.go",
+      "audited": "39104877135c23936273a893005bdc9381fe345b94a0c728a04a65343098c204",
+      "current": "39104877135c23936273a893005bdc9381fe345b94a0c728a04a65343098c204"
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/search.go",
+      "audited": "458d52f54a54ddca96d6b756c1e769773f0e1f8ec3dd142c11c4b84f089101d2",
+      "current": "458d52f54a54ddca96d6b756c1e769773f0e1f8ec3dd142c11c4b84f089101d2"
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/summary.go",
+      "audited": "1e356bf28b96204ccbbdae02762a3914fa9abaf8863523c8ee904e0d157b2b2a",
+      "current": "1e356bf28b96204ccbbdae02762a3914fa9abaf8863523c8ee904e0d157b2b2a"
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/trends.go",
+      "audited": "2d7f2efcde1be0ee4142df1cd839dbe66cd0bd89e6b84822c6a056c4c1f14520",
+      "current": "2d7f2efcde1be0ee4142df1cd839dbe66cd0bd89e6b84822c6a056c4c1f14520"
+    },
+    {
+      "path": "internal/services/merchants/merchants.go",
+      "audited": "b37217676df92525ad978a52b04aff9211d6318a31e5b21b28b432b312daebd2",
+      "current": "b37217676df92525ad978a52b04aff9211d6318a31e5b21b28b432b312daebd2"
+    },
+    {
+      "path": "internal/services/metrics/metrics.go",
+      "audited": "a739c24591bd5391a38404f25956b4a73547a00e0d2d55b07e42c3e17beb7d79",
+      "current": "a739c24591bd5391a38404f25956b4a73547a00e0d2d55b07e42c3e17beb7d79"
+    },
+    {
+      "path": "internal/services/metrics/reporting.go",
+      "audited": "3d081bc6df0b3be138022d9c6936ed1122599f13cea25d5b77c08b02169ec0bc",
+      "current": "3d081bc6df0b3be138022d9c6936ed1122599f13cea25d5b77c08b02169ec0bc"
+    },
+    {
+      "path": "internal/services/pricecreep/pricecreep.go",
+      "audited": "5e1a9f3f4cf7c07526373f8aa3d30ccc252214889961a82211d3ef03ff116c7c",
+      "current": "5e1a9f3f4cf7c07526373f8aa3d30ccc252214889961a82211d3ef03ff116c7c"
+    },
+    {
+      "path": "internal/services/restore/archive.go",
+      "audited": "45b9fb365aad033b54a6f59a0bff270b1537675d2fc4a7e664a863f3c66e1e34",
+      "current": "45b9fb365aad033b54a6f59a0bff270b1537675d2fc4a7e664a863f3c66e1e34"
+    },
+    {
+      "path": "internal/services/restore/restore.go",
+      "audited": "1b0ec3e784da1dcef2102d8ae85cba4c57a68ea14de0e6d6dc1cb0f377919fd8",
+      "current": "1b0ec3e784da1dcef2102d8ae85cba4c57a68ea14de0e6d6dc1cb0f377919fd8"
+    },
+    {
+      "path": "internal/services/retirement/analysis/backtest.go",
+      "audited": "4f96d9b18ebde1ca04f0506017656eebee221c04505e1c8b1413c97db19a3135",
+      "current": "4f96d9b18ebde1ca04f0506017656eebee221c04505e1c8b1413c97db19a3135"
+    },
+    {
+      "path": "internal/services/retirement/analysis/budget_fit.go",
+      "audited": "9f72d39ed8bd1276c2e79b0443ee82d892bed8faa7ea290322a6fa227adbacb8",
+      "current": "9f72d39ed8bd1276c2e79b0443ee82d892bed8faa7ea290322a6fa227adbacb8"
+    },
+    {
+      "path": "internal/services/retirement/analysis/explainability.go",
+      "audited": "5d69d70ca43494df1ca294c70f6a83d5f63df1db3dbd9f54b1196ba87269575a",
+      "current": "5d69d70ca43494df1ca294c70f6a83d5f63df1db3dbd9f54b1196ba87269575a"
+    },
+    {
+      "path": "internal/services/retirement/analysis/failure_points.go",
+      "audited": "37f01869a129f3945d4a72b724444d847c8253fe52e0d05a7cf0ea104079f369",
+      "current": "37f01869a129f3945d4a72b724444d847c8253fe52e0d05a7cf0ea104079f369"
+    },
+    {
+      "path": "internal/services/retirement/analysis/lifestyle_outcomes.go",
+      "audited": "8dd08fc4bcd53d85e7c787658f22f9a0d6a8aa64dec9ee9ae75e45d95b7acfcf",
+      "current": "8dd08fc4bcd53d85e7c787658f22f9a0d6a8aa64dec9ee9ae75e45d95b7acfcf"
+    },
+    {
+      "path": "internal/services/retirement/analysis/monte_carlo.go",
+      "audited": "051214b47b2e2d4506ce0c039f625bd0de2e5913dc92c379eba79f08fc1c5d92",
+      "current": "051214b47b2e2d4506ce0c039f625bd0de2e5913dc92c379eba79f08fc1c5d92"
+    },
+    {
+      "path": "internal/services/retirement/analysis/parallel.go",
+      "audited": "c39d4ab46d364e66874f1c7fea2109ce9f218909c046ba580d7564fa4fc05822",
+      "current": "c39d4ab46d364e66874f1c7fea2109ce9f218909c046ba580d7564fa4fc05822"
+    },
+    {
+      "path": "internal/services/retirement/analysis/perturb.go",
+      "audited": "d7e5748f725dccde795aa41ff4ec81849c00771c84973af3ef81f41cd75db600",
+      "current": "d7e5748f725dccde795aa41ff4ec81849c00771c84973af3ef81f41cd75db600"
+    },
+    {
+      "path": "internal/services/retirement/analysis/present_value.go",
+      "audited": "7870e65c30bb44443bfc66a4069a4a4a1c6b7452d920779d6a8f19b643d864f9",
+      "current": "7870e65c30bb44443bfc66a4069a4a4a1c6b7452d920779d6a8f19b643d864f9"
+    },
+    {
+      "path": "internal/services/retirement/analysis/rmd.go",
+      "audited": "c4f60cad3b3f68449fb87820324ae73e275fd152e31ddb84ccd13172741d2777",
+      "current": "c4f60cad3b3f68449fb87820324ae73e275fd152e31ddb84ccd13172741d2777"
+    },
+    {
+      "path": "internal/services/retirement/analysis/seed.go",
+      "audited": "d4680cd507d7919b4582f9394ae008270344a52fa9ba0b93ef28837dd27395d5",
+      "current": "d4680cd507d7919b4582f9394ae008270344a52fa9ba0b93ef28837dd27395d5"
+    },
+    {
+      "path": "internal/services/retirement/analysis/sensitivity.go",
+      "audited": "b1e0e65d0927746fe6c1b897b75274633e0d803f25a810e70bffbeeafc4f8b25",
+      "current": "b1e0e65d0927746fe6c1b897b75274633e0d803f25a810e70bffbeeafc4f8b25"
+    },
+    {
+      "path": "internal/services/retirement/analysis/ss.go",
+      "audited": "9f0e676b190320bcd1306ca6a06b9c455a95c28f4f8c2f32f452ae1013fc9978",
+      "current": "9f0e676b190320bcd1306ca6a06b9c455a95c28f4f8c2f32f452ae1013fc9978"
+    },
+    {
+      "path": "internal/services/retirement/analysis/sustainability.go",
+      "audited": "90e91d9638fb48d40f9614c6de478461af1280b7da45025ddcd28f31490d51bb",
+      "current": "90e91d9638fb48d40f9614c6de478461af1280b7da45025ddcd28f31490d51bb"
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax.go",
+      "audited": "c5a95ea762d48a8a35dc1cca5cffd73ffd5543d696e24f7101149683eb409f94",
+      "current": "c5a95ea762d48a8a35dc1cca5cffd73ffd5543d696e24f7101149683eb409f94"
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_optimizer.go",
+      "audited": "d531820aa253f0d1f38f481619e52c2b31b0ff894030af970420340310c4ede1",
+      "current": "d531820aa253f0d1f38f481619e52c2b31b0ff894030af970420340310c4ede1"
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_optimizer_strategies.go",
+      "audited": "c8255aa6952210235e551ed5223489a63fc6f3bbc4693ef915d8151bf82c4756",
+      "current": "c8255aa6952210235e551ed5223489a63fc6f3bbc4693ef915d8151bf82c4756"
+    },
+    {
+      "path": "internal/services/retirement/chain.go",
+      "audited": "52e0d8094fd04162f3b144f95bdf5bb11c6d68a8dd7e168821d65eeb692f905a",
+      "current": "52e0d8094fd04162f3b144f95bdf5bb11c6d68a8dd7e168821d65eeb692f905a"
+    },
+    {
+      "path": "internal/services/retirement/completeness/check.go",
+      "audited": "0ebaf19119d8e080b7d15a24df07bd6068f3a42aa37f7be63fcc09eee2f8927a",
+      "current": "0ebaf19119d8e080b7d15a24df07bd6068f3a42aa37f7be63fcc09eee2f8927a"
+    },
+    {
+      "path": "internal/services/retirement/completeness/checks_aca.go",
+      "audited": "8ea09e5a619a5bbfdac30dece0fb764cf52af1f05f5d690b7fe21915954fa99d",
+      "current": "8ea09e5a619a5bbfdac30dece0fb764cf52af1f05f5d690b7fe21915954fa99d"
+    },
+    {
+      "path": "internal/services/retirement/completeness/checks_household.go",
+      "audited": "8802bcdf778f9c23f3edba26409b59fef242636049c83cecb42adb7ddee54395",
+      "current": "8802bcdf778f9c23f3edba26409b59fef242636049c83cecb42adb7ddee54395"
+    },
+    {
+      "path": "internal/services/retirement/completeness/checks_ss.go",
+      "audited": "caa4404126d16bcb2842dbec3b2e6d735601df3eb85b01fc4b57a117755459d6",
+      "current": "caa4404126d16bcb2842dbec3b2e6d735601df3eb85b01fc4b57a117755459d6"
+    },
+    {
+      "path": "internal/services/retirement/completeness/checks_state_tax.go",
+      "audited": "846c30c0a80d7a0cedd2fbce909bcb495a89db033db130d0c22ed6f06b2a206b",
+      "current": "846c30c0a80d7a0cedd2fbce909bcb495a89db033db130d0c22ed6f06b2a206b"
+    },
+    {
+      "path": "internal/services/retirement/completeness/checks_taxable_basis.go",
+      "audited": "0ff9b8abed518264f0a0aa65952472588f79ad13ea59e7b737b16e25e1846d92",
+      "current": "0ff9b8abed518264f0a0aa65952472588f79ad13ea59e7b737b16e25e1846d92"
+    },
+    {
+      "path": "internal/services/retirement/engine/engine.go",
+      "audited": "eef8135e1041778697c762200bbf14c664a7606e2ad0e83bd49dbc94ac8654db",
+      "current": "eef8135e1041778697c762200bbf14c664a7606e2ad0e83bd49dbc94ac8654db"
+    },
+    {
+      "path": "internal/services/retirement/engine/expense.go",
+      "audited": "a44753fc0740636fe87ad8bd60914000fcfb3ea8764b494416238c43afe7516f",
+      "current": "a44753fc0740636fe87ad8bd60914000fcfb3ea8764b494416238c43afe7516f"
+    },
+    {
+      "path": "internal/services/retirement/engine/guardrails.go",
+      "audited": "6259c8b1040cdee150754814a7b20167a62750a85039cadd547f098d23d84f8e",
+      "current": "6259c8b1040cdee150754814a7b20167a62750a85039cadd547f098d23d84f8e"
+    },
+    {
+      "path": "internal/services/retirement/engine/healthcare.go",
+      "audited": "55cc939db5929397554f6c74cdb2e64cc5c33a58e6e87b7a297af4eb9362eb56",
+      "current": "55cc939db5929397554f6c74cdb2e64cc5c33a58e6e87b7a297af4eb9362eb56"
+    },
+    {
+      "path": "internal/services/retirement/engine/income.go",
+      "audited": "83c73b22d7095bcb466c9d17e5ab8d3f4c9876ea0bef81165a0efada167ad5d1",
+      "current": "83c73b22d7095bcb466c9d17e5ab8d3f4c9876ea0bef81165a0efada167ad5d1"
+    },
+    {
+      "path": "internal/services/retirement/engine/input.go",
+      "audited": "150f6f928e6d89b8c0a19c7c46bd2ed1b03f767d09a9149ddb2ad2c2a6982096",
+      "current": "150f6f928e6d89b8c0a19c7c46bd2ed1b03f767d09a9149ddb2ad2c2a6982096"
+    },
+    {
+      "path": "internal/services/retirement/engine/joint_life.go",
+      "audited": "3e33af5e5d88fe5b586aae090f943581ce3b737f6ca3ea90252df936d200f733",
+      "current": "3e33af5e5d88fe5b586aae090f943581ce3b737f6ca3ea90252df936d200f733"
+    },
+    {
+      "path": "internal/services/retirement/engine/joint_life_table.go",
+      "audited": "020802899811fc684a0dee703e60beeca8f12b284ac0b36cc74288c91821a0da",
+      "current": "020802899811fc684a0dee703e60beeca8f12b284ac0b36cc74288c91821a0da"
+    },
+    {
+      "path": "internal/services/retirement/engine/loop_helpers.go",
+      "audited": "d1b4b070d97aa3e72fa01372d6f587573acd67a4c90f305a5c4e679b595f139c",
+      "current": "d1b4b070d97aa3e72fa01372d6f587573acd67a4c90f305a5c4e679b595f139c"
+    },
+    {
+      "path": "internal/services/retirement/engine/math.go",
+      "audited": "a036176c645d9db83e7094fecc141c7f9a033d928663365b12ce8949f70700ae",
+      "current": "a036176c645d9db83e7094fecc141c7f9a033d928663365b12ce8949f70700ae"
+    },
+    {
+      "path": "internal/services/retirement/engine/month.go",
+      "audited": "3f693823f14adf18485e4cf654d449ff043a77e071ad2d1630712d1efa9fbd3a",
+      "current": "3f693823f14adf18485e4cf654d449ff043a77e071ad2d1630712d1efa9fbd3a"
+    },
+    {
+      "path": "internal/services/retirement/engine/portfolio_month.go",
+      "audited": "bf4e0099f5db4b0b773059549126463a491a0744fe257579c03fba636fc0cd40",
+      "current": "bf4e0099f5db4b0b773059549126463a491a0744fe257579c03fba636fc0cd40"
+    },
+    {
+      "path": "internal/services/retirement/engine/povertyguidelines.go",
+      "audited": "82c711204e6162dff0ee7cbc9c7a5305a8bcf634965e1bf5ff86bfcb029c2db0",
+      "current": "82c711204e6162dff0ee7cbc9c7a5305a8bcf634965e1bf5ff86bfcb029c2db0"
+    },
+    {
+      "path": "internal/services/retirement/engine/projtax.go",
+      "audited": "928c52782598b089f868b8c8b529b8a43296acb441f1a755f0d04eaa8300e101",
+      "current": "928c52782598b089f868b8c8b529b8a43296acb441f1a755f0d04eaa8300e101"
+    },
+    {
+      "path": "internal/services/retirement/engine/rmd.go",
+      "audited": "729a09b61fc580146ddace243a40acb8f9694024c6723eef0005dd7ecd0c2d41",
+      "current": "729a09b61fc580146ddace243a40acb8f9694024c6723eef0005dd7ecd0c2d41"
+    },
+    {
+      "path": "internal/services/retirement/engine/ss_hooks.go",
+      "audited": "0cb1902e5bb982a0aabce41774e569bc7e91e022f0527e4c181a28e18b9a94c3",
+      "current": "0cb1902e5bb982a0aabce41774e569bc7e91e022f0527e4c181a28e18b9a94c3"
+    },
+    {
+      "path": "internal/services/retirement/engine/stepper.go",
+      "audited": "5d99c474b49b9ace2b2e8da8abe22da90945762f08801be6b9879e0c10f5ce61",
+      "current": "5d99c474b49b9ace2b2e8da8abe22da90945762f08801be6b9879e0c10f5ce61"
+    },
+    {
+      "path": "internal/services/retirement/engine/tax.go",
+      "audited": "f0478a1d6ee638b437e3bd35f843a0d946e136f6d821bc8b4d2371cdbf893454",
+      "current": "f0478a1d6ee638b437e3bd35f843a0d946e136f6d821bc8b4d2371cdbf893454"
+    },
+    {
+      "path": "internal/services/retirement/engine/taxable.go",
+      "audited": "352b58cb0d04c3904e36242881ad09f8955c37034065e87ac0db8dd88bda8021",
+      "current": "352b58cb0d04c3904e36242881ad09f8955c37034065e87ac0db8dd88bda8021"
+    },
+    {
+      "path": "internal/services/retirement/engine/taxyears.go",
+      "audited": "c11f85d4533b26edcc7f3ed03dd71344ddc172b123ac41051e8352e0b58efc7b",
+      "current": "c11f85d4533b26edcc7f3ed03dd71344ddc172b123ac41051e8352e0b58efc7b"
+    },
+    {
+      "path": "internal/services/retirement/engine/thresholds.go",
+      "audited": "ecd3931de7055ec36c2e899fc351153c1824ecb86395024062b9fdd1e5e7d132",
+      "current": "ecd3931de7055ec36c2e899fc351153c1824ecb86395024062b9fdd1e5e7d132"
+    },
+    {
+      "path": "internal/services/retirement/engine_hooks.go",
+      "audited": "e3dbb0a42917c338a9ebd3ad12cdef6f1085c11f5c3177e161744f9456735bc3",
+      "current": "e3dbb0a42917c338a9ebd3ad12cdef6f1085c11f5c3177e161744f9456735bc3"
+    },
+    {
+      "path": "internal/services/retirement/historical_data.go",
+      "audited": "4d30f8bd9833ceb6bea56673cfdb235937fcdc5379fe5fe81c88944970c9c9f1",
+      "current": "4d30f8bd9833ceb6bea56673cfdb235937fcdc5379fe5fe81c88944970c9c9f1"
+    },
+    {
+      "path": "internal/services/retirement/history/data.go",
+      "audited": "6c6dc5a808cc5e5a5c1245e8a03ee221e7b4847985b1026eecbbb0deddb2b455",
+      "current": "6c6dc5a808cc5e5a5c1245e8a03ee221e7b4847985b1026eecbbb0deddb2b455"
+    },
+    {
+      "path": "internal/services/retirement/orchestrator.go",
+      "audited": "7838dcf75cb3833bcf7003a73ca3d329aefced56b011f4abe8ec8efa594e833a",
+      "current": "7838dcf75cb3833bcf7003a73ca3d329aefced56b011f4abe8ec8efa594e833a"
+    },
+    {
+      "path": "internal/services/retirement/overrides/overrides.go",
+      "audited": "afb256b3fb3aa906ad7ef1fc5414dab7a2c094632ce614a624f24e9f38e7513f",
+      "current": "afb256b3fb3aa906ad7ef1fc5414dab7a2c094632ce614a624f24e9f38e7513f"
+    },
+    {
+      "path": "internal/services/retirement/prepare/normalize.go",
+      "audited": "4acbcb82288cbbcbe5ae86280fc80ac93a7fd75ac7551cc78513b5dddfb2212c",
+      "current": "4acbcb82288cbbcbe5ae86280fc80ac93a7fd75ac7551cc78513b5dddfb2212c"
+    },
+    {
+      "path": "internal/services/retirement/prepare/prepare.go",
+      "audited": "ba924a14b537bda528a83a8f8f4a75285041172c7c5f2691dbb9bf6dedd4dc86",
+      "current": "ba924a14b537bda528a83a8f8f4a75285041172c7c5f2691dbb9bf6dedd4dc86"
+    },
+    {
+      "path": "internal/services/retirement/prepare/validate.go",
+      "audited": "a164428e408f055aea15007cfdc94671e9907d744d1c7db7409c545c254c2edb",
+      "current": "a164428e408f055aea15007cfdc94671e9907d744d1c7db7409c545c254c2edb"
+    },
+    {
+      "path": "internal/services/retirement/settings.go",
+      "audited": "d36359aac35d9c2b853a1fd1994ec7e1ba8603435ff875d6a7779793299cbe98",
+      "current": "d36359aac35d9c2b853a1fd1994ec7e1ba8603435ff875d6a7779793299cbe98"
+    },
+    {
+      "path": "internal/services/retirement/social_security.go",
+      "audited": "0cfb7b4c5dcb94f614f70b3dd2fbd61edce466c3a0f77c28255d3cda999bc966",
+      "current": "0cfb7b4c5dcb94f614f70b3dd2fbd61edce466c3a0f77c28255d3cda999bc966"
+    },
+    {
+      "path": "internal/services/storage/age_provider.go",
+      "audited": "052a91459e25a21364167c7b3c495b26df5cdc24986e9ec94ccaa30ab1a67320",
+      "current": "052a91459e25a21364167c7b3c495b26df5cdc24986e9ec94ccaa30ab1a67320"
+    },
+    {
+      "path": "internal/services/storage/auth.go",
+      "audited": "b94de83b6318ed3893c231697592cd07b7a40e690bbc60ccde9ac67c76d036a8",
+      "current": "b94de83b6318ed3893c231697592cd07b7a40e690bbc60ccde9ac67c76d036a8"
+    },
+    {
+      "path": "internal/services/storage/doc.go",
+      "audited": "3f55240bd76e30ea9ad4679d9534db7cf7e7cbf9505bc0ca643f9d7dea98b2d8",
+      "current": "3f55240bd76e30ea9ad4679d9534db7cf7e7cbf9505bc0ca643f9d7dea98b2d8"
+    },
+    {
+      "path": "internal/services/storage/encryption.go",
+      "audited": "e111c60957c4776108ad02d9522f7de5167ff8b6b6d8eb77d565f8f78884eeb8",
+      "current": "e111c60957c4776108ad02d9522f7de5167ff8b6b6d8eb77d565f8f78884eeb8"
+    },
+    {
+      "path": "internal/services/storage/errors.go",
+      "audited": "085917b6c00e97fe34f49d4a6e61b85c8a2ce3a791585f2cddaab566966f7aa8",
+      "current": "085917b6c00e97fe34f49d4a6e61b85c8a2ce3a791585f2cddaab566966f7aa8"
+    },
+    {
+      "path": "internal/services/storage/migration.go",
+      "audited": "a03389eee4b04ee48e264b6918571acf26554c77d0747570873b1768fcc0ffbf",
+      "current": "a03389eee4b04ee48e264b6918571acf26554c77d0747570873b1768fcc0ffbf"
+    },
+    {
+      "path": "internal/services/storage/password_provider.go",
+      "audited": "085cb18a6451a9e05d1e55b84841c8a0401ec7d90821ec831dc5aa0c3193ffa6",
+      "current": "085cb18a6451a9e05d1e55b84841c8a0401ec7d90821ec831dc5aa0c3193ffa6"
+    },
+    {
+      "path": "internal/services/storage/ssh_provider.go",
+      "audited": "a1ce8ba486481a0fa509103c30864a646dbb48a36cdf8458ebf1695a42c25be3",
+      "current": "a1ce8ba486481a0fa509103c30864a646dbb48a36cdf8458ebf1695a42c25be3"
+    },
+    {
+      "path": "internal/services/storage/storage.go",
+      "audited": "156531b64b3cca55c293bee567dd39be3b9707f6d4263903fe1fe51874588499",
+      "current": "156531b64b3cca55c293bee567dd39be3b9707f6d4263903fe1fe51874588499"
+    },
+    {
+      "path": "internal/services/storage/yubikey_provider.go",
+      "audited": "cb601c25de8f3b82e498df38cd88887225e347336f8f1930a65161ad399db3fc",
+      "current": "cb601c25de8f3b82e498df38cd88887225e347336f8f1930a65161ad399db3fc"
+    },
+    {
+      "path": "internal/services/transfers/transfers.go",
+      "audited": "d2fb8c5637e2fbf1fcbf5b72b6f7c35600e5a24a553e8367dccfda45a38052e5",
+      "current": "d2fb8c5637e2fbf1fcbf5b72b6f7c35600e5a24a553e8367dccfda45a38052e5"
+    },
+    {
+      "path": "internal/services/uirefresh/refresh.go",
+      "audited": "08462c261a0fb94f60aa253100c017e0c12f994c49e4e3eb6957dbbf07eb3763",
+      "current": "08462c261a0fb94f60aa253100c017e0c12f994c49e4e3eb6957dbbf07eb3763"
+    },
+    {
+      "path": "internal/templates/budget_gap.go",
+      "audited": "589f34e688435f8345829fb89a8f2563886e7de18a3738b8d787abad9e588bdb",
+      "current": "589f34e688435f8345829fb89a8f2563886e7de18a3738b8d787abad9e588bdb"
+    },
+    {
+      "path": "internal/templates/page_data.go",
+      "audited": "c7d80571c8ef4565a98207901916fe004939f5e2c32c5dd48fd5b5fd14057f80",
+      "current": "c7d80571c8ef4565a98207901916fe004939f5e2c32c5dd48fd5b5fd14057f80"
+    },
+    {
+      "path": "internal/templates/render.go",
+      "audited": "274662b80bc1c5dcec1706043dc05ff590ffc62eaa5b84c5b43b04a590755db5",
+      "current": "274662b80bc1c5dcec1706043dc05ff590ffc62eaa5b84c5b43b04a590755db5"
+    },
+    {
+      "path": "internal/testutil/assertions.go",
+      "audited": "49716d69b295d629604004cd0a6999eaac868e7cdbdc482db02e0d3f603809fa",
+      "current": "49716d69b295d629604004cd0a6999eaac868e7cdbdc482db02e0d3f603809fa"
+    },
+    {
+      "path": "internal/testutil/forms.go",
+      "audited": "1372863b15bdda052c9fd1299f9364a78e2b9d2e51d809d8c338ca2dae50980b",
+      "current": "1372863b15bdda052c9fd1299f9364a78e2b9d2e51d809d8c338ca2dae50980b"
+    },
+    {
+      "path": "internal/testutil/testutil.go",
+      "audited": "9e590f31e2aaf4f57f5e646bb9407371a40ac049a6959bf8ce0b7982f03f3eb6",
+      "current": "9e590f31e2aaf4f57f5e646bb9407371a40ac049a6959bf8ce0b7982f03f3eb6"
+    },
+    {
+      "path": "internal/version/version.go",
+      "audited": "63f41b30acf97d70d5ce0b61c80289fe345be08da2eb4afcecfbc8567aa9fc1c",
+      "current": "63f41b30acf97d70d5ce0b61c80289fe345be08da2eb4afcecfbc8567aa9fc1c"
+    },
+    {
+      "path": "web/embed.go",
+      "audited": "af83de5e2dba08479673602c928af13182ec7853a3f85396c7b2d2f597b69216",
+      "current": "af83de5e2dba08479673602c928af13182ec7853a3f85396c7b2d2f597b69216"
+    },
+    {
+      "path": "web/static/css/styles.css",
+      "audited": "2128e66326f1080a237fecbb3531ec2ea3293d82ebcf0f0fbb106caae6f3caf3",
+      "current": "2128e66326f1080a237fecbb3531ec2ea3293d82ebcf0f0fbb106caae6f3caf3"
+    },
+    {
+      "path": "web/static/css/tailwind.css",
+      "audited": "f09162945444f745061980d04d5d3eafd8c7c9d67c178381837555429adb6c5c",
+      "current": "f09162945444f745061980d04d5d3eafd8c7c9d67c178381837555429adb6c5c"
+    },
+    {
+      "path": "web/static/css/tailwind.src.css",
+      "audited": "cc1a7ad0d019ddb1d32d0ecb588ba0ac26ce41d8625dd6c366348b25f83a28ec",
+      "current": "cc1a7ad0d019ddb1d32d0ecb588ba0ac26ce41d8625dd6c366348b25f83a28ec"
+    },
+    {
+      "path": "web/static/js/accounts.js",
+      "audited": "6a6c08fbbf865ee74aaa153cd654dd058764282b5f0169df42bccb6235735473",
+      "current": "6a6c08fbbf865ee74aaa153cd654dd058764282b5f0169df42bccb6235735473"
+    },
+    {
+      "path": "web/static/js/base.js",
+      "audited": "bcc28a968da42fe53de1ca9485f704a8e8be24a0c2733bd7c656b9289bac5372",
+      "current": "bcc28a968da42fe53de1ca9485f704a8e8be24a0c2733bd7c656b9289bac5372"
+    },
+    {
+      "path": "web/static/js/charts.js",
+      "audited": "0fde82998bba1214a2f9d54b08cc016f32b85fd1292a46ef03154b1c88f3d8d4",
+      "current": "0fde82998bba1214a2f9d54b08cc016f32b85fd1292a46ef03154b1c88f3d8d4"
+    },
+    {
+      "path": "web/static/js/dashboard.js",
+      "audited": "872b8d1d5f932fabd5445a41ad68a75e12eeddb8d6f317153143d99a1c9c4bd4",
+      "current": "872b8d1d5f932fabd5445a41ad68a75e12eeddb8d6f317153143d99a1c9c4bd4"
+    },
+    {
+      "path": "web/static/js/explorer.js",
+      "audited": "cbd1e93fed1c1628012fd2cda81627f25c9912dc248e9be6cbf60fb5b7e9732b",
+      "current": "cbd1e93fed1c1628012fd2cda81627f25c9912dc248e9be6cbf60fb5b7e9732b"
+    },
+    {
+      "path": "web/static/js/filemanager.js",
+      "audited": "9eae0299aaeb6198b17ad9b6035ac7fb305d29e785edef799b1c2cbd8f46fe1f",
+      "current": "9eae0299aaeb6198b17ad9b6035ac7fb305d29e785edef799b1c2cbd8f46fe1f"
+    },
+    {
+      "path": "web/static/js/insights.js",
+      "audited": "d04a9ede382606d3807e3eae14861744b93812dace1b21cbbbfb68ade22ec06c",
+      "current": "d04a9ede382606d3807e3eae14861744b93812dace1b21cbbbfb68ade22ec06c"
+    },
+    {
+      "path": "web/static/js/interactions.js",
+      "audited": "e555cac1408124fc8f82daa1ebc19836fd89c17807093b0187361c18a215368d",
+      "current": "e555cac1408124fc8f82daa1ebc19836fd89c17807093b0187361c18a215368d"
+    },
+    {
+      "path": "web/static/js/major-expenses.js",
+      "audited": "102f319a7aab11049d1f93367445457b12c11541466b64fd66652110df8cc75f",
+      "current": "102f319a7aab11049d1f93367445457b12c11541466b64fd66652110df8cc75f"
+    },
+    {
+      "path": "web/static/js/page-refresh.js",
+      "audited": "e4f515e7adcd11c4bad42d5ec1207a37809203e19899c25591d9574cb3e5aca8",
+      "current": "e4f515e7adcd11c4bad42d5ec1207a37809203e19899c25591d9574cb3e5aca8"
+    },
+    {
+      "path": "web/static/js/page-refresh.test.cjs",
+      "audited": "57b82793a441c79e051aad7bfa068921318f05d9712767b747fe2dce643b73c4",
+      "current": "57b82793a441c79e051aad7bfa068921318f05d9712767b747fe2dce643b73c4"
+    },
+    {
+      "path": "web/static/js/transfers.js",
+      "audited": "4f8205bc1d1f7dc691aa3bf35a1a84d5043b646128bddda5c424b7c6e609ac68",
+      "current": "4f8205bc1d1f7dc691aa3bf35a1a84d5043b646128bddda5c424b7c6e609ac68"
+    },
+    {
+      "path": "web/static/js/unlock.js",
+      "audited": "c2b430a937a27a7948c202b8f1b0cc0bd2f1951f5b87b04603056c1e9c00901e",
+      "current": "c2b430a937a27a7948c202b8f1b0cc0bd2f1951f5b87b04603056c1e9c00901e"
+    },
+    {
+      "path": "web/static/js/whatif-healthcare-card.js",
+      "audited": "e8a49e8b5a58d463cfc6b9ee954e92bd03794d1b3c7e32a15e088991a9e737c6",
+      "current": "e8a49e8b5a58d463cfc6b9ee954e92bd03794d1b3c7e32a15e088991a9e737c6"
+    },
+    {
+      "path": "web/static/js/whatif-income-chart.js",
+      "audited": "1a3946bada3de18995ddd65f3fba07e7d5cf48bab68624694482c31e76774226",
+      "current": "1a3946bada3de18995ddd65f3fba07e7d5cf48bab68624694482c31e76774226"
+    },
+    {
+      "path": "web/static/js/whatif-income-toast.js",
+      "audited": "46dc0f3b5b97d5871735bc62c4ab3b8055233844147c54aa1459e8e5c62d7b4a",
+      "current": "46dc0f3b5b97d5871735bc62c4ab3b8055233844147c54aa1459e8e5c62d7b4a"
+    },
+    {
+      "path": "web/static/js/whatif-poll.js",
+      "audited": "dbde3e0e27f6dbe39f42d2fea79db9541ebcefc62ee0ebeb4b53cc03eb737f42",
+      "current": "dbde3e0e27f6dbe39f42d2fea79db9541ebcefc62ee0ebeb4b53cc03eb737f42"
+    },
+    {
+      "path": "web/static/js/whatif-portfolio-settings.js",
+      "audited": "415a68fe3a7c1ef075e6c98274e330072428ac557cb06510d37774da5ee8a985",
+      "current": "415a68fe3a7c1ef075e6c98274e330072428ac557cb06510d37774da5ee8a985"
+    },
+    {
+      "path": "web/static/js/whatif-quick-adjust.js",
+      "audited": "36cc8e1e72847d180ea1e89b3a8a2feb4bb5b874dab703ca5764ff844dccb502",
+      "current": "36cc8e1e72847d180ea1e89b3a8a2feb4bb5b874dab703ca5764ff844dccb502"
+    },
+    {
+      "path": "web/static/js/whatif-rate-assumptions.js",
+      "audited": "0772000a406e1703567a4cf4ec5fc101ff02f76ed993599e52486489cbb0db7f",
+      "current": "0772000a406e1703567a4cf4ec5fc101ff02f76ed993599e52486489cbb0db7f"
+    },
+    {
+      "path": "web/static/js/whatif-roth-conversion.js",
+      "audited": "e2b6a71809bc2d9145abb3996e5a54a5e72d9524fae2f7e3c975b5f888eccffd",
+      "current": "e2b6a71809bc2d9145abb3996e5a54a5e72d9524fae2f7e3c975b5f888eccffd"
+    },
+    {
+      "path": "web/static/js/whatif-spending-phases.js",
+      "audited": "aeed73531b7474ac4dcff64c5680aaf273afdb897d4d93e80a6d969c04c39d96",
+      "current": "aeed73531b7474ac4dcff64c5680aaf273afdb897d4d93e80a6d969c04c39d96"
+    },
+    {
+      "path": "web/static/js/whatif-tabs.js",
+      "audited": "7fca94ffaef70ce1b37b5813ebe99e92be14ae24c7b97a3e86799ae359dc4f8d",
+      "current": "7fca94ffaef70ce1b37b5813ebe99e92be14ae24c7b97a3e86799ae359dc4f8d"
+    },
+    {
+      "path": "web/static/vendor/htmx.min.js",
+      "audited": "e209dda5c8235479f3166defc7750e1dbcd5a5c1808b7792fc2e6733768fb447",
+      "current": "e209dda5c8235479f3166defc7750e1dbcd5a5c1808b7792fc2e6733768fb447"
+    },
+    {
+      "path": "web/templates/components/accounts_card.html",
+      "audited": "baa83ebe63f0416a96a9104dfe37a394ae762f3d793d421d5ba904b419d31603",
+      "current": "baa83ebe63f0416a96a9104dfe37a394ae762f3d793d421d5ba904b419d31603"
+    },
+    {
+      "path": "web/templates/components/alerts.html",
+      "audited": "b4ec65c8a483aa976a42090453f90853df09fe9d77e0e49cb45f8d0a827371fd",
+      "current": "b4ec65c8a483aa976a42090453f90853df09fe9d77e0e49cb45f8d0a827371fd"
+    },
+    {
+      "path": "web/templates/components/anomalies-section.html",
+      "audited": "751dcfb5dd0092e9b81a48850d3aa555e78e46806b2eba9461bbd54f8cc9bc76",
+      "current": "751dcfb5dd0092e9b81a48850d3aa555e78e46806b2eba9461bbd54f8cc9bc76"
+    },
+    {
+      "path": "web/templates/components/budget-vs-actual.html",
+      "audited": "01a6f3d2e5787736fdddd474b8c99c205a93b4007403311cfac6d2f645273e3e",
+      "current": "01a6f3d2e5787736fdddd474b8c99c205a93b4007403311cfac6d2f645273e3e"
+    },
+    {
+      "path": "web/templates/components/dashboard-verdict-bar.html",
+      "audited": "873841ae363f40ae30d032244c9d127a13a1540fb2d14a0b2a1e2e836bb0da43",
+      "current": "873841ae363f40ae30d032244c9d127a13a1540fb2d14a0b2a1e2e836bb0da43"
+    },
+    {
+      "path": "web/templates/components/insights-investigation.html",
+      "audited": "fce586968fe8a552afc8a90abc70d0770740f4741784f72baab46b49ef8fecf2",
+      "current": "fce586968fe8a552afc8a90abc70d0770740f4741784f72baab46b49ef8fecf2"
+    },
+    {
+      "path": "web/templates/components/insights-verdict-bar.html",
+      "audited": "ddc05a3ab46b8851811f6f9855c752a81c93096665436f0a579cf4fe652f5e9a",
+      "current": "ddc05a3ab46b8851811f6f9855c752a81c93096665436f0a579cf4fe652f5e9a"
+    },
+    {
+      "path": "web/templates/components/kpi-detail.html",
+      "audited": "a1599af1f9cee920b85bc0b5d0c00623df409bfa62308b20525eeeb65c3c8445",
+      "current": "a1599af1f9cee920b85bc0b5d0c00623df409bfa62308b20525eeeb65c3c8445"
+    },
+    {
+      "path": "web/templates/components/kpi-month-detail.html",
+      "audited": "549d6d6c5fd36e0f119e70fe10ac4587851b97e65cfd3c6ac05fb2262866044b",
+      "current": "549d6d6c5fd36e0f119e70fe10ac4587851b97e65cfd3c6ac05fb2262866044b"
+    },
+    {
+      "path": "web/templates/components/kpis.html",
+      "audited": "b59581cea9b37fdb4efd2f169c176c31312ecf067f5f20616e5600912ea4b5f3",
+      "current": "b59581cea9b37fdb4efd2f169c176c31312ecf067f5f20616e5600912ea4b5f3"
+    },
+    {
+      "path": "web/templates/components/major-expense-drilldown.html",
+      "audited": "a6c765d1575c26550db102882c9373ff1406d9764f3f55e18812dd8265ccb92d",
+      "current": "a6c765d1575c26550db102882c9373ff1406d9764f3f55e18812dd8265ccb92d"
+    },
+    {
+      "path": "web/templates/components/major-expenses-verdict-bar.html",
+      "audited": "6d305a9fb8902f016fe865c47dea703e80f2d02dd7c93bb7e907f5f6ade6445b",
+      "current": "6d305a9fb8902f016fe865c47dea703e80f2d02dd7c93bb7e907f5f6ade6445b"
+    },
+    {
+      "path": "web/templates/components/pricecreep-section.html",
+      "audited": "681e940eeb5a7028d07b869717004c88cf39096430690b51f6006737758ebbf2",
+      "current": "681e940eeb5a7028d07b869717004c88cf39096430690b51f6006737758ebbf2"
+    },
+    {
+      "path": "web/templates/components/shared/card.html",
+      "audited": "7ce8ea6aaf993942fb55e11e2e4201fae197447a64110468d377313057af6a64",
+      "current": "7ce8ea6aaf993942fb55e11e2e4201fae197447a64110468d377313057af6a64"
+    },
+    {
+      "path": "web/templates/components/shared/data-table.html",
+      "audited": "7074b412ab20536044ed18b58e46fd443ed24b94f77f43df32b19f35fa61414b",
+      "current": "7074b412ab20536044ed18b58e46fd443ed24b94f77f43df32b19f35fa61414b"
+    },
+    {
+      "path": "web/templates/components/shared/kpi-tile.html",
+      "audited": "7cc34d33cfbdfe44e462c1c8c53a89de82487dd3df43ca34955a078ba428743d",
+      "current": "7cc34d33cfbdfe44e462c1c8c53a89de82487dd3df43ca34955a078ba428743d"
+    },
+    {
+      "path": "web/templates/components/shared/period-context.html",
+      "audited": "2599e6cd431c496f13cdd081f1d3d2444013d5ff3f92b64f205cf2b5508f8949",
+      "current": "2599e6cd431c496f13cdd081f1d3d2444013d5ff3f92b64f205cf2b5508f8949"
+    },
+    {
+      "path": "web/templates/components/shared/range-picker.html",
+      "audited": "04e4b5f42a1485a3d6695237eaec5985a182a8c24e120102ab3d9d47f63254c6",
+      "current": "04e4b5f42a1485a3d6695237eaec5985a182a8c24e120102ab3d9d47f63254c6"
+    },
+    {
+      "path": "web/templates/components/unassigned_banner.html",
+      "audited": "602bb0d3367a11276e1c1a63f78c4f6845826e0c5f48ec782c86102013962b80",
+      "current": "602bb0d3367a11276e1c1a63f78c4f6845826e0c5f48ec782c86102013962b80"
+    },
+    {
+      "path": "web/templates/components/whatif/bigticket-card.html",
+      "audited": "e7153e5050447db8f444e2fe375b7e175620da50afcdef249c1e67cce7e71478",
+      "current": "e7153e5050447db8f444e2fe375b7e175620da50afcdef249c1e67cce7e71478"
+    },
+    {
+      "path": "web/templates/components/whatif/budget-analysis.html",
+      "audited": "dd92705ebf35cd445d0311a81d099d156c0d3a02989f8a2f8191d750d4d58ddd",
+      "current": "dd92705ebf35cd445d0311a81d099d156c0d3a02989f8a2f8191d750d4d58ddd"
+    },
+    {
+      "path": "web/templates/components/whatif/completeness.html",
+      "audited": "cbb844e4d814c7f239e148ae32612dc489c6e6ec04d2f43da21175e1ef8876be",
+      "current": "cbb844e4d814c7f239e148ae32612dc489c6e6ec04d2f43da21175e1ef8876be"
+    },
+    {
+      "path": "web/templates/components/whatif/conversion-sweep.html",
+      "audited": "73e667b7467defc617b867c47b54bf5453d20d64315bda3d9b55a7b33f1e1636",
+      "current": "73e667b7467defc617b867c47b54bf5453d20d64315bda3d9b55a7b33f1e1636"
+    },
+    {
+      "path": "web/templates/components/whatif/expense-card.html",
+      "audited": "1cfb67acca1aa247ce122a4a46dfc8dfe60a5d75f677019e36761a554f242ef9",
+      "current": "1cfb67acca1aa247ce122a4a46dfc8dfe60a5d75f677019e36761a554f242ef9"
+    },
+    {
+      "path": "web/templates/components/whatif/expense-sources-list.html",
+      "audited": "ee0ba0d8038cb4645d83c8169f6cf69aa9736ed9b3e9f5fd9f84a83d23326224",
+      "current": "ee0ba0d8038cb4645d83c8169f6cf69aa9736ed9b3e9f5fd9f84a83d23326224"
+    },
+    {
+      "path": "web/templates/components/whatif/expense-summary.html",
+      "audited": "6fc747663050586f4a4a1d85856771b53879c6fabb92eb17ec3fde54b8240ef7",
+      "current": "6fc747663050586f4a4a1d85856771b53879c6fabb92eb17ec3fde54b8240ef7"
+    },
+    {
+      "path": "web/templates/components/whatif/failure-points.html",
+      "audited": "b454c09335b6913e2ed3281598bc83401d476611afd751b8d19515261d08bbc0",
+      "current": "b454c09335b6913e2ed3281598bc83401d476611afd751b8d19515261d08bbc0"
+    },
+    {
+      "path": "web/templates/components/whatif/guardrails.html",
+      "audited": "21f29f8339b1e453eabeacbd4dec8fae8e4f593b3e197c197c0c96285ef36156",
+      "current": "21f29f8339b1e453eabeacbd4dec8fae8e4f593b3e197c197c0c96285ef36156"
+    },
+    {
+      "path": "web/templates/components/whatif/healthcare-card.html",
+      "audited": "ee5cf78063f012738e15884eaaae47ba216612453f28a7e0541743de61e8dc64",
+      "current": "ee5cf78063f012738e15884eaaae47ba216612453f28a7e0541743de61e8dc64"
+    },
+    {
+      "path": "web/templates/components/whatif/healthcare-person.html",
+      "audited": "0f1e79452b4f0bfac1fe9fac2d8501e11952172a8cad9b7c36e355fe13ca09af",
+      "current": "0f1e79452b4f0bfac1fe9fac2d8501e11952172a8cad9b7c36e355fe13ca09af"
+    },
+    {
+      "path": "web/templates/components/whatif/historical-backtest.html",
+      "audited": "2df2d3db0124e16963ee986a4c566c6bffd43745ea108ff257813e95056d9e97",
+      "current": "2df2d3db0124e16963ee986a4c566c6bffd43745ea108ff257813e95056d9e97"
+    },
+    {
+      "path": "web/templates/components/whatif/income-card.html",
+      "audited": "15108b1b9a03dc9dde3c432c160c04272537a35244289e6cc0f9ea6d88b462dc",
+      "current": "15108b1b9a03dc9dde3c432c160c04272537a35244289e6cc0f9ea6d88b462dc"
+    },
+    {
+      "path": "web/templates/components/whatif/income-chart.html",
+      "audited": "c3929266fa508940fc6f8cd73b613d337eed5a88174d3f0f822346243245db0b",
+      "current": "c3929266fa508940fc6f8cd73b613d337eed5a88174d3f0f822346243245db0b"
+    },
+    {
+      "path": "web/templates/components/whatif/income-sources-list.html",
+      "audited": "67679a47e78b79ecd9e82de5195febe8c57e1167eb444624f59c4154816ad7c6",
+      "current": "67679a47e78b79ecd9e82de5195febe8c57e1167eb444624f59c4154816ad7c6"
+    },
+    {
+      "path": "web/templates/components/whatif/lifestyle-outcomes.html",
+      "audited": "b54f935518cc57ac96f1e158070d05592b90b528950f633b3175848aff500651",
+      "current": "b54f935518cc57ac96f1e158070d05592b90b528950f633b3175848aff500651"
+    },
+    {
+      "path": "web/templates/components/whatif/monte-carlo.html",
+      "audited": "8a3955e3bb3c13fd956eae1a99cf65d3a336bf662106998d753686856d0676b8",
+      "current": "8a3955e3bb3c13fd956eae1a99cf65d3a336bf662106998d753686856d0676b8"
+    },
+    {
+      "path": "web/templates/components/whatif/onetime-card.html",
+      "audited": "56a5afbad13bfa0a8ba1a29eb1eda9384f5773b7922bcfdffdeb24da0c3f5f13",
+      "current": "56a5afbad13bfa0a8ba1a29eb1eda9384f5773b7922bcfdffdeb24da0c3f5f13"
+    },
+    {
+      "path": "web/templates/components/whatif/portfolio-settings.html",
+      "audited": "356a3227564aae6e0981ec2667318337b3f405edab3d0a82142729cfa6d37e79",
+      "current": "356a3227564aae6e0981ec2667318337b3f405edab3d0a82142729cfa6d37e79"
+    },
+    {
+      "path": "web/templates/components/whatif/present-value.html",
+      "audited": "a9cd62e8d949908062e5b2119aa3c7430637742cbf6fee63a07e7594be78d66e",
+      "current": "a9cd62e8d949908062e5b2119aa3c7430637742cbf6fee63a07e7594be78d66e"
+    },
+    {
+      "path": "web/templates/components/whatif/projection-breakdown.html",
+      "audited": "3a89eb46119fc0d7ed7c94b783c8dff07a783a316195334c911b086216ba94a8",
+      "current": "3a89eb46119fc0d7ed7c94b783c8dff07a783a316195334c911b086216ba94a8"
+    },
+    {
+      "path": "web/templates/components/whatif/projection-chart.html",
+      "audited": "37a50221d589dbea45c602f53082599174d7d7c84d571c0751dd672a1fc5c80d",
+      "current": "37a50221d589dbea45c602f53082599174d7d7c84d571c0751dd672a1fc5c80d"
+    },
+    {
+      "path": "web/templates/components/whatif/quick-adjust-scripts.html",
+      "audited": "eb963c6326c639e0024f21157d965cb34e44944f8ffb88bbcb70d7715c5d3ebf",
+      "current": "eb963c6326c639e0024f21157d965cb34e44944f8ffb88bbcb70d7715c5d3ebf"
+    },
+    {
+      "path": "web/templates/components/whatif/quick-adjust.html",
+      "audited": "5463b84cb79a9e440009281da534b61812b41138ff69ae5eca02a536a84b29f6",
+      "current": "5463b84cb79a9e440009281da534b61812b41138ff69ae5eca02a536a84b29f6"
+    },
+    {
+      "path": "web/templates/components/whatif/rate-assumptions.html",
+      "audited": "b177ae3bb1e7cc16c1c6387728cdf05a0adbc54d077d950b3d1f6801077aa07b",
+      "current": "b177ae3bb1e7cc16c1c6387728cdf05a0adbc54d077d950b3d1f6801077aa07b"
+    },
+    {
+      "path": "web/templates/components/whatif/rmd.html",
+      "audited": "13e4355ef69f6353b3a2a8ba8c33cd1fac982c5dd7880a456cad0b383c973796",
+      "current": "13e4355ef69f6353b3a2a8ba8c33cd1fac982c5dd7880a456cad0b383c973796"
+    },
+    {
+      "path": "web/templates/components/whatif/roth-conversion.html",
+      "audited": "6a10c073a29846320b17ad2f4057b2c49c88eb81188a1136ef7cfdeaac6596c2",
+      "current": "6a10c073a29846320b17ad2f4057b2c49c88eb81188a1136ef7cfdeaac6596c2"
+    },
+    {
+      "path": "web/templates/components/whatif/scenario-chain-card.html",
+      "audited": "bf77843dd014b44021bfc316ce6b80e749ad3a10b728109e9a850c3f267d54cf",
+      "current": "bf77843dd014b44021bfc316ce6b80e749ad3a10b728109e9a850c3f267d54cf"
+    },
+    {
+      "path": "web/templates/components/whatif/sensitivity.html",
+      "audited": "82ee39f36d74632e0ed83968153203e459a5d5e39af30db67fb317370d07ae47",
+      "current": "82ee39f36d74632e0ed83968153203e459a5d5e39af30db67fb317370d07ae47"
+    },
+    {
+      "path": "web/templates/components/whatif/social-security.html",
+      "audited": "059496659a5470f670d2cd8bea3cfa206d9422c1709b51e9155a062a77fc9041",
+      "current": "059496659a5470f670d2cd8bea3cfa206d9422c1709b51e9155a062a77fc9041"
+    },
+    {
+      "path": "web/templates/components/whatif/spending-phases.html",
+      "audited": "ddbd1d6c3f2eff0345a75bb39dbcdb0cc4f8b8709bef97fc99ab6244cc2e8b90",
+      "current": "ddbd1d6c3f2eff0345a75bb39dbcdb0cc4f8b8709bef97fc99ab6244cc2e8b90"
+    },
+    {
+      "path": "web/templates/components/whatif/sync-preview.html",
+      "audited": "da8d554d44cc67c0ae015ab0257017e75fd71fd90687d7afd4cd659bf6a53ef1",
+      "current": "da8d554d44cc67c0ae015ab0257017e75fd71fd90687d7afd4cd659bf6a53ef1"
+    },
+    {
+      "path": "web/templates/components/whatif/tax-optimizer.html",
+      "audited": "ecb7ed2acbd81d89f1d442ad580693af1be39e55000fcce9e59766c1322f5c5e",
+      "current": "ecb7ed2acbd81d89f1d442ad580693af1be39e55000fcce9e59766c1322f5c5e"
+    },
+    {
+      "path": "web/templates/components/whatif/tax-summary.html",
+      "audited": "066913acefae60e8980acc41c8081bb2f659cb81a3f03c915ca2f9e906f6fff6",
+      "current": "066913acefae60e8980acc41c8081bb2f659cb81a3f03c915ca2f9e906f6fff6"
+    },
+    {
+      "path": "web/templates/components/whatif/verdict-bar.html",
+      "audited": "81bf4609e1e066439c6f4d1e35504f8d412df55045b8abff2db557d64c120da7",
+      "current": "81bf4609e1e066439c6f4d1e35504f8d412df55045b8abff2db557d64c120da7"
+    },
+    {
+      "path": "web/templates/layouts/base.html",
+      "audited": "16019f58797fe797debc4d181021312927b304a531a17e02bbdc368237d8777d",
+      "current": "16019f58797fe797debc4d181021312927b304a531a17e02bbdc368237d8777d"
+    },
+    {
+      "path": "web/templates/pages/accounts.html",
+      "audited": "9167bcd4e20333fbb71885bb2ba014df0ad2017b8bfab09fe0e911d52ed43c85",
+      "current": "9167bcd4e20333fbb71885bb2ba014df0ad2017b8bfab09fe0e911d52ed43c85"
+    },
+    {
+      "path": "web/templates/pages/dashboard.html",
+      "audited": "2cd634edd3bb4c635fee3817f9ff49d9fa09c0cdd9ff04a5b39ff48aa192ab79",
+      "current": "2cd634edd3bb4c635fee3817f9ff49d9fa09c0cdd9ff04a5b39ff48aa192ab79"
+    },
+    {
+      "path": "web/templates/pages/duplicates.html",
+      "audited": "6b2645d13d3c137172d0239768ef1034e7e215a464e96dc6546643704b8f2496",
+      "current": "6b2645d13d3c137172d0239768ef1034e7e215a464e96dc6546643704b8f2496"
+    },
+    {
+      "path": "web/templates/pages/explorer.html",
+      "audited": "9ea154548768e471d1a811ff8b922f1d8d80a897aa0bf9fe9d5fc03d39b91a55",
+      "current": "9ea154548768e471d1a811ff8b922f1d8d80a897aa0bf9fe9d5fc03d39b91a55"
+    },
+    {
+      "path": "web/templates/pages/filemanager.html",
+      "audited": "5cdfb99a61d603a83f7ce9511845a7eecc420fa52c533757332f820b92985a9c",
+      "current": "5cdfb99a61d603a83f7ce9511845a7eecc420fa52c533757332f820b92985a9c"
+    },
+    {
+      "path": "web/templates/pages/insights.html",
+      "audited": "d8fa8459c9b0b64f4be1be60e0d2e9a0ffc485b27d4abe5171d173116f33ff1e",
+      "current": "d8fa8459c9b0b64f4be1be60e0d2e9a0ffc485b27d4abe5171d173116f33ff1e"
+    },
+    {
+      "path": "web/templates/pages/major-expenses.html",
+      "audited": "1783a555b020660a300b5c4a26759fb3d8bea860fda0efd5bbdf838410b3398a",
+      "current": "1783a555b020660a300b5c4a26759fb3d8bea860fda0efd5bbdf838410b3398a"
+    },
+    {
+      "path": "web/templates/pages/transfers.html",
+      "audited": "5732f6299df70473edfaf6f354878d066ccc49bbeeeccd7ce2bac8a1a58fdd98",
+      "current": "5732f6299df70473edfaf6f354878d066ccc49bbeeeccd7ce2bac8a1a58fdd98"
+    },
+    {
+      "path": "web/templates/pages/unlock.html",
+      "audited": "ee73cfbeebcb9ffd5de1525ddbdb19116c74490ace0faa65f090630178adaec3",
+      "current": "ee73cfbeebcb9ffd5de1525ddbdb19116c74490ace0faa65f090630178adaec3"
+    },
+    {
+      "path": "web/templates/pages/whatif.html",
+      "audited": "7a48dbf30ae93b31f2167612938d6ff243cf744c5996dd4884af7b4b7d6b01e5",
+      "current": "7a48dbf30ae93b31f2167612938d6ff243cf744c5996dd4884af7b4b7d6b01e5"
+    },
+    {
+      "path": "web/test/whatif-tabs.test.js",
+      "audited": "6ebeb4ca021e507a0d2c8c965a7b1bc2e218552783e8f2acb13e981fe1ede732",
+      "current": "6ebeb4ca021e507a0d2c8c965a7b1bc2e218552783e8f2acb13e981fe1ede732"
+    },
+    {
+      "path": "ACCESSIBILITY.md",
+      "audited": "5eaf322961a8af9da9579ccdaabd89728cb442f3eedd9b0142fc1866ebd1e0b4",
+      "current": "5eaf322961a8af9da9579ccdaabd89728cb442f3eedd9b0142fc1866ebd1e0b4"
+    },
+    {
+      "path": "go.mod",
+      "audited": "748e4f351df8d88c7fca8560f1224c2962bb058f7f69e377c2a5f3e92e1f457b",
+      "current": "748e4f351df8d88c7fca8560f1224c2962bb058f7f69e377c2a5f3e92e1f457b"
+    },
+    {
+      "path": "go.sum",
+      "audited": "33747cc3d9abd288a710b9b2ea42d6a59e7c154f882d6ff53539169c3fbffd6e",
+      "current": "33747cc3d9abd288a710b9b2ea42d6a59e7c154f882d6ff53539169c3fbffd6e"
+    },
+    {
+      "path": "Makefile",
+      "audited": "07c71d1e8a036fe47942e12bb60b23e60dcd927df0a663dcef0a6f245a0a96b4",
+      "current": "07c71d1e8a036fe47942e12bb60b23e60dcd927df0a663dcef0a6f245a0a96b4"
+    },
+    {
+      "path": "tailwind.config.js",
+      "audited": "c019e1e65946f4fa68b09be0cca0060b16d79a050f89a076e5ae8442a3af7889",
+      "current": "c019e1e65946f4fa68b09be0cca0060b16d79a050f89a076e5ae8442a3af7889"
+    }
+  ]
+}

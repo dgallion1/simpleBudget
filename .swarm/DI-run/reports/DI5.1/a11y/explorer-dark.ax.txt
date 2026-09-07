@@ -1,0 +1,331 @@
+- banner:
+  - navigation:
+    - link "simpleBudget":
+      - /url: /
+    - group "Money":
+      - text: Money
+      - link "Dashboard":
+        - /url: /dashboard?end=2026-08-28&start=2026-03-01
+      - link "Explorer":
+        - /url: /explorer?end=2026-08-28&start=2026-03-01
+      - link "Insights":
+        - /url: /insights?end=2026-08-28&start=2026-03-01
+      - link "Major Expenses":
+        - /url: /major-expenses?end=2026-08-28&start=2026-03-01
+    - group "Plan":
+      - text: Plan
+      - link "What-If":
+        - /url: /whatif
+    - group "Setup":
+      - text: Setup
+      - link "Accounts":
+        - /url: /accounts
+      - link "Transfers":
+        - /url: /transfers
+      - link "File Manager":
+        - /url: /filemanager
+      - link "Duplicates 1":
+        - /url: /duplicates
+    - button "Toggle dark mode":
+      - img
+- main:
+  - heading "Data Explorer" [level=1]
+  - text: Search
+  - textbox "Search descriptions..."
+  - text: Category
+  - combobox "Category":
+    - option "All Categories" [selected]
+    - option "Auto Payment"
+    - option "Bills & Utilities"
+    - option "Cash"
+    - option "Category Pending"
+    - option "Credit Card Payment"
+    - option "Electronics & Software"
+    - option "Entertainment"
+    - option "Food & Dining"
+    - option "Gas & Fuel"
+    - option "Groceries"
+    - option "Health & Wellness"
+    - option "Health Insurance"
+    - option "Home Improvement"
+    - option "Income"
+    - option "Insurance"
+    - option "Interest Income"
+    - option "Mortgage"
+    - option "Pet Food & Supplies"
+    - option "Shopping"
+    - option "Taxes"
+    - option "Transfer"
+    - option "Travel"
+    - option "Utilities"
+  - text: Major Expense
+  - combobox "Major Expense":
+    - option "All" [selected]
+    - option "Mortgage"
+    - option "Property Taxes"
+    - option "Home Insurance"
+    - option "Auto Insurance"
+    - option "Auto Loan"
+    - option "Groceries"
+    - option "Dining Out"
+    - option "Shopping & Household Supplies"
+    - option "Utilities"
+    - option "Internet"
+    - option "Subscriptions"
+    - option "Fuel"
+    - option "Pets"
+    - option "Medicare & Health Insurance"
+    - option "Pharmacy & Medical Supplies"
+    - option "Travel & Hobbies"
+    - option "Home Maintenance & Appliances"
+    - option "Cash Spending"
+    - option "Dental & Vision"
+    - option "Gifts & Donations"
+    - option "Vehicle Maintenance"
+  - text: Type
+  - combobox "Type":
+    - option "All Types" [selected]
+    - option "Income"
+    - option "Expenses"
+    - option "Transfers"
+  - text: From
+  - textbox "From": 2026-03-01
+  - text: To
+  - textbox "To": 2026-08-28
+  - button "Step back"
+  - button "Step forward"
+  - button "1M"
+  - button "2M"
+  - button "3M"
+  - button "6M"
+  - button "12M"
+  - button "All"
+  - link "Clear Filters":
+    - /url: /explorer
+  - table:
+    - rowgroup:
+      - row "Date Description Category Major Expense Amount Type Source":
+        - columnheader "Date":
+          - button "Date"
+        - columnheader "Description":
+          - button "Description"
+        - columnheader "Category":
+          - button "Category"
+        - columnheader "Major Expense":
+          - button "Major Expense"
+        - columnheader "Amount":
+          - button "Amount"
+        - columnheader "Type":
+          - button "Type"
+        - columnheader "Source":
+          - button "Source"
+  - region "Transactions":
+    - table:
+      - rowgroup:
+        - row "Aug 28, 2026 Pharmacy & Medical Supplies (Corner Pharmacy) Pharmacy & Medical Supplies -$23.85 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 28, 2026"
+          - cell "Pharmacy & Medical Supplies (Corner Pharmacy)"
+          - cell
+          - cell "Pharmacy & Medical Supplies"
+          - cell "-$23.85"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 27, 2026 Interest Paid Interest Income +$0.15 Income demo-checking_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 27, 2026"
+          - cell "Interest Paid"
+          - cell "Interest Income"
+          - cell
+          - cell "+$0.15"
+          - cell "Income"
+          - cell "demo-checking_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 27, 2026 Interest Paid Interest Income +$0.04 Income demo-health_2026-03-01_to_2026-08-28.csv":
+          - cell "Aug 27, 2026"
+          - cell "Interest Paid"
+          - cell "Interest Income"
+          - cell
+          - cell "+$0.04"
+          - cell "Income"
+          - cell "demo-health_2026-03-01_to_2026-08-28.csv"
+        - row "Aug 27, 2026 Groceries (Greenleaf Market) Groceries -$47.31 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 27, 2026"
+          - cell "Groceries (Greenleaf Market)"
+          - cell
+          - cell "Groceries"
+          - cell "-$47.31"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 26, 2026 Shopping & Household Supplies (Amazon) Shopping & Household Supplies -$40.65 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 26, 2026"
+          - cell "Shopping & Household Supplies (Amazon)"
+          - cell
+          - cell "Shopping & Household Supplies"
+          - cell "-$40.65"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 24, 2026 Groceries (Greenleaf Market) Groceries -$92.55 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 24, 2026"
+          - cell "Groceries (Greenleaf Market)"
+          - cell
+          - cell "Groceries"
+          - cell "-$92.55"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 23, 2026 Fuel (Fuel Stop) Fuel -$50.62 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 23, 2026"
+          - cell "Fuel (Fuel Stop)"
+          - cell
+          - cell "Fuel"
+          - cell "-$50.62"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 22, 2026 Home Maintenance & Appliances (Home Maintenance) Home Maintenance & Appliances -$300.00 Expense demo-checking_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 22, 2026"
+          - cell "Home Maintenance & Appliances (Home Maintenance)"
+          - cell
+          - cell "Home Maintenance & Appliances"
+          - cell "-$300.00"
+          - cell "Expense"
+          - cell "demo-checking_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 21, 2026 Utilities (County Water Authority) Utilities -$21.50 Expense demo-checking_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 21, 2026"
+          - cell "Utilities (County Water Authority)"
+          - cell
+          - cell "Utilities"
+          - cell "-$21.50"
+          - cell "Expense"
+          - cell "demo-checking_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 20, 2026 Pharmacy & Medical Supplies (Corner Pharmacy) Pharmacy & Medical Supplies -$40.23 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 20, 2026"
+          - cell "Pharmacy & Medical Supplies (Corner Pharmacy)"
+          - cell
+          - cell "Pharmacy & Medical Supplies"
+          - cell "-$40.23"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 20, 2026 Utilities (Demo Gas and Electric) Utilities -$240.60 Expense demo-checking_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 20, 2026"
+          - cell "Utilities (Demo Gas and Electric)"
+          - cell
+          - cell "Utilities"
+          - cell "-$240.60"
+          - cell "Expense"
+          - cell "demo-checking_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 17, 2026 Groceries (Greenleaf Market) Groceries -$120.79 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 17, 2026"
+          - cell "Groceries (Greenleaf Market)"
+          - cell
+          - cell "Groceries"
+          - cell "-$120.79"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 17, 2026 Social Security - Spouse Income +$1,560.00 Income demo-checking_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 17, 2026"
+          - cell "Social Security - Spouse"
+          - cell "Income"
+          - cell
+          - cell "+$1,560.00"
+          - cell "Income"
+          - cell "demo-checking_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 16, 2026 Pets (Pet Palace) Pets -$82.67 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 16, 2026"
+          - cell "Pets (Pet Palace)"
+          - cell
+          - cell "Pets"
+          - cell "-$82.67"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 15, 2026 Internet (FiberCo Internet) Internet -$79.99 Expense demo-checking_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 15, 2026"
+          - cell "Internet (FiberCo Internet)"
+          - cell
+          - cell "Internet"
+          - cell "-$79.99"
+          - cell "Expense"
+          - cell "demo-checking_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 14, 2026 Dining Out (Noodle House) Dining Out -$57.68 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 14, 2026"
+          - cell "Dining Out (Noodle House)"
+          - cell
+          - cell "Dining Out"
+          - cell "-$57.68"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 14, 2026 Groceries (Greenleaf Market) dup? Groceries -$84.12 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 14, 2026"
+          - cell "Groceries (Greenleaf Market) dup?":
+            - text: Groceries (Greenleaf Market)
+            - link "dup?":
+              - /url: /duplicates#3d6bf3fea8a0b51a
+          - cell
+          - cell "Groceries"
+          - cell "-$84.12"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 13, 2026 Groceries (Greenleaf Market) dup? Groceries -$84.12 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 13, 2026"
+          - cell "Groceries (Greenleaf Market) dup?":
+            - text: Groceries (Greenleaf Market)
+            - link "dup?":
+              - /url: /duplicates#3d6bf3fea8a0b51a
+          - cell
+          - cell "Groceries"
+          - cell "-$84.12"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 12, 2026 Shopping & Household Supplies (Amazon) Shopping & Household Supplies -$73.40 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 12, 2026"
+          - cell "Shopping & Household Supplies (Amazon)"
+          - cell
+          - cell "Shopping & Household Supplies"
+          - cell "-$73.40"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 12, 2026 Cash Spending (ATM Withdrawal) Cash Spending -$100.00 Expense demo-checking_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 12, 2026"
+          - cell "Cash Spending (ATM Withdrawal)"
+          - cell
+          - cell "Cash Spending"
+          - cell "-$100.00"
+          - cell "Expense"
+          - cell "demo-checking_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 12, 2026 Travel & Hobbies (Retirement Travel) Travel & Hobbies -$550.00 Expense demo-checking_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 12, 2026"
+          - cell "Travel & Hobbies (Retirement Travel)"
+          - cell
+          - cell "Travel & Hobbies"
+          - cell "-$550.00"
+          - cell "Expense"
+          - cell "demo-checking_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 11, 2026 Demo Transfer Transfer $700.00 Transfer demo-health_2026-03-01_to_2026-08-28.csv":
+          - cell "Aug 11, 2026"
+          - cell "Demo Transfer"
+          - cell "Transfer"
+          - cell
+          - cell "$700.00"
+          - cell "Transfer"
+          - cell "demo-health_2026-03-01_to_2026-08-28.csv"
+        - row "Aug 11, 2026 Subscriptions (Spotify) Subscriptions -$11.99 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 11, 2026"
+          - cell "Subscriptions (Spotify)"
+          - cell
+          - cell "Subscriptions"
+          - cell "-$11.99"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 10, 2026 Groceries (Greenleaf Market) Groceries -$66.12 Expense demo-credit_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 10, 2026"
+          - cell "Groceries (Greenleaf Market)"
+          - cell
+          - cell "Groceries"
+          - cell "-$66.12"
+          - cell "Expense"
+          - cell "demo-credit_2026-06-01_to_2026-08-28.csv"
+        - row "Aug 10, 2026 Demo Transfer Transfer -$700.00 Transfer demo-checking_2026-06-01_to_2026-08-28.csv":
+          - cell "Aug 10, 2026"
+          - cell "Demo Transfer"
+          - cell "Transfer"
+          - cell
+          - cell "-$700.00"
+          - cell "Transfer"
+          - cell "demo-checking_2026-06-01_to_2026-08-28.csv"
+  - text: Transactions 218 Income $26,461.47 Expenses $32,057.26 Net -$5,595.79 Scroll for more

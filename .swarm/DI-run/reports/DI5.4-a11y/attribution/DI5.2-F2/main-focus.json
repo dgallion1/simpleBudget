@@ -1,0 +1,82 @@
+[
+  {
+    "version": "old",
+    "dark": false,
+    "active": "BUTTON",
+    "sameButton": true,
+    "buttonConnected": true,
+    "sameRegion": true,
+    "count": 1,
+    "insideMain": false,
+    "rect": {
+      "x": 165.1875,
+      "y": 826,
+      "width": 120.578125,
+      "height": 42,
+      "top": 826,
+      "right": 285.765625,
+      "bottom": 868,
+      "left": 165.1875
+    }
+  },
+  {
+    "version": "old",
+    "dark": true,
+    "active": "BUTTON",
+    "sameButton": true,
+    "buttonConnected": true,
+    "sameRegion": true,
+    "count": 1,
+    "insideMain": false,
+    "rect": {
+      "x": 165.1875,
+      "y": 826,
+      "width": 120.578125,
+      "height": 42,
+      "top": 826,
+      "right": 285.765625,
+      "bottom": 868,
+      "left": 165.1875
+    }
+  },
+  {
+    "version": "final",
+    "dark": false,
+    "active": "BODY",
+    "sameButton": false,
+    "buttonConnected": true,
+    "sameRegion": true,
+    "count": 1,
+    "insideMain": false,
+    "rect": {
+      "x": 157.1875,
+      "y": 176,
+      "width": 120.578125,
+      "height": 42,
+      "top": 176,
+      "right": 277.765625,
+      "bottom": 218,
+      "left": 157.1875
+    }
+  },
+  {
+    "version": "final",
+    "dark": true,
+    "active": "BODY",
+    "sameButton": false,
+    "buttonConnected": true,
+    "sameRegion": true,
+    "count": 1,
+    "insideMain": false,
+    "rect": {
+      "x": 157.1875,
+      "y": 176,
+      "width": 120.578125,
+      "height": 42,
+      "top": 176,
+      "right": 277.765625,
+      "bottom": 218,
+      "left": 157.1875
+    }
+  }
+]

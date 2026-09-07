@@ -1,0 +1,103 @@
+[
+  {
+    "name": "build",
+    "command": [
+      "rtk",
+      "proxy",
+      "go",
+      "build",
+      "-buildvcs=false",
+      "./..."
+    ],
+    "cwd": "/tmp/DI5-integration.hcuAxN",
+    "start": "2026-09-07T02:11:47.007Z",
+    "exit": 0
+  },
+  {
+    "name": "vet",
+    "command": [
+      "rtk",
+      "proxy",
+      "go",
+      "vet",
+      "./..."
+    ],
+    "cwd": "/tmp/DI5-integration.hcuAxN",
+    "start": "2026-09-07T02:11:47.545Z",
+    "exit": 0
+  },
+  {
+    "name": "staticcheck",
+    "command": [
+      "rtk",
+      "proxy",
+      "staticcheck",
+      "./..."
+    ],
+    "cwd": "/tmp/DI5-integration.hcuAxN",
+    "start": "2026-09-07T02:11:47.816Z",
+    "exit": 0
+  },
+  {
+    "name": "tests",
+    "command": [
+      "rtk",
+      "proxy",
+      "go",
+      "test",
+      "-count=1",
+      "./..."
+    ],
+    "cwd": "/tmp/DI5-integration.hcuAxN",
+    "start": "2026-09-07T02:11:48.154Z",
+    "exit": 0
+  },
+  {
+    "name": "promoted",
+    "command": [
+      "rtk",
+      "proxy",
+      "go",
+      "test",
+      "-count=1",
+      "-v",
+      "./internal/services/insights",
+      "./internal/handlers/dashboard",
+      "./internal/handlers/insights",
+      "./internal/templates",
+      "./internal/services/mcpsvc/spend",
+      "./internal/services/mcpsvc/ledger",
+      "./cmd/server",
+      "-run",
+      "^TestDI5"
+    ],
+    "cwd": "/tmp/DI5-integration.hcuAxN",
+    "start": "2026-09-07T02:13:06.629Z",
+    "exit": 0
+  },
+  {
+    "name": "css",
+    "command": [
+      "rtk",
+      "proxy",
+      "make",
+      "COMMIT=di5-frozen",
+      "css-verify"
+    ],
+    "cwd": "/tmp/DI5-integration.hcuAxN",
+    "start": "2026-09-07T02:13:07.644Z",
+    "exit": 0
+  },
+  {
+    "name": "agents2-smoketest",
+    "command": [
+      "rtk",
+      "proxy",
+      "bash",
+      "smoketest/gate/run_tests.sh"
+    ],
+    "cwd": "/home/darrell/work/agents2/.claude/worktrees/budget2-ui-improvements-daaa5e",
+    "start": "2026-09-07T02:13:08.848Z",
+    "exit": 0
+  }
+]

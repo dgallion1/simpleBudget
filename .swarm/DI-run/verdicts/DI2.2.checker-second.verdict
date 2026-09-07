@@ -1,0 +1,95 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: DI2
+ATTEMPT: 2
+---
+SCOPE: Conceded DI2 year-history F1 and related civil coverage boundaries.
+Same task-2 brief, approved design period rules and global constraints as
+DI2.1 review. Preserved year AddDate policy; no DI3/DI4 layout requirements.
+No source fixes, git-state changes, subagents, ledger edits or real-data access.
+Only this verdict written to real tree. Lead owns gate acceptance.
+
+FINDINGS: No remaining scoped blocker reproduced. Actual exported helper is
+insights.HasCivilDateCoverage, as report/source specify (not the descriptive
+placeholder name in dispatch). BuildPeriodContext and dashboard year override
+both call it. Existing range/forecast/layout/CSS behavior is unchanged.
+
+ISOLATION:
+Fresh /tmp/DI2-second-attempt2.OXW9PF from cp -a of immutable
+/tmp/budget2-DI2-base.USPhZp, then overlay ONLY DI2.2.files from frozen worktree.
+Baseline and live sources untouched. Prior checker service matrix reused in
+scratch; new boundary test added only in scratch. Promoted year-render probe
+comes from manifest. Scoped patch escalation used for known Landlock issue.
+
+Fresh commands and criterion evidence, all in that scratch copy:
+
+1. rtk proxy go test ./internal/services/insights ./internal/handlers/dashboard -run '^TestDI2Second' -v -count=1
+   Exit 0, both packages PASS.
+   - F1 / civil history: TestDI2SecondYearCivilHistory now passes UTC, west
+     (-05:00), east (+09:00), each at midnight and noon. Selected February
+     2026 retains unchanged February 2025 year bounds; all six report
+     HistoryAvailable=true and comparison.HasData=true, prior expense $100.
+   - Actual rendering: TestDI2SecondYearHistoryRendered passes on unmodified
+     adapter output: no false 'Not enough history to compare'. Its retained
+     metadata-only diagnostic control also succeeds, but is not substituted
+     for the real output assertion. This is the exact previously failing probe.
+   - New TestDI2SecondCivilCoverageBoundaries checks 81 first/last enclosure
+     combinations across UTC/west/east and 00:30/12:30/23:30. Start and end
+     evidence each range one day before/on/after the requested boundary.
+     Equal civil dates are included; genuine missing first/last days rejected.
+     Repeats each with non-midnight range bounds. Nil/empty/all-suppressed
+     data, suppressed first bound, zero/reversed ranges rejected; one-day
+     inclusive coverage accepted. No imported-data completeness assertion.
+     Source retained at internal/services/insights/di2_second_coverage_test.go
+     in scratch for lead inspection/promotion if desired.
+   - TestDI2SecondCalendarMatrix rerun: all completed months and all MTD days
+     in 2023-2027, leap February/prior-month clamp, ten-day inclusive previous
+     ranges, spring/fall New York DST and actual date-only filtering PASS.
+   - TestDI2SecondForecastNoBorrowing rerun: Sep6..16, data age 0..8, selected
+     end yesterday/today/tomorrow, local west-offset injected clock PASS.
+     Earlier-this-month selection cannot borrow later data; freshness <=7,
+     elapsed >=7 and current-month coverage rules retained.
+
+2. rtk proxy go test ./internal/services/insights ./internal/handlers/insights ./internal/handlers/dashboard ./internal/services/mcpsvc/spend ./internal/templates -count=1
+   Exit 0. services/insights 0.011s; handlers/insights 0.328s;
+   handlers/dashboard 0.938s; MCP spend 0.728s; templates 1.227s.
+   Executed before adding new scratch-only coverage test; command (1) then
+   executed that additional test successfully. Fresh suite covers the promoted
+   exact year probe, period adapters, full/HTMX and chart outputs, MCP explicit
+   bounds, missing-history omission versus observed zero, visible completeness
+   caveat, signed refunds/transfers/suppression, rounded ChangeCell and negative
+   zero. Unchanged assertion/body analysis and full consumer inventory from
+   DI2.1.checker-second.verdict remain applicable; no new unsupported claims.
+
+3. rtk proxy go build ./...
+   Exit 0, no output, same isolated snapshot.
+
+4. Exact promoted-probe check:
+   rtk proxy bash -c 'diff -u <(gofmt /tmp/DI2-second.ArN3VU/internal/handlers/dashboard/di2_second_year_test.go) internal/handlers/dashboard/di2_second_year_test.go'
+   No diff, exit 0. Bodies, fixtures and actual-output assertions preserved.
+
+5. Scope and shared-consumer verification:
+   diff -u of services/insights/period.go and handlers/dashboard/period.go
+   against /tmp/DI2-second.ArN3VU shows only new helper and two call replacements.
+   cmp loop over cumulative source/template manifest shows no other production
+   or template delta. The promoted test differs from scratch only by gofmt.
+   rtk proxy rg -n 'HasCivilDateCoverage' internal --glob '!*_test.go'
+   finds helper, BuildPeriodContext, dashboard year override: one shared
+   coverage producer. No duplicate dashboard civil-normalization implementation.
+   Year bounds, forecast rules, ChangeCell calculation, templates/JS/CSS remain
+   byte-unchanged from reviewed attempt 1. DI2.2.md/manifest read; cumulative
+   evidence and before-edit semantic references documented by worker.
+
+Criterion disposition:
+- Calendar bounds/DST/history and conceded F1: PASS, command (1).
+- Forecast and explicit clock: PASS, reused matrix freshly executed in (1).
+- Signed amounts/ChangeCell/no-history semantics: PASS, fresh (2), unchanged
+  producers and assertion analysis referenced from DI2.1 checker evidence.
+- Full/HTMX/chart/drilldown/export/MCP adapters: PASS for this repair, (2) plus
+  unchanged inventory/diff. Common context supplies adjacent history; dashboard
+  year now uses identical helper. Existing export/chart monetary regressions
+  run within (2). No new layout/browser or independent CSS verification claim.
+- Report/manifest, focused checks, build: PASS, (2)-(5).
+
+No additional backlog finding asserted. Gate remains the lead's responsibility.

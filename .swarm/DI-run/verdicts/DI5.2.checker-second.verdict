@@ -1,0 +1,122 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: DI5
+ATTEMPT: 2
+---
+STATUS / BLOCKING FINDING
+F2 blocks acceptance under the lead's explicit concession and stop instruction.
+ACCESSIBILITY.md 10 requires sensible focus restoration after HTMX replacement;
+point 9 requires keyboard continuity. A focused Keep editing button loses focus
+to BODY when main is replaced and the pending notice remounts. The same connected
+button/region surviving is insufficient to establish focus preservation.
+
+Attribution is explicit: the executable F2 reproduction belongs to the named
+a11y checker, NOT this lane. Read DI5.2.checker-a11y.verdict in full at writing.
+Its /tmp/DI5-2-a11y.6qv3pb/main-focus.cjs command exited 1 at the point-10
+assertion; actual Dashboard/HTMX old-script counterfactual retained BUTTON in
+both themes, corrected script returned BODY. Evidence is main-focus.json/log
+and screenshots under that checker's checker-evidence directory. Lead conceded
+F2 and ordered this lane to stop routine browser acceptance work. I have not
+rerun, transcribed, or claimed that other lane's reproduction as my own.
+
+My independently inspected production diff is consistent with the failure:
+mountNotice reads activeElement only after the main replacement has detached
+the notice. It reinserts the same notice but does not restore a formerly
+focused notice control. Existing green node-identity tests do not assert that
+focused-notice-button case. This is newly scoped refresh lifecycle behavior,
+not an unrelated legacy defect. No fix or oracle calibration was attempted.
+No OTHER concrete defect was independently established by this lane.
+
+READ / SCOPE / ISOLATION
+Read DI5.1 and DI5.2 reports, full DI5-promotion-map, canonical approved design
+and rulings, task-5 and DI5.2 briefs, DI6 brief, all ACCESSIBILITY.md points,
+and DI5.1/DI5.2 named a11y failure evidence. DI5.1 F1 remains historically
+upheld; accepted post-DI3 baseline was never used to excuse it.
+
+Preparation snapshot P=/tmp/DI5-second-prep.vQcE3l:
+immutable /tmp/budget2-DI4-base.KPl7oY + ONLY DI4.2 manifest overlay + ONLY
+17 DI5.1 Go test paths. No then-changing browser files copied.
+Final snapshot S=/tmp/DI5-second-final.DBuV42:
+fresh immutable baseline copy + ONLY DI4.2 then cumulative DI5.2 manifest
+overlays, never a whole-live-tree copy. Manifest identifies 373 paths.
+Synthetic data copied with cp -aL only from authorized
+/tmp/budget2-DI-demo.mfLral/data into S/runtime/data; separate imports/backups.
+No app server was launched by this lane; port18863 was checked empty only.
+No8080/8081, real-data access, deployment, git, ledger, or production edits.
+Only this verdict written to the real worktree.
+
+INDEPENDENT EXACT-SOURCE ASSOCIATION
+P/source-before.sha256 preserves hashes of692 cmd/internal/web files before
+the Go checks. After execution `rtk proxy sha256sum -c source-before.sha256`
+passed; cmp of all17 promoted Go test files against frozen live files passed.
+Final commands in S:
+  rtk proxy diff -qr /tmp/DI5-second-prep.vQcE3l/internal internal
+  rtk proxy diff -qr /tmp/DI5-second-prep.vQcE3l/cmd cmd
+  rtk proxy diff -qr /tmp/DI5-second-prep.vQcE3l/web web
+Internal identical; cmd differs only by my preparation-only scratch test;
+web differs ONLY page-refresh.js and page-refresh.test.cjs. Exact `diff -u`
+of page-refresh.js read: normal-flow placement, conditional focused-control
+scroll, and detached-notice remount on afterSwap. No financial Go, existing
+Go tests, templates, other JS or CSS delta. Thus the following Go evidence
+applies to final identical sources, not merely similar author assertions.
+
+COMPLETED INDEPENDENT EXECUTION
+1. In P:
+rtk proxy bash -c 'set -o pipefail; go test -count=1 -v ./internal/services/insights ./internal/handlers/dashboard ./internal/handlers/insights ./internal/templates ./internal/services/mcpsvc/spend ./internal/services/mcpsvc/ledger ./cmd/server -run "^TestDI5" 2>&1 | tee promoted-go.log | tail -n 35'
+Exit0,22 top-level tests, no skips. Package times .005/.190/.713/.017/.050/
+.005/.551 seconds respectively. P/promoted-go.log preserves full output.
+All17 test files read completely; P/PREPARATION.md records assertion audit.
+M01 alias/retail/conflicting evidence, M02 cadence coexistence, M03 rendered22
+retention/reasons/navigation, M04 dashboard/both-ledger projections, M05 civil
+calendar/DST, M06 forecast/no borrowing, M07 coverage bounds, M08 rendered
+refund/change/clamp/zero, M09 eleven consumer routes, M10 exact printed-cent
+residual/detail/CSV cases, M11 SDK grouping invariance, M13 synthetic saved-file
+inventory all exercised. Additional DI4 link-following/hash/group/median/estimate
+tests and assembled same-date Dashboard/Insights/HX/MCP edge cases also passed.
+M09 JSON fallback is not called rendered UI proof. M13 saved bytes alone do not
+prove refresh increment behavior; coordinator tests are the separate contract.
+
+2. Independent additional adversarial probe in P:
+rtk proxy go test -count=1 -v ./cmd/server -run '^TestDI5SecondCrossMoney$'
+PASS .390s, full log P/second-cross-money.log. Actual assembled router and MCP,
+not substituted producer results. Four fixtures test income/spend/balance cents
+1001/1/1000,1001/-1/1002,267/1/266,1/1/0 across Dashboard/KPI partial/Insights/HX
+and MCP top1/top10. Split January/February rows plus explicit adjustment equal
+period spending; two outside-window -999 sentinels excluded. Displayed zero
+balance uses neutral explanation. Probe for later durable promotion:
+P/cmd/server/di5_second_cross_money_test.go (P is absolute root above).
+
+3. `rtk proxy go build -buildvcs=false ./...` in P: exit0.
+Final build in S: `rtk proxy go build -buildvcs=false -o /tmp/DI5-second-final.DBuV42/second-server ./cmd/server`, exit0.
+
+4. Final S `rtk proxy node --test web/static/js/page-refresh.test.cjs`:
+exit0,10/10,0 skipped. Existing seven lifecycle groups plus new main/fallback
+placement, displaced-input visibility, same-node remount/partial groups pass.
+These assertions do NOT establish focused notice-button restoration (F2).
+
+INCOMPLETE / STOPPED BROWSER WORK
+Started in S:
+rtk proxy env DI5_SOURCE_ROOT=/tmp/DI5-second-final.DBuV42 DI5_OUTPUT=/tmp/DI5-second-final.DBuV42/second-evidence/layout node .swarm/DI-run/reports/DI5-refresh-layout.cjs
+Tool returned running session62865 and first result light390/main scroll110.
+User interrupted and then stopped routine acceptance work. I did not retrieve
+a final command exit, inspect/validate all resulting states, or claim PASS.
+The output directory contains results.json and12 arrival screenshots on later
+read-only listing; artifact presence is NOT completion/acceptance proof.
+No additional test was run after the stop instruction.
+
+Inspected final focus-obstruction, refresh-layout, refresh-browser and
+integration-browser assertion bodies. Full all-scripts-active obstruction,
+six-state lifecycle, same-date demo/browser/chart and full-site browser checks
+were NOT executed to completion by this lane in attempt2. M12/M14 browser
+certification therefore remains incomplete here. Another lane's completed
+browser evidence is not represented as my independent run. No worker-green
+report or unchanged-template proof overrides F2 or fills this explicit gap.
+No independent fullsite browser evidence existed in my Go-only preparation.
+
+RESULT / HANDOFF
+FAIL: conceded in-scope F2 blocks DI5.2 acceptance. Completed financial and
+Go evidence remains useful for final-attempt source-equality association; it
+does not accept this attempt. Tier3 escalation/oracle design, next dispatch,
+gates and deployment belong to lead. No further routine verification or source
+changes performed in response to this evidence-writing request.

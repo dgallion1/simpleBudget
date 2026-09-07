@@ -1,0 +1,34 @@
+[
+  {
+    "path": "web/static/js/page-refresh.js",
+    "sha256": "97cb7c8c57d9bf9a885a8d0f86fea68a2a3d5f8377c071ed906997220c3e2ecf"
+  },
+  {
+    "path": "web/static/js/page-refresh.test.cjs",
+    "sha256": "91e03ae994c1e336fbdc8e2104d888a69f4c2398ae3cb8e0e45a6fe3caa7f027"
+  },
+  {
+    "path": "web/static/css/tailwind.css",
+    "sha256": "f09162945444f745061980d04d5d3eafd8c7c9d67c178381837555429adb6c5c"
+  },
+  {
+    "path": "web/templates/components/kpis.html",
+    "sha256": "b59581cea9b37fdb4efd2f169c176c31312ecf067f5f20616e5600912ea4b5f3"
+  },
+  {
+    "path": ".swarm/DI-run/reports/DI5-focus-obstruction.cjs",
+    "sha256": "0e0b397ffb03533a041a224dbf771ad91fd4a66d9bff5c5a719d5c259f8c6880"
+  },
+  {
+    "path": ".swarm/DI-run/reports/DI5-refresh-layout.cjs",
+    "sha256": "1d2bb416963801fee327337514f4c6261aeff98f0e58baedb040cce2a21f7aef"
+  },
+  {
+    "path": ".swarm/DI-run/reports/DI5-refresh-browser.cjs",
+    "sha256": "d67ce3b01283d2a62384fd92be1311363988c0f14603ad7a7cbc7d42f7c79ac4"
+  },
+  {
+    "path": ".swarm/DI-run/reports/DI5.2-provenance.cjs",
+    "sha256": "e46e09136b2e9ea949201f69194468014a7ba2ed548ce17e06359ed49a558fc3"
+  }
+]

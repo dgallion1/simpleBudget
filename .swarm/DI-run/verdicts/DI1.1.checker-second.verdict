@@ -1,0 +1,97 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: DI1
+ATTEMPT: 1
+---
+SCOPE: DI1 classification, retention, estimates, merchant identity and UI/MCP
+parity only. No DI2-4 feature requirements, source fixes, git mutations,
+subagents, or real-data access/writes. Worker report DI1.1.md and exact
+/tmp/DI1.1-review.diff reviewed. Root SPEC.md absent; the approved design at
+docs/superpowers/specs/2026-09-06-dashboard-insights-design.md is the referenced
+specification. ACCESSIBILITY.md points 1-17 read; no accessibility FAIL asserted.
+
+FAIL F1 — Required demo Cloud Storage is not a subscription.
+Criterion: task-1-brief.md first checkbox (Cloud Storage true), approved design
+Shared accuracy rules / Subscription classification, lines 92-94.
+Exact lead-supplied bank strings, instantiated as synthetic transactions:
+Description='Cloud Storage'; OriginalDescription='CLOUDBOX*STORAGE PLAN CLOUDBOX.COM CA';
+Category='Electronics & Software'. Three monthly $25 outflows are detected as
+merchant 'cloud storage', AnnualCost=300, Classification='other'.
+classification.go:20-26 exclusively selects the nonempty OriginalDescription;
+the recognized phrase 'cloud storage' is absent from that bank string and the
+category is not subscription-specific. The friendly-description-only positive
+fixture classification_test.go:15,24 does not exercise this path.
+
+FAIL F2 — Required auto-loan bill is classified as other.
+Criterion: approved design Shared accuracy rules / Subscription classification,
+lines 93-94: loans belong to recurring bills; DI1 shared three-way classifier.
+Description='AutoLoan Finance'; OriginalDescription='AUTOLOAN FINANCE BILL PMT';
+Category='Auto Payment'. Three monthly $25 outflows are detected as merchant
+'autoloan finance', AnnualCost=300, Classification='other'.
+classification.go:30,35 recognizes neither 'Auto Payment' nor the bank's
+'AUTOLOAN' token. 'auto loan' requires a word boundary between the words.
+The brief's non-subscription assertion alone cannot distinguish a bill from other.
+
+Executable reproduction (copy only; fixture files retained for lead inspection):
+Workdir /tmp/DI1-second.ka8SuZ
+1. rtk proxy go test ./internal/services/insights -run '^TestDI1Adversarial' -v -count=1
+   Exit 1. TestDI1AdversarialExactBankRows/Cloud_Storage and /AutoLoan_Finance
+   fail with other versus subscription/bill. Both recognized-description
+   counterfactual controls pass, isolating evidence recognition from cadence,
+   retention and estimate calculation. No production-code modification used.
+2. rtk proxy go test ./internal/handlers/insights -run '^TestDI1AdversarialExactBankUIAndMCP$' -v -count=1
+   Exit 1. Real calculateInsights reports subscriptions=0 bills=0 other=2,
+   MonthlySubscriptions=0.00 (expected 25.00), TotalRecurring=600.00 (correct).
+   In-memory SDK get_recurring returns both retained merchants as other, each
+   annual_cost=300, is_subscription=false. subscriptions_only=true returns
+   count=0 and payments=[] (expected the Cloud Storage row).
+   This is shared incorrect classification, NOT a UI/MCP divergence or a
+   claim that the all-recurring total lost $600. Fix belongs in shared positive
+   evidence recognition, with these exact original-row regression fixtures;
+   changing grouping/totals alone would not repair the classification.
+   Probe sources: internal/services/insights/di1_bank_rows_test.go and
+   internal/handlers/insights/di1_exact_bank_parity_test.go in this /tmp snapshot.
+
+Other criteria / evidence:
+- PASS negative/rename/ordering probes: TestDI1AdversarialClassificationOrdering
+  exercises all named exclusions, known positives, original-description
+  precedence over an edited 'Netflix' display, three Major Expense renames,
+  NotNetflix word boundary, and reversed Netflix/Target conflicting evidence.
+- PASS estimate/merchant probe: TestDI1AdversarialCadenceAndMerchantRetention
+  keeps separate monthly Netflix $0.99 => $11.88/year, quarterly Spotify $12.34
+  => $49.36/year, yearly Cloud Storage $25.50 => $25.50/year. Its initial
+  failure was my incorrect title-case expectation; existing merchant output
+  is lowercase. Corrected fixture, then passed; not attributed to worker.
+- PASS existing focused package tests before adding adversarial fixtures:
+  rtk proxy go test ./internal/services/insights ./internal/handlers/insights ./internal/services/mcpsvc/spend ./internal/templates -count=1
+  Exit 0; all four packages passed. Read assertions in TestDI1UncappedTotals:
+  verifies 22 rows, 20 other/one bill/one subscription, annual=25320,
+  monthly=2110, subscription monthly=10; actual in-memory MCP merchant,
+  classification, reason and annual-value parity, duplicate rejection and
+  subscription-filtered count. These integer fixtures miss F1/F2 and do not
+  establish general fractional-cent rendered-string reconciliation.
+- PASS focused compatibility render evidence from that package run:
+  TestDI1OtherRecurringVisible checks actual insights-content rendering for
+  other-group heading, merchant, secondary category, reason and amounts.
+- PASS build: rtk proxy go build ./... in /tmp/DI1-second-build.ch4s8x,
+  exit 0. That complete snapshot used git archive 69e484a plus only DI1
+  source/template manifest overlays after lead freeze authorization.
+- Shared consumers enumerated with rg over handlers/insights, MCP spend,
+  templates/pages/insights.html and insights.js: handler consumes detector
+  classification; MCP and IsSubscription use ClassifyRecurring; full/HTMX
+  insights-content and recurring-payments retain classification/merchant data.
+  Detector cap removed without changing cadence multipliers. No new JS
+  monetary calculation was introduced by this diff.
+- Worker manifest/report exist with consumer enumeration and red/green commands.
+
+Isolation / provenance:
+rtk proxy git rev-parse HEAD 69e484a confirmed both resolve to
+69e484a6736cbc05d57fe76c9345c4e8b15c2194. Focused snapshot was made by archiving
+committed package dependencies and overlaying ONLY DI1 manifest source/template
+paths with cp -a; .git retained, no operations change it. Full build snapshot
+also comes from committed archive, not a live-tree copy. DI6 server wiring,
+inventory tests, uirefresh, page-refresh.js and layouts/base.html edits excluded.
+Normal apply_patch encountered the known legacy Landlock incompatibility;
+scoped escalation used for isolated fixture patches and this verdict only.
+Only this verdict is written to the real tree. Lead owns escalation scan/gate.

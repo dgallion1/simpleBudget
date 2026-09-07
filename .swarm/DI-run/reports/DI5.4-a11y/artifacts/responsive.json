@@ -1,0 +1,98 @@
+[
+  {
+    "route": "dashboard",
+    "dark": false,
+    "width": 390,
+    "scroll": 390,
+    "h1": 1,
+    "charts": 5
+  },
+  {
+    "route": "dashboard",
+    "dark": false,
+    "width": 768,
+    "scroll": 768,
+    "h1": 1,
+    "charts": 5
+  },
+  {
+    "route": "dashboard",
+    "dark": false,
+    "width": 1440,
+    "scroll": 1440,
+    "h1": 1,
+    "charts": 5
+  },
+  {
+    "route": "dashboard",
+    "dark": true,
+    "width": 390,
+    "scroll": 390,
+    "h1": 1,
+    "charts": 5
+  },
+  {
+    "route": "dashboard",
+    "dark": true,
+    "width": 768,
+    "scroll": 768,
+    "h1": 1,
+    "charts": 5
+  },
+  {
+    "route": "dashboard",
+    "dark": true,
+    "width": 1440,
+    "scroll": 1440,
+    "h1": 1,
+    "charts": 5
+  },
+  {
+    "route": "insights",
+    "dark": false,
+    "width": 390,
+    "scroll": 390,
+    "h1": 1,
+    "charts": 0
+  },
+  {
+    "route": "insights",
+    "dark": false,
+    "width": 768,
+    "scroll": 768,
+    "h1": 1,
+    "charts": 0
+  },
+  {
+    "route": "insights",
+    "dark": false,
+    "width": 1440,
+    "scroll": 1440,
+    "h1": 1,
+    "charts": 0
+  },
+  {
+    "route": "insights",
+    "dark": true,
+    "width": 390,
+    "scroll": 390,
+    "h1": 1,
+    "charts": 0
+  },
+  {
+    "route": "insights",
+    "dark": true,
+    "width": 768,
+    "scroll": 768,
+    "h1": 1,
+    "charts": 0
+  },
+  {
+    "route": "insights",
+    "dark": true,
+    "width": 1440,
+    "scroll": 1440,
+    "h1": 1,
+    "charts": 0
+  }
+]

@@ -4,12 +4,15 @@
     <!-- Date Range Selector -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
         <form id="insights-date-filter"
+              hx-get="/insights" hx-target="#insights-wrapper" hx-select="#insights-wrapper"
+              hx-swap="outerHTML" hx-push-url="true" hx-trigger="change" hx-indicator="#insights-loading"
               class="flex flex-wrap items-center gap-4">
 
             <!-- Quick presets -->
             <input type="hidden" name="preset" value="{{.Preset}}">
             {{template "shared/range-picker" (dict
-                "Layout" "inline"
+                "Layout" "stacked"
+                "GroupInputs" false
                 "ArrowPosition" "wrap"
                 "QuickLabel" "Quick:"
                 "StartID" "insights-date-start"
@@ -18,8 +21,6 @@
                 "EndValue" .EndDate
                 "MinDate" .MinDate
                 "MaxDate" .MaxDate
-                "InputOnInput" "document.querySelector('input[name=preset]').value=''"
-                "InputHxAttrs" (safeHTMLAttr `hx-get="/insights" hx-target="#insights-wrapper" hx-select="#insights-wrapper" hx-include="#insights-date-filter" hx-push-url="true" hx-trigger="change" hx-indicator="#insights-loading"`)
                 "PresetAttr" "data-preset"
                 "PresetClass" "insight-preset-btn"
                 "PresetInactiveClass" "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
@@ -32,90 +33,58 @@
                     (dict "Value" "12m" "Label" "12M" "Active" (eq .Preset "12m"))
                     (dict "Value" "all" "Label" "All" "Active" (eq .Preset "all"))))}}
 
-            <span id="insights-loading" class="htmx-indicator">
-                <svg class="animate-spin h-5 w-5 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-            </span>
+            <span id="insights-loading" class="htmx-indicator text-sm text-gray-600 dark:text-gray-400">Updating Insights…</span>
         </form>
     </div>
 
-    <!-- Spending Pace Verdict Band -->
-    {{template "insights-verdict-bar" .}}
 
-    <!-- KPI Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {{/* Monthly Recurring (shared/kpi-tile.html, U7) */}}
-        {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-accent bg-accent-soft" "LabelClass" "text-accent" "Label" "Monthly Recurring")}}
-                    <p class="num text-2xl font-bold text-positive">{{formatMoney .Insights.MonthlyRecurring}}</p>
-                    <p class="num text-body-sm text-accent">{{formatMoney .Insights.TotalRecurring}}/year</p>
-        {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-accent-soft" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>`))}}
-        {{template "shared/kpi-tile-close" .}}
-
-        {{/* Subscriptions */}}
-        {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-negative bg-negative-soft" "LabelClass" "text-negative" "Label" "Subscriptions")}}
-                    <p class="num text-2xl font-bold text-negative">{{formatMoney .Insights.MonthlySubscriptions}}</p>
-                    <p class="text-body-sm text-negative">{{len .Insights.Subscriptions}} active</p>
-        {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-negative-soft" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>`))}}
-        {{template "shared/kpi-tile-close" .}}
-
-        {{/* Daily Burn Rate. Container/label/icon classes are full literal
-             strings per branch, not built with printf — Tailwind's content
-             scan is a text regex over this file and would purge a class
-             assembled at template-execution time (ruling 2026-09-03i). */}}
-        {{with .Insights.Velocity}}
-        {{$containerClass := "border-warning bg-warning-soft"}}
-        {{$toneClass := "text-warning"}}
-        {{$iconBgClass := "bg-warning-soft"}}
-        {{if lt .BurnRateChange 0.0}}
-            {{$containerClass = "border-positive bg-positive-soft"}}
-            {{$toneClass = "text-positive"}}
-            {{$iconBgClass = "bg-positive-soft"}}
-        {{else if gt .BurnRateChange 10.0}}
-            {{$containerClass = "border-negative bg-negative-soft"}}
-            {{$toneClass = "text-negative"}}
-            {{$iconBgClass = "bg-negative-soft"}}
+    <div id="period-context">{{template "shared/period-context" .}}</div>
+    {{with .Investigation}}
+    <section id="insights-change" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="change-heading">
+        <h2 id="change-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100">What changed</h2>
+        <p class="text-sm text-gray-700 dark:text-gray-300">Actual net spending across all outflows, including refunds and excluding transfers.</p>
+        <p class="text-sm text-gray-700 dark:text-gray-300">Selected period: <span class="num font-semibold">{{formatMoney .Current}}</span>{{if $.Period.HistoryAvailable}} · Prior period: <span class="num">{{formatMoney .Previous}}</span>{{end}}</p>
+        {{if $.Period.HistoryAvailable}}
+        <p class="text-gray-800 dark:text-gray-100">Dollar difference: {{template "insights-dollar-change" .Change}} · {{template "insights-change-cell" .Change}}</p>
+        <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Largest contributors</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Grouped by {{.Grouping}}. Up to three largest absolute dollar changes; these are not a complete reconciliation of all spending.</p>
+        <ul class="divide-y divide-gray-200 dark:divide-gray-700">
+            {{range .Contributors}}
+            <li class="py-3 flex flex-wrap justify-between gap-2" data-contributor="{{.Category}}">
+                <a class="text-accent underline" href="/explorer?{{if index $.Investigation.GroupIDs .Category}}majorExpense={{urlquery (index $.Investigation.GroupIDs .Category)}}{{else}}category={{urlquery .Category}}{{end}}&amp;start={{$.StartDate}}&amp;end={{$.EndDate}}&amp;type=Outflow">{{.Category}}</a>
+                <span class="num text-gray-800 dark:text-gray-100">{{template "insights-dollar-change" .Change}} · {{template "insights-change-cell" .Change}}</span>
+            </li>
+            {{else}}<li class="text-sm text-gray-600 dark:text-gray-400">No category changes to compare.</li>{{end}}
+        </ul>
+        {{else}}<p class="text-sm text-gray-700 dark:text-gray-300">Not enough history to compare</p>{{end}}
+    </section>
+    <section id="insights-findings" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="findings-heading">
+        <h2 id="findings-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100">Review these transactions</h2>
+        <p class="text-sm text-gray-700 dark:text-gray-300">{{len .Findings}} findings in the selected period. A transaction can have more than one finding type.</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Detection uses loaded active history. Each finding below is tied to an actual transaction in the selected period; price-creep evidence can extend beyond that period.</p>
+        {{if .Findings}}
+        <ul id="findings-preview" class="divide-y divide-gray-200 dark:divide-gray-700">{{range .Preview}}{{template "insights-finding" .}}{{end}}</ul>
+        {{if .Remaining}}
+        <details id="all-findings" class="border-t border-gray-200 dark:border-gray-700 pt-3">
+            <summary class="text-accent cursor-pointer">View all {{len .Findings}} findings ({{len .Remaining}} more)</summary>
+            <ul class="divide-y divide-gray-200 dark:divide-gray-700">{{range .Remaining}}{{template "insights-finding" .}}{{end}}</ul>
+        </details>
         {{end}}
-        {{template "shared/kpi-tile-open" (dict "ContainerClass" $containerClass "LabelClass" $toneClass "Label" "Daily Spending")}}
-                    <p class="num text-2xl font-bold {{$toneClass}}">
-                        {{formatMoney .DailyAverage}}
-                    </p>
-                    <p class="num text-body-sm {{$toneClass}}">
-                        {{if gt .BurnRateChange 0.0}}+{{end}}{{printf "%.1f" .BurnRateChange}}% vs avg
-                    </p>
-        {{if lt .BurnRateChange 0.0}}
-        {{template "shared/kpi-tile-icon" (dict "IconBgClass" $iconBgClass "IconSVG" (safeHTML `<svg class="w-6 h-6 text-positive" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>`))}}
-        {{else if gt .BurnRateChange 10.0}}
-        {{template "shared/kpi-tile-icon" (dict "IconBgClass" $iconBgClass "IconSVG" (safeHTML `<svg class="w-6 h-6 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>`))}}
         {{else}}
-        {{template "shared/kpi-tile-icon" (dict "IconBgClass" $iconBgClass "IconSVG" (safeHTML `<svg class="w-6 h-6 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>`))}}
+        <p class="text-sm text-gray-700 dark:text-gray-300">No detected findings in this period. This does not guarantee that every transaction is expected.</p>
+        {{if not $.Period.HasData}}<a href="/explorer" class="text-accent underline">Import transactions to begin reviewing activity</a>{{end}}
         {{end}}
-        {{template "shared/kpi-tile-close" .}}
-        {{else}}
-        {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800" "LabelClass" "text-gray-600 dark:text-gray-400" "Label" "Daily Spending")}}
-                    <p class="num text-2xl font-bold text-gray-500 dark:text-gray-400">$0.00</p>
-                    <p class="text-body-sm text-gray-500 dark:text-gray-400">No data</p>
-        {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-gray-100 dark:bg-gray-700" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>`))}}
-        {{template "shared/kpi-tile-close" .}}
-        {{end}}
-
-        {{/* Month Projection */}}
-        {{with .Insights.Velocity}}
-        {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-accent bg-accent-soft" "LabelClass" "text-accent" "Label" "Month Projection")}}
-                    <p class="num text-2xl font-bold text-positive">{{formatMoney .MonthProjection}}</p>
-                    <p class="num text-body-sm text-accent">{{.DaysRemaining}} days remaining</p>
-        {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-accent-soft" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>`))}}
-        {{template "shared/kpi-tile-close" .}}
-        {{else}}
-        {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800" "LabelClass" "text-gray-600 dark:text-gray-400" "Label" "Month Projection")}}
-                    <p class="num text-2xl font-bold text-gray-500 dark:text-gray-400">$0.00</p>
-                    <p class="text-body-sm text-gray-500 dark:text-gray-400">No data</p>
-        {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-gray-100 dark:bg-gray-700" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>`))}}
-        {{template "shared/kpi-tile-close" .}}
-        {{end}}
-    </div>
-
+    </section>
+    <section id="insights-recurring" class="space-y-4" aria-labelledby="recurring-heading">
+        <div class="space-y-2">
+            <h2 id="recurring-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100">Detected recurring spending</h2>
+            <p class="text-sm text-gray-700 dark:text-gray-300">Estimates from history through {{$.Period.SelectedEnd.Format "2006-01-02"}}, not actual selected-period spending or confirmed obligations. All detected recurring series are shown without a row limit.</p>
+            <p class="text-sm text-gray-700 dark:text-gray-300">Retained estimates: <span class="num">{{formatMoney .Monthly}}</span> monthly · <span class="num">{{formatMoney .Annual}}</span> annual. Totals sum displayed estimates. Monthly and annual figures are rounded separately.</p>
+        </div>
+        {{range .Groups}}{{template "insights-recurring-group" (dict "Group" . "Period" $.Period "StartDate" $.StartDate "EndDate" $.EndDate)}}{{end}}
+    </section>
+    {{else}}
+    {{/* Compatibility rendering for callers that supply only the raw Insights model. */}}
     <!-- Subscriptions -->
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
         <div class="p-4 border-b dark:border-gray-700 flex items-center justify-between">
@@ -131,18 +100,20 @@
             {{if .Insights.Subscriptions}}
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-0 divide-y sm:divide-y-0 divide-gray-100 dark:divide-gray-700">
                 {{range .Insights.Subscriptions}}
-                <a href="/explorer?search={{urlquery (or .MajorExpenseName .Description)}}&amp;type=Outflow" class="group flex items-center justify-between p-4 hover:bg-negative-soft transition-colors border-b sm:border-b-0 sm:border-r border-gray-100 dark:border-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent">
+                <a href="/explorer?search={{urlquery .Description}}&amp;type=Outflow" class="group flex items-center justify-between p-4 hover:bg-negative-soft transition-colors border-b sm:border-b-0 sm:border-r border-gray-100 dark:border-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent">
                     <div class="flex items-center gap-3 min-w-0 flex-1">
                         <div class="flex-shrink-0 w-8 h-8 rounded-full bg-negative-soft flex items-center justify-center">
-                            <span class="text-xs font-bold text-negative">{{$label := or .MajorExpenseName .Description}}{{if $label}}{{printf "%.1s" $label}}{{else}}?{{end}}</span>
+                            <span class="text-xs font-bold text-negative">{{$label := or .Description .MajorExpenseName}}{{if $label}}{{printf "%.1s" $label}}{{else}}?{{end}}</span>
                         </div>
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-1">
-                                <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate" title="{{if .Description}}{{.Description}}{{else}}Unlabeled subscription{{end}}">{{if .MajorExpenseName}}{{.MajorExpenseName}}{{else if .Description}}{{.Description}}{{else}}Unlabeled subscription{{end}}</p>
+                                <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate" title="{{if .Description}}{{.Description}}{{else}}Unlabeled subscription{{end}}">{{or .Description .MajorExpenseName "Unlabeled subscription"}}</p>
                                 <svg class="w-3 h-3 text-negative opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                                 </svg>
                             </div>
+                            {{if .MajorExpenseName}}<p class="text-body-sm text-gray-500 dark:text-gray-400">{{.MajorExpenseName}}</p>{{end}}
+                            {{if .ClassificationReason}}<p class="text-body-sm text-gray-500 dark:text-gray-400">{{.ClassificationReason}}</p>{{end}}
                             <p class="text-body-sm text-gray-500 dark:text-gray-400">
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
                                     {{if eq .Frequency "monthly"}}bg-accent-soft text-accent
@@ -172,282 +143,40 @@
             {{end}}
         </div>
     </div>
-
-    <!-- Main Content Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Recurring Payments (Bills) -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
-            <div class="p-4 border-b dark:border-gray-700 flex items-center justify-between">
-                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
-                    <svg class="w-5 h-5 mr-2 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                    </svg>
-                    Bills & Recurring
-                </h2>
-                <span class="text-sm text-gray-600 dark:text-gray-400">{{len .Insights.RecurringPayments}} detected</span>
-            </div>
-            <div class="overflow-y-auto max-h-96" tabindex="0" role="region" aria-label="Recurring payments">
-                {{if .Insights.RecurringPayments}}
-                <table id="recurring-payments-table" class="w-full">
-                    <thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
-                        <tr>
-                            <th scope="col" class="text-left p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase"><button type="button" data-sort-fn="sortRecurringTable" data-sort="description" class="w-full flex items-center gap-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none rounded px-1 -mx-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">Description <span class="sort-icon" data-col="description"></span></button></th>
-                            <th scope="col" class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase"><button type="button" data-sort-fn="sortRecurringTable" data-sort="amount" class="w-full flex items-center justify-end gap-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none rounded px-1 -mx-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">Amount <span class="sort-icon" data-col="amount"></span></button></th>
-                            <th scope="col" class="text-center p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase"><button type="button" data-sort-fn="sortRecurringTable" data-sort="frequency" class="w-full flex items-center justify-center gap-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none rounded px-1 -mx-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">Freq <span class="sort-icon" data-col="frequency"></span></button></th>
-                            <th scope="col" class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase"><button type="button" data-sort-fn="sortRecurringTable" data-sort="annual" class="w-full flex items-center justify-end gap-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none rounded px-1 -mx-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">Annual <span class="sort-icon" data-col="annual"></span></button></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                        {{range .Insights.RecurringPayments}}
-                        {{$rpLabel := or .MajorExpenseName .Description}}<tr class="group hover:bg-accent-soft cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent" data-navigate-href="/explorer?search={{urlquery $rpLabel}}&type=Outflow" data-description="{{.Description}}" data-amount="{{.Amount}}" data-frequency="{{.Frequency}}" data-monthly="{{div .AnnualCost 12.0}}" data-annual="{{.AnnualCost}}" tabindex="0" role="link" aria-label="Open {{$rpLabel}} in Explorer">
-                            <td class="p-3">
-                                <div class="flex items-center gap-1">
-                                    <span class="text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="{{.Description}}">{{if .MajorExpenseName}}{{.MajorExpenseName}}{{else}}{{.Description}}{{end}}</span>
-                                    <svg class="w-3 h-3 text-accent opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
-                                    </svg>
-                                </div>
-                                <div class="text-body-sm text-gray-500 dark:text-gray-400">Next: {{formatDate .NextExpected}}</div>
-                            </td>
-                            <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .Amount}}</td>
-                            <td class="p-3 text-center">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                                    {{if eq .Frequency "monthly"}}bg-accent-soft text-accent
-                                    {{else if eq .Frequency "weekly"}}bg-positive-soft text-positive
-                                    {{else if eq .Frequency "yearly"}}bg-accent-soft text-accent
-                                    {{else if eq .Frequency "biweekly"}}bg-neutral-soft text-neutral
-                                    {{else if eq .Frequency "ongoing"}}bg-warning-soft text-warning
-                                    {{else}}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300{{end}}">
-                                    {{if eq .Frequency "ongoing"}}{{.Occurrences}}x{{else}}{{.Frequency}}{{end}}
-                                </span>
-                            </td>
-                            <td class="p-3 text-sm text-right font-medium text-accent">
-                                <div>{{formatMoney .AnnualCost}}</div>
-                                <div class="text-body-sm font-normal text-gray-500 dark:text-gray-400">{{formatMoney (div .AnnualCost 12.0)}}/mo</div>
-                            </td>
-                        </tr>
-                        {{end}}
-                    </tbody>
-                </table>
-                {{else}}
-                <div class="p-8 text-center text-gray-600 dark:text-gray-400">
-                    <svg class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
-                    <p>No recurring payments detected yet.</p>
-                    <p class="text-sm">More transaction history is needed to identify patterns.</p>
-                </div>
-                {{end}}
-            </div>
-        </div>
-
-        <!-- Income Patterns -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
-            <div class="p-4 border-b dark:border-gray-700 flex items-center justify-between">
-                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
-                    <svg class="w-5 h-5 mr-2 text-positive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    Income Sources
-                </h2>
-                <span class="text-sm text-gray-600 dark:text-gray-400">{{len .Insights.IncomePatterns}} sources</span>
-            </div>
-            <div class="overflow-y-auto max-h-96" tabindex="0" role="region" aria-label="Income sources">
-                {{if .Insights.IncomePatterns}}
-                <table class="w-full">
-                    <thead class="bg-gray-50 dark:bg-gray-900 sticky top-0">
-                        <tr>
-                            <th scope="col" class="text-left p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Source</th>
-                            <th scope="col" class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Avg</th>
-                            <th scope="col" class="text-center p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Freq</th>
-                            <th scope="col" class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                        {{range .Insights.IncomePatterns}}
-                        <tr class="group hover:bg-positive-soft cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent" data-navigate-href="/explorer?search={{urlquery .Description}}&type=Income" tabindex="0" role="link" aria-label="Open {{.Description}} in Explorer">
-                            <td class="p-3">
-                                <div class="flex items-center gap-1">
-                                    <span class="text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="{{.Description}}">{{.Description}}</span>
-                                    <svg class="w-3 h-3 text-positive opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
-                                    </svg>
-                                </div>
-                                <div class="text-body-sm text-gray-500 dark:text-gray-400">{{.Occurrences}} occurrences</div>
-                            </td>
-                            <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .AvgAmount}}</td>
-                            <td class="p-3 text-center">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                                    {{if .IsRegular}}bg-positive-soft text-positive{{else}}bg-warning-soft text-warning{{end}}">
-                                    {{.Frequency}}
-                                </span>
-                            </td>
-                            <td class="p-3 text-sm text-right font-medium text-positive">{{formatMoney .TotalAmount}}</td>
-                        </tr>
-                        {{end}}
-                    </tbody>
-                </table>
-                {{else}}
-                <div class="p-8 text-center text-gray-600 dark:text-gray-400">
-                    <svg class="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    <p>No income patterns detected.</p>
-                    <p class="text-sm">Income transactions are needed to analyze patterns.</p>
-                </div>
-                {{end}}
-            </div>
-        </div>
-    </div>
-
-    <!-- Category Trends -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
-        <div class="p-4 border-b dark:border-gray-700">
-            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center">
-                <svg class="w-5 h-5 mr-2 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
-                </svg>
-                Category Spending Trends
-                <span class="ml-2 text-sm font-normal text-gray-600 dark:text-gray-400">(vs previous period)</span>
-            </h2>
-        </div>
-
-        <!-- Chart -->
-        <div id="chart-trends" class="chart-container p-4"
-             hx-get="/insights/trends/chart?start={{.StartDate}}&end={{.EndDate}}"
-             hx-trigger="load"
-             hx-swap="none">
-            <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
-                Loading chart...
-            </div>
-        </div>
-
-        <!-- Trends Table -->
-        {{if .Insights.CategoryTrends}}
-        <div class="border-t dark:border-gray-700">
-            <div class="overflow-x-auto">
-                <table id="category-trends-table" class="w-full">
-                    <thead class="bg-gray-50 dark:bg-gray-900">
-                        <tr>
-                            <th scope="col" class="text-left p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase"><button type="button" data-sort-fn="sortTrendsTable" data-sort="category" class="w-full flex items-center gap-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none rounded px-1 -mx-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">Category <span class="sort-icon" data-col="category"></span></button></th>
-                            <th scope="col" class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase"><button type="button" data-sort-fn="sortTrendsTable" data-sort="current" class="w-full flex items-center justify-end gap-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none rounded px-1 -mx-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">Current <span class="sort-icon" data-col="current"></span></button></th>
-                            <th scope="col" class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase"><button type="button" data-sort-fn="sortTrendsTable" data-sort="previous" class="w-full flex items-center justify-end gap-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none rounded px-1 -mx-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">Previous <span class="sort-icon" data-col="previous"></span></button></th>
-                            <th scope="col" class="text-right p-3 text-xs font-medium text-gray-600 dark:text-gray-400 uppercase"><button type="button" data-sort-fn="sortTrendsTable" data-sort="change" class="w-full flex items-center justify-end gap-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 select-none rounded px-1 -mx-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">Change <span class="sort-icon" data-col="change"></span></button></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                        {{range .Insights.CategoryTrends}}
-                        <tr class="group hover:bg-accent-soft cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent" data-navigate-href="/explorer?category={{urlquery .Category}}" data-category="{{.Category}}" data-current="{{.CurrentAmount}}" data-previous="{{.PreviousAmount}}" data-change="{{.ChangePercent}}" tabindex="0" role="link" aria-label="Open {{.Category}} category in Explorer">
-                            <td class="p-3 text-sm text-gray-800 dark:text-gray-200">
-                                <div class="flex items-center gap-1">
-                                    <span>{{.Category}}</span>
-                                    <svg class="w-3 h-3 text-accent opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
-                                    </svg>
-                                </div>
-                            </td>
-                            <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .CurrentAmount}}</td>
-                            <td class="p-3 text-sm text-right text-gray-600 dark:text-gray-400">{{formatMoney .PreviousAmount}}</td>
-                            <td class="p-3 text-sm text-right">
-                                <span class="inline-flex items-center
-                                    {{if eq .Direction "up"}}text-negative
-                                    {{else if eq .Direction "down"}}text-positive
-                                    {{else}}text-gray-600 dark:text-gray-400{{end}}">
-                                    {{if eq .Direction "up"}}
-                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path>
-                                    </svg>
-                                    {{else if eq .Direction "down"}}
-                                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
-                                    </svg>
-                                    {{end}}
-                                    <span class="num">{{if eq .Change.Kind "new"}}new{{else if eq .Change.Kind "none"}}—<span class="sr-only"> no change</span>{{else if eq .Change.Kind "dollar"}}{{if gt .Change.Amount 0.0}}+{{end}}{{formatMoney .Change.Amount}}{{else}}{{if gt .Change.Percent 0.0}}+{{end}}{{printf "%.1f" .Change.Percent}}%{{end}}</span>
-                                </span>
-                            </td>
-                        </tr>
-                        {{end}}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        {{end}}
-    </div>
-
-    <!-- Anomalies -->
-    {{template "anomalies-section" .}}
-
-    <!-- Price Creep -->
-    {{template "pricecreep-section" .}}
-
-    <!-- Spending Velocity Gauge -->
-    {{with .Insights.Velocity}}
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4 flex items-center">
-            <svg class="w-5 h-5 mr-2 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-            </svg>
-            Spending Velocity
-        </h2>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div class="text-center">
-                <p class="text-sm text-gray-600 dark:text-gray-400">Current Daily Avg</p>
-                <p class="text-3xl font-bold {{if lt .BurnRateChange 0.0}}text-positive{{else if gt .BurnRateChange 10.0}}text-negative{{else}}text-warning{{end}}">
-                    {{formatMoney .DailyAverage}}
-                </p>
-            </div>
-            <div class="text-center">
-                <p class="text-sm text-gray-600 dark:text-gray-400">Historical Daily Avg</p>
-                <p class="text-3xl font-bold text-gray-600 dark:text-gray-300">{{formatMoney .HistoricalDaily}}</p>
-            </div>
-            <div class="text-center">
-                <p class="text-sm text-gray-600 dark:text-gray-400">Month Projection</p>
-                <p class="text-3xl font-bold text-positive">{{formatMoney .MonthProjection}}</p>
-            </div>
-            <div class="text-center">
-                <p class="text-sm text-gray-600 dark:text-gray-400">Days Remaining</p>
-                <p class="text-3xl font-bold text-gray-800 dark:text-gray-100">{{.DaysRemaining}}</p>
-            </div>
-        </div>
-
-        <!-- Burn Rate Indicator -->
-        <div class="mt-6">
-            <div class="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
-                <span>Burn Rate vs Historical</span>
-                <span class="{{if lt .BurnRateChange 0.0}}text-positive{{else if gt .BurnRateChange 10.0}}text-negative{{else}}text-warning{{end}}">
-                    {{if gt .BurnRateChange 0.0}}+{{end}}{{printf "%.1f" .BurnRateChange}}%
-                </span>
-            </div>
-            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden">
-                {{$pct := .BurnRateChange}}
-                {{$width := 50.0}}
-                {{if gt $pct 0.0}}
-                    {{$width = 50.0}}
-                {{else}}
-                    {{$width = 50.0}}
-                {{end}}
-                <div class="h-4 rounded-full transition-all duration-500
-                    {{if lt $pct -10.0}}bg-positive-strong
-                    {{else if lt $pct 0.0}}bg-positive-strong
-                    {{else if lt $pct 10.0}}bg-warning-strong
-                    {{else if lt $pct 20.0}}bg-warning-strong
-                    {{else}}bg-negative-strong{{end}}"
-                    style="width: {{if lt $pct -50.0}}0{{else if gt $pct 50.0}}100{{else}}{{printf "%.0f" (add 50 $pct)}}{{end}}%">
-                </div>
-            </div>
-            <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
-                <span>-50% (Under)</span>
-                <span>Average</span>
-                <span>+50% (Over)</span>
-            </div>
-        </div>
-    </div>
+    {{if .Insights.OtherRecurring}}
+    <section><h2 class="text-lg font-semibold">Other recurring spending</h2>{{template "recurring-payments" (dict "RecurringPayments" .Insights.OtherRecurring)}}</section>
     {{end}}
+    {{end}}
+    <section id="insights-supporting" class="space-y-4" aria-labelledby="supporting-heading">
+        <h2 id="supporting-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100">Supporting charts and tables</h2>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Spending trends</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Compare the selected and prior periods by {{if .Investigation}}{{.Investigation.Grouping}}{{else}}category{{end}}. Exact values and changes are in the adjacent table.</p>
+            {{if .Insights.CategoryTrends}}
+            <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Spending trends chart">
+            <div id="chart-trends" class="chart-container min-w-[640px]" hx-get="/insights/trends/chart?start={{.StartDate}}&amp;end={{.EndDate}}" hx-trigger="load" hx-swap="none"><p class="text-sm text-gray-600 dark:text-gray-400">Loading chart…</p></div>
+            </div>
+            {{if .Period}}{{template "insights-trends-table" (dict "CategoryTrends" .Insights.CategoryTrends "Period" .Period "GroupIDs" .Investigation.GroupIDs)}}{{else}}{{template "category-trends" (dict "CategoryTrends" .Insights.CategoryTrends)}}{{end}}
+            {{else}}<p class="text-sm text-gray-700 dark:text-gray-300">Not enough history or category activity to show a comparison chart.</p>{{end}}
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Income sources</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Recorded income in the selected period.</p>
+            {{template "income-patterns" (dict "IncomePatterns" .Insights.IncomePatterns)}}
+        </div>
+        {{template "anomalies-section" .}}
+        {{template "pricecreep-section" .}}
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
+            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Spending pace</h3>
+            {{with .Insights.Velocity}}
+            <p class="text-sm text-gray-700 dark:text-gray-300">Selected-period daily average: <span class="num">{{formatMoney .DailyAverage}}</span>{{if and .Period .Period.HistoryAvailable}} · Prior-period daily average: <span class="num">{{formatMoney .HistoricalDaily}}</span>{{end}}</p>
+            {{end}}
+            {{template "shared/period-forecast" .}}
+        </div>
+    </section>
 </div>
-
 <script src="/static/js/insights.js" defer></script>
 {{end}}
-
 {{define "recurring-payments"}}
 <div class="overflow-y-auto max-h-96" tabindex="0" role="region" aria-label="Recurring payments">
     {{if .RecurringPayments}}
@@ -465,8 +194,10 @@
             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td class="p-3">
                     <div class="flex items-center gap-1">
-                        <span class="text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="{{.Description}}">{{if .MajorExpenseName}}{{.MajorExpenseName}}{{else}}{{.Description}}{{end}}</span>
+                        <span class="text-sm text-gray-800 dark:text-gray-200 truncate max-w-xs" title="{{.Description}}">{{.Description}}</span>
                     </div>
+                    {{if .MajorExpenseName}}<div class="text-body-sm text-gray-500 dark:text-gray-400">{{.MajorExpenseName}}</div>{{end}}
+                    {{if .Classification}}<div class="text-body-sm text-gray-500 dark:text-gray-400">{{.Classification}}: {{.ClassificationReason}}</div>{{end}}
                     <div class="text-body-sm text-gray-500 dark:text-gray-400">Next: {{formatDate .NextExpected}}</div>
                 </td>
                 <td class="p-3 text-sm text-right text-gray-800 dark:text-gray-200">{{formatMoney .Amount}}</td>
@@ -498,6 +229,7 @@
 {{end}}
 
 {{define "category-trends"}}
+{{template "shared/period-context" .}}
 <table id="category-trends-table" class="w-full">
     <thead class="bg-gray-50 dark:bg-gray-900">
         <tr>
@@ -523,22 +255,22 @@
 {{end}}
 
 {{define "spending-velocity"}}
+{{template "shared/period-context" .}}
 <div class="grid grid-cols-4 gap-6">
     <div class="text-center">
         <p class="text-sm text-gray-600 dark:text-gray-400">Current Daily Avg</p>
         <p class="text-3xl font-bold text-warning">{{formatMoney .Velocity.DailyAverage}}</p>
     </div>
     <div class="text-center">
-        <p class="text-sm text-gray-600 dark:text-gray-400">Historical Daily Avg</p>
-        <p class="text-3xl font-bold text-gray-600 dark:text-gray-300">{{formatMoney .Velocity.HistoricalDaily}}</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Prior Period Daily Avg</p>
+        {{template "shared/period-history" .Velocity}}
     </div>
     <div class="text-center">
-        <p class="text-sm text-gray-600 dark:text-gray-400">Month Projection</p>
-        <p class="text-3xl font-bold text-positive">{{formatMoney .Velocity.MonthProjection}}</p>
+        {{template "shared/period-forecast" .}}
     </div>
     <div class="text-center">
         <p class="text-sm text-gray-600 dark:text-gray-400">Days Remaining</p>
-        <p class="text-3xl font-bold text-gray-800 dark:text-gray-100">{{.Velocity.DaysRemaining}}</p>
+        {{template "shared/period-days-remaining" .Velocity}}
     </div>
 </div>
 {{end}}

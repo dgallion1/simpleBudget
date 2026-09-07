@@ -1,0 +1,230 @@
+- banner:
+  - navigation:
+    - link "simpleBudget":
+      - /url: /
+    - group "Money":
+      - text: Money
+      - link "Dashboard":
+        - /url: /dashboard
+      - link "Explorer":
+        - /url: /explorer
+      - link "Insights":
+        - /url: /insights
+      - link "Major Expenses":
+        - /url: /major-expenses
+    - group "Plan":
+      - text: Plan
+      - link "What-If":
+        - /url: /whatif
+    - group "Setup":
+      - text: Setup
+      - link "Accounts":
+        - /url: /accounts
+      - link "Transfers":
+        - /url: /transfers
+      - link "File Manager":
+        - /url: /filemanager
+    - button "Toggle dark mode":
+      - img
+- main:
+  - heading "Transfers" [level=1]
+  - paragraph:
+    - text: Money moving between your own accounts. Paired transfers have both legs loaded and linked; an
+    - emphasis: external
+    - text: leg’s counterparty CSV is not imported, so it carries no pair. Suspected pairs need your confirm or reject.
+  - status
+  - region "Monthly flow between institutions":
+    - heading "Monthly flow between institutions" [level=2]
+    - paragraph: "Largest flow: Demo Checking to Demo Credit Card moved $1852.97 from Demo Checking to Demo Credit Card in 2026-08."
+    - img "Bar chart of transfers between institutions by month. A data table with the same values follows.":
+      - img: Mar 2026 Apr 2026 May 2026 Jun 2026 Jul 2026 Aug 2026 0 500 1000 1500 2000 2500
+      - img: Demo Checking → Demo Health Checking Demo Checking → Demo Credit Card Transfers Between Institutions by Month Month Amount ($)
+      - img
+    - group: Show data table (same values as the chart)
+  - region "Transfer history (12)":
+    - heading "Transfer history (12)" [level=2]
+    - table "Paired and external transfers":
+      - caption: Paired and external transfers
+      - rowgroup:
+        - row "Date Description Institution Account Amount Status":
+          - columnheader "Date"
+          - columnheader "Description"
+          - columnheader "Institution"
+          - columnheader "Account"
+          - columnheader "Amount"
+          - columnheader "Status"
+      - rowgroup:
+        - row "2026-08-10 Demo Transfer Demo Checking Demo Checking -$700.00 Paired":
+          - cell "2026-08-10"
+          - cell "Demo Transfer"
+          - cell "Demo Checking"
+          - cell "Demo Checking"
+          - cell "-$700.00"
+          - cell "Paired"
+        - row "2026-08-11 Demo Transfer Demo Health Checking Demo Health Checking +$700.00 Paired":
+          - cell "2026-08-11"
+          - cell "Demo Transfer"
+          - cell "Demo Health Checking"
+          - cell "Demo Health Checking"
+          - cell "+$700.00"
+          - cell "Paired"
+        - row "2026-08-04 Credit Card Payment Demo Credit Card Demo Credit Card +$1,852.97 Paired":
+          - cell "2026-08-04"
+          - cell "Credit Card Payment"
+          - cell "Demo Credit Card"
+          - cell "Demo Credit Card"
+          - cell "+$1,852.97"
+          - cell "Paired"
+        - row "2026-08-05 Demo Credit Card Demo Checking Demo Checking -$1,852.97 Paired":
+          - cell "2026-08-05"
+          - cell "Demo Credit Card"
+          - cell "Demo Checking"
+          - cell "Demo Checking"
+          - cell "-$1,852.97"
+          - cell "Paired"
+        - row "2026-07-10 Demo Transfer Demo Checking Demo Checking -$700.00 Paired":
+          - cell "2026-07-10"
+          - cell "Demo Transfer"
+          - cell "Demo Checking"
+          - cell "Demo Checking"
+          - cell "-$700.00"
+          - cell "Paired"
+        - row "2026-07-11 Demo Transfer Demo Health Checking Demo Health Checking +$700.00 Paired":
+          - cell "2026-07-11"
+          - cell "Demo Transfer"
+          - cell "Demo Health Checking"
+          - cell "Demo Health Checking"
+          - cell "+$700.00"
+          - cell "Paired"
+        - row "2026-07-04 Credit Card Payment Demo Credit Card Demo Credit Card +$905.85 Paired":
+          - cell "2026-07-04"
+          - cell "Credit Card Payment"
+          - cell "Demo Credit Card"
+          - cell "Demo Credit Card"
+          - cell "+$905.85"
+          - cell "Paired"
+        - row "2026-07-05 Demo Credit Card Demo Checking Demo Checking -$905.85 Paired":
+          - cell "2026-07-05"
+          - cell "Demo Credit Card"
+          - cell "Demo Checking"
+          - cell "Demo Checking"
+          - cell "-$905.85"
+          - cell "Paired"
+        - row "2026-06-10 Demo Transfer Demo Checking Demo Checking -$700.00 Paired":
+          - cell "2026-06-10"
+          - cell "Demo Transfer"
+          - cell "Demo Checking"
+          - cell "Demo Checking"
+          - cell "-$700.00"
+          - cell "Paired"
+        - row "2026-06-11 Demo Transfer Demo Health Checking Demo Health Checking +$700.00 Paired":
+          - cell "2026-06-11"
+          - cell "Demo Transfer"
+          - cell "Demo Health Checking"
+          - cell "Demo Health Checking"
+          - cell "+$700.00"
+          - cell "Paired"
+        - row "2026-06-04 Credit Card Payment Demo Credit Card Demo Credit Card +$927.10 Paired":
+          - cell "2026-06-04"
+          - cell "Credit Card Payment"
+          - cell "Demo Credit Card"
+          - cell "Demo Credit Card"
+          - cell "+$927.10"
+          - cell "Paired"
+        - row "2026-06-05 Demo Credit Card Demo Checking Demo Checking -$927.10 Paired":
+          - cell "2026-06-05"
+          - cell "Demo Credit Card"
+          - cell "Demo Checking"
+          - cell "Demo Checking"
+          - cell "-$927.10"
+          - cell "Paired"
+        - row "2026-05-10 Demo Transfer Demo Checking Demo Checking -$700.00 Paired":
+          - cell "2026-05-10"
+          - cell "Demo Transfer"
+          - cell "Demo Checking"
+          - cell "Demo Checking"
+          - cell "-$700.00"
+          - cell "Paired"
+        - row "2026-05-11 Demo Transfer Demo Health Checking Demo Health Checking +$700.00 Paired":
+          - cell "2026-05-11"
+          - cell "Demo Transfer"
+          - cell "Demo Health Checking"
+          - cell "Demo Health Checking"
+          - cell "+$700.00"
+          - cell "Paired"
+        - row "2026-05-04 Credit Card Payment Demo Credit Card Demo Credit Card +$986.81 Paired":
+          - cell "2026-05-04"
+          - cell "Credit Card Payment"
+          - cell "Demo Credit Card"
+          - cell "Demo Credit Card"
+          - cell "+$986.81"
+          - cell "Paired"
+        - row "2026-05-05 Demo Credit Card Demo Checking Demo Checking -$986.81 Paired":
+          - cell "2026-05-05"
+          - cell "Demo Credit Card"
+          - cell "Demo Checking"
+          - cell "Demo Checking"
+          - cell "-$986.81"
+          - cell "Paired"
+        - row "2026-04-10 Demo Transfer Demo Checking Demo Checking -$700.00 Paired":
+          - cell "2026-04-10"
+          - cell "Demo Transfer"
+          - cell "Demo Checking"
+          - cell "Demo Checking"
+          - cell "-$700.00"
+          - cell "Paired"
+        - row "2026-04-11 Demo Transfer Demo Health Checking Demo Health Checking +$700.00 Paired":
+          - cell "2026-04-11"
+          - cell "Demo Transfer"
+          - cell "Demo Health Checking"
+          - cell "Demo Health Checking"
+          - cell "+$700.00"
+          - cell "Paired"
+        - row "2026-04-04 Credit Card Payment Demo Credit Card Demo Credit Card +$970.68 Paired":
+          - cell "2026-04-04"
+          - cell "Credit Card Payment"
+          - cell "Demo Credit Card"
+          - cell "Demo Credit Card"
+          - cell "+$970.68"
+          - cell "Paired"
+        - row "2026-04-05 Demo Credit Card Demo Checking Demo Checking -$970.68 Paired":
+          - cell "2026-04-05"
+          - cell "Demo Credit Card"
+          - cell "Demo Checking"
+          - cell "Demo Checking"
+          - cell "-$970.68"
+          - cell "Paired"
+        - row "2026-03-10 Demo Transfer Demo Checking Demo Checking -$700.00 Paired":
+          - cell "2026-03-10"
+          - cell "Demo Transfer"
+          - cell "Demo Checking"
+          - cell "Demo Checking"
+          - cell "-$700.00"
+          - cell "Paired"
+        - row "2026-03-11 Demo Transfer Demo Health Checking Demo Health Checking +$700.00 Paired":
+          - cell "2026-03-11"
+          - cell "Demo Transfer"
+          - cell "Demo Health Checking"
+          - cell "Demo Health Checking"
+          - cell "+$700.00"
+          - cell "Paired"
+        - row "2026-03-04 Credit Card Payment Demo Credit Card Demo Credit Card +$1,846.27 Paired":
+          - cell "2026-03-04"
+          - cell "Credit Card Payment"
+          - cell "Demo Credit Card"
+          - cell "Demo Credit Card"
+          - cell "+$1,846.27"
+          - cell "Paired"
+        - row "2026-03-05 Demo Credit Card Demo Checking Demo Checking -$1,846.27 Paired":
+          - cell "2026-03-05"
+          - cell "Demo Credit Card"
+          - cell "Demo Checking"
+          - cell "Demo Checking"
+          - cell "-$1,846.27"
+          - cell "Paired"
+  - region "Suspected pairs":
+    - heading "Suspected pairs" [level=2]
+    - status
+    - paragraph: No suspected transfer pairs awaiting review.
+- contentinfo: simpleBudget © 2026
+- img

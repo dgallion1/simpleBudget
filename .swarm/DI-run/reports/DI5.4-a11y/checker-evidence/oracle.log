@@ -1,0 +1,97 @@
+{"route":"/dashboard","dark":false,"width":390,"checks":21,"failures":0}
+{"route":"/explorer","dark":false,"width":390,"checks":13,"failures":0}
+{"route":"/insights","dark":false,"width":390,"checks":13,"failures":0}
+{"route":"/major-expenses","dark":false,"width":390,"checks":13,"failures":0}
+{"route":"/whatif","dark":false,"width":390,"checks":13,"failures":0}
+{"route":"/accounts","dark":false,"width":390,"checks":13,"failures":0}
+{"route":"/transfers","dark":false,"width":390,"checks":13,"failures":0}
+{"route":"/filemanager","dark":false,"width":390,"checks":13,"failures":0}
+{"route":"/duplicates","dark":false,"width":390,"checks":13,"failures":0}
+{"route":"/dashboard","dark":false,"width":768,"checks":21,"failures":0}
+{"route":"/explorer","dark":false,"width":768,"checks":13,"failures":0}
+{"route":"/insights","dark":false,"width":768,"checks":13,"failures":0}
+{"route":"/major-expenses","dark":false,"width":768,"checks":13,"failures":0}
+{"route":"/whatif","dark":false,"width":768,"checks":13,"failures":0}
+{"route":"/accounts","dark":false,"width":768,"checks":13,"failures":0}
+{"route":"/transfers","dark":false,"width":768,"checks":13,"failures":0}
+{"route":"/filemanager","dark":false,"width":768,"checks":13,"failures":0}
+{"route":"/duplicates","dark":false,"width":768,"checks":13,"failures":0}
+{"route":"/dashboard","dark":false,"width":1440,"checks":21,"failures":0}
+{"route":"/explorer","dark":false,"width":1440,"checks":13,"failures":0}
+{"route":"/insights","dark":false,"width":1440,"checks":13,"failures":0}
+{"route":"/major-expenses","dark":false,"width":1440,"checks":13,"failures":0}
+{"route":"/whatif","dark":false,"width":1440,"checks":13,"failures":0}
+{"route":"/accounts","dark":false,"width":1440,"checks":13,"failures":0}
+{"route":"/transfers","dark":false,"width":1440,"checks":13,"failures":0}
+{"route":"/filemanager","dark":false,"width":1440,"checks":13,"failures":0}
+{"route":"/duplicates","dark":false,"width":1440,"checks":13,"failures":0}
+{"route":"/dashboard","dark":true,"width":390,"checks":21,"failures":0}
+{"route":"/explorer","dark":true,"width":390,"checks":13,"failures":0}
+{"route":"/insights","dark":true,"width":390,"checks":13,"failures":0}
+{"route":"/major-expenses","dark":true,"width":390,"checks":13,"failures":0}
+{"route":"/whatif","dark":true,"width":390,"checks":13,"failures":0}
+{"route":"/accounts","dark":true,"width":390,"checks":13,"failures":0}
+{"route":"/transfers","dark":true,"width":390,"checks":13,"failures":0}
+{"route":"/filemanager","dark":true,"width":390,"checks":13,"failures":0}
+{"route":"/duplicates","dark":true,"width":390,"checks":13,"failures":0}
+{"route":"/dashboard","dark":true,"width":768,"checks":21,"failures":0}
+{"route":"/explorer","dark":true,"width":768,"checks":13,"failures":0}
+{"route":"/insights","dark":true,"width":768,"checks":13,"failures":0}
+{"route":"/major-expenses","dark":true,"width":768,"checks":13,"failures":0}
+{"route":"/whatif","dark":true,"width":768,"checks":13,"failures":0}
+{"route":"/accounts","dark":true,"width":768,"checks":13,"failures":0}
+{"route":"/transfers","dark":true,"width":768,"checks":13,"failures":0}
+{"route":"/filemanager","dark":true,"width":768,"checks":13,"failures":0}
+{"route":"/duplicates","dark":true,"width":768,"checks":13,"failures":0}
+{"route":"/dashboard","dark":true,"width":1440,"checks":21,"failures":0}
+{"route":"/explorer","dark":true,"width":1440,"checks":13,"failures":0}
+{"route":"/insights","dark":true,"width":1440,"checks":13,"failures":0}
+{"route":"/major-expenses","dark":true,"width":1440,"checks":13,"failures":0}
+{"route":"/whatif","dark":true,"width":1440,"checks":13,"failures":0}
+{"route":"/accounts","dark":true,"width":1440,"checks":13,"failures":0}
+{"route":"/transfers","dark":true,"width":1440,"checks":13,"failures":0}
+{"route":"/filemanager","dark":true,"width":1440,"checks":13,"failures":0}
+{"route":"/duplicates","dark":true,"width":1440,"checks":13,"failures":0}
+✔ clean tab establishes baseline, reloads once, keeps query/hash; new tab does not loop (5.104442ms)
+✔ hidden signals coalesce until visibility returns (0.965186ms)
+✔ dirty edits require explicit confirmation, refusal preserves edits without dialog spam (1.993069ms)
+✔ clean HTMX requests and native submissions defer, including overlapping requests (1.535208ms)
+✔ failure and restart rebaseline safely; focus and interval do not overlap (0.965626ms)
+✔ dismissal removes visible and announced notice until a new signal (0.91459ms)
+✔ new epoch clears a pending dirty notice and rebaselines below the old revision (0.864626ms)
+✔ notice precedes main content without stealing focus; displaced input is kept visible (0.922896ms)
+✔ HTMX replacement restores the same pending region/status once; partial swaps do not reannounce (1.064452ms)
+✔ no-main fallback precedes body content and does not scroll an already visible control (0.863444ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 51.712792
+{"dark":false,"width":390,"hits":[],"tabs":46}
+{"dark":false,"width":768,"hits":[],"tabs":46}
+{"dark":false,"width":1440,"hits":[],"tabs":54}
+{"dark":true,"width":390,"hits":[],"tabs":46}
+{"dark":true,"width":768,"hits":[],"tabs":46}
+{"dark":true,"width":1440,"hits":[],"tabs":54}
+{"dark":false,"width":390,"hasMain":true,"scroll":110}
+{"dark":false,"width":390,"hasMain":false,"scroll":110}
+{"dark":false,"width":768,"hasMain":true,"scroll":62}
+{"dark":false,"width":768,"hasMain":false,"scroll":62}
+{"dark":false,"width":1440,"hasMain":true,"scroll":62}
+{"dark":false,"width":1440,"hasMain":false,"scroll":62}
+{"dark":true,"width":390,"hasMain":true,"scroll":110}
+{"dark":true,"width":390,"hasMain":false,"scroll":110}
+{"dark":true,"width":768,"hasMain":true,"scroll":62}
+{"dark":true,"width":768,"hasMain":false,"scroll":62}
+{"dark":true,"width":1440,"hasMain":true,"scroll":62}
+{"dark":true,"width":1440,"hasMain":false,"scroll":62}
+{"dark":false,"width":390,"loads":4,"tabs":32,"obstructions":[],"refusal":true,"dismissal":true,"restart":true,"acceptance":true,"cleanReload":true}
+{"dark":false,"width":768,"loads":4,"tabs":32,"obstructions":[],"refusal":true,"dismissal":true,"restart":true,"acceptance":true,"cleanReload":true}
+{"dark":false,"width":1440,"loads":4,"tabs":40,"obstructions":[],"refusal":true,"dismissal":true,"restart":true,"acceptance":true,"cleanReload":true}
+{"dark":true,"width":390,"loads":4,"tabs":32,"obstructions":[],"refusal":true,"dismissal":true,"restart":true,"acceptance":true,"cleanReload":true}
+{"dark":true,"width":768,"loads":4,"tabs":32,"obstructions":[],"refusal":true,"dismissal":true,"restart":true,"acceptance":true,"cleanReload":true}
+{"dark":true,"width":1440,"loads":4,"tabs":40,"obstructions":[],"refusal":true,"dismissal":true,"restart":true,"acceptance":true,"cleanReload":true}
+ORACLE PASS

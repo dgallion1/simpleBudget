@@ -1,0 +1,68 @@
+{"assertions":65,"failures":[{"name":"focused fallback {\"initial\":null,\"removal\":\"dismiss\",\"cycle\":0}","ok":false,"main":false,"tabindex":null,"notice":false,"status":false,"value":"unsaved"},{"name":"focused fallback {\"initial\":null,\"removal\":\"dismiss\",\"cycle\":1}","ok":false,"main":false,"tabindex":null,"notice":false,"status":false,"value":"unsaved"},{"name":"focused fallback {\"initial\":null,\"removal\":\"epoch\",\"cycle\":0}","ok":false,"main":false,"tabindex":null,"notice":false,"status":false,"value":"unsaved"},{"name":"focused fallback {\"initial\":null,\"removal\":\"epoch\",\"cycle\":1}","ok":false,"main":false,"tabindex":null,"notice":false,"status":false,"value":"unsaved"},{"name":"existing tabindex untouched during focus {\"initial\":\"0\",\"removal\":\"dismiss\"}","ok":false},{"name":"existing tabindex untouched during focus {\"initial\":\"0\",\"removal\":\"epoch\"}","ok":false},{"name":"existing tabindex untouched during focus {\"initial\":\"3\",\"removal\":\"dismiss\"}","ok":false},{"name":"existing tabindex untouched during focus {\"initial\":\"3\",\"removal\":\"epoch\"}","ok":false}]}
+AssertionError [ERR_ASSERTION]: fallback lifecycle failures
++ actual - expected
+
++ [
++   {
++     main: false,
++     name: 'focused fallback {"initial":null,"removal":"dismiss","cycle":0}',
++     notice: false,
++     ok: false,
++     status: false,
++     tabindex: null,
++     value: 'unsaved'
++   },
++   {
++     main: false,
++     name: 'focused fallback {"initial":null,"removal":"dismiss","cycle":1}',
++     notice: false,
++     ok: false,
++     status: false,
++     tabindex: null,
++     value: 'unsaved'
++   },
++   {
++     main: false,
++     name: 'focused fallback {"initial":null,"removal":"epoch","cycle":0}',
++     notice: false,
++     ok: false,
++     status: false,
++     tabindex: null,
++     value: 'unsaved'
++   },
++   {
++     main: false,
++     name: 'focused fallback {"initial":null,"removal":"epoch","cycle":1}',
++     notice: false,
++     ok: false,
++     status: false,
++     tabindex: null,
++     value: 'unsaved'
++   },
++   {
++     name: 'existing tabindex untouched during focus {"initial":"0","removal":"dismiss"}',
++     ok: false
++   },
++   {
++     name: 'existing tabindex untouched during focus {"initial":"0","removal":"epoch"}',
++     ok: false
++   },
++   {
++     name: 'existing tabindex untouched during focus {"initial":"3","removal":"dismiss"}',
++     ok: false
++   },
++   {
++     name: 'existing tabindex untouched during focus {"initial":"3","removal":"epoch"}',
++     ok: false
++   }
++ ]
+- []
+
+    at /tmp/DI5-4-a11y.xokOQB/.swarm/DI-run/reports/DI5-fallback-lifecycle.cjs:71:9 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

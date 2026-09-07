@@ -1,0 +1,33 @@
+=== RUN   TestCheckerDI4RecurringLimitWording
+2026/09/06 21:42:42 Templates loaded successfully: 65 files
+2026/09/06 21:42:42 Found 1 CSV files in /tmp/TestCheckerDI4RecurringLimitWording2415903057/001
+2026/09/06 21:42:42 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/06 21:42:42 66 transactions in 1 files are not assigned to any account
+2026/09/06 21:42:42 Total transactions after processing: 66
+=== RUN   TestCheckerDI4RecurringLimitWording/full
+2026/09/06 21:42:42 Found 1 CSV files in /tmp/TestCheckerDI4RecurringLimitWording2415903057/001
+2026/09/06 21:42:42 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/06 21:42:42 66 transactions in 1 files are not assigned to any account
+2026/09/06 21:42:42 Total transactions after processing: 66
+2026/09/06 21:42:42 Templates loaded successfully: 65 files
+    recurring_scope_di4_test.go:79: real detector=22; rendered retained rows=22; checked all 22 merchant names
+=== RUN   TestCheckerDI4RecurringLimitWording/HX
+2026/09/06 21:42:42 Found 1 CSV files in /tmp/TestCheckerDI4RecurringLimitWording2415903057/001
+2026/09/06 21:42:42 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/06 21:42:42 66 transactions in 1 files are not assigned to any account
+2026/09/06 21:42:42 Total transactions after processing: 66
+2026/09/06 21:42:42 Templates loaded successfully: 65 files
+    recurring_scope_di4_test.go:79: real detector=22; rendered retained rows=22; checked all 22 merchant names
+=== RUN   TestCheckerDI4RecurringLimitWording/standalone
+2026/09/06 21:42:42 Found 1 CSV files in /tmp/TestCheckerDI4RecurringLimitWording2415903057/001
+2026/09/06 21:42:42 Loaded 66 transactions from test.csv (unassigned: no account matches this file)
+2026/09/06 21:42:42 66 transactions in 1 files are not assigned to any account
+2026/09/06 21:42:42 Total transactions after processing: 66
+2026/09/06 21:42:42 Templates loaded successfully: 65 files
+    recurring_scope_di4_test.go:79: real detector=22; rendered retained rows=22; checked all 22 merchant names
+--- PASS: TestCheckerDI4RecurringLimitWording (0.07s)
+    --- PASS: TestCheckerDI4RecurringLimitWording/full (0.02s)
+    --- PASS: TestCheckerDI4RecurringLimitWording/HX (0.02s)
+    --- PASS: TestCheckerDI4RecurringLimitWording/standalone (0.01s)
+PASS
+ok  	budget2/internal/handlers/insights	0.076s

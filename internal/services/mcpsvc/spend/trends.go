@@ -43,61 +43,24 @@ type incomePatternRow struct {
 	TotalAmount float64 `json:"total_amount"`
 }
 
-// velocityRow is a window-scoped spending-pace summary derived from
-// models.SpendingVelocity. It deliberately omits MonthProjection and
-// DaysRemaining: both are computed by insights.SpendingVelocity against the
-// real-world CURRENT calendar month (time.Now()), which has no relationship
-// to this tool's requested window -- the default window is the last FULL
-// past month in the ledger, which by construction is never the current
-// month, so a "days remaining this month" / "projected month total" pair
-// would silently describe a different month than the one being reported on,
-// with no way for a caller to detect it. daily_average and burn_rate_change
-// stay, but see DailyAverage's own doc below: it is NOT simply window spend
-// over the window's calendar length, and is not as "honest about the
-// SELECTED window" as its name suggests.
+// velocityRow is an explicit selected/prior calendar-day pace summary.
+// Unsupported history is omitted, not represented as a measured zero.
 type velocityRow struct {
-	// DailyAverage is insights.SpendingVelocity's DailyAverage, UNCHANGED --
-	// see Finding 3 in the Phase 2 review. It is NOT window spend divided by
-	// the window's calendar length (end - start); it is window spend
-	// divided by the number of days BETWEEN THE EARLIEST AND LATEST
-	// TRANSACTION PRESENT IN THE WINDOW (which may be an income row, not
-	// just an outflow), a span that is shorter than the requested window
-	// whenever the window has gaps -- e.g. a 31-day window whose
-	// transactions cluster on the 10th-12th divides by 3, not 31, inflating
-	// this figure roughly tenfold. Do not multiply it by the window's
-	// length to project a total; use MonthProjection-style math elsewhere
-	// if that's needed. When the window has zero outflows, this is 0.
-	DailyAverage float64 `json:"daily_average"`
-	// HistoricalDaily is the same computation as DailyAverage (see its doc
-	// above) but over the WHOLE active ledger (not the selected window) --
-	// the baseline burn_rate_change compares the window against. It shares
-	// DailyAverage's same span-vs-length caveat over the ledger's own
-	// transaction dates. When the selected window has zero outflows,
-	// SpendingVelocity returns a fully zeroed struct, so this reads as 0
-	// too -- even when the ledger has years of spending history; that zero
-	// means "the window was empty," not "there is no history."
-	HistoricalDaily float64 `json:"historical_daily"`
-	// BurnRateChange is the percent difference between DailyAverage and
-	// HistoricalDaily: (window - history) / |history| * 100 when history is
-	// non-zero, so the sign always tracks the sign of the change even when
-	// HistoricalDaily is negative (a refund-dominant ledger); when history
-	// is exactly zero it is +100 / -100 / 0 by the sign of the change
-	// (ruling CB8-2026-09-03a). Positive means the selected window is
-	// spending faster than the ledger's own history.
-	// It inherits DailyAverage's inflation risk, since both inputs share
-	// the same span-vs-length caveat.
-	BurnRateChange float64 `json:"burn_rate_change"`
+	DailyAverage    float64  `json:"daily_average"`
+	HistoricalDaily *float64 `json:"historical_daily,omitempty"`
+	BurnRateChange  *float64 `json:"burn_rate_change,omitempty"`
 }
 
 type trendsOutput struct {
-	Start              string             `json:"start"`
-	End                string             `json:"end"`
-	PreviousStart      string             `json:"previous_start"`
-	PreviousEnd        string             `json:"previous_end"`
-	CategoryTrends     []categoryTrendRow `json:"category_trends"`
-	MajorExpenseTrends []categoryTrendRow `json:"major_expense_trends,omitempty"`
-	IncomePatterns     []incomePatternRow `json:"income_patterns"`
-	Velocity           velocityRow        `json:"velocity"`
+	Period             models.PeriodContext `json:"period"`
+	Start              string               `json:"start"`
+	End                string               `json:"end"`
+	PreviousStart      string               `json:"previous_start"`
+	PreviousEnd        string               `json:"previous_end"`
+	CategoryTrends     []categoryTrendRow   `json:"category_trends"`
+	MajorExpenseTrends []categoryTrendRow   `json:"major_expense_trends,omitempty"`
+	IncomePatterns     []incomePatternRow   `json:"income_patterns"`
+	Velocity           velocityRow          `json:"velocity"`
 }
 
 // categoryTrendRows converts CategoryTrends'/MajorExpenseTrends' shared
@@ -134,16 +97,15 @@ func incomePatternRows(patterns []models.IncomePattern) []incomePatternRow {
 	return rows
 }
 
-// velocityRowFrom converts SpendingVelocity's *models.SpendingVelocity into
-// a row, rounding dollar figures and dropping MonthProjection/DaysRemaining
-// (see velocityRow's doc comment for why). v is never nil (SpendingVelocity
-// always returns a pointer, possibly to a zero value).
+// velocityRowFrom keeps explicit history availability from the shared producer.
 func velocityRowFrom(v *models.SpendingVelocity) velocityRow {
-	return velocityRow{
-		DailyAverage:    round2(v.DailyAverage),
-		HistoricalDaily: round2(v.HistoricalDaily),
-		BurnRateChange:  round2(v.BurnRateChange),
+	row := velocityRow{DailyAverage: round2(v.DailyAverage)}
+	if v.Period == nil || v.Period.HistoryAvailable {
+		history, change := round2(v.HistoricalDaily), round2(v.BurnRateChange)
+		row.HistoricalDaily = &history
+		row.BurnRateChange = &change
 	}
+	return row
 }
 
 // daysInMonth returns the number of days in the given calendar month.
@@ -176,7 +138,7 @@ func lastFullMonth(maxDate time.Time) (start, end time.Time) {
 // get_recurring's annotateMajorExpenses and the handler's own
 // annotateRecurringWithMajorExpense, both of which likewise proceed on a
 // pins-load failure as long as major-expense definitions loaded.
-func (d Deps) majorExpenseTrendRows(ts *models.TransactionSet, start, end time.Time) []categoryTrendRow {
+func (d Deps) majorExpenseTrendRows(ts *models.TransactionSet, period models.PeriodContext) []categoryTrendRow {
 	if d.MajorExpenses == nil {
 		return nil
 	}
@@ -185,75 +147,30 @@ func (d Deps) majorExpenseTrendRows(ts *models.TransactionSet, start, end time.T
 		return nil
 	}
 	pins, _ := d.MajorExpenses.LoadTransactionPins()
-	return categoryTrendRows(insights.MajorExpenseTrends(ts, defs, pins, start, end))
+	return categoryTrendRows(insights.MajorExpenseTrendsForPeriod(ts, defs, pins, period))
 }
 
 // registerTrends adds get_trends to s.
 func registerTrends(s *mcp.Server, deps Deps) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "get_trends",
-		Description: "Category spending trends, income patterns, and spending velocity (burn rate) over an " +
-			"optional date window (default: the last full calendar month present in the ledger; start_date and " +
-			"end_date, whether given or defaulted, must resolve to start <= end or the call is a tool error). " +
-			"category_trends and major_expense_trends compare the selected window's spending against the " +
-			"IMMEDIATELY PRECEDING window of equal length (echoed back as previous_start/previous_end) -- " +
-			"NOT a long-run average -- so a category can show as \"up\" or \"down\" relative to just the one " +
-			"prior period, which may itself have been unusual. Within each row, category_trends' current_amount " +
-			"and previous_amount are POSITIVE dollar figures; major_expense_trends' current_amount and " +
-			"previous_amount are SIGNED instead -- a refund-dominant major-expense period (refunds outweigh " +
-			"purchases) nets NEGATIVE, meaning a credit, not a debt. change_amount (current_amount - " +
-			"previous_amount) and change_percent are SIGNED for both -- negative means spending FELL versus " +
-			"the prior window, positive means it rose; do not read either as a magnitude. change_percent, " +
-			"change_amount, and direction all derive from the SAME rounded (current_amount, previous_amount) " +
-			"pair -- change_percent uses a zero-baseline convention when previous_amount is 0: +100 when " +
-			"current_amount is positive, -100 when current_amount is negative, 0 when current_amount is also " +
-			"0 (a true percent against a zero baseline is undefined). The web UI never shows that raw " +
-			"change_percent figure directly; instead it shows one of four things, and change_amount is the " +
-			"EXACT SAME dollar figure the UI's own dollar delta shows (both are the rounded current_amount " +
-			"minus the rounded previous_amount) whenever the UI is showing a dollar figure at all: \"new\" " +
-			"when previous_amount is 0 and current_amount is positive (no prior baseline to compare against); " +
-			"\"—\" (\"no change\") when previous_amount and current_amount are both 0 (true zero activity in " +
-			"both windows, not float noise -- a category whose signed transactions cancel out, e.g. " +
-			"0.10+0.20-0.30, rounds to exactly $0.00 before this decision is made); a signed dollar delta " +
-			"(change_amount itself) when previous_amount is 0 and current_amount is negative (a lone refund " +
-			"with no prior baseline) OR whenever the absolute value of previous_amount is under $100 (a " +
-			"percent off a tiny baseline is technically correct but misleading, e.g. $30 -> $6,931 would read " +
-			"as \"+23004.0%\"); and a percent (change_percent, one decimal) in every other case. direction " +
-			"(\"up\"/\"down\"/\"stable\", the same value behind the web UI's arrow/color) follows change_percent " +
-			"with the same +-5 band as before; a \"no change\" (\"—\") row is always stable. category_trends, " +
-			"major_expense_trends, and income_patterns are each SILENTLY CAPPED and will not list every category/expense/income source " +
-			"when the household has more than the cap: category_trends and major_expense_trends each keep only " +
-			"the 10 rows with the largest |change_amount| (biggest movers, not biggest spenders -- a large, " +
-			"stable category can be dropped in favor of a small one that moved a lot), and income_patterns " +
-			"keeps only the 10 rows with the largest total_amount. A household with more than 10 categories, " +
-			"major expenses, or income sources will have some silently missing from these lists -- there is no " +
-			"count/total field here to detect this against, unlike search_transactions' total or " +
-			"get_recurring's 20-row cap. major_expense_trends groups outflows by the " +
-			"user's declared major expenses (via pin or keyword/amount match) instead of raw category, " +
-			"dropping unmatched transactions; it is OMITTED from the response entirely (not present, not an " +
-			"empty list) when no major-expense source is configured, its definitions fail to load, OR no " +
-			"transaction in either window matched a declared major expense -- omission is not evidence the " +
-			"user has none declared. income_patterns detects recurring income sources (paycheck, freelance, " +
-			"etc.) over the WHOLE ledger, not just the selected window -- a source needs at least 2 " +
-			"occurrences to appear at all, so a single-window slice would chronically miss regular income " +
-			"whose next occurrence falls outside it. velocity is a PACE summary, not a forecast: " +
-			"daily_average is NOT simply window spend divided by the window's calendar length -- it is spend " +
-			"within the selected window divided by the number of days BETWEEN THE WINDOW'S OWN EARLIEST AND " +
-			"LATEST TRANSACTION (which may be income rows, not just outflows), so a window whose transactions " +
-			"cluster in a few days -- leaving gaps elsewhere in the window -- reports a daily_average inflated " +
-			"well above the window's true per-calendar-day pace; do not multiply it by the window's length to " +
-			"project a total. historical_daily is computed the same way but over the WHOLE ledger, independent " +
-			"of the window, as a baseline -- and burn_rate_change, being the percent difference between the " +
-			"two, inherits daily_average's inflation risk. When the selected window has no outflows at all, the " +
-			"entire velocity block reads as zero -- including historical_daily -- even if the ledger has years " +
-			"of spending history; a zero historical_daily in that case means \"this window was empty,\" not " +
-			"\"this household has no spending history.\" There is no month-remaining projection field: " +
-			"the tool's default window is the last " +
-			"FULL past month, never the current one, so a projection tied to today's calendar would " +
-			"silently describe a different month than the one being reported on. Suppressed transactions " +
-			"(rows the user has already marked as a resolved duplicate) are excluded before analysis, " +
-			"matching every other spend tool. income_patterns amounts are positive as recorded (income is a " +
-			"positive amount in the ledger).",
+		Description: "Category and declared major-expense spending comparisons over inclusive selected dates. " +
+			"Default dates are the last full calendar month present in the ledger. Completed calendar months " +
+			"compare with the prior calendar month; current month-to-date compares with the prior month through " +
+			"the same day, clamped to its final day; other ranges compare with the preceding equal number of " +
+			"calendar days. period and previous_start/previous_end expose the actual bounds and any clamp. " +
+			"History bounds do not prove import completeness. When period.history_available is false, comparisons " +
+			"are unavailable, trend rows are empty, and velocity omits historical_daily and burn_rate_change. " +
+			"All comparison amounts are signed net outflow spending: refunds reduce spending. Rows use one " +
+			"rounded ChangeCell calculation; negative change means spending fell. Categories and major expenses " +
+			"are uncapped, sorted by absolute change then name. Major expenses use pins/keyword matching and " +
+			"exclude unmatched transactions; the block is omitted when definitions are unavailable or no rows match. " +
+			"Income patterns retain their whole-active-ledger detection and top-10 total-amount cap. " +
+			"Velocity divides signed spending by selected/prior calendar lengths, excluding the selected window " +
+			"from its prior baseline. Period forecast availability/reason is explicit; a forecast requires current " +
+			"month-start through today selection, at least seven elapsed days, and current-month data no more " +
+			"than seven calendar days old. It estimates current-month net spending / elapsed days * month days. " +
+			"Suppressed transactions are excluded; no live data is modified.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in trendsInput) (res *mcp.CallToolResult, out trendsOutput, err error) {
 		defer recoverToError("get_trends", &err)
 
@@ -302,25 +219,23 @@ func registerTrends(s *mcp.Server, deps Deps) {
 				"end_date %s is before start_date %s", to.Format("2006-01-02"), from.Format("2006-01-02"))
 		}
 
-		// Mirrors CategoryTrends'/MajorExpenseTrends' own internal previous-
-		// window math exactly, so the echoed previous_start/previous_end
-		// truthfully describe what they compared against.
-		duration := to.Sub(*from)
-		prevStart := from.Add(-duration - 24*time.Hour)
-		prevEnd := from.Add(-24 * time.Hour)
-
-		windowed := ts.FilterByDateRange(*from, *to)
-
-		out = trendsOutput{
-			Start:              from.Format("2006-01-02"),
-			End:                to.Format("2006-01-02"),
-			PreviousStart:      prevStart.Format("2006-01-02"),
-			PreviousEnd:        prevEnd.Format("2006-01-02"),
-			CategoryTrends:     categoryTrendRows(insights.CategoryTrends(ts, *from, *to)),
-			MajorExpenseTrends: deps.majorExpenseTrendRows(ts, *from, *to),
-			IncomePatterns:     incomePatternRows(insights.IncomePatterns(ts)),
-			Velocity:           velocityRowFrom(insights.SpendingVelocity(windowed, ts)),
-		}
+		out = trendsForWindow(deps, ts, *from, *to, time.Now())
 		return nil, out, nil
 	})
+}
+
+// trendsForWindow gives tests and all tool fields one explicitly injected clock.
+func trendsForWindow(deps Deps, ts *models.TransactionSet, start, end, now time.Time) trendsOutput {
+	period := insights.BuildPeriodContext(ts, start, end, now)
+	return trendsOutput{
+		Period:             period,
+		Start:              period.SelectedStart.Format("2006-01-02"),
+		End:                period.SelectedEnd.Format("2006-01-02"),
+		PreviousStart:      period.PreviousStart.Format("2006-01-02"),
+		PreviousEnd:        period.PreviousEnd.Format("2006-01-02"),
+		CategoryTrends:     categoryTrendRows(insights.CategoryTrendsForPeriod(ts, period)),
+		MajorExpenseTrends: deps.majorExpenseTrendRows(ts, period),
+		IncomePatterns:     incomePatternRows(insights.IncomePatterns(ts.Active())),
+		Velocity:           velocityRowFrom(insights.SpendingVelocityForPeriod(ts, period)),
+	}
 }

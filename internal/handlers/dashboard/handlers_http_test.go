@@ -1886,11 +1886,11 @@ func TestDashboardKPIs_LivingSparkline_HasTargetAttribute(t *testing.T) {
 	}
 	body := rec.Body.String()
 
-	if !strings.Contains(body, `id="sparkline-monthly"`) {
-		t.Errorf("response missing sparkline-monthly container")
+	if !strings.Contains(body, `data-kpi-detail="living"`) {
+		t.Errorf("response missing living monthly details")
 	}
-	if !strings.Contains(body, `data-target="2000"`) {
-		t.Errorf("sparkline-monthly missing data-target=\"2000\"; body excerpt: %s", excerptAround(body, "sparkline-monthly", 200))
+	if !strings.Contains(body, `Target <span class="num">$2,000.00</span>/mo`) {
+		t.Error("secondary living detail missing $2,000 monthly target")
 	}
 }
 
@@ -1924,11 +1924,12 @@ func TestDashboardKPIs_BudgetSparkline_BalanceMode(t *testing.T) {
 	}
 	body := rec.Body.String()
 
-	if !strings.Contains(body, `id="sparkline-budget"`) {
-		t.Errorf("response missing sparkline-budget container")
+	if !strings.Contains(body, `href="#dashboard-budget-details"`) {
+		t.Errorf("response missing budget details navigation")
 	}
-	if !strings.Contains(body, `data-mode="balance"`) {
-		t.Errorf("sparkline-budget missing data-mode=\"balance\"; body excerpt: %s", excerptAround(body, "sparkline-budget", 200))
+	chart := doGet(t, r, "/dashboard/charts/data/budget-vs-actual?start=2025-01-01&end=2025-01-31")
+	if chart.Code != 200 || !strings.Contains(chart.Body.String(), "Cumulative") {
+		t.Errorf("retained budget history missing cumulative balance: %s", chart.Body.String())
 	}
 }
 
@@ -2053,12 +2054,11 @@ func TestDashboardKPIs_TargetProvenance_AnnotatesWhenPhaseActive(t *testing.T) {
 	}
 	body := rec.Body.String()
 
-	wantText := "Target $1,900.00 — from What-If plan: $2,000 base × 0.95 (Active phase)"
-	if !strings.Contains(body, `title="`+wantText+`"`) {
-		t.Errorf("missing title=%q; body excerpt: %s", wantText, excerptAround(body, "Monthly Living Expenses", 600))
-	}
-	if !strings.Contains(body, `aria-label="`+wantText+`"`) {
-		t.Errorf("missing aria-label=%q; body excerpt: %s", wantText, excerptAround(body, "Monthly Living Expenses", 600))
+	// DI3 makes the provenance visible instead of requiring a tooltip.
+	for _, wantText := range []string{`Target <span class="num">$1,900.00</span>/mo`, "from What-If plan: $2,000 base × 0.95 (Active phase)"} {
+		if !strings.Contains(body, wantText) {
+			t.Errorf("missing visible provenance %q", wantText)
+		}
 	}
 }
 
@@ -2516,7 +2516,7 @@ func TestHandleKPIMonthDetail_SavingsTilesMatchKPIRow(t *testing.T) {
 // following the one holding label.
 func extractAfterLabel(t *testing.T, body, label string) string {
 	t.Helper()
-	re := regexp.MustCompile(regexp.QuoteMeta(label) + `</(?:div|p|span)>\s*<(?:div|p|span)[^>]*>([^<]+)<`)
+	re := regexp.MustCompile(regexp.QuoteMeta(label) + `</(?:div|p|span|h2)>\s*<(?:div|p|span)[^>]*>([^<]+)<`)
 	m := re.FindStringSubmatch(body)
 	if m == nil {
 		t.Fatalf("no value rendered after label %q", label)
@@ -2537,7 +2537,7 @@ func TestVerdictBarNetSavings_MatchesSavingsModalTotal(t *testing.T) {
 	if page.Code != http.StatusOK {
 		t.Fatalf("dashboard status = %d, want 200", page.Code)
 	}
-	barValue := extractAfterLabel(t, page.Body.String(), "Net Savings")
+	barValue := extractAfterLabel(t, page.Body.String(), "Cash-flow balance")
 
 	modal := doGet(t, router, "/dashboard/kpi/savings?"+window)
 	if modal.Code != http.StatusOK {
@@ -2566,7 +2566,7 @@ func TestVerdictBarNetSavings_IsDrillable(t *testing.T) {
 	if !strings.Contains(body, `data-kpi-detail="savings"`) {
 		t.Error("Net Savings is not wired to the savings KPI modal")
 	}
-	if want := `aria-label="Net Savings details"`; !strings.Contains(body, want) {
+	if want := `>Cash-flow details</button>`; !strings.Contains(body, want) {
 		t.Errorf("body missing %s", want)
 	}
 }
@@ -2941,6 +2941,7 @@ func TestHandleKPIDetail_ExpensesResponseByteIdentical(t *testing.T) {
 	want := map[string]interface{}{
 		"Type":                        "expenses",
 		"Title":                       "Total Expenses",
+		"RoundingAdjustment":          0.0,
 		"Monthly":                     monthly,
 		"Total":                       total,
 		"Average":                     avg,

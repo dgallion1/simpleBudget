@@ -1,0 +1,3806 @@
+[
+  {
+    "dark": false,
+    "width": 390,
+    "name": "partial non-theft Refresh page",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 32,
+      "y": 200,
+      "width": 125.1875,
+      "height": 42,
+      "top": 200,
+      "right": 157.1875,
+      "bottom": 242,
+      "left": 32
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Refresh page"
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Refresh page"
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "partial non-theft Keep editing",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 157.1875,
+      "y": 200,
+      "width": 120.578125,
+      "height": 42,
+      "top": 200,
+      "right": 277.765625,
+      "bottom": 242,
+      "left": 157.1875
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Keep editing"
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Keep editing"
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "cancelled swap is inert",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 157.1875,
+      "y": 200,
+      "width": 120.578125,
+      "height": 42,
+      "top": 200,
+      "right": 277.765625,
+      "bottom": 242,
+      "left": 157.1875
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": []
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "delayed swap respects moved outside focus",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "innerHTML exact focus through settlement Refresh page",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 5344,
+      "top": 0,
+      "right": 390,
+      "bottom": 5344,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "innerHTML exact focus through settlement Keep editing",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 5344,
+      "top": 0,
+      "right": 390,
+      "bottom": 5344,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "innerHTML exact focus through settlement outside",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "outerHTML exact focus through settlement Refresh page",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 5344,
+      "top": 0,
+      "right": 390,
+      "bottom": 5344,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "outerHTML exact focus through settlement Keep editing",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 5344,
+      "top": 0,
+      "right": 390,
+      "bottom": 5344,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "outerHTML exact focus through settlement outside",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "another afterSwap handler retains chosen focus",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "dismiss owned focus Refresh page replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no stale resurrection dismiss/Refresh page/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "dismiss owned focus Keep editing replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no stale resurrection dismiss/Keep editing/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "dismiss owned focus outside replaced=false",
+    "ok": false,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no stale resurrection dismiss/outside/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "epoch owned focus Refresh page replaced=false",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no stale resurrection epoch/Refresh page/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "epoch owned focus Keep editing replaced=false",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no stale resurrection epoch/Keep editing/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "epoch owned focus outside replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no stale resurrection epoch/outside/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "dismiss owned focus Refresh page replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no stale resurrection dismiss/Refresh page/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "dismiss owned focus Keep editing replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no stale resurrection dismiss/Keep editing/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "dismiss owned focus outside replaced=true",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no stale resurrection dismiss/outside/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "epoch owned focus Refresh page replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no stale resurrection epoch/Refresh page/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "epoch owned focus Keep editing replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no stale resurrection epoch/Keep editing/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "epoch owned focus outside replaced=true",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no stale resurrection epoch/outside/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "delayed swap cannot resurrect dismiss",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "delayed swap cannot resurrect epoch",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "name": "no reload during protected transitions",
+    "ok": true,
+    "loads": 1
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "partial non-theft Refresh page",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 32,
+      "y": 176,
+      "width": 125.1875,
+      "height": 42,
+      "top": 176,
+      "right": 157.1875,
+      "bottom": 218,
+      "left": 32
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Refresh page"
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Refresh page"
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "partial non-theft Keep editing",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 157.1875,
+      "y": 176,
+      "width": 120.578125,
+      "height": 42,
+      "top": 176,
+      "right": 277.765625,
+      "bottom": 218,
+      "left": 157.1875
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Keep editing"
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Keep editing"
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "cancelled swap is inert",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 157.1875,
+      "y": 176,
+      "width": 120.578125,
+      "height": 42,
+      "top": 176,
+      "right": 277.765625,
+      "bottom": 218,
+      "left": 157.1875
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": []
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "delayed swap respects moved outside focus",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "innerHTML exact focus through settlement Refresh page",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 768,
+      "height": 4556,
+      "top": 0,
+      "right": 768,
+      "bottom": 4556,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "innerHTML exact focus through settlement Keep editing",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 768,
+      "height": 4556,
+      "top": 0,
+      "right": 768,
+      "bottom": 4556,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "innerHTML exact focus through settlement outside",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "outerHTML exact focus through settlement Refresh page",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 768,
+      "height": 4556,
+      "top": 0,
+      "right": 768,
+      "bottom": 4556,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "outerHTML exact focus through settlement Keep editing",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 768,
+      "height": 4556,
+      "top": 0,
+      "right": 768,
+      "bottom": 4556,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "outerHTML exact focus through settlement outside",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "another afterSwap handler retains chosen focus",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "dismiss owned focus Refresh page replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no stale resurrection dismiss/Refresh page/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "dismiss owned focus Keep editing replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no stale resurrection dismiss/Keep editing/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "dismiss owned focus outside replaced=false",
+    "ok": false,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no stale resurrection dismiss/outside/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "epoch owned focus Refresh page replaced=false",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no stale resurrection epoch/Refresh page/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "epoch owned focus Keep editing replaced=false",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no stale resurrection epoch/Keep editing/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "epoch owned focus outside replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no stale resurrection epoch/outside/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "dismiss owned focus Refresh page replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no stale resurrection dismiss/Refresh page/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "dismiss owned focus Keep editing replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no stale resurrection dismiss/Keep editing/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "dismiss owned focus outside replaced=true",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no stale resurrection dismiss/outside/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "epoch owned focus Refresh page replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no stale resurrection epoch/Refresh page/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "epoch owned focus Keep editing replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no stale resurrection epoch/Keep editing/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "epoch owned focus outside replaced=true",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no stale resurrection epoch/outside/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "delayed swap cannot resurrect dismiss",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "delayed swap cannot resurrect epoch",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "name": "no reload during protected transitions",
+    "ok": true,
+    "loads": 1
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "partial non-theft Refresh page",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 112,
+      "y": 152,
+      "width": 125.1875,
+      "height": 42,
+      "top": 152,
+      "right": 237.1875,
+      "bottom": 194,
+      "left": 112
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Refresh page"
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Refresh page"
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "partial non-theft Keep editing",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 237.1875,
+      "y": 152,
+      "width": 120.578125,
+      "height": 42,
+      "top": 152,
+      "right": 357.765625,
+      "bottom": 194,
+      "left": 237.1875
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Keep editing"
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Keep editing"
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "cancelled swap is inert",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 237.1875,
+      "y": 152,
+      "width": 120.578125,
+      "height": 42,
+      "top": 152,
+      "right": 357.765625,
+      "bottom": 194,
+      "left": 237.1875
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": []
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "delayed swap respects moved outside focus",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "innerHTML exact focus through settlement Refresh page",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 3810,
+      "top": 0,
+      "right": 1440,
+      "bottom": 3810,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "innerHTML exact focus through settlement Keep editing",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 3810,
+      "top": 0,
+      "right": 1440,
+      "bottom": 3810,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "innerHTML exact focus through settlement outside",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "outerHTML exact focus through settlement Refresh page",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 3810,
+      "top": 0,
+      "right": 1440,
+      "bottom": 3810,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "outerHTML exact focus through settlement Keep editing",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 3810,
+      "top": 0,
+      "right": 1440,
+      "bottom": 3810,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "outerHTML exact focus through settlement outside",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "another afterSwap handler retains chosen focus",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "dismiss owned focus Refresh page replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no stale resurrection dismiss/Refresh page/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "dismiss owned focus Keep editing replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no stale resurrection dismiss/Keep editing/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "dismiss owned focus outside replaced=false",
+    "ok": false,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no stale resurrection dismiss/outside/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "epoch owned focus Refresh page replaced=false",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no stale resurrection epoch/Refresh page/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "epoch owned focus Keep editing replaced=false",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no stale resurrection epoch/Keep editing/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "epoch owned focus outside replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no stale resurrection epoch/outside/false",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "dismiss owned focus Refresh page replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no stale resurrection dismiss/Refresh page/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "dismiss owned focus Keep editing replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no stale resurrection dismiss/Keep editing/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "dismiss owned focus outside replaced=true",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no stale resurrection dismiss/outside/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "epoch owned focus Refresh page replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no stale resurrection epoch/Refresh page/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "epoch owned focus Keep editing replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no stale resurrection epoch/Keep editing/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "epoch owned focus outside replaced=true",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no stale resurrection epoch/outside/true",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "delayed swap cannot resurrect dismiss",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "delayed swap cannot resurrect epoch",
+    "ok": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "name": "no reload during protected transitions",
+    "ok": true,
+    "loads": 1
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "partial non-theft Refresh page",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 32,
+      "y": 200,
+      "width": 125.1875,
+      "height": 42,
+      "top": 200,
+      "right": 157.1875,
+      "bottom": 242,
+      "left": 32
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Refresh page"
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Refresh page"
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "partial non-theft Keep editing",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 157.1875,
+      "y": 200,
+      "width": 120.578125,
+      "height": 42,
+      "top": 200,
+      "right": 277.765625,
+      "bottom": 242,
+      "left": 157.1875
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Keep editing"
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Keep editing"
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "cancelled swap is inert",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 157.1875,
+      "y": 200,
+      "width": 120.578125,
+      "height": 42,
+      "top": 200,
+      "right": 277.765625,
+      "bottom": 242,
+      "left": 157.1875
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": []
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "delayed swap respects moved outside focus",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "innerHTML exact focus through settlement Refresh page",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 5344,
+      "top": 0,
+      "right": 390,
+      "bottom": 5344,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "innerHTML exact focus through settlement Keep editing",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 5344,
+      "top": 0,
+      "right": 390,
+      "bottom": 5344,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "innerHTML exact focus through settlement outside",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "outerHTML exact focus through settlement Refresh page",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 5344,
+      "top": 0,
+      "right": 390,
+      "bottom": 5344,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "outerHTML exact focus through settlement Keep editing",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 5344,
+      "top": 0,
+      "right": 390,
+      "bottom": 5344,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "outerHTML exact focus through settlement outside",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "another afterSwap handler retains chosen focus",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "dismiss owned focus Refresh page replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no stale resurrection dismiss/Refresh page/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "dismiss owned focus Keep editing replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no stale resurrection dismiss/Keep editing/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "dismiss owned focus outside replaced=false",
+    "ok": false,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no stale resurrection dismiss/outside/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "epoch owned focus Refresh page replaced=false",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no stale resurrection epoch/Refresh page/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "epoch owned focus Keep editing replaced=false",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no stale resurrection epoch/Keep editing/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "epoch owned focus outside replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no stale resurrection epoch/outside/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "dismiss owned focus Refresh page replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no stale resurrection dismiss/Refresh page/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "dismiss owned focus Keep editing replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no stale resurrection dismiss/Keep editing/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "dismiss owned focus outside replaced=true",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no stale resurrection dismiss/outside/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "epoch owned focus Refresh page replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no stale resurrection epoch/Refresh page/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "epoch owned focus Keep editing replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no stale resurrection epoch/Keep editing/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "epoch owned focus outside replaced=true",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no stale resurrection epoch/outside/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "delayed swap cannot resurrect dismiss",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "delayed swap cannot resurrect epoch",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "name": "no reload during protected transitions",
+    "ok": true,
+    "loads": 1
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "partial non-theft Refresh page",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 32,
+      "y": 176,
+      "width": 125.1875,
+      "height": 42,
+      "top": 176,
+      "right": 157.1875,
+      "bottom": 218,
+      "left": 32
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Refresh page"
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Refresh page"
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "partial non-theft Keep editing",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 157.1875,
+      "y": 176,
+      "width": 120.578125,
+      "height": 42,
+      "top": 176,
+      "right": 277.765625,
+      "bottom": 218,
+      "left": 157.1875
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Keep editing"
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Keep editing"
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "cancelled swap is inert",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 157.1875,
+      "y": 176,
+      "width": 120.578125,
+      "height": 42,
+      "top": 176,
+      "right": 277.765625,
+      "bottom": 218,
+      "left": 157.1875
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": []
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "delayed swap respects moved outside focus",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "innerHTML exact focus through settlement Refresh page",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 768,
+      "height": 4556,
+      "top": 0,
+      "right": 768,
+      "bottom": 4556,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "innerHTML exact focus through settlement Keep editing",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 768,
+      "height": 4556,
+      "top": 0,
+      "right": 768,
+      "bottom": 4556,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "innerHTML exact focus through settlement outside",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "outerHTML exact focus through settlement Refresh page",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 768,
+      "height": 4556,
+      "top": 0,
+      "right": 768,
+      "bottom": 4556,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "outerHTML exact focus through settlement Keep editing",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 768,
+      "height": 4556,
+      "top": 0,
+      "right": 768,
+      "bottom": 4556,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "outerHTML exact focus through settlement outside",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "another afterSwap handler retains chosen focus",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "dismiss owned focus Refresh page replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no stale resurrection dismiss/Refresh page/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "dismiss owned focus Keep editing replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no stale resurrection dismiss/Keep editing/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "dismiss owned focus outside replaced=false",
+    "ok": false,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no stale resurrection dismiss/outside/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "epoch owned focus Refresh page replaced=false",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no stale resurrection epoch/Refresh page/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "epoch owned focus Keep editing replaced=false",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no stale resurrection epoch/Keep editing/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "epoch owned focus outside replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no stale resurrection epoch/outside/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "dismiss owned focus Refresh page replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no stale resurrection dismiss/Refresh page/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "dismiss owned focus Keep editing replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no stale resurrection dismiss/Keep editing/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "dismiss owned focus outside replaced=true",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no stale resurrection dismiss/outside/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "epoch owned focus Refresh page replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no stale resurrection epoch/Refresh page/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "epoch owned focus Keep editing replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no stale resurrection epoch/Keep editing/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "epoch owned focus outside replaced=true",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no stale resurrection epoch/outside/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "delayed swap cannot resurrect dismiss",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "delayed swap cannot resurrect epoch",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "name": "no reload during protected transitions",
+    "ok": true,
+    "loads": 1
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "partial non-theft Refresh page",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 112,
+      "y": 152,
+      "width": 125.1875,
+      "height": 42,
+      "top": 152,
+      "right": 237.1875,
+      "bottom": 194,
+      "left": 112
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Refresh page"
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Refresh page"
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "partial non-theft Keep editing",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 237.1875,
+      "y": 152,
+      "width": 120.578125,
+      "height": 42,
+      "top": 152,
+      "right": 357.765625,
+      "bottom": 194,
+      "left": 237.1875
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Keep editing"
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "BUTTON",
+        "text": "Keep editing"
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "cancelled swap is inert",
+    "ok": true,
+    "same": true,
+    "tag": "BUTTON",
+    "id": "",
+    "rect": {
+      "x": 237.1875,
+      "y": 152,
+      "width": 120.578125,
+      "height": 42,
+      "top": 152,
+      "right": 357.765625,
+      "bottom": 194,
+      "left": 237.1875
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": []
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "delayed swap respects moved outside focus",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "innerHTML exact focus through settlement Refresh page",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 3810,
+      "top": 0,
+      "right": 1440,
+      "bottom": 3810,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "innerHTML exact focus through settlement Keep editing",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 3810,
+      "top": 0,
+      "right": 1440,
+      "bottom": 3810,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "innerHTML exact focus through settlement outside",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "outerHTML exact focus through settlement Refresh page",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 3810,
+      "top": 0,
+      "right": 1440,
+      "bottom": 3810,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "outerHTML exact focus through settlement Keep editing",
+    "ok": false,
+    "same": false,
+    "tag": "BODY",
+    "id": "",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1440,
+      "height": 3810,
+      "top": 0,
+      "right": 1440,
+      "bottom": 3810,
+      "left": 0
+    },
+    "visible": false,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": false,
+        "tag": "BODY",
+        "text": "\n    \n    \n    \n        \n            \n                \n     "
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "outerHTML exact focus through settlement outside",
+    "ok": true,
+    "same": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "rect": {
+      "x": 0,
+      "y": 64,
+      "width": 231,
+      "height": 24,
+      "top": 64,
+      "right": 231,
+      "bottom": 88,
+      "left": 0
+    },
+    "visible": true,
+    "region": true,
+    "status": true,
+    "count": 1,
+    "phases": [
+      {
+        "name": "htmx:afterSwap",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      },
+      {
+        "name": "htmx:afterSettle",
+        "same": true,
+        "tag": "INPUT",
+        "text": ""
+      }
+    ]
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "another afterSwap handler retains chosen focus",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "dismiss owned focus Refresh page replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no stale resurrection dismiss/Refresh page/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "dismiss owned focus Keep editing replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no stale resurrection dismiss/Keep editing/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "dismiss owned focus outside replaced=false",
+    "ok": false,
+    "tag": "INPUT",
+    "id": "di53-edit",
+    "original": true,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no stale resurrection dismiss/outside/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "epoch owned focus Refresh page replaced=false",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no stale resurrection epoch/Refresh page/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "epoch owned focus Keep editing replaced=false",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no stale resurrection epoch/Keep editing/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "epoch owned focus outside replaced=false",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no stale resurrection epoch/outside/false",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "dismiss owned focus Refresh page replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no stale resurrection dismiss/Refresh page/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "dismiss owned focus Keep editing replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no stale resurrection dismiss/Keep editing/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "dismiss owned focus outside replaced=true",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no stale resurrection dismiss/outside/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "epoch owned focus Refresh page replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no stale resurrection epoch/Refresh page/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "epoch owned focus Keep editing replaced=true",
+    "ok": false,
+    "tag": "BODY",
+    "id": "",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": false,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no stale resurrection epoch/Keep editing/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "epoch owned focus outside replaced=true",
+    "ok": true,
+    "tag": "INPUT",
+    "id": "di53-outside",
+    "original": false,
+    "main": false,
+    "tabindex": null,
+    "same": true,
+    "region": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no stale resurrection epoch/outside/true",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "delayed swap cannot resurrect dismiss",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "delayed swap cannot resurrect epoch",
+    "ok": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "name": "no reload during protected transitions",
+    "ok": true,
+    "loads": 1
+  }
+]

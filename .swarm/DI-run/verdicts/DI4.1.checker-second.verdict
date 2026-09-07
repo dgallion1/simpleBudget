@@ -1,0 +1,114 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: DI4
+ATTEMPT: 1
+---
+SCOPE: DI4 adversarial review of scope/retention, findings identity and dates,
+rendered monetary estimates and comparison semantics. Canonical approved design,
+all ACCESSIBILITY.md, supplied task/report/manifest and exact diff package read.
+No DI5 features or raw detector changes required. No current infrastructure blocker.
+
+F1 — Newly rendered recurring scope claims a nonexistent detector cap.
+Criterion: DI4 recurring display ruling and 'Scope recurring row totals
+consistently; all retained rows accessible'; approved shared accuracy rules
+require truthful scope. Accepted DI1 removed the detector cap.
+- web/templates/pages/insights.html:81 says 'The detector retains up to 20
+  series; all retained rows appear below.' This reaches full and HX responses.
+- web/templates/components/insights-investigation.html:82 says 'All retained
+  rows are shown (detector limit: 20 series).' This reaches /insights/recurring.
+- DI4.1.md:16 repeats '(maximum 20 series)' in author evidence.
+
+Independent counterexample in /tmp/DI4-second.wfflqf:
+rtk proxy go test ./internal/handlers/insights -run '^TestDI4Second' -v -count=1
+Exit 1. TestDI4SecondUncappedScopeRendered fails full, HX and recurring subtests.
+Synthetic fixture: 22 distinct merchants, three monthly rows each (66 rows),
+21 series at $100/payment plus Netflix at $10/payment, June-August 2026.
+The real detector returns 22. Each actual rendered response contains exactly
+22 'Expected payment estimate as of 2026-08-31:' rows and every detected merchant.
+Full/HX still say up to 20; recurring partial still says detector limit 20.
+This confirms the lead's candidate rather than assuming the author report true.
+No real/demo endpoint or dataset was contacted to establish this result.
+
+Premise/scope verification:
+rtk proxy diff -qr /tmp/budget2-DI4-base.KPl7oY/internal/services internal/services
+Exit 0: detector, shared period, merchants, price creep, anomalies and MCP
+services are byte-identical to the accepted baseline. Source rg confirms the
+recurring classifier assignment with no top-20 slice. The existing DI1
+22-series UI/MCP parity regression also passes in the fresh handler suite below.
+This FAIL concerns false new wording, NOT omitted rows, a reintroduced algorithm
+cap, lost unknowns or an understated proven total. Correcting both visible scope
+statements and report would repair F1; truncating the detector/UI to 20 would
+violate the accepted retention requirement. No production fix was applied.
+
+Other independent refutation results:
+- TestDI4SecondCreepTieMedianAndHistory passes in the command above. Real
+  pricecreep detector over subset-merged merchant variants, same-date hash tie:
+  latest eligible z-latest anchors actual -$27 while last-three median remains
+  $20. Later suppressed/transfer rows do not replace the anchor. Duplicate creep
+  and duplicate anomaly evidence deduplicate; one hash retains two different
+  finding types. May historical selection does not pull the June anchor backward.
+- rtk proxy go test ./internal/handlers/insights -run '^TestDI4SecondRenderedEstimateSums$' -count=1
+  Exit 0 (0.022s). Actual group renderer, all three classifications: parses
+  printed numeric cells/header totals into integer cents. Two .06 annual rows
+  display .01/month each; group monthly .02 equals displayed monthly rows and
+  annual .12 equals displayed annual rows. It deliberately does NOT demand
+  monthly*12=annual. Payment ties 2.675 and .005 render 2.67 and .01, respectively.
+
+Fresh required checks (before checker probes were added):
+rtk proxy go test ./internal/handlers/insights ./internal/templates ./internal/services/insights ./internal/services/anomalies ./internal/services/pricecreep ./internal/services/merchants ./internal/services/metrics -count=1
+Exit 0: handlers/insights 0.426s, templates 1.036s, insights service 0.007s,
+anomalies 0.009s, pricecreep 0.003s, merchants 0.003s, metrics 0.004s.
+rtk proxy go build ./...
+Exit 0 in the same isolated copy.
+rtk proxy node --check web/static/js/insights.js
+Exit 0.
+
+Criterion-by-criterion observations:
+1. Comparison bounds/ranking/empty states: existing fresh real-render tests
+   assert exact July/August dates, signed all-outflow 243 versus 251 and -8
+   difference, Alpha/Zulu tie order by absolute dollar change then name, third
+   Refund contributor, exactly three contributors, no fabricated no-history
+   comparison and explicit no-findings/import state. Bodies inspected.
+2. Order/full-HX: TestDI4InvestigationRendered verifies context -> change ->
+   findings -> recurring -> supporting IDs, same required content in both full
+   and HX responses. New cap probe additionally exercises all three render paths.
+3. Findings: existing eleven-real-creep-group fixture verifies complete list
+   before preview cap, five preview items, remaining actual items in native
+   details, every unique finding anchor, stable reversed-input order and selected
+   URL dates/category/merchant. New tie/median/suppression test extends it above.
+   GroupKey joins use exact merchants.GroupTransactions over active negative
+   Outflows; latest date/hash is chosen BEFORE selected-hash eligibility.
+4. Merchant/estimate semantics: new groups show merchant first, Major Expense
+   and reason second, independently labeled payment/month/annual estimates,
+   observed date and expected estimate as of selection. Actual versus median
+   finding amounts explicitly distinguished. No new detector/confidence invented.
+5. Scope and accessible retention: actual >20 retention PASS; truthful scope
+   wording FAIL F1. Rounded displayed-row group sums PASS independent probe.
+   Raw recurring compatibility JSON remains separate from displayed estimate sums.
+6. Tests/build/report: fresh focused suite/build/syntax PASS. Manifest contains
+   NINE application source/test/generated-CSS paths (three Go, six web), not a
+   guessed ten. tmp/tailwind.check.css and duplicate .swarm/manifests inventory
+   are declared artifacts, not application scope expansion. Author viewport/theme
+   evidence read but not represented as independent browser certification;
+   checker-a11y owns its named visual/keyboard lane. No browser/server launched.
+
+Consumer inventory:
+Full/HX Insights wrapper -> InvestigationView for all-outflow ChangeDisplay,
+ranked existing trend Change fields, full deduplicated findings, displayed
+recurring groups/grand estimates. Recurring partial -> same recurringGroups
+and period selection. Trends partial/chart retain shared period rows; income
+partial now filters selection; velocity retains accepted DI2 producer.
+Supporting history price-creep table retains a separately disclosed cap/scope;
+combined findings use uncapped pricecreep.Detect. MCP/detectors/period services
+unchanged. JS has no new browser monetary calculation. These observations are
+limited to this task; no full-site accessibility PASS is asserted.
+
+Isolation/probes for durable promotion:
+Fresh immutable /tmp/budget2-DI4-base.KPl7oY copy plus ONLY DI4.1.files overlay
+at /tmp/DI4-second.wfflqf. No live whole-tree copy, source/git/ledger changes,
+subagents, real-data access or deployment. Scoped apply_patch workaround used
+for scratch tests and this verdict only. Scratch test files:
+/tmp/DI4-second.wfflqf/internal/handlers/insights/di4_second_probe_test.go
+/tmp/DI4-second.wfflqf/internal/handlers/insights/di4_second_money_test.go
+Only this verdict written to real worktree. Lead owns escalation and gate.

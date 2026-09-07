@@ -1,0 +1,131 @@
+- banner:
+  - navigation:
+    - link "simpleBudget":
+      - /url: /
+    - group "Money":
+      - text: Money
+      - link "Dashboard":
+        - /url: /dashboard
+      - link "Explorer":
+        - /url: /explorer
+      - link "Insights":
+        - /url: /insights
+      - link "Major Expenses":
+        - /url: /major-expenses
+    - group "Plan":
+      - text: Plan
+      - link "What-If":
+        - /url: /whatif
+    - group "Setup":
+      - text: Setup
+      - link "Accounts":
+        - /url: /accounts
+      - link "Transfers":
+        - /url: /transfers
+      - link "File Manager":
+        - /url: /filemanager
+      - link "Duplicates 1":
+        - /url: /duplicates
+    - button "Toggle dark mode":
+      - img
+- main:
+  - heading "File Manager" [level=1]
+  - button "CSV files to upload"
+  - button "Upload"
+  - link "Backup":
+    - /url: /backup
+    - img
+    - text: Backup
+  - button "Restore":
+    - img
+    - text: Restore
+  - region "Import from Folder":
+    - heading "Import from Folder" [level=2]
+    - button "Rescan"
+    - paragraph:
+      - text: "Import folder:"
+      - code: /tmp/DI5-integration.hcuAxN/runtime/imports
+    - paragraph: Click Rescan to list CSV files in the import folder.
+    - checkbox "Delete source files after import"
+    - text: Delete source files after import
+    - button "Import"
+    - status
+  - heading "Automatic Backups" [level=2]:
+    - img
+    - text: Automatic Backups
+  - text: Enabled
+  - checkbox "Enabled" [checked]
+  - paragraph: "Last backup: 20260907_015550 · 1 snapshots · 34.1 KB"
+  - paragraph:
+    - text: "Location:"
+    - code: /tmp/DI5-integration.hcuAxN/runtime/backups
+    - button "Open":
+      - img
+      - text: Open
+  - heading "Data Files" [level=2]
+  - button "Load Test Data"
+  - button "Clear All"
+  - table:
+    - rowgroup:
+      - row "File Rows Date Range On Actions":
+        - columnheader "File":
+          - button "File"
+        - columnheader "Rows":
+          - button "Rows"
+        - columnheader "Date Range":
+          - button "Date Range"
+        - columnheader "On":
+          - button "On"
+        - columnheader "Actions"
+    - rowgroup:
+      - row "demo-checking_2026-03-01_to_2026-06-15.csv (5K) 54 2026-03-01 - 2026-06-15 Enable demo-checking_2026-03-01_to_2026-06-15.csv Delete demo-checking_2026-03-01_to_2026-06-15.csv":
+        - cell "demo-checking_2026-03-01_to_2026-06-15.csv (5K)"
+        - cell "54"
+        - cell "2026-03-01 - 2026-06-15"
+        - cell "Enable demo-checking_2026-03-01_to_2026-06-15.csv":
+          - checkbox "Enable demo-checking_2026-03-01_to_2026-06-15.csv" [checked]
+        - cell "Delete demo-checking_2026-03-01_to_2026-06-15.csv":
+          - button "Delete demo-checking_2026-03-01_to_2026-06-15.csv":
+            - img
+      - row "demo-checking_2026-06-01_to_2026-08-28.csv (4K) 44 2026-06-01 - 2026-08-27 Enable demo-checking_2026-06-01_to_2026-08-28.csv Delete demo-checking_2026-06-01_to_2026-08-28.csv":
+        - cell "demo-checking_2026-06-01_to_2026-08-28.csv (4K)"
+        - cell "44"
+        - cell "2026-06-01 - 2026-08-27"
+        - cell "Enable demo-checking_2026-06-01_to_2026-08-28.csv":
+          - checkbox "Enable demo-checking_2026-06-01_to_2026-08-28.csv" [checked]
+        - cell "Delete demo-checking_2026-06-01_to_2026-08-28.csv":
+          - button "Delete demo-checking_2026-06-01_to_2026-08-28.csv":
+            - img
+      - row "demo-credit_2026-03-01_to_2026-06-15.csv (5K) 62 2026-03-02 - 2026-06-14 Enable demo-credit_2026-03-01_to_2026-06-15.csv Delete demo-credit_2026-03-01_to_2026-06-15.csv":
+        - cell "demo-credit_2026-03-01_to_2026-06-15.csv (5K)"
+        - cell "62"
+        - cell "2026-03-02 - 2026-06-14"
+        - cell "Enable demo-credit_2026-03-01_to_2026-06-15.csv":
+          - checkbox "Enable demo-credit_2026-03-01_to_2026-06-15.csv" [checked]
+        - cell "Delete demo-credit_2026-03-01_to_2026-06-15.csv":
+          - button "Delete demo-credit_2026-03-01_to_2026-06-15.csv":
+            - img
+      - row "demo-credit_2026-06-01_to_2026-08-28.csv (5K) 58 2026-06-02 - 2026-08-28 Enable demo-credit_2026-06-01_to_2026-08-28.csv Delete demo-credit_2026-06-01_to_2026-08-28.csv":
+        - cell "demo-credit_2026-06-01_to_2026-08-28.csv (5K)"
+        - cell "58"
+        - cell "2026-06-02 - 2026-08-28"
+        - cell "Enable demo-credit_2026-06-01_to_2026-08-28.csv":
+          - checkbox "Enable demo-credit_2026-06-01_to_2026-08-28.csv" [checked]
+        - cell "Delete demo-credit_2026-06-01_to_2026-08-28.csv":
+          - button "Delete demo-credit_2026-06-01_to_2026-08-28.csv":
+            - img
+      - row "demo-health_2026-03-01_to_2026-08-28.csv (2K) 18 2026-03-03 - 2026-08-27 Enable demo-health_2026-03-01_to_2026-08-28.csv Delete demo-health_2026-03-01_to_2026-08-28.csv":
+        - cell "demo-health_2026-03-01_to_2026-08-28.csv (2K)"
+        - cell "18"
+        - cell "2026-03-03 - 2026-08-27"
+        - cell "Enable demo-health_2026-03-01_to_2026-08-28.csv":
+          - checkbox "Enable demo-health_2026-03-01_to_2026-08-28.csv" [checked]
+        - cell "Delete demo-health_2026-03-01_to_2026-08-28.csv":
+          - button "Delete demo-health_2026-03-01_to_2026-08-28.csv":
+            - img
+  - button "Data Encryption Not encrypted":
+    - heading "Data Encryption" [level=2]:
+      - img
+      - text: Data Encryption
+    - text: Not encrypted
+- contentinfo: simpleBudget © 2026

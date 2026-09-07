@@ -1,0 +1,50 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DI4
+ATTEMPT: 2
+---
+Scoped independent re-review of conceded F1. No additional in-scope defect established.
+
+Isolation and scope evidence
+Snapshot: /tmp/DI4-attempt2-checker.w1L3WC, created with cp -a from immutable /tmp/budget2-DI4-base.KPl7oY and ONLY cumulative DI4.2 manifest overlay. Read DI4.2 report and manifest. No whole live tree copy, production/git/ledger/deploy changes, server launch, or real/demo data access.
+Compared against my immutable attempt1 snapshot /tmp/DI4-checker-tests.xGOWIK:
+  rtk proxy diff -qr /tmp/DI4-checker-tests.xGOWIK/internal internal
+  rtk proxy diff -qr /tmp/DI4-checker-tests.xGOWIK/web web
+  rtk proxy diff -u /tmp/DI4-checker-tests.xGOWIK/web/templates/pages/insights.html web/templates/pages/insights.html
+  rtk proxy diff -u /tmp/DI4-checker-tests.xGOWIK/web/templates/components/insights-investigation.html web/templates/components/insights-investigation.html
+Expected diff exits 1. Only production delta is one scope sentence in each template. New durable recurring_scope_di4_test.go is the only added application test; attempt1 zz_checker_di4_test.go is separate scratch, not missing production. Services/models/handlers/view-model/JS/CSS unchanged. No critical-glob source changes. Cumulative application/test/CSS manifest scope is ten paths.
+
+Fresh commands (snapshot cwd)
+A. rtk proxy bash -c 'cp -a /home/darrell/bin/ai/budget2/tmp/tailwindcss-3.4.17 tmp/ && make -f Makefile -f /tmp/DI4-focused.mk check && go build -o tmp/budget2 ./cmd/server && go test -count=1 -v ./internal/handlers/insights -run "^TestCheckerDI4RecurringLimitWording$"'
+Exit 0. Repo composite target with package-only vet/static/vuln/test overrides as in attempt1; CSS target unchanged. Eight fresh package passes: Insights handlers, templates, insights/anomalies/pricecreep/merchants/metrics services, mcpsvc/spend. Output "tailwind.css is up to date", "all checks passed"; build succeeded. Composite skips checker-prefixed tests, so the trailing command explicitly executes the promoted regression. Vulnerability output: zero reachable vulnerabilities; imported/module advisories remain, not a broad security clearance.
+Full, HX and standalone each reported:
+  real detector=22; rendered retained rows=22; checked all 22 merchant names
+All three subtests PASS. I read the assertions: HTTP 200, exact detector count, exact rendered row count, every merchant name once, and both former false-limit strings absent.
+
+B. In disposable /tmp/DI4-attempt2-mutant.2jUwci, copy the two attempt1 templates over their attempt2 counterparts; leave the new durable test intact:
+  rtk proxy go test -count=1 -v ./internal/handlers/insights -run "^TestCheckerDI4RecurringLimitWording$"
+Exit 1. All three subtests still have detector=22/rendered=22/all names, then fail specifically "falsely claims detector limit 20 while rendering 22 series". This independently establishes test sensitivity to F1, not fixture failure or author claims.
+
+C. Instrumented ONLY both scratch test copies to write response bodies when DI4_TWIN_OUTPUT is set:
+  rtk proxy bash -c 'mkdir -p tmp/twins && DI4_TWIN_OUTPUT=$PWD/tmp/twins go test -count=1 ./internal/handlers/insights -run "^TestCheckerDI4RecurringLimitWording$"'
+Current snapshot exits 0; old-wording mutant exits 1 for F1.
+  rtk proxy node tmp/checker-byte-compare.cjs
+Exit 0. Seven previous internal/web manifest files assert byte equality and emit SHA256 hashes. Full/HX/standalone rendered comparisons preserve every row byte and differ only at the scope sentence AFTER canonicalizing recurring row order.
+Disclosure: raw twin comparison first failed because equal-cost recurring merchants arrive in different orders from the unchanged detector; no row was missing or changed. The comparison sorts complete rendered row strings, not their amounts/text. It is not a claim of deterministic row order. Full/HX artifacts: 49,248 bytes each; standalone: 24,023 bytes.
+
+Criterion disposition and retained evidence
+Prior independent evidence association: .swarm/DI-run/verdicts/DI4.1.checker-tests.verdict, snapshot /tmp/DI4-checker-tests.xGOWIK, tmp/checker-functional.log and tmp/browser-evidence/DI4-browser.json. Retention is justified by the exact diffs and byte/hash assertions above, not worker summaries.
+1. Comparison bounds/top-three absolute-dollar ranking/category tie-break/no-history/no-findings: PASS. A reruns original inspected DI4 renderer/service tests. Retain attempt1 B/F fractional/refund/ranking and mutation evidence for byte-identical producers.
+2. Context/change/findings/three groups/supporting order: PASS. A reruns renderer markers; source diff changes no structure. C guards actual response bodies. Retain attempt1 browser heading evidence.
+3. <=5 preview, uncapped >10 creep findings, hash+type dedup, full-history anchor and actual Explorer results: PASS. A reruns durable investigation tests. Retain attempt1 TestCheckerDI4HTTPFindingsLinks and checker-disclosure.cjs results: eleven findings, five preview/six remaining, every real Explorer hash matched, keyboard disclosure both themes. Relevant handlers/model/JS are byte-identical.
+4. Merchant/group/date drilldown, historical expected-payment reference, signed/rounded money and estimate-sum scope: PASS. A reruns durable regressions; exact template diffs leave these consumers untouched. Retain attempt1 rendered-cent and actual grouping/link probes. No financial/detector source changes.
+5. F1 scope/retention correction: PASS, freshly proven by A/B/C. Both views now state "All detected recurring series are shown without a row limit." All 22 retained series remain accessible, including unknown merchants. Full/HX share corrected page wording; standalone partial has corrected wording. Retain attempt1 HX replacement/focus/chart/link evidence for unchanged JavaScript and handler.
+6. Scoped checks/CSS/build: PASS via A. Retain prior six viewport/theme browser results for unchanged layout/classes/JS/CSS; no redundant browser-polish batch this narrow attempt. Other named lanes and lead gate remain mandatory and independent.
+
+Probe locations
+- Durable production regression: internal/handlers/insights/recurring_scope_di4_test.go (read and executed before scratch instrumentation).
+- Scratch-only body-dump instrumentation in both isolated copies of that test.
+- /tmp/DI4-attempt2-checker.w1L3WC/tmp/checker-byte-compare.cjs and tmp/twins/{full,HX,standalone}.html.
+- /tmp/DI4-attempt2-mutant.2jUwci contains only disposable old-wording mutation and scratch instrumentation.
+No new promotion requirement for F1: the original meaningful 22-row probe is now durable and strengthened with detector/name checks. Lead owns gate and deployment.

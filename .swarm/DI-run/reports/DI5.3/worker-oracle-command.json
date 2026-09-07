@@ -1,0 +1,14 @@
+{
+  "command": [
+    "rtk",
+    "proxy",
+    "bash",
+    "/home/darrell/bin/ai/budget2/.worktrees/dashboard-insights/.swarm/DI-run/tier3/DI5/accept.sh"
+  ],
+  "env": {
+    "DI5_SOURCE_ROOT": "/tmp/DI5-final-worker.btR0cu",
+    "DI5_BASE": "http://127.0.0.1:18861",
+    "DI5_OUTPUT": "/tmp/DI5-final-worker.btR0cu/di53-evidence/oracle"
+  },
+  "exit": 1
+}

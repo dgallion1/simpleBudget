@@ -1,0 +1,652 @@
+{
+  "trends": {
+    "category_trends": [
+      {
+        "category": "Home Improvement",
+        "change_amount": 899,
+        "change_percent": 299.67,
+        "current_amount": 1199,
+        "direction": "up",
+        "previous_amount": 300
+      },
+      {
+        "category": "Shopping",
+        "change_amount": 108.31,
+        "change_percent": 116.66,
+        "current_amount": 201.15,
+        "direction": "up",
+        "previous_amount": 92.84
+      },
+      {
+        "category": "Cash",
+        "change_amount": 100,
+        "change_percent": 100,
+        "current_amount": 100,
+        "direction": "up",
+        "previous_amount": 0
+      },
+      {
+        "category": "Utilities",
+        "change_amount": 66.01,
+        "change_percent": 31.99,
+        "current_amount": 272.33,
+        "direction": "up",
+        "previous_amount": 206.32
+      },
+      {
+        "category": "Groceries",
+        "change_amount": -64.12,
+        "change_percent": -14.56,
+        "current_amount": 376.4,
+        "direction": "down",
+        "previous_amount": 440.52
+      },
+      {
+        "category": "Food & Dining",
+        "change_amount": 57.86,
+        "change_percent": 58.85,
+        "current_amount": 156.17,
+        "direction": "up",
+        "previous_amount": 98.31
+      },
+      {
+        "category": "Pet Food & Supplies",
+        "change_amount": -26.62,
+        "change_percent": -29.28,
+        "current_amount": 64.31,
+        "direction": "down",
+        "previous_amount": 90.93
+      },
+      {
+        "category": "Health & Wellness",
+        "change_amount": -15.85,
+        "change_percent": -39.38,
+        "current_amount": 24.4,
+        "direction": "down",
+        "previous_amount": 40.25
+      },
+      {
+        "category": "Gas & Fuel",
+        "change_amount": -11.46,
+        "change_percent": -10.18,
+        "current_amount": 101.07,
+        "direction": "down",
+        "previous_amount": 112.53
+      },
+      {
+        "category": "Auto Payment",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 412,
+        "direction": "stable",
+        "previous_amount": 412
+      },
+      {
+        "category": "Bills & Utilities",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 79.99,
+        "direction": "stable",
+        "previous_amount": 79.99
+      },
+      {
+        "category": "Electronics & Software",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 2.99,
+        "direction": "stable",
+        "previous_amount": 2.99
+      },
+      {
+        "category": "Entertainment",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 27.48,
+        "direction": "stable",
+        "previous_amount": 27.48
+      },
+      {
+        "category": "Health Insurance",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 650,
+        "direction": "stable",
+        "previous_amount": 650
+      },
+      {
+        "category": "Insurance",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 290,
+        "direction": "stable",
+        "previous_amount": 290
+      },
+      {
+        "category": "Mortgage",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 1250,
+        "direction": "stable",
+        "previous_amount": 1250
+      },
+      {
+        "category": "Travel",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 550,
+        "direction": "stable",
+        "previous_amount": 550
+      }
+    ],
+    "end": "2026-07-31",
+    "income_patterns": [
+      {
+        "avg_amount": 2850,
+        "description": "social security",
+        "frequency": "monthly",
+        "is_regular": true,
+        "occurrences": 6,
+        "total_amount": 17100
+      },
+      {
+        "avg_amount": 1560,
+        "description": "social security - spouse",
+        "frequency": "monthly",
+        "is_regular": true,
+        "occurrences": 6,
+        "total_amount": 9360
+      },
+      {
+        "avg_amount": 0.12,
+        "description": "interest paid",
+        "frequency": "irregular",
+        "is_regular": false,
+        "occurrences": 12,
+        "total_amount": 1.47
+      }
+    ],
+    "major_expense_trends": [
+      {
+        "category": "Home Maintenance & Appliances",
+        "change_amount": 899,
+        "change_percent": 299.67,
+        "current_amount": 1199,
+        "direction": "up",
+        "previous_amount": 300
+      },
+      {
+        "category": "Shopping & Household Supplies",
+        "change_amount": 108.31,
+        "change_percent": 116.66,
+        "current_amount": 201.15,
+        "direction": "up",
+        "previous_amount": 92.84
+      },
+      {
+        "category": "Cash Spending",
+        "change_amount": 100,
+        "change_percent": 100,
+        "current_amount": 100,
+        "direction": "up",
+        "previous_amount": 0
+      },
+      {
+        "category": "Utilities",
+        "change_amount": 66.01,
+        "change_percent": 31.99,
+        "current_amount": 272.33,
+        "direction": "up",
+        "previous_amount": 206.32
+      },
+      {
+        "category": "Groceries",
+        "change_amount": -64.12,
+        "change_percent": -14.56,
+        "current_amount": 376.4,
+        "direction": "down",
+        "previous_amount": 440.52
+      },
+      {
+        "category": "Dining Out",
+        "change_amount": 57.86,
+        "change_percent": 58.85,
+        "current_amount": 156.17,
+        "direction": "up",
+        "previous_amount": 98.31
+      },
+      {
+        "category": "Pets",
+        "change_amount": -26.62,
+        "change_percent": -29.28,
+        "current_amount": 64.31,
+        "direction": "down",
+        "previous_amount": 90.93
+      },
+      {
+        "category": "Pharmacy & Medical Supplies",
+        "change_amount": -15.85,
+        "change_percent": -39.38,
+        "current_amount": 24.4,
+        "direction": "down",
+        "previous_amount": 40.25
+      },
+      {
+        "category": "Fuel",
+        "change_amount": -11.46,
+        "change_percent": -10.18,
+        "current_amount": 101.07,
+        "direction": "down",
+        "previous_amount": 112.53
+      },
+      {
+        "category": "Auto Insurance",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 140,
+        "direction": "stable",
+        "previous_amount": 140
+      },
+      {
+        "category": "Auto Loan",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 412,
+        "direction": "stable",
+        "previous_amount": 412
+      },
+      {
+        "category": "Home Insurance",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 150,
+        "direction": "stable",
+        "previous_amount": 150
+      },
+      {
+        "category": "Internet",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 79.99,
+        "direction": "stable",
+        "previous_amount": 79.99
+      },
+      {
+        "category": "Medicare & Health Insurance",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 650,
+        "direction": "stable",
+        "previous_amount": 650
+      },
+      {
+        "category": "Mortgage",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 1250,
+        "direction": "stable",
+        "previous_amount": 1250
+      },
+      {
+        "category": "Subscriptions",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 30.47,
+        "direction": "stable",
+        "previous_amount": 30.47
+      },
+      {
+        "category": "Travel & Hobbies",
+        "change_amount": 0,
+        "change_percent": 0,
+        "current_amount": 550,
+        "direction": "stable",
+        "previous_amount": 550
+      }
+    ],
+    "period": {
+      "comparison_clamped": false,
+      "comparison_kind": "calendar_month",
+      "data_age_days": 9,
+      "days_in_month": 31,
+      "elapsed_days": 31,
+      "forecast_available": false,
+      "forecast_reason": "Selected range does not include the current month from its start through today",
+      "has_data": true,
+      "history_available": true,
+      "latest_transaction": "2026-08-28T00:00:00Z",
+      "previous_days": 30,
+      "previous_end": "2026-06-30T00:00:00Z",
+      "previous_start": "2026-06-01T00:00:00Z",
+      "reference_date": "2026-07-31T00:00:00Z",
+      "reference_month": "2026-07-01T00:00:00Z",
+      "selected_days": 31,
+      "selected_end": "2026-07-31T00:00:00Z",
+      "selected_start": "2026-07-01T00:00:00Z",
+      "stale": true,
+      "today": "2026-09-06T00:00:00Z",
+      "valid": true
+    },
+    "previous_end": "2026-06-30",
+    "previous_start": "2026-06-01",
+    "start": "2026-07-01",
+    "velocity": {
+      "burn_rate_change": 19.97,
+      "daily_average": 185.72,
+      "historical_daily": 154.81
+    }
+  },
+  "recurring": {
+    "count": 22,
+    "payments": [
+      {
+        "amount": 1250,
+        "annual_cost": 15000,
+        "classification": "bill",
+        "classification_reason": "Bill or utility evidence in original merchant or transaction category",
+        "description": "home mortgage",
+        "frequency": "monthly",
+        "interval_days": 31,
+        "is_subscription": false,
+        "last_date": "2026-08-01",
+        "major_expense_name": "Mortgage",
+        "next_expected": "2026-09-01",
+        "occurrences": 6
+      },
+      {
+        "amount": 650,
+        "annual_cost": 7800,
+        "classification": "other",
+        "classification_reason": "Recurring pattern without positive subscription or bill evidence",
+        "description": "healthfirst insurance",
+        "frequency": "monthly",
+        "interval_days": 31,
+        "is_subscription": false,
+        "last_date": "2026-08-03",
+        "major_expense_name": "Medicare & Health Insurance",
+        "next_expected": "2026-09-03",
+        "occurrences": 6
+      },
+      {
+        "amount": 550,
+        "annual_cost": 6600,
+        "classification": "other",
+        "classification_reason": "Retail, everyday spending, or conflicting original transaction evidence",
+        "description": "retirement travel",
+        "frequency": "monthly",
+        "interval_days": 31,
+        "is_subscription": false,
+        "last_date": "2026-08-12",
+        "major_expense_name": "Travel & Hobbies",
+        "next_expected": "2026-09-12",
+        "occurrences": 6
+      },
+      {
+        "amount": 103.13,
+        "annual_cost": 5663.23,
+        "classification": "other",
+        "classification_reason": "Retail, everyday spending, or conflicting original transaction evidence",
+        "description": "greenleaf market",
+        "frequency": "ongoing",
+        "interval_days": 6,
+        "is_subscription": false,
+        "last_date": "2026-08-27",
+        "major_expense_name": "Groceries",
+        "next_expected": "2026-09-02",
+        "occurrences": 27
+      },
+      {
+        "amount": 412,
+        "annual_cost": 4944,
+        "classification": "bill",
+        "classification_reason": "Bill or utility evidence in original merchant or transaction category",
+        "description": "autoloan finance",
+        "frequency": "monthly",
+        "interval_days": 31,
+        "is_subscription": false,
+        "last_date": "2026-08-07",
+        "major_expense_name": "Auto Loan",
+        "next_expected": "2026-09-07",
+        "occurrences": 6
+      },
+      {
+        "amount": 300,
+        "annual_cost": 3600,
+        "classification": "other",
+        "classification_reason": "Recurring pattern without positive subscription or bill evidence",
+        "description": "home maintenance",
+        "frequency": "monthly",
+        "interval_days": 31,
+        "is_subscription": false,
+        "last_date": "2026-08-22",
+        "major_expense_name": "Home Maintenance & Appliances",
+        "next_expected": "2026-09-22",
+        "occurrences": 6
+      },
+      {
+        "amount": 251.67,
+        "annual_cost": 3553.04,
+        "classification": "bill",
+        "classification_reason": "Bill or utility evidence in original merchant or transaction category",
+        "description": "demo gas and electric",
+        "frequency": "ongoing",
+        "interval_days": 30,
+        "is_subscription": false,
+        "last_date": "2026-08-20",
+        "major_expense_name": "Utilities",
+        "next_expected": "2026-09-19",
+        "occurrences": 6
+      },
+      {
+        "amount": 50.05,
+        "annual_cost": 2070.95,
+        "classification": "other",
+        "classification_reason": "Retail, everyday spending, or conflicting original transaction evidence",
+        "description": "amazon",
+        "frequency": "ongoing",
+        "interval_days": 9,
+        "is_subscription": false,
+        "last_date": "2026-08-26",
+        "major_expense_name": "Shopping & Household Supplies",
+        "next_expected": "2026-09-04",
+        "occurrences": 20
+      },
+      {
+        "amount": 150,
+        "annual_cost": 1800,
+        "classification": "bill",
+        "classification_reason": "Bill or utility evidence in original merchant or transaction category",
+        "description": "home insurance",
+        "frequency": "monthly",
+        "interval_days": 31,
+        "is_subscription": false,
+        "last_date": "2026-08-06",
+        "major_expense_name": "Home Insurance",
+        "next_expected": "2026-09-06",
+        "occurrences": 6
+      },
+      {
+        "amount": 140,
+        "annual_cost": 1680,
+        "classification": "bill",
+        "classification_reason": "Bill or utility evidence in original merchant or transaction category",
+        "description": "auto insurance",
+        "frequency": "monthly",
+        "interval_days": 31,
+        "is_subscription": false,
+        "last_date": "2026-08-09",
+        "major_expense_name": "Auto Insurance",
+        "next_expected": "2026-09-09",
+        "occurrences": 6
+      },
+      {
+        "amount": 100,
+        "annual_cost": 1309.09,
+        "classification": "other",
+        "classification_reason": "Retail, everyday spending, or conflicting original transaction evidence",
+        "description": "atm withdrawal",
+        "frequency": "ongoing",
+        "interval_days": 36,
+        "is_subscription": false,
+        "last_date": "2026-08-12",
+        "major_expense_name": "Cash Spending",
+        "next_expected": "2026-09-17",
+        "occurrences": 4
+      },
+      {
+        "amount": 49.08,
+        "annual_cost": 1269.61,
+        "classification": "other",
+        "classification_reason": "Recurring pattern without positive subscription or bill evidence",
+        "description": "fuel stop",
+        "frequency": "ongoing",
+        "interval_days": 15,
+        "is_subscription": false,
+        "last_date": "2026-08-23",
+        "major_expense_name": "Fuel",
+        "next_expected": "2026-09-07",
+        "occurrences": 12
+      },
+      {
+        "amount": 76.28,
+        "annual_cost": 1076.85,
+        "classification": "other",
+        "classification_reason": "Recurring pattern without positive subscription or bill evidence",
+        "description": "pet palace",
+        "frequency": "ongoing",
+        "interval_days": 30,
+        "is_subscription": false,
+        "last_date": "2026-08-16",
+        "major_expense_name": "Pets",
+        "next_expected": "2026-09-15",
+        "occurrences": 6
+      },
+      {
+        "amount": 79.99,
+        "annual_cost": 959.88,
+        "classification": "bill",
+        "classification_reason": "Bill or utility evidence in original merchant or transaction category",
+        "description": "fiberco internet",
+        "frequency": "monthly",
+        "interval_days": 31,
+        "is_subscription": false,
+        "last_date": "2026-08-15",
+        "major_expense_name": "Internet",
+        "next_expected": "2026-09-15",
+        "occurrences": 6
+      },
+      {
+        "amount": 56.27,
+        "annual_cost": 794.42,
+        "classification": "other",
+        "classification_reason": "Recurring pattern without positive subscription or bill evidence",
+        "description": "noodle house",
+        "frequency": "ongoing",
+        "interval_days": 30,
+        "is_subscription": false,
+        "last_date": "2026-08-14",
+        "major_expense_name": "Dining Out",
+        "next_expected": "2026-09-13",
+        "occurrences": 6
+      },
+      {
+        "amount": 47.24,
+        "annual_cost": 557.59,
+        "classification": "other",
+        "classification_reason": "Retail, everyday spending, or conflicting original transaction evidence",
+        "description": "grubhub",
+        "frequency": "ongoing",
+        "interval_days": 40,
+        "is_subscription": false,
+        "last_date": "2026-07-21",
+        "major_expense_name": "Dining Out",
+        "next_expected": "2026-08-30",
+        "occurrences": 4
+      },
+      {
+        "amount": 30.4,
+        "annual_cost": 475.87,
+        "classification": "other",
+        "classification_reason": "Recurring pattern without positive subscription or bill evidence",
+        "description": "corner pharmacy",
+        "frequency": "ongoing",
+        "interval_days": 26,
+        "is_subscription": false,
+        "last_date": "2026-08-28",
+        "major_expense_name": "Pharmacy & Medical Supplies",
+        "next_expected": "2026-09-23",
+        "occurrences": 7
+      },
+      {
+        "amount": 35.76,
+        "annual_cost": 336.54,
+        "classification": "other",
+        "classification_reason": "Recurring pattern without positive subscription or bill evidence",
+        "description": "pizza palace",
+        "frequency": "ongoing",
+        "interval_days": 51,
+        "is_subscription": false,
+        "last_date": "2026-08-06",
+        "major_expense_name": "Dining Out",
+        "next_expected": "2026-09-26",
+        "occurrences": 4
+      },
+      {
+        "amount": 21.5,
+        "annual_cost": 258,
+        "classification": "bill",
+        "classification_reason": "Bill or utility evidence in original merchant or transaction category",
+        "description": "county water authority",
+        "frequency": "monthly",
+        "interval_days": 31,
+        "is_subscription": false,
+        "last_date": "2026-08-21",
+        "major_expense_name": "Utilities",
+        "next_expected": "2026-09-21",
+        "occurrences": 6
+      },
+      {
+        "amount": 15.49,
+        "annual_cost": 185.88,
+        "classification": "subscription",
+        "classification_reason": "Known subscription service or subscription-specific original transaction category",
+        "description": "netflix",
+        "frequency": "monthly",
+        "interval_days": 31,
+        "is_subscription": true,
+        "last_date": "2026-08-08",
+        "major_expense_name": "Subscriptions",
+        "next_expected": "2026-09-08",
+        "occurrences": 6
+      },
+      {
+        "amount": 11.99,
+        "annual_cost": 143.88,
+        "classification": "subscription",
+        "classification_reason": "Known subscription service or subscription-specific original transaction category",
+        "description": "spotify",
+        "frequency": "monthly",
+        "interval_days": 31,
+        "is_subscription": true,
+        "last_date": "2026-08-11",
+        "major_expense_name": "Subscriptions",
+        "next_expected": "2026-09-11",
+        "occurrences": 6
+      },
+      {
+        "amount": 2.99,
+        "annual_cost": 35.88,
+        "classification": "subscription",
+        "classification_reason": "Known subscription service or subscription-specific original transaction category",
+        "description": "cloud storage",
+        "frequency": "monthly",
+        "interval_days": 31,
+        "is_subscription": true,
+        "last_date": "2026-08-02",
+        "major_expense_name": "Subscriptions",
+        "next_expected": "2026-09-02",
+        "occurrences": 6
+      }
+    ],
+    "reference_date": "2026-08-28"
+  }
+}

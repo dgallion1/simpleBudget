@@ -1,0 +1,110 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: DI3
+ATTEMPT: 2
+---
+FAILURES: None in the scoped attempt-2 correction. DI3.1 F1 is resolved.
+
+Scope and prior-evidence association
+Read DI3.2 report, cumulative DI3.2.files and promoted DI3-label-name.cjs.
+This is an independent executed re-review of F1 and potential breakage from
+the narrow correction, not a transcription of worker red/green results.
+Canonical approved design and ACCESSIBILITY.md points 1-17 remain the
+standard reviewed in attempt 1. Explicitly retain unchanged-criterion evidence
+from .swarm/DI-run/verdicts/DI3.1.checker-a11y.verdict and its probes/results
+in /tmp/DI3-a11y.mBCqsi, supported by fresh byte comparisons below.
+
+Fresh snapshot: /tmp/DI3-a11y-attempt2.ZUo7kN.
+Used `rtk proxy bash -c` to cp -a immutable /tmp/budget2-DI3-base.rhoTJM
+into a fresh temp directory and overlay ONLY cumulative DI3.2 manifest paths.
+No whole-live-tree copy, DI4 changes, source fixes, git-state changes,
+subagents, ledger edits, gate calls, deployments or real/demo-port requests.
+Prior scratch probes were not overlaid as production files.
+
+1. Proved exact production delta
+Command: `rtk proxy node -e` recursively compared current cmd/internal/web
+files against /tmp/DI3-a11y.mBCqsi, excluding generated internal/config/data,
+using Buffer equality and assert.deepEqual on the changed-path list.
+Then asserted that removing precisely
+` aria-label="Choose CSV or backup ZIP files to import"`
+from the prior dashboard.html produces the current file byte-for-byte.
+Result: PASS; changed paths exactly [web/templates/pages/dashboard.html].
+
+Independent directory checks, cwd the new snapshot:
+- `rtk proxy diff -qr /tmp/DI3-a11y.mBCqsi/cmd cmd`: no differences.
+- `rtk proxy diff -qr --exclude=data /tmp/DI3-a11y.mBCqsi/internal internal`:
+  no differences.
+- `rtk proxy diff -qr /tmp/DI3-a11y.mBCqsi/web web`: only dashboard.html.
+- `rtk proxy diff -u /tmp/DI3-a11y.mBCqsi/web/templates/pages/dashboard.html
+  web/templates/pages/dashboard.html`: exactly the attribute removal at line26.
+The expected diff exit 1 indicates that one reviewed difference, not a failure.
+Thus JS, CSS, money/reporting consumers, handlers, other markup, visible copy,
+role, tabindex and keyboard handlers are unchanged. Final manifest cmp loop
+against the frozen worktree also passed for every cumulative path.
+
+2. Independent actual-render label/name and keyboard check
+Reused the independently built attempt-1 binary only after proving its Go
+sources unchanged. Started it with BUDGET_DEBUG=true so the ACTUAL new
+snapshot templates are read, with these explicit environment paths:
+BUDGET_LISTEN_ADDR=127.0.0.1:18788
+BUDGET_DATA_DIR=/tmp/DI3-a11y-attempt2.ZUo7kN/runtime/data
+BUDGET2_BACKUP_DIR=/tmp/DI3-a11y-attempt2.ZUo7kN/runtime/backups
+BUDGET2_IMPORT_DIR=/tmp/DI3-a11y-attempt2.ZUo7kN/runtime/imports
+BUDGET_TEMPLATES_DIR=/tmp/DI3-a11y-attempt2.ZUo7kN/web/templates
+BUDGET_STATIC_DIR=/tmp/DI3-a11y-attempt2.ZUo7kN/web/static
+Data copied with cp -aL solely from authorized synthetic
+/tmp/budget2-DI-demo.mfLral/data. No :8080/:8081 access or real data.
+
+Fresh command, cwd new snapshot:
+`rtk proxy env DI3_BASE=http://127.0.0.1:18788
+DI3_LABEL_OUTPUT=/tmp/DI3-a11y-attempt2.ZUo7kN/independent-label-name.json
+node .swarm/DI-run/reports/DI3-label-name.cjs`
+Exit 0. Fresh isolated Chromium contexts, 390x900, both light/dark. Actual
+Go-rendered Dashboard, real stylesheet/JS. Requests restricted to the isolated
+loopback origin. Browser skill was already read; authorized headless fallback.
+
+Observed in BOTH themes:
+- Visible text exactly: "Or drop CSV or backup ZIP files anywhere on this
+  page, or click to browse".
+- getByRole(button, exact visible name) count = 1.
+- Actual accessibility snapshot contains a button with that exact name.
+- Explicit axe label-content-name-mismatch rule: zero violations.
+- Drop-zone keyboard focus = true.
+- Enter in light / Space in dark opened the native file chooser; selected no
+  files, hence no upload. Existing keyboard behavior preserved.
+These fresh observations resolve WCAG 2.5.3 F1 at dashboard.html:26 and show
+no new breakage of the changed control's role/name/focus/activation.
+Evidence: /tmp/DI3-a11y-attempt2.ZUo7kN/independent-label-name.json.
+
+3. Retained constitution evidence, justified by byte identity
+Points 1-2: same headings/landmarks/scoped data-table headers.
+Points 3-4: role, focusability and names freshly checked above; other native
+actions, navigation and associated form labels unchanged.
+Points 5-6: no validation/format/required-field change.
+Points 7-8: same actual CSS, text colors, focus styling and visible sign/status
+explanations; retain prior contrast and non-color semantics evidence.
+Points 9-10: changed control freshly keyboard-tested; prior modal/date/HTMX
+focus traces remain applicable to byte-identical JS and other templates.
+Points 11-12: five chart alternatives, their plotted-value parity and theme
+redraw remain unchanged; retain prior six-state actual-render evidence.
+Point 13: signed-money explanations and producers unchanged.
+Points 14-16: no banner/motion/dismissal or hidden-content change. Removing the
+overriding name exposes the existing visible label; it adds no hidden prose.
+Point 17: modal markup/handlers unchanged; prior five-route x six-state
+name/modal/focus/trap/Escape/return evidence retained.
+Prior required axe CLI light/dark render audits and 390/768/1440 layout checks
+are associated with this proven unchanged rendering/styling; not rerun as a
+redundant full-suite or six-viewport batch for an attribute-only correction.
+
+OBSERVATIONS
+Unchanged non-blocking DI3.1 observations remain: baseline chart-color
+contrast, automated scroll-focus warnings resolved by actual Chrome keyboard
+operation, and untested broader browser/AT combinations. No new finding.
+Build freshness and monetary/mutation verification remain tests/second lanes.
+
+No failing unified diff required: no current in-scope failure.
+The exact fixed hunk is recorded by the fresh diff command above. Promoted
+regression lives at .swarm/DI-run/reports/DI3-label-name.cjs; independent run
+artifact is outside the worktree as listed. Only this verdict was written to
+the worktree, through scoped escalated rtk/apply_patch. Lead owns gates/deploy.

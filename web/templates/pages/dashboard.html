@@ -23,9 +23,9 @@
          above; shrunk (U10), but the same #file-input/#drop-zone-* ids
          dashboard.js toggles, and dropping anywhere on the page (not just
          this box) still imports. -->
-    <div id="drop-zone"
+    <div id="drop-zone" role="button" tabindex="0"
         class="border border-dashed border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-center transition-all duration-200 bg-gray-50 dark:bg-gray-800 hover:border-accent hover:bg-accent-soft cursor-pointer">
-        <input type="file" id="file-input" accept=".csv,.zip" class="hidden">
+        <input type="file" id="file-input" aria-label="CSV or backup ZIP files" accept=".csv,.zip" class="hidden">
         <div id="drop-zone-content" class="flex items-center justify-center space-x-2">
             <svg class="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -60,7 +60,8 @@
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
         <form id="date-filter-form" class="flex flex-wrap items-center gap-4">
             {{template "shared/range-picker" (dict
-                "Layout" "inline"
+                "Layout" "stacked"
+                "GroupInputs" false
                 "ArrowPosition" "wrap"
                 "QuickLabel" "Quick:"
                 "StartID" "dashboard-date-start"
@@ -79,10 +80,15 @@
                     (dict "Value" "3m" "Label" "3M")
                     (dict "Value" "6m" "Label" "6M")
                     (dict "Value" "12m" "Label" "12M")
-                    (dict "Value" "all" "Label" "All"))
-                "Comparison" (safeHTML (printf `<div class="flex items-center space-x-2"><label for="dashboard-comparison" class="text-sm font-medium text-gray-700 dark:text-gray-300">Compare:</label><select id="dashboard-comparison" name="comparison" class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-1.5 text-sm focus:ring-accent focus:border-accent"><option value="">No comparison</option><option value="previous" %s>Previous period</option><option value="year" %s>Same period last year</option></select></div>`
-                    (htmlSelected (eq .Comparison "previous"))
-                    (htmlSelected (eq .Comparison "year")))))}}
+                    (dict "Value" "all" "Label" "All")))}}
+            <div>
+                <label for="dashboard-comparison" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Compare</label>
+                <select id="dashboard-comparison" name="comparison" class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
+                    <option value="">No comparison</option>
+                    <option value="previous" {{if eq .Comparison "previous"}}selected{{end}}>Previous period</option>
+                    <option value="year" {{if eq .Comparison "year"}}selected{{end}}>Same period last year</option>
+                </select>
+            </div>
 
             <span id="loading-indicator" class="htmx-indicator">
                 <svg class="animate-spin h-5 w-5 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none"
@@ -101,7 +107,7 @@
         hx-get="/dashboard/kpis" hx-trigger="change from:#date-filter-form"
         hx-include="#date-filter-form" hx-swap="innerHTML"
         hx-indicator="#loading-indicator">
-        {{template "kpis" .}}
+        {{template "dashboard-period-kpis" .}}
     </div>
 
     <!-- Accounts card (A8): per-account balance, freshness, projection -->

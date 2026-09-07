@@ -1,0 +1,57 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: DI3
+ATTEMPT: 2
+---
+SCOPE: Narrow conceded F1 label-name correction and regression risk only.
+Reviewed DI3.2.md, cumulative DI3.2.files and new DI3-label-name.cjs against
+the original task/design and ACCESSIBILITY baseline. No broader polish,
+monetary redesign, source/git/ledger edits or server/real-data access.
+
+Isolation: /tmp/DI3-second-attempt2.PaeR46 is a fresh copy of immutable
+/tmp/budget2-DI3-base.rhoTJM with ONLY DI3.2.files overlaid. One scratch-only
+render test added. No live whole-tree copy; immutable baseline untouched.
+
+Independent delta proof:
+rtk proxy bash -c 'for subtree in cmd internal web; do diff -qr --exclude=di3_second_render_test.go --exclude=di3_second_grouping_test.go --exclude=di3_second_label_test.go "/tmp/DI3-second.O8fPRh/$subtree" "$subtree"; done; node --check .swarm/DI-run/reports/DI3-label-name.cjs'
+Only difference reported: web/templates/pages/dashboard.html. Exclusions are
+explicitly identified checker scratch probes, not production files.
+diff -u /tmp/DI3-second.O8fPRh/web/templates/pages/dashboard.html web/templates/pages/dashboard.html
+shows exactly removal of aria-label="Choose CSV or backup ZIP files to import"
+from #drop-zone. Visible content, role, tabindex, file-input label, classes,
+Go money/reporting code, JS, other templates and CSS are byte-identical.
+diff exit 1 denotes this expected one-attribute change, not a test failure.
+node --check on the new durable harness exits 0.
+
+Fresh scoped renderer evidence (same scratch workdir):
+rtk proxy go test ./internal/handlers/dashboard -run '^TestDI3SecondDropZoneRenderedLabel$|^TestDI3RenderedCashFlow$' -count=1
+Exit 0, dashboard 0.151s.
+- New TestDI3SecondDropZoneRenderedLabel exercises actual HTTP/render output:
+  exactly one drop-zone, role=button, tabindex=0, no parent aria-label override,
+  exact unchanged visible sentence, and preserved file input's own label.
+  Probe: /tmp/DI3-second-attempt2.PaeR46/internal/handlers/dashboard/di3_second_label_test.go
+- Existing real-render cash-flow fixtures pass (full/KPI, 10.006/.004,
+  2.675, negative/neutral explanation and selected-range navigation).
+
+New durable browser regression inspected independently: it requires exact
+computed accessible name via getByRole, visible copy equality, explicit axe
+label-content-name-mismatch, focus and actual Enter/Space chooser opening in
+light/dark. It clears the chooser with an empty selection. It validates a
+127.0.0.1 origin, rejects ports 8080/8081, restricts routed requests to that
+origin, and supports dependency/loopback overrides. No weakened assertion or
+silent skip found. This lane did not run a browser; dedicated checker-a11y
+must independently rerun the requested computed-name/keyboard checks.
+
+Prior evidence association:
+DI3.1.checker-second.verdict remains the evidence for byte-identical rounding,
+rendered-cent reconciliation, signed residuals, grouping invariance, account/
+plan/period scope, consumer enumeration, build and pinned CSS freshness.
+Its independent probes reside in /tmp/DI3-second.O8fPRh and were not promoted
+or confused with production files by this copy. No full suite or six-viewport
+batch repeated. The removed override is the sole production delta and removes
+the conceded conflicting name while preserving the action's visible label.
+
+FINDINGS: No new scoped breakage reproduced. PASS for checker-second lane;
+not a substitute for checker-a11y's independent browser verdict. Only this
+verdict written to the real worktree; lead owns gate/deployment.

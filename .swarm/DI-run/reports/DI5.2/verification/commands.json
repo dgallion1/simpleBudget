@@ -1,0 +1,103 @@
+[
+  {
+    "name": "build",
+    "command": [
+      "rtk",
+      "proxy",
+      "go",
+      "build",
+      "-buildvcs=false",
+      "./..."
+    ],
+    "cwd": "/tmp/DI5-correction.CqUG2q",
+    "start": "2026-09-07T02:32:18.891Z",
+    "exit": 0
+  },
+  {
+    "name": "vet",
+    "command": [
+      "rtk",
+      "proxy",
+      "go",
+      "vet",
+      "./..."
+    ],
+    "cwd": "/tmp/DI5-correction.CqUG2q",
+    "start": "2026-09-07T02:32:20.601Z",
+    "exit": 0
+  },
+  {
+    "name": "staticcheck",
+    "command": [
+      "rtk",
+      "proxy",
+      "staticcheck",
+      "./..."
+    ],
+    "cwd": "/tmp/DI5-correction.CqUG2q",
+    "start": "2026-09-07T02:32:22.159Z",
+    "exit": 0
+  },
+  {
+    "name": "tests",
+    "command": [
+      "rtk",
+      "proxy",
+      "go",
+      "test",
+      "-count=1",
+      "./..."
+    ],
+    "cwd": "/tmp/DI5-correction.CqUG2q",
+    "start": "2026-09-07T02:32:27.165Z",
+    "exit": 0
+  },
+  {
+    "name": "promoted",
+    "command": [
+      "rtk",
+      "proxy",
+      "go",
+      "test",
+      "-count=1",
+      "-v",
+      "./internal/services/insights",
+      "./internal/handlers/dashboard",
+      "./internal/handlers/insights",
+      "./internal/templates",
+      "./internal/services/mcpsvc/spend",
+      "./internal/services/mcpsvc/ledger",
+      "./cmd/server",
+      "-run",
+      "^TestDI5"
+    ],
+    "cwd": "/tmp/DI5-correction.CqUG2q",
+    "start": "2026-09-07T02:34:09.668Z",
+    "exit": 0
+  },
+  {
+    "name": "css",
+    "command": [
+      "rtk",
+      "proxy",
+      "make",
+      "COMMIT=di5-frozen",
+      "css-verify"
+    ],
+    "cwd": "/tmp/DI5-correction.CqUG2q",
+    "start": "2026-09-07T02:34:10.811Z",
+    "exit": 0
+  },
+  {
+    "name": "agents2-smoketest",
+    "command": [
+      "rtk",
+      "proxy",
+      "bash",
+      "smoketest/gate/run_tests.sh"
+    ],
+    "cwd": "/home/darrell/work/agents2/.claude/worktrees/budget2-ui-improvements-daaa5e",
+    "start": "2026-09-07T02:34:12.129Z",
+    "exit": 0
+  }
+]

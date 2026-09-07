@@ -1,0 +1,63 @@
+[1mRunning axe-core 4.13.0 in chrome-headless[22m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/dashboard-light.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/dashboard-dark.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/explorer-light.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/explorer-dark.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/insights-light.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/insights-dark.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/major-expenses-light.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/major-expenses-dark.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/whatif-light.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/whatif-dark.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/accounts-light.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/accounts-dark.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/transfers-light.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/transfers-dark.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/filemanager-light.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/filemanager-dark.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/duplicates-light.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1m[22m
+[1mTesting [4m[34mhttp://127.0.0.1:18874/duplicates-dark.html[39m[24m[22m ... please wait, this may take a minute.
+[32m 0 violations found![39m
+[1mTesting complete of 18 pages[22m
+[1m[22m
+Saved file at /tmp/DI5-4-a11y.xokOQB/artifacts/axe.json 
+
+[3mPlease note that only 20% to 50% of all accessibility issues can automatically be detected. [23m
+[3mManual testing is always required. For more information see:[23m
+[3m[4m[34mhttps://dequeuniversity.com/class/testing[39m[24m[23m
+[3m[23m

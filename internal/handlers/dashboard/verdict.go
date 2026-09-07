@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"budget2/internal/models"
+	"budget2/internal/services/metrics"
 )
 
 // centsFromDecimalString derives an integer cent count from v using the
@@ -43,6 +44,7 @@ const onBudgetEps = 1.0
 // Classification lives here (testable); currency formatting stays in the template
 // (reusing formatMoney), so this carries figures and flags, not display strings.
 type BudgetVerdictView struct {
+	CashFlow    metrics.CashFlowDisplay
 	Health      models.Health
 	HasTarget   bool
 	Delta       float64 // CombinedCumulativeDelta (>0 = over budget)
@@ -173,9 +175,10 @@ func BuildBudgetVerdict(m *models.DashboardMetrics) BudgetVerdictView {
 		return v
 	}
 
-	v.NetSavings = m.NetSavings
+	v.CashFlow = metrics.ReportingCashFlow(m.TotalIncome, m.TotalExpenses)
+	v.NetSavings = v.CashFlow.Balance
 	v.SavingsRate = m.SavingsRate
-	v.TotalIncome = m.TotalIncome
+	v.TotalIncome = v.CashFlow.Income
 	v.Months = m.MonthsInRange
 
 	if !m.HasCombinedTarget {

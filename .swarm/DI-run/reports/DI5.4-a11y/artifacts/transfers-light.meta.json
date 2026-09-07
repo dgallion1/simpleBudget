@@ -1,0 +1,143 @@
+{
+  "id": "transfers-light",
+  "route": "/transfers",
+  "theme": "light",
+  "requestedURL": "http://127.0.0.1:18873/transfers",
+  "responses": [],
+  "requestFailures": [],
+  "blocked": [],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "status": 200,
+  "finalURL": "http://127.0.0.1:18873/transfers",
+  "dom": {
+    "title": "Transfers - simpleBudget",
+    "theme": "light",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "headings": [
+      {
+        "tag": "H1",
+        "id": "",
+        "text": "Transfers"
+      },
+      {
+        "tag": "H2",
+        "id": "transfers-flow-heading",
+        "text": "Monthly flow between institutions"
+      },
+      {
+        "tag": "H2",
+        "id": "transfers-history-heading",
+        "text": "Transfer history (12)"
+      },
+      {
+        "tag": "H2",
+        "id": "transfers-queue-heading",
+        "text": "Suspected pairs"
+      }
+    ],
+    "landmarks": [
+      {
+        "name": "main",
+        "count": 1
+      },
+      {
+        "name": "nav",
+        "count": 1
+      },
+      {
+        "name": "header",
+        "count": 2
+      },
+      {
+        "name": "footer",
+        "count": 1
+      }
+    ],
+    "unscopedHeaders": [],
+    "forms": [],
+    "clickable": [],
+    "live": [
+      {
+        "tag": "DIV",
+        "id": "transfers-status-region",
+        "text": "",
+        "visible": true,
+        "live": "polite"
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "text": "",
+        "visible": true,
+        "live": "polite"
+      }
+    ],
+    "hiddenText": [
+      {
+        "tag": "CAPTION",
+        "id": "",
+        "text": "Monthly transfers between institutions"
+      },
+      {
+        "tag": "CAPTION",
+        "id": "",
+        "text": "Paired and external transfers"
+      }
+    ],
+    "images": [],
+    "dialogs": [],
+    "animations": [],
+    "charts": [
+      {
+        "id": "chart-transfers-flow",
+        "visible": true,
+        "ready": true,
+        "series": 2,
+        "font": "#374151",
+        "adjacentTable": false,
+        "parentTables": 1
+      }
+    ],
+    "nav": [
+      {
+        "text": "simpleBudget",
+        "href": "/"
+      },
+      {
+        "text": "Dashboard",
+        "href": "/dashboard"
+      },
+      {
+        "text": "Explorer",
+        "href": "/explorer"
+      },
+      {
+        "text": "Insights",
+        "href": "/insights"
+      },
+      {
+        "text": "Major Expenses",
+        "href": "/major-expenses"
+      },
+      {
+        "text": "What-If",
+        "href": "/whatif"
+      },
+      {
+        "text": "Accounts",
+        "href": "/accounts"
+      },
+      {
+        "text": "Transfers",
+        "href": "/transfers"
+      },
+      {
+        "text": "File Manager",
+        "href": "/filemanager"
+      }
+    ]
+  },
+  "htmlFile": "transfers-light.html"
+}

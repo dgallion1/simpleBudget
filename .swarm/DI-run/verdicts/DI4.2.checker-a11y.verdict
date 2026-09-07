@@ -1,0 +1,41 @@
+TASK: DI4
+ATTEMPT: 2
+CHECKER: checker-a11y
+FAMILY: anthropic
+VERDICT: PASS
+---
+Independent scoped re-review of conceded F1. Corrected scope wording verified in actual full, HX and standalone handler renders; all retain 22 unique recurring rows. No new accessibility failure. This is not deployment authorization or a substitute for other named reviews/gates.
+
+Isolation/provenance
+Fresh /tmp/DI4-2-a11y.kTazMP = cp -a immutable /tmp/budget2-DI4-base.KPl7oY/. plus ONLY cumulative DI4.2 manifest paths copied from frozen worktree. Read DI4.2 report and complete actual manifest. Manifest has 35 paths, 10 internal/web application/test/CSS paths; no guessed count. SHA256 comparisons in checker-evidence/hashes.json confirm all 35 equal frozen source. Only two production files differ from my independent attempt1 /tmp/DI4-a11y.m9xka6: pages/insights.html and components/insights-investigation.html. The additional internal path is the new recurring_scope_di4_test.go, not production behavior. The other seven previous internal/web paths are byte-identical: handlers.go, investigation.go, investigation_di4_test.go, insights.js, tailwind.css, anomalies-section.html, pricecreep-section.html.
+diff -u against prior snapshot produces exactly one sentence replacement per template; executable string-normalization assertions independently verify whole template equality after those exact replacements. No markup, class, role, label attribute, tabindex, event handler or other template byte changes. ACCESSIBILITY.md, shared shell, styles.css and detector also compared byte-identical. Evidence: checker-evidence/*.diff, normalization.txt, hashes.json. Prior master attribution remains in /tmp/DI4-a11y.m9xka6/artifacts/git-diff-master.txt; the attempt2 delta is wholly within the two already-attributed new sentences.
+
+Fresh commands/evidence (cwd /tmp/DI4-2-a11y.kTazMP)
+1. rtk proxy go test -count=1 -v ./internal/handlers/insights -run '^TestCheckerDI4RecurringLimitWording$'
+   Exit 0. Inspected durable test before execution. Real loader/detector: 22; full/HX/standalone each 22 rows, every merchant exactly once, neither old false-cap phrase. Did not rely on worker green log.
+2. rtk proxy bash -lc 'go test -count=1 -v ./internal/handlers/insights -run "TestA11yAttempt2Scope|TestCheckerDI4RecurringLimitWording" | tee checker-evidence/render.log'
+   Raw Go log ends PASS, both tests and all durable subtests pass. Independent scratch TestA11yAttempt2Scope uses its own 66-transaction fixture (22 distinct merchants, separately varied amounts), actual loader/handler/templates. Each full/HX/standalone response HTTP 200, 22 unique merchants/rows, corrected sentence exactly once, no false limit. Dumps complete actual response bytes to full.html, HX.html and standalone.html. No generated fake layout or detector stub.
+3. rtk proxy node checker-scope.cjs
+   Exit 0. Authorized fresh headless Chrome contexts, actual full.html bytes and actual snapshot stylesheets, light/dark 390x900. Scoped axe WCAG A/AA audit on recurring section: zero violations both. AX snapshot contains corrected scope sentence; all 22 rows remain; document width/scrollWidth both 390 in each theme. Raw scope-false/true.axe.json, scope-false/true.ax.txt and browser.json. Requests intercepted exclusively at synthetic loopback origin 127.0.0.1:18795; no listening server, app request, external request, user session or data mutation. Scripts intentionally blocked for this static text/layout confirmation, not claimed as a fresh behavioral test.
+4. rtk proxy node -e '[SHA256 manifest comparisons and diff -u orchestration]'; rtk proxy node -e '[assert whole-template equality after exact sentence substitutions; compare shared files]'
+   Both successful; resulting hashes/diffs/normalization evidence described above. First hash command had a JS syntax typo before any work; corrected invocation succeeded. No product fix or test expectation relaxation.
+
+Prior evidence association / all 17 constitution points
+Retain my DI4.1.checker-a11y.verdict and its independent /tmp/DI4-a11y.m9xka6 artifacts, not worker browser claims. Exact template-normalization and unchanged-file hashes justify reuse for this text-only delta:
+1 headings/landmarks; 2 table/header semantics; 3 native link/action semantics; 4 associated labels/names: unchanged structure, prior six-state checks retained; corrected text freshly present in AX.
+5 validation and 6 date format/required-field treatment: no new input/validation code; prior results and pre-existing O2 limitation retained.
+7 contrast and 12 theme parity: exact same CSS/classes and unchanged chart JS, prior measured chart ratios retained (light 6.2875/4.8345, dark 7.3633/5.7818); fresh both-theme narrow recurring-section audits have zero violations and no document overflow.
+8 non-color meaning and 13 signed money: all amounts/producers/status words unchanged; only scope sentence replaced with accurate text. Prior evidence retained.
+9 keyboard/focus and 10 HTMX restoration: JS, controls and wrapper markup byte-identical; prior six-state Enter/Space sorting, ArrowRight scrolling, repeated preset/date focus traces retained. Fresh full/HX renderer correction assertions verify both response surfaces still contain the new scope and every row; no claim to have rerun entire behavior batch.
+11 chart alternatives: same chart/table markup and data producers, prior actual Plotly-to-table value assertions retained.
+14 banners, 15 motion: no new surface or transition. Prior unchanged shared-banner scope and existing reduced-motion observation retained.
+16 suppression: native findings disclosure bytes unchanged; prior independent 11-finding fixture and open/closed AX parity retained.
+17 dialogs: still no introduced blocking overlay. Prior not-applicable-to-delta assessment retained.
+Prior real-render npx @axe-core/cli both-theme results (artifacts/cli-axe.json, cli.log) remain associated with byte-identical styling/structure. Fresh scope audit supplements, not replaces, those results. No redundant full-suite/six-viewport cycle.
+
+FAILURES: none.
+OBSERVATIONS: prior O1 false-20-series wording is RESOLVED in both production sentences and actual full/HX/standalone responses. Previously established O2 preset/current-date-versus-input-max validation and O3 inherited theme transitions/reduced-motion remain unchanged, outside this conceded correction, for DI5 attribution. No new blocker.
+
+Scratch promotion/reproduction
+New probe: internal/handlers/insights/checker_a11y_attempt2_test.go in snapshot only; browser supplement checker-scope.cjs; machine artifacts checker-evidence/. Durable worker test already covers the original 22-row regression; new scratch probe adds positive exactly-once wording and separate fixture verification. No source promotion performed.
+Browser prerequisites match DI4.1: Playwright /home/darrell/.npm/_npx/e41f203b7505f1fb/node_modules/playwright; Chrome /home/darrell/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome; axe-core under /home/darrell/.config/nvm/versions/node/v24.12.0/lib/node_modules/@axe-core/cli. Browser skill and authorized fallback followed. Browser closed; no server started. Only this verdict written in live worktree; no production/git/ledger/deployment or real/demo-data changes.

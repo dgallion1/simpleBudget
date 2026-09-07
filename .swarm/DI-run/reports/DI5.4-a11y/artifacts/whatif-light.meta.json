@@ -1,0 +1,1165 @@
+{
+  "id": "whatif-light",
+  "route": "/whatif",
+  "theme": "light",
+  "requestedURL": "http://127.0.0.1:18873/whatif",
+  "responses": [],
+  "requestFailures": [],
+  "blocked": [],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "status": 200,
+  "finalURL": "http://127.0.0.1:18873/whatif",
+  "dom": {
+    "title": "What-If Analysis - simpleBudget",
+    "theme": "light",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "headings": [
+      {
+        "tag": "H1",
+        "id": "",
+        "text": "What-If Analysis"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Portfolio & Expenses"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Income Sources"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Healthcare Costs"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Big Ticket Items"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "One-Time Expenses"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Additional Expenses"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Rate Assumptions"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Retirement Spending Phases"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "text": "Spending Trajectory"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Drop/rise guardrails (simple)"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Roth Conversion Strategy"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Scenario Chain"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "SS Claiming Age Optimizer"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Funded through Jul 2056"
+      },
+      {
+        "tag": "H2",
+        "id": "whatif-lifestyle-heading",
+        "text": "Simulated lifestyle outcomes"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "text": "Among runs with cuts · 679 / 1000 runs (67.9%)"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Portfolio Longevity"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Monthly Expenses Today"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Approximate failure thresholds"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "text": "Investment Return"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "text": "Inflation Rate"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "text": "Monthly Expenses"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "text": "Portfolio Value"
+      }
+    ],
+    "landmarks": [
+      {
+        "name": "main",
+        "count": 1
+      },
+      {
+        "name": "nav",
+        "count": 1
+      },
+      {
+        "name": "header",
+        "count": 1
+      },
+      {
+        "name": "footer",
+        "count": 1
+      }
+    ],
+    "unscopedHeaders": [],
+    "forms": [
+      {
+        "tag": "SELECT",
+        "id": "scenario-select",
+        "type": "select-one",
+        "required": false,
+        "label": "Scenario:",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "portfolio-range",
+        "type": "select-one",
+        "required": false,
+        "label": "",
+        "ariaLabel": "Portfolio value slider range",
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "portfolio-slider",
+        "type": "range",
+        "required": false,
+        "label": "Portfolio Value",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "monthly_living_expenses_input",
+        "type": "range",
+        "required": false,
+        "label": "Monthly Living Expenses",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "monthly-property-tax-input",
+        "type": "number",
+        "required": false,
+        "label": "Monthly Property Tax",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "property-tax-inflation-input",
+        "type": "number",
+        "required": false,
+        "label": "Property Tax Inflation %",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "projection-years-slider",
+        "type": "range",
+        "required": false,
+        "label": "Projection Years",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "text",
+        "required": true,
+        "label": "",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "number",
+        "required": true,
+        "label": "",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "add-income-start-year",
+        "type": "number",
+        "required": false,
+        "label": "Starts yr (0=now)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "add-income-end-year",
+        "type": "number",
+        "required": false,
+        "label": "Ends yr (blank=never)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "checkbox",
+        "required": false,
+        "label": "Apply COLA (2%/yr)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "",
+        "type": "select-one",
+        "required": false,
+        "label": "",
+        "ariaLabel": "Demo Husband current health coverage",
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "healthcare-person-id-demo-person-a",
+        "type": "select-one",
+        "required": false,
+        "label": "Person",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "healthcare-monthly-cost-demo-person-a",
+        "type": "range",
+        "required": false,
+        "label": "Monthly Cost",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "healthcare-post-medicare-inflation-demo-person-a",
+        "type": "range",
+        "required": false,
+        "label": "Medicare Inflation",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "care-start-age-demo-person-a",
+        "type": "number",
+        "required": false,
+        "label": "Late-life care starts at age",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "care-monthly-cost-demo-person-a",
+        "type": "number",
+        "required": false,
+        "label": "Care monthly cost (today's $)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "",
+        "type": "select-one",
+        "required": false,
+        "label": "",
+        "ariaLabel": "Demo Wife current health coverage",
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "healthcare-person-id-demo-person-b",
+        "type": "select-one",
+        "required": false,
+        "label": "Person",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "healthcare-monthly-cost-demo-person-b",
+        "type": "range",
+        "required": false,
+        "label": "Monthly Cost",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "healthcare-post-medicare-inflation-demo-person-b",
+        "type": "range",
+        "required": false,
+        "label": "Medicare Inflation",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "care-start-age-demo-person-b",
+        "type": "number",
+        "required": false,
+        "label": "Late-life care starts at age",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "care-monthly-cost-demo-person-b",
+        "type": "number",
+        "required": false,
+        "label": "Care monthly cost (today's $)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "text",
+        "required": true,
+        "label": "",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "number",
+        "required": true,
+        "label": "",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "add-bigticket-year",
+        "type": "number",
+        "required": false,
+        "label": "Year (0=now)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "add-bigticket-type",
+        "type": "select-one",
+        "required": false,
+        "label": "Type",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "add-bigticket-tax",
+        "type": "select-one",
+        "required": false,
+        "label": "Tax",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "text",
+        "required": false,
+        "label": "",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "onetime-description",
+        "type": "text",
+        "required": true,
+        "label": "Description",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "onetime-year",
+        "type": "number",
+        "required": false,
+        "label": "Projection year (0 = 2026)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "onetime-amount",
+        "type": "number",
+        "required": true,
+        "label": "Amount (today's dollars)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "text",
+        "required": true,
+        "label": "",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "number",
+        "required": true,
+        "label": "",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "add-expense-start-year",
+        "type": "number",
+        "required": false,
+        "label": "Starts yr (0=now)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "add-expense-end-year",
+        "type": "number",
+        "required": false,
+        "label": "Ends yr (blank=never)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "checkbox",
+        "required": false,
+        "label": "Inflation",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "checkbox",
+        "required": false,
+        "label": "Discretionary",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "projection-start-date",
+        "type": "month",
+        "required": false,
+        "label": "Projection Start Date",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "person-name-demo-primary",
+        "type": "text",
+        "required": false,
+        "label": "Name",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "person-birth-month-demo-primary",
+        "type": "month",
+        "required": false,
+        "label": "Birth Month",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "person-name-demo-spouse",
+        "type": "text",
+        "required": false,
+        "label": "Name",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "person-birth-month-demo-spouse",
+        "type": "month",
+        "required": false,
+        "label": "Birth Month",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "person-role-demo-spouse",
+        "type": "select-one",
+        "required": false,
+        "label": "Role",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "phase-age-reference-select",
+        "type": "select-one",
+        "required": false,
+        "label": "Spending Phase Based On",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "tax-deferred-percent-input",
+        "type": "number",
+        "required": false,
+        "label": "Tax-Deferred",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "roth-percent-input",
+        "type": "number",
+        "required": false,
+        "label": "Roth",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "projection-timing-select",
+        "type": "select-one",
+        "required": false,
+        "label": "Projection Timing",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "rmd-timing-select",
+        "type": "select-one",
+        "required": false,
+        "label": "RMD Timing",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "checkbox",
+        "required": false,
+        "label": "Spouse is sole IRA beneficiary",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "filing-status-select",
+        "type": "select-one",
+        "required": false,
+        "label": "Filing Status",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "state-income-tax-rate-input",
+        "type": "number",
+        "required": false,
+        "label": "State Income Tax Rate %",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "taxable-dividend-yield-input",
+        "type": "number",
+        "required": false,
+        "label": "Dividend Yield %",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "taxable-qualified-dividend-percent-input",
+        "type": "number",
+        "required": false,
+        "label": "Qualified Share %",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "taxable-cap-gains-distribution-rate-input",
+        "type": "number",
+        "required": false,
+        "label": "Cap Gains Dist. %",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "taxable-cost-basis-input",
+        "type": "number",
+        "required": false,
+        "label": "Cost Basis $",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "aca-household-size-input",
+        "type": "number",
+        "required": false,
+        "label": "Tax Household Size",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "aca-premium-credit-input",
+        "type": "number",
+        "required": false,
+        "label": "Premium Tax Credit $/yr",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "aca-advance-credits-input",
+        "type": "checkbox",
+        "required": false,
+        "label": "Credits paid in advance to the insurer. If so, income over the cliff claws back what has already been paid this year — repayment is uncapped at and above 400% of the poverty level.",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "tax-deferred-delay-slider",
+        "type": "range",
+        "required": false,
+        "label": "Delay Tax-Deferred Withdrawals",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "tax-deferred-stock-percent-input",
+        "type": "number",
+        "required": false,
+        "label": "Stocks",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "tax-deferred-cash-percent-input",
+        "type": "number",
+        "required": false,
+        "label": "Cash",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "roth-stock-percent-input",
+        "type": "number",
+        "required": false,
+        "label": "Stocks",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "roth-cash-percent-input",
+        "type": "number",
+        "required": false,
+        "label": "Cash",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "roth-first-funded-year-input",
+        "type": "number",
+        "required": false,
+        "label": "Year Roth IRA First Funded",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "taxable-stock-percent-input",
+        "type": "number",
+        "required": false,
+        "label": "Stocks",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "taxable-cash-percent-input",
+        "type": "number",
+        "required": false,
+        "label": "Cash",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "checkbox",
+        "required": false,
+        "label": "Shift stock allocation over time",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "inflation-rate-slider",
+        "type": "range",
+        "required": false,
+        "label": "Inflation Rate (%)",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "investment-return-slider",
+        "type": "range",
+        "required": false,
+        "label": "Investment Return Override",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "checkbox",
+        "required": false,
+        "label": "Enable phases",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "phase-0-multiplier",
+        "type": "range",
+        "required": false,
+        "label": "Spending",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "phase-1-start-age",
+        "type": "number",
+        "required": false,
+        "label": "Age",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "phase-1-multiplier",
+        "type": "range",
+        "required": false,
+        "label": "Spending",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "phase-2-start-age",
+        "type": "number",
+        "required": false,
+        "label": "Age",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "phase-2-multiplier",
+        "type": "range",
+        "required": false,
+        "label": "Spending",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "checkbox",
+        "required": false,
+        "label": "Enable spending guardrails",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "floor-drop-pct-input",
+        "type": "number",
+        "required": false,
+        "label": "Drop %",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "floor-cut-pct-input",
+        "type": "number",
+        "required": false,
+        "label": "Cut %",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "ceiling-rise-pct-input",
+        "type": "number",
+        "required": false,
+        "label": "Rise %",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "ceiling-raise-pct-input",
+        "type": "number",
+        "required": false,
+        "label": "Raise %",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "min-spending-pct-input",
+        "type": "number",
+        "required": false,
+        "label": "Min spending %",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "max-spending-pct-input",
+        "type": "number",
+        "required": false,
+        "label": "Max spending %",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "roth-conversion-enabled",
+        "type": "checkbox",
+        "required": false,
+        "label": "Enable Roth Conversions",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "ss-fra-benefit",
+        "type": "number",
+        "required": false,
+        "label": "Your Monthly Benefit",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "ss-fra",
+        "type": "select-one",
+        "required": false,
+        "label": "FRA",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "ss-cola-rate",
+        "type": "number",
+        "required": false,
+        "label": "COLA %/yr",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "ss-claim-age",
+        "type": "select-one",
+        "required": false,
+        "label": "Claim Age",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "ss-spouse-fra-benefit",
+        "type": "number",
+        "required": false,
+        "label": "Spouse Monthly Benefit at FRA",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "ss-spouse-fra",
+        "type": "select-one",
+        "required": false,
+        "label": "Spouse FRA",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "ss-spouse-claim-age",
+        "type": "select-one",
+        "required": false,
+        "label": "Spouse Claim Age",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      }
+    ],
+    "clickable": [],
+    "live": [
+      {
+        "tag": "DIV",
+        "id": "income-removed-toast",
+        "text": "",
+        "visible": false,
+        "live": null
+      }
+    ],
+    "hiddenText": [
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "lifetime cost"
+      }
+    ],
+    "images": [],
+    "dialogs": [],
+    "animations": [],
+    "charts": [
+      {
+        "id": "chart-projection",
+        "visible": true,
+        "ready": true,
+        "series": 3,
+        "font": "#374151",
+        "adjacentTable": false,
+        "parentTables": 0
+      },
+      {
+        "id": "chart-income",
+        "visible": false,
+        "ready": true,
+        "series": 3,
+        "font": "#374151",
+        "adjacentTable": false,
+        "parentTables": 0
+      }
+    ],
+    "nav": [
+      {
+        "text": "simpleBudget",
+        "href": "/"
+      },
+      {
+        "text": "Dashboard",
+        "href": "/dashboard"
+      },
+      {
+        "text": "Explorer",
+        "href": "/explorer"
+      },
+      {
+        "text": "Insights",
+        "href": "/insights"
+      },
+      {
+        "text": "Major Expenses",
+        "href": "/major-expenses"
+      },
+      {
+        "text": "What-If",
+        "href": "/whatif"
+      },
+      {
+        "text": "Accounts",
+        "href": "/accounts"
+      },
+      {
+        "text": "Transfers",
+        "href": "/transfers"
+      },
+      {
+        "text": "File Manager",
+        "href": "/filemanager"
+      },
+      {
+        "text": "Duplicates\n                            1",
+        "href": "/duplicates"
+      }
+    ]
+  },
+  "htmlFile": "whatif-light.html"
+}

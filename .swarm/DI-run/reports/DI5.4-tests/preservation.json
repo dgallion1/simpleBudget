@@ -1,0 +1,241 @@
+{
+  "sourceCount": 693,
+  "sourceDiffs": [
+    "web/static/js/page-refresh.js"
+  ],
+  "added": [],
+  "go": [
+    {
+      "path": "cmd/server/cross_money_di5_test.go",
+      "sha256": "e160b0cd9f2efb8073d948b017eb5ba7e7e5bd4fa01e28f32ad11c093b1f29a5",
+      "same": true
+    },
+    {
+      "path": "cmd/server/same_date_di5_test.go",
+      "sha256": "d2fcf38c3959fb66d452b69c70b7add6157769979d16f35820e0ae7edb38653e",
+      "same": true
+    },
+    {
+      "path": "cmd/server/saved_data_di5_test.go",
+      "sha256": "76ec62898d2e7e18e6bed9cef680ce066b778cca752944bc91889534eee9ceec",
+      "same": true
+    },
+    {
+      "path": "internal/handlers/dashboard/period_consumers_di5_test.go",
+      "sha256": "68680ef4c688f4cab71e7c79f00bc1f71320e5fb7936612c8e1206dd4c82f411",
+      "same": true
+    },
+    {
+      "path": "internal/handlers/dashboard/recurring_di5_test.go",
+      "sha256": "288d389bb56ae4310f5f5a02eddbccf5645018af67b16ea1caa0c5dd7d4185ba",
+      "same": true
+    },
+    {
+      "path": "internal/handlers/dashboard/reporting_di5_test.go",
+      "sha256": "6f63ad7dccaf2d93d6c65257a6047564f6b3adfb7106726aa00eb0e50250cd5c",
+      "same": true
+    },
+    {
+      "path": "internal/handlers/insights/estimate_sums_di5_test.go",
+      "sha256": "d837065a5b0a87ea9135bc4d40bd4d8aac81ac9b405a1e7562953068f9149e0f",
+      "same": true
+    },
+    {
+      "path": "internal/handlers/insights/http_links_di5_test.go",
+      "sha256": "4fa67dce1821935c969bd91263d9b19c0599967b4c40c3e524dd32252dade891",
+      "same": true
+    },
+    {
+      "path": "internal/handlers/insights/pricecreep_di5_test.go",
+      "sha256": "b0eacaa17a75aa7c8f507ea7212f48227fa301362060b3bcc380e9674673efc3",
+      "same": true
+    },
+    {
+      "path": "internal/handlers/insights/recurring_render_di5_test.go",
+      "sha256": "0a91ac5749a0bef945d258904418f96c4e862d3aae3a58d31c1da77777513a0c",
+      "same": true
+    },
+    {
+      "path": "internal/services/insights/classification_di5_test.go",
+      "sha256": "dba836c2f7dde7e114b8cf958a848fec05979937f60b6da0f4a54706bab9dcc8",
+      "same": true
+    },
+    {
+      "path": "internal/services/insights/forecast_bounds_di5_test.go",
+      "sha256": "ab033286c3fac2c111ddc588a9dca6e750f2e12ddfc02aa76e199d4e54e26a33",
+      "same": true
+    },
+    {
+      "path": "internal/services/insights/period_coverage_di5_test.go",
+      "sha256": "ab4563717674b31afeefb45828ca05d6dc730e0bcc4c7cd746e298208742bd03",
+      "same": true
+    },
+    {
+      "path": "internal/services/insights/period_matrix_di5_test.go",
+      "sha256": "2e34bd0b494f9002452a27b167f99ff3f14adf419bfd17e7fa164f6b284e0b03",
+      "same": true
+    },
+    {
+      "path": "internal/services/insights/recurring_cadence_di5_test.go",
+      "sha256": "3842fe15e2473cab144f86f63b8930efda97992f43ab011444889a25fe0a5b40",
+      "same": true
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/recurring_di5_test.go",
+      "sha256": "7ecd80d9f2d4c20e9a586e69d7390dfd69b084e0cd0379f038a3aa86d8f9bbb5",
+      "same": true
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/grouping_di5_test.go",
+      "sha256": "dd6dfd9742814820c4c137e67d1a8716d1c40681c1a8ba5d8e8254e3193fa781",
+      "same": true
+    },
+    {
+      "path": "internal/templates/period_boundaries_di5_test.go",
+      "sha256": "21970e1a07b85d1ffdc80013ff19cb4d2433970bbf01e7973e83af9e4ef4f6ac",
+      "same": true
+    }
+  ],
+  "priorCount": 396,
+  "priorDiffs": [
+    {
+      "path": ".swarm/DI-run/manifests/DI5.3.files",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5-focus-ownership.cjs",
+      "oldExists": true,
+      "newExists": true,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3.md",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/baseline-sources.json",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/correction-hashes.json",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/cross-money.log",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/freeze-sources.json",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/green/focus-ownership.json",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/oracle/focus-transitions.json",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/prior373.json",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/red/focus-ownership.json",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/verification/agents2-smoketest.log",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/verification/build.log",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/verification/commands.json",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/verification/css.log",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/verification/promoted.log",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/verification/staticcheck.log",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/verification/tests.log",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/verification/vet.log",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/worker-oracle-command.json",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5.3/worker-oracle.log",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": ".swarm/manifests/DI5.3.files",
+      "oldExists": false,
+      "newExists": false,
+      "same": false
+    },
+    {
+      "path": "web/static/js/page-refresh.js",
+      "oldExists": true,
+      "newExists": true,
+      "same": false
+    }
+  ],
+  "productionSHA256": "d1875b727a3cf990a059538e443e7f1e1dfab799da1d2672dd61d9d7e8a5e115"
+}

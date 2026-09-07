@@ -1,0 +1,18 @@
+[
+  {
+    "path": "web/static/js/page-refresh.js",
+    "sha256": "7449f662a72c0af64f6a6bde63ea1e06ae9b16de80560e6aaafd0d388bd2f081"
+  },
+  {
+    "path": "web/static/js/page-refresh.test.cjs",
+    "sha256": "3660e4074d9e054d2e2b8ac4866dfbf8cea7d7948c5e7bad7770eb9374e3f91d"
+  },
+  {
+    "path": "cmd/server/cross_money_di5_test.go",
+    "sha256": "e160b0cd9f2efb8073d948b017eb5ba7e7e5bd4fa01e28f32ad11c093b1f29a5"
+  },
+  {
+    "path": ".swarm/DI-run/reports/DI5-focus-ownership.cjs",
+    "sha256": "29f5f0748a6ae27235b1fa09d30e28dc6e875f2765f11aac09d6597469861fe9"
+  }
+]

@@ -47,16 +47,17 @@ type budgetView struct {
 }
 
 type summaryOutput struct {
-	Start         string        `json:"start"`
-	End           string        `json:"end"`
-	TotalIncome   float64       `json:"total_income"`
-	TotalExpenses float64       `json:"total_expenses"`
-	NetSavings    float64       `json:"net_savings"`
-	SavingsRate   float64       `json:"savings_rate"`
-	ByCategory    []namedAmount `json:"by_category"`
-	ByMerchant    []namedAmount `json:"by_merchant"`
-	ByMonth       []namedAmount `json:"by_month"`
-	Budget        *budgetView   `json:"budget,omitempty"`
+	MonthlyRoundingAdjustment float64       `json:"monthly_rounding_adjustment"`
+	Start                     string        `json:"start"`
+	End                       string        `json:"end"`
+	TotalIncome               float64       `json:"total_income"`
+	TotalExpenses             float64       `json:"total_expenses"`
+	NetSavings                float64       `json:"net_savings"`
+	SavingsRate               float64       `json:"savings_rate"`
+	ByCategory                []namedAmount `json:"by_category"`
+	ByMerchant                []namedAmount `json:"by_merchant"`
+	ByMonth                   []namedAmount `json:"by_month"`
+	Budget                    *budgetView   `json:"budget,omitempty"`
 }
 
 // byCategoryRows returns expense totals by category over ts (already
@@ -70,12 +71,8 @@ type summaryOutput struct {
 // review -- CategoryTotals' own math.Abs-per-transaction convention is still
 // correct for its other (non-MCP) callers and is left unchanged.
 //
-// Known cosmetic artifact (left as-is): when a category's refunds exactly
-// offset its spend, round2(-amt) can produce float64 negative zero, which
-// encoding/json renders as the literal "-0" rather than "0". Same applies
-// to byMonthRows/byMerchantRows below. Not fixed here because doing so is a
-// computation change, not a documentation one, and the two are worth
-// keeping separate in this pass.
+// DI3: round2 uses the shared reporting precision and normalizes negative
+// zero; category/merchant rows retain their existing top-N scope.
 func byCategoryRows(ts *models.TransactionSet, topN int) []namedAmount {
 	outflows := ts.FilterByType(models.Outflow)
 	totals := make(map[string]float64, outflows.Len())
@@ -178,11 +175,12 @@ func registerSummary(s *mcp.Server, deps Deps) {
 			"they subtract from whichever category/merchant/month they fall in, and if a category's, " +
 			"merchant's, or month's refunds exceed its spend in this window that row goes negative rather " +
 			"than clamping at zero. All four figures share this identical signed-sum-then-negate " +
-			"convention, but do NOT assume summing a breakdown reproduces total_expenses: by_category and " +
-			"by_merchant are each truncated to top_n (see below), so their sums only match total_expenses " +
-			"when this window has top_n or fewer categories/merchants -- with more, the truncated sum is " +
-			"necessarily LESS than total_expenses. by_month is never truncated, so summing it always EQUALS " +
-			"total_expenses exactly: total_expenses is SIGNED, not an absolute value -- positive means net " +
+			"convention. Category and merchant rows are independently rounded and truncated to top_n; " +
+			"their sums need not equal total_expenses. Monthly rows are independently rounded and never " +
+			"truncated: their sum PLUS monthly_rounding_adjustment equals total_expenses. The adjustment " +
+			"is a rounding residual, not a transaction. Period income and spending are rounded raw aggregates; " +
+			"net_savings is their displayed difference and does not measure portfolio withdrawals or sustainability. " +
+			"total_expenses is SIGNED, not an absolute value -- positive means net " +
 			"spend, and it goes NEGATIVE when this window's refunds exceed its spending OVERALL (not just in " +
 			"one category/merchant/month), same as any by_month row would. (This differs from search_transactions, which returns every amount signed, " +
 			"expenses negative -- the opposite sign convention.) Transactions the user has already marked " +
@@ -295,17 +293,24 @@ func registerSummary(s *mcp.Server, deps Deps) {
 		}
 
 		m := metrics.Calculate(filtered, *from, *to, livingTarget, healthTarget, coverageStart, hasCoverage, planExclusions)
+		cashFlow := metrics.ReportingCashFlow(m.TotalIncome, m.TotalExpenses)
+		monthRows := byMonthRows(filtered)
+		var monthlySum float64
+		for _, row := range monthRows {
+			monthlySum += row.Amount
+		}
 
 		out = summaryOutput{
-			Start:         from.Format("2006-01-02"),
-			End:           to.Format("2006-01-02"),
-			TotalIncome:   round2(m.TotalIncome),
-			TotalExpenses: round2(m.TotalExpenses),
-			NetSavings:    round2(m.NetSavings),
-			SavingsRate:   round2(m.SavingsRate),
-			ByCategory:    byCategoryRows(filtered, topN),
-			ByMerchant:    byMerchantRows(filtered, topN),
-			ByMonth:       byMonthRows(filtered),
+			Start:                     from.Format("2006-01-02"),
+			End:                       to.Format("2006-01-02"),
+			TotalIncome:               cashFlow.Income,
+			TotalExpenses:             cashFlow.Spending,
+			NetSavings:                cashFlow.Balance,
+			MonthlyRoundingAdjustment: round2(cashFlow.Spending - monthlySum),
+			SavingsRate:               round2(m.SavingsRate),
+			ByCategory:                byCategoryRows(filtered, topN),
+			ByMerchant:                byMerchantRows(filtered, topN),
+			ByMonth:                   monthRows,
 		}
 
 		// A zero target means "unset" throughout this codebase (see

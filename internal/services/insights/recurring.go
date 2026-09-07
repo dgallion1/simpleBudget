@@ -46,38 +46,10 @@ var billKeywords = []string{
 	"tax", "dmv", "government",
 }
 
-// IsSubscription classifies a recurring payment as a subscription service.
-// Subscriptions are regular payments that are not retail stores or utility bills.
-// This includes both fixed-amount (Netflix) and variable-amount (API billing) services.
+// IsSubscription is the compatibility wrapper for the shared evidence classifier.
 func IsSubscription(rp models.RecurringPayment) bool {
-	desc := strings.ToLower(rp.Description)
-
-	// Check against retail keywords - stores you shop at are not subscriptions
-	for _, kw := range retailKeywords {
-		if strings.Contains(desc, kw) {
-			return false
-		}
-	}
-
-	// Check against bill keywords - utilities/bills are not subscriptions
-	for _, kw := range billKeywords {
-		if strings.Contains(desc, kw) {
-			return false
-		}
-	}
-
-	// Fixed-interval payments (monthly/yearly/quarterly) are subscriptions
-	if rp.Frequency == "monthly" || rp.Frequency == "yearly" || rp.Frequency == "quarterly" {
-		return true
-	}
-
-	// "ongoing" payments that aren't retail or bills are likely subscription services
-	// with variable billing (e.g., API usage, metered services)
-	if rp.Frequency == "ongoing" {
-		return true
-	}
-
-	return false
+	kind, _ := ClassifyRecurring(rp)
+	return kind == models.RecurringSubscription
 }
 
 func recurringFreshnessWindow(intervalDays float64) float64 {
@@ -215,7 +187,7 @@ func DetectRecurring(ts *models.TransactionSet) []models.RecurringPayment {
 //     a series whose last occurrence (within the truncated history) is too
 //     old relative to its own interval is excluded as no longer active.
 //
-// Results are capped at the 20 highest AnnualCost payments.
+// Results include every detected series, sorted by estimated AnnualCost.
 func DetectRecurringAt(ts *models.TransactionSet, referenceDate time.Time) []models.RecurringPayment {
 	var recurring []models.RecurringPayment
 
@@ -447,8 +419,8 @@ func DetectRecurringAt(ts *models.TransactionSet, referenceDate time.Time) []mod
 		return recurring[i].AnnualCost > recurring[j].AnnualCost
 	})
 
-	if len(recurring) > 20 {
-		recurring = recurring[:20]
+	for i := range recurring {
+		recurring[i].Classification, recurring[i].ClassificationReason = ClassifyRecurring(recurring[i])
 	}
 
 	return recurring

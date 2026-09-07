@@ -1,0 +1,109 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: DI3
+ATTEMPT: 1
+---
+SCOPE: DI3 adversarial monetary/reporting lane: displayed arithmetic, rounding,
+classification, residuals, grouping invariance, period/plan scope and consumers.
+Approved design (root SPEC absent), ACCESSIBILITY.md, exact supplied task and
+rounding ruling, worker report/manifest and /tmp/DI3-attempt1-review.diff read.
+DI1/DI2/DI6 accepted baseline; DI4 excluded. No raw metric/storage changes demanded.
+
+FINDINGS: No blocking in-scope defect reproduced. Period anchors are rounded
+raw aggregates, balance derives from those rounded components, and monthly
+residuals are explicit rather than moved into a transaction or invented month.
+
+Isolation: fresh /tmp/DI3-second.O8fPRh copied from immutable
+/tmp/budget2-DI3-base.rhoTJM, overlay ONLY DI3.1.files. Scratch tests added in
+that copy. No source fixes, live-data/server access (:8080/:8081 included),
+subagents, git-state/ledger changes or immutable-baseline writes. Only this
+verdict written to worktree. Scoped apply_patch escalation used for Landlock.
+
+Fresh executable evidence:
+1. rtk proxy go test ./internal/handlers/dashboard ./internal/services/metrics ./internal/services/mcpsvc/spend ./internal/templates -count=1
+   Exit 0: dashboard 1.043s; metrics 0.004s; MCP spend 0.739s; templates 1.212s.
+   Executed before checker scratch tests. Inspected assertions, not just names:
+   actual renderer and HTTP full/KPI responses, fractional 10.006/.004,
+   2.675 boundary, shortfall/matched-zero explanation, selected-date exclusion,
+   monthly drilldown/CSV, refund/negative zero, no plan/data/healthcare coverage,
+   account dates/provenance and existing plan-exclusion/period regressions.
+   In-memory MCP tests assert 10.01/0/10.01, 2.67 precision, signed refund,
+   positive zero and the .004+.004 monthly adjustment fixture.
+2. rtk proxy go test ./internal/handlers/dashboard -run '^TestDI3Second' -count=1
+   Exit 0. New TestDI3SecondRenderedResiduals parses actual rendered currency
+   strings into integer cents (not implementation floats). Four two-month
+   income fixtures .004, .006, 2.675, 10.006, each with .004 spending/month:
+   - Full and KPI responses: shown income minus shown spending equals shown
+     cash flow; shown zero has only neutral matched-income/spending wording.
+   - Income, expenses, savings and living detail tables: exactly two actual
+     monthly rows, row amounts plus at most one printed adjustment equal the
+     printed Total. Income/expense/cash-flow totals equal corresponding headline.
+   - Savings rows: each shown monthly income minus shown monthly expense equals
+     shown monthly savings. Positive and negative residuals covered.
+   Initial scratch regex incorrectly swallowed the sentence-ending period after
+   an adjustment; corrected to exactly two fractional digits, then passed.
+   That first harness failure is not attributed to the worker.
+3. rtk proxy go test ./internal/services/mcpsvc/spend -run '^TestDI3SecondGroupingInvariant$' -v -count=1
+   Exit 0, 16 in-memory SDK tool cases. Move an identical amount between months,
+   categories and merchants; vary top_n=1/10; use per-row expenses/refunds
+   +/-.004 and +/-.006. Period income stays 10.01, net spending +/-.01, balance
+   10.00 or 10.02. Monthly rows plus adjustment equal total expenses in cents;
+   adjustment changes appropriately between zero and +/-.01. No negative zero
+   in monthly zero rows or zero adjustment. Grouping cannot move period pennies.
+4. rtk proxy go build ./...
+   Exit 0, same isolated snapshot.
+5. rtk proxy node --check web/static/js/dashboard.js
+   Exit 0. Inspected chart-table adapter: copies actual trace/target-line values
+   via String, without locale formatting, monetary arithmetic or classification.
+6. rtk proxy make css-verify
+   Exit 0; pinned Tailwind 3.4.17: 'tailwind.css is up to date'. Outdated
+   caniuse-lite advisory only. Executed in scratch; no live CSS writes.
+
+Criterion disposition:
+- Actual rendered selected-period money/refunds/fractional cents/empty states:
+  PASS, (1)-(3), including 2.675 UI and MCP boundary assertions in (1).
+- Four primary figures and preserved scope: PASS, real-render (1)-(2) plus
+  kpis.html inspection. Headline income/spending/cash flow share CashFlowDisplay;
+  spending-versus-plan explicitly covers living/healthcare and excludes modeled
+  elsewhere costs. Monthly equivalents are secondary and retain target provenance,
+  coverage date and healthcare availability. Raw .Metrics stay raw by ruling.
+- Cash-flow meaning and zero classification: PASS, (1)-(2). Required positive,
+  negative and neutral explanations come from displayed Balance. Explicit text
+  says cash flow does not measure portfolio withdrawals or retirement sustainability.
+- Retention/navigation: PASS for adversarial scope, (1) and source enumeration.
+  Account dates retained, five charts retained, detail/month/CSV routes preserved;
+  full/KPI Insights links carry selected start/end. Adjacent chart table caption
+  claims plotted scope, not complete-period reconciliation. Top-N MCP description
+  discloses truncation/per-row rounding; monthly exact-sum promise includes adjustment.
+- Tokens/components/generated CSS and evidence: PASS for this lane, (1),(5),(6).
+  Native action buttons/links and scoped table headings inspected (ACCESSIBILITY
+  2/3/9/11). Worker report contains six viewport/theme and axe evidence states;
+  those are author evidence, not represented here as independently rerun browser
+  checks. Dedicated checker-a11y owns independent visual/keyboard certification.
+  This PASS is not an all-site accessibility verdict. No browser/server launched.
+
+Consumer enumeration (rg, exact diff and source reads):
+- Headline -> BudgetVerdict.CashFlow -> ReportingCashFlow/ReportingMoney.
+  Compatibility verdict NetSavings/TotalIncome carry the same displayed values;
+  existing budget delta/threshold/provenance arithmetic remains a distinct figure.
+- Complete KPI monthly detail -> same reporting helper, raw period anchors and
+  RoundingAdjustment; month drilldown -> same monthly income/spending/balance;
+  CSV monthly precision aligned without new schema/total/transaction rows.
+- Cumulative cash-flow chart accumulates raw income/spending separately and derives
+  displayed cumulative balance via ReportingCashFlow. Existing explicit endpoint
+  fixture proves final 10.01 matches headline rather than raw 10.002.
+- Other chart series retain their scope; new JS alternatives copy trace values and
+  target shapes. No independent rounder or complete-period total claim introduced.
+- summarize_spending -> ReportingCashFlow for period totals/net, round2 for monthly
+  rows/residual; category/merchant remain top-N. Shared round2 -> ReportingMoney,
+  including recurring, trend, anomaly and price-creep rows tested in MCP suite.
+- PeriodComparison raw compatibility fields and raw metrics are not silently
+  mutated. Prior account/period handlers and DI4 Insights implementation untouched.
+
+Probe locations for durable promotion:
+/tmp/DI3-second.O8fPRh/internal/handlers/dashboard/di3_second_render_test.go
+/tmp/DI3-second.O8fPRh/internal/services/mcpsvc/spend/di3_second_grouping_test.go
+
+Report and cumulative manifest inspected; exact 18-path source/test/CSS diff
+reconciles reporting changes with the authorized scope. Lead owns gate/escalation.

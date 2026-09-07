@@ -41,6 +41,7 @@ import (
 	"budget2/internal/services/mcpsvc/confirm"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
+	"budget2/internal/services/uirefresh"
 	"budget2/internal/templates"
 	"budget2/internal/version"
 	"budget2/web"
@@ -57,6 +58,7 @@ var (
 	backupService *backupsvc.Service
 	mcpServer     *mcp.Server
 	mcpApprovals  *confirm.Approvals
+	pageRefresh   *uirefresh.Coordinator
 )
 
 // SetupDependencies initializes all global dependencies with the given config.
@@ -124,7 +126,9 @@ func SetupDependencies(c *config.Config) error {
 	// The MCP server shares these exact instances -- not a second manager or
 	// loader on the same directory -- so a tool call and a page request cannot
 	// report different figures for the same plan.
+	pageRefresh = uirefresh.New()
 	mcpServer = mcpsvc.NewServer(mcpsvc.Deps{
+		Refresh:     pageRefresh,
 		Settings:    retirementMgr,
 		Loader:      loader,
 		Store:       store,
@@ -226,7 +230,7 @@ func SetupRouter() chi.Router {
 	r.Use(func(next http.Handler) http.Handler {
 		logged := middleware.Logger(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			if req.URL.Path == "/whatif/poll" {
+			if req.URL.Path == "/whatif/poll" || req.URL.Path == "/api/ui-refresh" {
 				next.ServeHTTP(w, req)
 				return
 			}
@@ -277,6 +281,9 @@ func SetupRouter() chi.Router {
 	r.Get("/filemanager", explorer.HandleFileManagerPage)
 
 	r.Get("/api/version", handleVersion)
+	if pageRefresh != nil {
+		r.Get("/api/ui-refresh", pageRefresh.ServeHTTP)
+	}
 
 	// MCP endpoint. Deliberately outside the lock-check group below: that
 	// middleware answers 307 -> /unlock, which a JSON-RPC client cannot

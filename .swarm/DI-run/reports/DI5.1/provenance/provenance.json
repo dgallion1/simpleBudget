@@ -1,0 +1,4191 @@
+{
+  "root": "/tmp/DI5-integration.hcuAxN",
+  "live": "/home/darrell/bin/ai/budget2/.worktrees/dashboard-insights",
+  "acceptedBaseline": "/tmp/budget2-DI4-base.KPl7oY",
+  "originalRunBaseline": "69e484a (NOT rendered by this worker)",
+  "DI4Manifest": ".swarm/DI-run/manifests/DI4.2.files",
+  "DI4Application": [
+    "internal/handlers/insights/handlers.go",
+    "internal/handlers/insights/investigation.go",
+    "internal/handlers/insights/investigation_di4_test.go",
+    "internal/handlers/insights/recurring_scope_di4_test.go",
+    "web/static/css/tailwind.css",
+    "web/static/js/insights.js",
+    "web/templates/components/anomalies-section.html",
+    "web/templates/components/insights-investigation.html",
+    "web/templates/components/pricecreep-section.html",
+    "web/templates/pages/insights.html"
+  ],
+  "files": [
+    {
+      "path": "cmd/enrich-amazon/main.go",
+      "baselineSHA256": "ccb90de353827122abd513e7d8aaa905506f414aad96ed3e586fcb75270b1364",
+      "finalSHA256": "ccb90de353827122abd513e7d8aaa905506f414aad96ed3e586fcb75270b1364",
+      "DI4": false
+    },
+    {
+      "path": "cmd/enrich-amazon/main_test.go",
+      "baselineSHA256": "8ec56e525e3b9d8c84d837ddf770cc29ea33457bfcacce550e282ef03eb83dc8",
+      "finalSHA256": "8ec56e525e3b9d8c84d837ddf770cc29ea33457bfcacce550e282ef03eb83dc8",
+      "DI4": false
+    },
+    {
+      "path": "cmd/server/base_url_test.go",
+      "baselineSHA256": "3d57384c2ef89963115445a5205d7cff8229e3536cf5f3096b27440919cf97e7",
+      "finalSHA256": "3d57384c2ef89963115445a5205d7cff8229e3536cf5f3096b27440919cf97e7",
+      "DI4": false
+    },
+    {
+      "path": "cmd/server/main.go",
+      "baselineSHA256": "75e55eafc49ee2a1044003bc01221c911cf6ce6a696079fcac3a11b20776fd3e",
+      "finalSHA256": "75e55eafc49ee2a1044003bc01221c911cf6ce6a696079fcac3a11b20776fd3e",
+      "DI4": false
+    },
+    {
+      "path": "cmd/server/main_test.go",
+      "baselineSHA256": "73f153677924239b3d24048893b7f5c771960b06c22ef693ac9b3b931becc39e",
+      "finalSHA256": "73f153677924239b3d24048893b7f5c771960b06c22ef693ac9b3b931becc39e",
+      "DI4": false
+    },
+    {
+      "path": "cmd/server/mcp_mount_test.go",
+      "baselineSHA256": "b89c11531035e60aa9429ec182dab9f31536ec843639e503fa1d5eb89a7443f4",
+      "finalSHA256": "b89c11531035e60aa9429ec182dab9f31536ec843639e503fa1d5eb89a7443f4",
+      "DI4": false
+    },
+    {
+      "path": "cmd/server/refresh_di6_test.go",
+      "baselineSHA256": "a75f21092cc383dac29cf8d5df24573d5773ebe5a89fbc496ec5b1a99241714d",
+      "finalSHA256": "a75f21092cc383dac29cf8d5df24573d5773ebe5a89fbc496ec5b1a99241714d",
+      "DI4": false
+    },
+    {
+      "path": "cmd/validate/main.go",
+      "baselineSHA256": "1869ec300defdcee34253c8e1a2e1c0af19a2e13dfa711f12212ca3df9e734a8",
+      "finalSHA256": "1869ec300defdcee34253c8e1a2e1c0af19a2e13dfa711f12212ca3df9e734a8",
+      "DI4": false
+    },
+    {
+      "path": "cmd/validate/main_test.go",
+      "baselineSHA256": "0a8312dfdf00c81094a8025a0dfc51189c161d0137c567aaf92ad9f1ee3af660",
+      "finalSHA256": "0a8312dfdf00c81094a8025a0dfc51189c161d0137c567aaf92ad9f1ee3af660",
+      "DI4": false
+    },
+    {
+      "path": "internal/config/config.go",
+      "baselineSHA256": "30170fa69c3b798b5df196b39977bb7cb2b415c1963c102e43933a8b1064c689",
+      "finalSHA256": "30170fa69c3b798b5df196b39977bb7cb2b415c1963c102e43933a8b1064c689",
+      "DI4": false
+    },
+    {
+      "path": "internal/config/config_test.go",
+      "baselineSHA256": "185571e24d3f3994832283d255f775157e4baa026c71823b7b0056c0e6530759",
+      "finalSHA256": "185571e24d3f3994832283d255f775157e4baa026c71823b7b0056c0e6530759",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/accounts/handlers.go",
+      "baselineSHA256": "89fbd6a8a53a2ecb0214a5731b097f2aa4a7b62d04666569d2d31083655d1d1f",
+      "finalSHA256": "89fbd6a8a53a2ecb0214a5731b097f2aa4a7b62d04666569d2d31083655d1d1f",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/accounts/handlers_test.go",
+      "baselineSHA256": "273a148c794d872e6b8b6f6a61083c8d411f35d17aa8fdf31ba89647b8c6b2d4",
+      "finalSHA256": "273a148c794d872e6b8b6f6a61083c8d411f35d17aa8fdf31ba89647b8c6b2d4",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/accounts/load_failure_test.go",
+      "baselineSHA256": "01bac57c284f0a8d09b5d50e5aac62f1671b5e469d13303805812681e0c94665",
+      "finalSHA256": "01bac57c284f0a8d09b5d50e5aac62f1671b5e469d13303805812681e0c94665",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/accounts/testdata/js/warnings_dom_harness.js",
+      "baselineSHA256": "87974cedd9aff9f96ad1afd6d882078670ba453453a3c81ce2b8600d3394f405",
+      "finalSHA256": "87974cedd9aff9f96ad1afd6d882078670ba453453a3c81ce2b8600d3394f405",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/accounts/warnings_client_regression_test.go",
+      "baselineSHA256": "2175b4289bd3272d452ca35a839037b6c913f5e556fe90d79ffc942babb875d8",
+      "finalSHA256": "2175b4289bd3272d452ca35a839037b6c913f5e556fe90d79ffc942babb875d8",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/approval/handlers.go",
+      "baselineSHA256": "efc70975d775c9c92d0d895cf2988c7bed0e6bc33a89afa71a6293b80365492b",
+      "finalSHA256": "efc70975d775c9c92d0d895cf2988c7bed0e6bc33a89afa71a6293b80365492b",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/approval/handlers_test.go",
+      "baselineSHA256": "da8b0dab09eec127c814712ca974c9f05a050e9d93501a395e8eb7ef19ce7783",
+      "finalSHA256": "da8b0dab09eec127c814712ca974c9f05a050e9d93501a395e8eb7ef19ce7783",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/backup/coverage_gaps_test.go",
+      "baselineSHA256": "426c60a4062cc825c5f9e9539d73356cc736abfd207eab514e2dc4aee2f14dc4",
+      "finalSHA256": "426c60a4062cc825c5f9e9539d73356cc736abfd207eab514e2dc4aee2f14dc4",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/backup/handlers.go",
+      "baselineSHA256": "c4e6656d7f20cac8017eb634de4bf8fa731b35d6f79b3f4eed87cd96208a07a7",
+      "finalSHA256": "c4e6656d7f20cac8017eb634de4bf8fa731b35d6f79b3f4eed87cd96208a07a7",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/backup/handlers_test.go",
+      "baselineSHA256": "dcab811e1b0fcf888470b6b877059fcbd0f68b7da2ea58c58caefb92f619ab82",
+      "finalSHA256": "dcab811e1b0fcf888470b6b877059fcbd0f68b7da2ea58c58caefb92f619ab82",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/accounts_card.go",
+      "baselineSHA256": "416def1cbbc5b991813052ce89205d25eae8e118c29f188c30885026567e1a13",
+      "finalSHA256": "416def1cbbc5b991813052ce89205d25eae8e118c29f188c30885026567e1a13",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/accounts_card_test.go",
+      "baselineSHA256": "fcd19f447e59d8f4f3be158f917b51ed4d9de3211b0fe30837aaf83ee3367dce",
+      "finalSHA256": "fcd19f447e59d8f4f3be158f917b51ed4d9de3211b0fe30837aaf83ee3367dce",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/cb2_signed_bar_test.go",
+      "baselineSHA256": "b29f97019a85bc6d35aa705d10cb57a2e31937a295104112e774c9d0013692bf",
+      "finalSHA256": "b29f97019a85bc6d35aa705d10cb57a2e31937a295104112e774c9d0013692bf",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/cb2_signed_kpi_http_test.go",
+      "baselineSHA256": "0eaf7e69b743a0f4fc9459993ea3b4affa1c5c7880725d309c7ade415f570471",
+      "finalSHA256": "0eaf7e69b743a0f4fc9459993ea3b4affa1c5c7880725d309c7ade415f570471",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/cb2_signed_spending_trend_test.go",
+      "baselineSHA256": "412d9e12ce617ebef06cb6462177723873bd362df2d17d0a8cc9178a458f9c54",
+      "finalSHA256": "412d9e12ce617ebef06cb6462177723873bd362df2d17d0a8cc9178a458f9c54",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/cb9_negzero_http_test.go",
+      "baselineSHA256": "26d2c76217f4d3292b57b7a59fab6468f3892a732d86a70d549ee69a2f7fda6b",
+      "finalSHA256": "26d2c76217f4d3292b57b7a59fab6468f3892a732d86a70d549ee69a2f7fda6b",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/coverage_start_mutation_test.go",
+      "baselineSHA256": "a53f35392bf4bc032a2f00e5d0dcfc65bf72cce8554cc8952790a5df7685d9e2",
+      "finalSHA256": "a53f35392bf4bc032a2f00e5d0dcfc65bf72cce8554cc8952790a5df7685d9e2",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/di2_second_year_test.go",
+      "baselineSHA256": "4818b6fe5aeef7d0f05e54bfbff9412bff06689a08fbd190513ed764995675e2",
+      "finalSHA256": "4818b6fe5aeef7d0f05e54bfbff9412bff06689a08fbd190513ed764995675e2",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/handlers.go",
+      "baselineSHA256": "763b95ac1ba8c151dfc627d94b8456e56ed20e248a659170f6af6627410785de",
+      "finalSHA256": "763b95ac1ba8c151dfc627d94b8456e56ed20e248a659170f6af6627410785de",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/handlers_http_test.go",
+      "baselineSHA256": "8b313693105453b749cfc34c4f194631843a44a0bfa27a47e9096db3a20d2860",
+      "finalSHA256": "8b313693105453b749cfc34c4f194631843a44a0bfa27a47e9096db3a20d2860",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/handlers_test.go",
+      "baselineSHA256": "d235da6ba80bf2b1fd78e9442f2790370f10770bd0a106f0e9a269be7eab9f5c",
+      "finalSHA256": "d235da6ba80bf2b1fd78e9442f2790370f10770bd0a106f0e9a269be7eab9f5c",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/overview_di3_test.go",
+      "baselineSHA256": "e5d159d163af636b96f80c5760587d6c79bc9b0c475007b968d3f144fd146cd5",
+      "finalSHA256": "e5d159d163af636b96f80c5760587d6c79bc9b0c475007b968d3f144fd146cd5",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/period.go",
+      "baselineSHA256": "e417242f8c501f5f1b4ddf0ed9de991701f786ef0de35b4f86ded603e9548e62",
+      "finalSHA256": "e417242f8c501f5f1b4ddf0ed9de991701f786ef0de35b4f86ded603e9548e62",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/period_di2_test.go",
+      "baselineSHA256": "3736e728624b62f6828ef2d893f7ad5a9292bfcc28740ef7823d230210974796",
+      "finalSHA256": "3736e728624b62f6828ef2d893f7ad5a9292bfcc28740ef7823d230210974796",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/plan_exclusions_chart_test.go",
+      "baselineSHA256": "c2f519e47bc339ce960f5f287750d3b7dd52159b167ce8f9c3926275b46b6705",
+      "finalSHA256": "c2f519e47bc339ce960f5f287750d3b7dd52159b167ce8f9c3926275b46b6705",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/plan_exclusions_chart_walk_test.go",
+      "baselineSHA256": "743b8fddb9d890aea8407fd06553871c8fc28f8842f47684523f8e1774d3b265",
+      "finalSHA256": "743b8fddb9d890aea8407fd06553871c8fc28f8842f47684523f8e1774d3b265",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/plan_exclusions_render_test.go",
+      "baselineSHA256": "0a136f7c9a55ad8b85083fb3b84e7784608e159833ad6e6f16b4700722e8b910",
+      "finalSHA256": "0a136f7c9a55ad8b85083fb3b84e7784608e159833ad6e6f16b4700722e8b910",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/plan_exclusions_wiring_test.go",
+      "baselineSHA256": "d69a0fa2a5ad793a671d71fb19b4b0e654b924629f9de0ec680988033e0a0ecf",
+      "finalSHA256": "d69a0fa2a5ad793a671d71fb19b4b0e654b924629f9de0ec680988033e0a0ecf",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/verdict.go",
+      "baselineSHA256": "be61e797f34fba9664781963a816f5ba0349ceb7c424b1f84cf7586f157d7005",
+      "finalSHA256": "be61e797f34fba9664781963a816f5ba0349ceb7c424b1f84cf7586f157d7005",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/verdict_fractional_cent_test.go",
+      "baselineSHA256": "61a0f2535eaa2cafc706005f05ebaa526faad003cdc2c463ced2d400d00165cf",
+      "finalSHA256": "61a0f2535eaa2cafc706005f05ebaa526faad003cdc2c463ced2d400d00165cf",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/verdict_render_test.go",
+      "baselineSHA256": "5d2cd55f5bb931e911ce271e221c6612ff6b9b09a4077a64d4b63f0ea612eb86",
+      "finalSHA256": "5d2cd55f5bb931e911ce271e221c6612ff6b9b09a4077a64d4b63f0ea612eb86",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/dashboard/verdict_test.go",
+      "baselineSHA256": "5f60ac2f1dbb00da094b6eddf71c0a0ad4ee137dd09c3185a49ea0e8c1f48887",
+      "finalSHA256": "5f60ac2f1dbb00da094b6eddf71c0a0ad4ee137dd09c3185a49ea0e8c1f48887",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/duplicates/handlers.go",
+      "baselineSHA256": "27173920aab77ab6672d6a9102e6a00ef72cca200c5632d864d1e2c7b08c61d6",
+      "finalSHA256": "27173920aab77ab6672d6a9102e6a00ef72cca200c5632d864d1e2c7b08c61d6",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/duplicates/handlers_test.go",
+      "baselineSHA256": "5c420f5d48d1a22c6e19ea0b121d0b691d297e0799d0ac1dc56c93d1bc76f106",
+      "finalSHA256": "5c420f5d48d1a22c6e19ea0b121d0b691d297e0799d0ac1dc56c93d1bc76f106",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/explorer/accounts_card_explorer_test.go",
+      "baselineSHA256": "7a8bfd4c380129fdeb2b996b65605c8b5219fd0865313b3d675c57369e5d91cd",
+      "finalSHA256": "7a8bfd4c380129fdeb2b996b65605c8b5219fd0865313b3d675c57369e5d91cd",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/explorer/duplicate_suppression_test.go",
+      "baselineSHA256": "8097744d87b50e9e4945687fdcf735cdb314d9472505ee71f05d37758f4947a6",
+      "finalSHA256": "8097744d87b50e9e4945687fdcf735cdb314d9472505ee71f05d37758f4947a6",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/explorer/handlers.go",
+      "baselineSHA256": "b27e49cd7b02308324f270b8e7581d1f6b3152f8a50cc0676733f513dcaf1946",
+      "finalSHA256": "b27e49cd7b02308324f270b8e7581d1f6b3152f8a50cc0676733f513dcaf1946",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/explorer/handlers_test.go",
+      "baselineSHA256": "f36cb1225b30502d99f9deee38b8830dc301b60707a46293d12b0fab837c8f63",
+      "finalSHA256": "f36cb1225b30502d99f9deee38b8830dc301b60707a46293d12b0fab837c8f63",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/explorer/import_binding_race_test.go",
+      "baselineSHA256": "d49318691e27632e1eb45e782ad717220d12ba421f81dbc223291ca64fd9b95b",
+      "finalSHA256": "d49318691e27632e1eb45e782ad717220d12ba421f81dbc223291ca64fd9b95b",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/explorer/summary_stats_render_test.go",
+      "baselineSHA256": "acf89efe16f6abd405cfeaf55490ef0ace56740bcd77e1e6d64c7b9dd6298447",
+      "finalSHA256": "acf89efe16f6abd405cfeaf55490ef0ace56740bcd77e1e6d64c7b9dd6298447",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/insights/di1_exact_bank_parity_test.go",
+      "baselineSHA256": "e5df01c7ef0b7c11237d78aae2f9f00d9bb1401fe0284d0a9985552d15036f97",
+      "finalSHA256": "e5df01c7ef0b7c11237d78aae2f9f00d9bb1401fe0284d0a9985552d15036f97",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/insights/handlers.go",
+      "baselineSHA256": "3ed5f2ae587d375e3048354c9bf2e205e8299eb4eb766ae077d0aebd13d3e89c",
+      "finalSHA256": "a6a4a3581475b846537940953c193dcf2a4435229b12006c292122a3e415029e",
+      "DI4": true
+    },
+    {
+      "path": "internal/handlers/insights/handlers_test.go",
+      "baselineSHA256": "83498156dd472165a93060499ecc40b17100ffa5a6c23404b7bb3ef5852bba9b",
+      "finalSHA256": "83498156dd472165a93060499ecc40b17100ffa5a6c23404b7bb3ef5852bba9b",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/insights/period.go",
+      "baselineSHA256": "3c76f478f88ca466202add2a1d6aa3eb1d0b2695b7f377f1a8ef52ff242fb4cd",
+      "finalSHA256": "3c76f478f88ca466202add2a1d6aa3eb1d0b2695b7f377f1a8ef52ff242fb4cd",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/insights/period_di2_test.go",
+      "baselineSHA256": "a3d5ffd950d9cd521e87ea4f525e241c3dac5fdffca7bc5dd32f31ac2e5f772b",
+      "finalSHA256": "a3d5ffd950d9cd521e87ea4f525e241c3dac5fdffca7bc5dd32f31ac2e5f772b",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/insights/recurring_di1_test.go",
+      "baselineSHA256": "81d3d0a0d531e12a35848435d9a3cb025cb938dc1cda4efaa045fc66810fb13a",
+      "finalSHA256": "81d3d0a0d531e12a35848435d9a3cb025cb938dc1cda4efaa045fc66810fb13a",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/insights/verdict.go",
+      "baselineSHA256": "e44cf4d9d7826d524f11b02f1ebccae18c493371f93ddc413146063b54d0042a",
+      "finalSHA256": "e44cf4d9d7826d524f11b02f1ebccae18c493371f93ddc413146063b54d0042a",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/insights/verdict_render_test.go",
+      "baselineSHA256": "b99b5af912054415652e55b943e053d9a9f093dbad930f3da4d7c796bacbffa9",
+      "finalSHA256": "b99b5af912054415652e55b943e053d9a9f093dbad930f3da4d7c796bacbffa9",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/insights/verdict_test.go",
+      "baselineSHA256": "0493c0879328510fd736b429a7a6fc4a7fdce0502d1bc6c55feadbf78968bea6",
+      "finalSHA256": "0493c0879328510fd736b429a7a6fc4a7fdce0502d1bc6c55feadbf78968bea6",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/majorexpenses/coverage_test.go",
+      "baselineSHA256": "8bb03b752442a02cc9fe819e717a24cf0c33283e37313f2eae2872e1c5e3991c",
+      "finalSHA256": "8bb03b752442a02cc9fe819e717a24cf0c33283e37313f2eae2872e1c5e3991c",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/majorexpenses/handlers.go",
+      "baselineSHA256": "958e0f56dc4fc986d8d0f8206c2d81ca71503391670114df29e8a2ef5c21d134",
+      "finalSHA256": "958e0f56dc4fc986d8d0f8206c2d81ca71503391670114df29e8a2ef5c21d134",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/majorexpenses/handlers_test.go",
+      "baselineSHA256": "c806132e1b7ff479594d10dc75e6d122ecbbe07c3c5332ad4d2ec8e1d0221c77",
+      "finalSHA256": "c806132e1b7ff479594d10dc75e6d122ecbbe07c3c5332ad4d2ec8e1d0221c77",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/majorexpenses/verdict.go",
+      "baselineSHA256": "0f6363a4810764c9a679b11881bcae44463d34bbf8722322a9bb5b08bcc0096c",
+      "finalSHA256": "0f6363a4810764c9a679b11881bcae44463d34bbf8722322a9bb5b08bcc0096c",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/majorexpenses/verdict_test.go",
+      "baselineSHA256": "82238b02a216ddd2de8072bb804fe638cb6045d061ba309d94cc761b077261f6",
+      "finalSHA256": "82238b02a216ddd2de8072bb804fe638cb6045d061ba309d94cc761b077261f6",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/transfers/handlers.go",
+      "baselineSHA256": "ee94a0d30053c22870c0a116509e71682f3e0fb1b7caf620c803acf2964adeb8",
+      "finalSHA256": "ee94a0d30053c22870c0a116509e71682f3e0fb1b7caf620c803acf2964adeb8",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/transfers/handlers_test.go",
+      "baselineSHA256": "a82b0d371dd7e66fb4792cefee947b5b458050d2995faab0f774deacf34d810f",
+      "finalSHA256": "a82b0d371dd7e66fb4792cefee947b5b458050d2995faab0f774deacf34d810f",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/budget_analysis_render_test.go",
+      "baselineSHA256": "98f2f649b60b109514f7abd647e6a626aaa52de40ac0ac75ee12028413676688",
+      "finalSHA256": "98f2f649b60b109514f7abd647e6a626aaa52de40ac0ac75ee12028413676688",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/chart_helpers_test.go",
+      "baselineSHA256": "80a76e9b2c4b36c328f13c2531f2dacb63051b5dfe5ce00b5538affde68d6772",
+      "finalSHA256": "80a76e9b2c4b36c328f13c2531f2dacb63051b5dfe5ce00b5538affde68d6772",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/completeness_render_test.go",
+      "baselineSHA256": "bce9ea752a36c6fc0b5bd68f7db95e5912b1fc9ecd1a6dfa570fa070727c7d45",
+      "finalSHA256": "bce9ea752a36c6fc0b5bd68f7db95e5912b1fc9ecd1a6dfa570fa070727c7d45",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/coverage_gaps_test.go",
+      "baselineSHA256": "4fa304ee847006110a12c673be64e0310981471c49fe1d93c4f1acce8bbe2c83",
+      "finalSHA256": "4fa304ee847006110a12c673be64e0310981471c49fe1d93c4f1acce8bbe2c83",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/failure_bounds_render_test.go",
+      "baselineSHA256": "a65b7b17d9511fa6ce5ac09aaa174fb2be2f91de194f17579cbb172506345e4a",
+      "finalSHA256": "a65b7b17d9511fa6ce5ac09aaa174fb2be2f91de194f17579cbb172506345e4a",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/failure_bounds_rounding_render_test.go",
+      "baselineSHA256": "902cdf14e9ada6b93bd1c024b5102fe9843edcfb3fcfd004743478980b116c8c",
+      "finalSHA256": "902cdf14e9ada6b93bd1c024b5102fe9843edcfb3fcfd004743478980b116c8c",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/form_spec.go",
+      "baselineSHA256": "f480946f0cf035cff7e247dcd954168198039fdcf4440afa9423a0d846ccca58",
+      "finalSHA256": "f480946f0cf035cff7e247dcd954168198039fdcf4440afa9423a0d846ccca58",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/form_spec_test.go",
+      "baselineSHA256": "a3692e4e261bda3016137d01eefb2b2c15a2a141bc17c303d059038a2574ee5a",
+      "finalSHA256": "a3692e4e261bda3016137d01eefb2b2c15a2a141bc17c303d059038a2574ee5a",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/gross_withdrawal_render_test.go",
+      "baselineSHA256": "bedc7c6b39d478391f2932d5ee4108f3ff979ee560cbabcafbb99c6dda969d85",
+      "finalSHA256": "bedc7c6b39d478391f2932d5ee4108f3ff979ee560cbabcafbb99c6dda969d85",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/handlers.go",
+      "baselineSHA256": "9901d0c934d42a19b37ec07fc8a038348c68f30e4671aab26510dfb585135505",
+      "finalSHA256": "9901d0c934d42a19b37ec07fc8a038348c68f30e4671aab26510dfb585135505",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_healthcare.go",
+      "baselineSHA256": "ad18fc6250eceacb579541af5e149481dec5510c4e3a27f9e29db003a07f4a78",
+      "finalSHA256": "ad18fc6250eceacb579541af5e149481dec5510c4e3a27f9e29db003a07f4a78",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_income_expense.go",
+      "baselineSHA256": "8c83f6f19f595d63a322be1b6aef7dc34ea6f3c1afdde192f0e59bd9c785bd50",
+      "finalSHA256": "8c83f6f19f595d63a322be1b6aef7dc34ea6f3c1afdde192f0e59bd9c785bd50",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_live.go",
+      "baselineSHA256": "c35feb3376e0c1eb36288f6c23975b5a9e4c0d4a25d0ac490954ae61b7b61b0d",
+      "finalSHA256": "c35feb3376e0c1eb36288f6c23975b5a9e4c0d4a25d0ac490954ae61b7b61b0d",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_live_expected_scenario_test.go",
+      "baselineSHA256": "76c3cf4f0b6341d51af7b6ad9e0a0bfc4554a341310d18a3e526745d562a0045",
+      "finalSHA256": "76c3cf4f0b6341d51af7b6ad9e0a0bfc4554a341310d18a3e526745d562a0045",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_live_test.go",
+      "baselineSHA256": "ece02c081227011121348f03bdbdde1f15f298cd3c08f1bcdc8e62d10f22e3a8",
+      "finalSHA256": "ece02c081227011121348f03bdbdde1f15f298cd3c08f1bcdc8e62d10f22e3a8",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_rates.go",
+      "baselineSHA256": "fdf6b978fa1d091ba53a5dd366e73de6d8c7febd874d7a2c2327e6a2a102fa2c",
+      "finalSHA256": "fdf6b978fa1d091ba53a5dd366e73de6d8c7febd874d7a2c2327e6a2a102fa2c",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_scenarios.go",
+      "baselineSHA256": "761f5d173d863a2c3dad4e860fc85228feccc2580f64a60333b1ceacd60b6d6d",
+      "finalSHA256": "761f5d173d863a2c3dad4e860fc85228feccc2580f64a60333b1ceacd60b6d6d",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_sweep.go",
+      "baselineSHA256": "4c46e5267a6a76bb25355ce3535d8b91af76f1474271bbb9344d975d651e2787",
+      "finalSHA256": "4c46e5267a6a76bb25355ce3535d8b91af76f1474271bbb9344d975d651e2787",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_sweep_hooks_test.go",
+      "baselineSHA256": "7b14d549365eb32e1508b52a7dcc74931da76cef0889bbc24b523dab436923a4",
+      "finalSHA256": "7b14d549365eb32e1508b52a7dcc74931da76cef0889bbc24b523dab436923a4",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_sweep_test.go",
+      "baselineSHA256": "4cf54652abf7723a456a19dd8bfb668023c383231c282dc80178e99dd869e326",
+      "finalSHA256": "4cf54652abf7723a456a19dd8bfb668023c383231c282dc80178e99dd869e326",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/handlers_test.go",
+      "baselineSHA256": "c225615c7f907e1b352bcbe988efad970ac7a21ac374c24164830693593488d4",
+      "finalSHA256": "c225615c7f907e1b352bcbe988efad970ac7a21ac374c24164830693593488d4",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/lifestyle_cashflow_contract_test.go",
+      "baselineSHA256": "3e86fc6db777c5a02ebd44ccff90448d1a76a8628e948247676794fb174d02fc",
+      "finalSHA256": "3e86fc6db777c5a02ebd44ccff90448d1a76a8628e948247676794fb174d02fc",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/lifestyle_render_test.go",
+      "baselineSHA256": "fa5001db463bfb775cd7e7d5f3f926aed99f647a1005eb7f04cb39901ee61693",
+      "finalSHA256": "fa5001db463bfb775cd7e7d5f3f926aed99f647a1005eb7f04cb39901ee61693",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/lifestyle_repair_render_test.go",
+      "baselineSHA256": "5bfd33c67f059d640cd14a1ba4d960e01f19cb2e3f32ae646cce579b5b3f6205",
+      "finalSHA256": "5bfd33c67f059d640cd14a1ba4d960e01f19cb2e3f32ae646cce579b5b3f6205",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/living_expenses_phase_note.go",
+      "baselineSHA256": "924d497fd7e312543aef5fbc51317569bed04190bfb17f9e342fc8715160b567",
+      "finalSHA256": "924d497fd7e312543aef5fbc51317569bed04190bfb17f9e342fc8715160b567",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/living_expenses_phase_note_test.go",
+      "baselineSHA256": "f81d5c3ea2ec4289072e925000f884d45e3cd5f13d4da7f62198778d07b27485",
+      "finalSHA256": "f81d5c3ea2ec4289072e925000f884d45e3cd5f13d4da7f62198778d07b27485",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/living_expenses_snap_trap_test.go",
+      "baselineSHA256": "e1bf7ba696c40a5e79f08d90a145d1fc3edc69d418b9dc5eebae46f666151dcf",
+      "finalSHA256": "e1bf7ba696c40a5e79f08d90a145d1fc3edc69d418b9dc5eebae46f666151dcf",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/monthly_living_expenses_rounding_test.go",
+      "baselineSHA256": "8e93208dcd8d95d3d01509861d049e13d23967262c4bb6f61c28a35a54e894e9",
+      "finalSHA256": "8e93208dcd8d95d3d01509861d049e13d23967262c4bb6f61c28a35a54e894e9",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/onetime_expense_test.go",
+      "baselineSHA256": "3e16d3ef3b92361a199108f860d8e721316925191c34fb7f8acc2908dc7d9336",
+      "finalSHA256": "3e16d3ef3b92361a199108f860d8e721316925191c34fb7f8acc2908dc7d9336",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/results_full_test.go",
+      "baselineSHA256": "1f79e961d7490219589a1cf432d6fab411e5c1829f9f63a0819bd394340500d5",
+      "finalSHA256": "1f79e961d7490219589a1cf432d6fab411e5c1829f9f63a0819bd394340500d5",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/risk_language_render_test.go",
+      "baselineSHA256": "870a3fb96fd2a876bf578bd244499bb97d9378da7fc99dbaa3131530fdb93bc2",
+      "finalSHA256": "870a3fb96fd2a876bf578bd244499bb97d9378da7fc99dbaa3131530fdb93bc2",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/settings_race_test.go",
+      "baselineSHA256": "3bfb9658c7587f823e55a8b5f0862418c8ec5d2199b729c3931d39e6acbe028f",
+      "finalSHA256": "3bfb9658c7587f823e55a8b5f0862418c8ec5d2199b729c3931d39e6acbe028f",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/singleflight_test.go",
+      "baselineSHA256": "75571114200a638212d629fb4dd546d1424f971a3f4529563c24e77d7ed97844",
+      "finalSHA256": "75571114200a638212d629fb4dd546d1424f971a3f4529563c24e77d7ed97844",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/spending_phases_render_test.go",
+      "baselineSHA256": "161170510e2237eb658dbb8e8295dcddb83ffca4ab5170a702c1a4f317d0a885",
+      "finalSHA256": "161170510e2237eb658dbb8e8295dcddb83ffca4ab5170a702c1a4f317d0a885",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/spending_trajectory.go",
+      "baselineSHA256": "01e376c3a742b1d9f313afe247d74c21bb8ccddbed05a915e83c3b7d11344492",
+      "finalSHA256": "01e376c3a742b1d9f313afe247d74c21bb8ccddbed05a915e83c3b7d11344492",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/spending_trajectory_test.go",
+      "baselineSHA256": "8869ee6f48b9c602587c1dde290751ff07ba16c60bb306866facce958e809e67",
+      "finalSHA256": "8869ee6f48b9c602587c1dde290751ff07ba16c60bb306866facce958e809e67",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/ss_survivor_render_test.go",
+      "baselineSHA256": "fcf2e868f5e25dcb028c3bc15c3a85a4f569b65adbe91c343c171ed605ecad92",
+      "finalSHA256": "fcf2e868f5e25dcb028c3bc15c3a85a4f569b65adbe91c343c171ed605ecad92",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/sweep_guard_render_test.go",
+      "baselineSHA256": "ae887f663bb0a2d42585010f8e9a14ac4fee0c23d804122f17550342e422cef4",
+      "finalSHA256": "ae887f663bb0a2d42585010f8e9a14ac4fee0c23d804122f17550342e422cef4",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/sweep_guard_test.go",
+      "baselineSHA256": "f31d666ba11d8e4fe4f16b82c0f9a63b58a3dc48e6a4f38ad2e32f23ffd9f4f2",
+      "finalSHA256": "f31d666ba11d8e4fe4f16b82c0f9a63b58a3dc48e6a4f38ad2e32f23ffd9f4f2",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/sync.go",
+      "baselineSHA256": "30a0f0919819c89f549b00b951608f9dee59fc1cd473560aeae007a9ce583a9b",
+      "finalSHA256": "30a0f0919819c89f549b00b951608f9dee59fc1cd473560aeae007a9ce583a9b",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/sync_plan_exclusions_test.go",
+      "baselineSHA256": "fe7788797cb94107e188934e3a35853effa8ff39f8f83804f68a422a2a44fe09",
+      "finalSHA256": "fe7788797cb94107e188934e3a35853effa8ff39f8f83804f68a422a2a44fe09",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/sync_test.go",
+      "baselineSHA256": "44e4c1022380f9f53c9a535749ca1760fb2f12785aca70f19e5b6d114f169132",
+      "finalSHA256": "44e4c1022380f9f53c9a535749ca1760fb2f12785aca70f19e5b6d114f169132",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/tabs_render_test.go",
+      "baselineSHA256": "b2538307f914b688cd78d988a56c2b7299b9113c48d2a9ec3fc8fe61dec6addc",
+      "finalSHA256": "b2538307f914b688cd78d988a56c2b7299b9113c48d2a9ec3fc8fe61dec6addc",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/tax_optimizer_render_test.go",
+      "baselineSHA256": "a5bedd1a6e30715fd2b7529e4a5b67df402c2c7030456b62d4420ebd4bafe944",
+      "finalSHA256": "a5bedd1a6e30715fd2b7529e4a5b67df402c2c7030456b62d4420ebd4bafe944",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/tax_summary_render_test.go",
+      "baselineSHA256": "c732c5b11e31715ab9a6af47e5924038051da79f67f89a1ff969da05de8883c9",
+      "finalSHA256": "c732c5b11e31715ab9a6af47e5924038051da79f67f89a1ff969da05de8883c9",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/verdict.go",
+      "baselineSHA256": "dde4e2e1cae8efb2cb640cf9b21c69de315a84b69f762cbd05f753fdc22187ac",
+      "finalSHA256": "dde4e2e1cae8efb2cb640cf9b21c69de315a84b69f762cbd05f753fdc22187ac",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/verdict_render_test.go",
+      "baselineSHA256": "8283512d5ba70e2fd9fb91e3566f0e0ba579a7411127486f7bea2600bed7b4a6",
+      "finalSHA256": "8283512d5ba70e2fd9fb91e3566f0e0ba579a7411127486f7bea2600bed7b4a6",
+      "DI4": false
+    },
+    {
+      "path": "internal/handlers/whatif/verdict_test.go",
+      "baselineSHA256": "57e005e10e1007ead14d36222be7f06c08fc02edef26e35259548de3b883840d",
+      "finalSHA256": "57e005e10e1007ead14d36222be7f06c08fc02edef26e35259548de3b883840d",
+      "DI4": false
+    },
+    {
+      "path": "internal/http/http.go",
+      "baselineSHA256": "b39dbd4bd30e0772139add08385fe1cb100d560b6a4087d1d987deae99047e0e",
+      "finalSHA256": "b39dbd4bd30e0772139add08385fe1cb100d560b6a4087d1d987deae99047e0e",
+      "DI4": false
+    },
+    {
+      "path": "internal/http/http_test.go",
+      "baselineSHA256": "cbe98258e5dfeeb3697aa27b20d124adb0bb793e856121c0b196d8df3726d85a",
+      "finalSHA256": "cbe98258e5dfeeb3697aa27b20d124adb0bb793e856121c0b196d8df3726d85a",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/aca.go",
+      "baselineSHA256": "df9b4d6c0c3ef343a09a810a8b79046ae1e542a4816670bb103e3cc9a2e6f901",
+      "finalSHA256": "df9b4d6c0c3ef343a09a810a8b79046ae1e542a4816670bb103e3cc9a2e6f901",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/account.go",
+      "baselineSHA256": "70f552abf00c6c346f7fb288f2da15c2dab627e34028ce0764650da179745eda",
+      "finalSHA256": "70f552abf00c6c346f7fb288f2da15c2dab627e34028ce0764650da179745eda",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/allocation_test.go",
+      "baselineSHA256": "a1b434ce5eba22fbae603506cad96e94e9fa4544c864368f867a3df3e26338e2",
+      "finalSHA256": "a1b434ce5eba22fbae603506cad96e94e9fa4544c864368f867a3df3e26338e2",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/care_cost_test.go",
+      "baselineSHA256": "c6dfd2b917e0ab04ca58f6205109992c6cf71aed18a44e1b470cd9c9dc842869",
+      "finalSHA256": "c6dfd2b917e0ab04ca58f6205109992c6cf71aed18a44e1b470cd9c9dc842869",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/dashboard.go",
+      "baselineSHA256": "aad3afbb44eae771ae8f41d6f16adc6ec9409832e7a811647ae38c0318190760",
+      "finalSHA256": "aad3afbb44eae771ae8f41d6f16adc6ec9409832e7a811647ae38c0318190760",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/doc.go",
+      "baselineSHA256": "e7f9ffa62bd8c31c4c134a883d67cf12ce7e4693dcee51643543293b8c48e4ab",
+      "finalSHA256": "e7f9ffa62bd8c31c4c134a883d67cf12ce7e4693dcee51643543293b8c48e4ab",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/health.go",
+      "baselineSHA256": "6f1821337d7b07881dcb5a581af63dded7ea01af8d435859d82f4dfd22d579ee",
+      "finalSHA256": "6f1821337d7b07881dcb5a581af63dded7ea01af8d435859d82f4dfd22d579ee",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/healthcare.go",
+      "baselineSHA256": "f1e49199d1957b6a80d2f95c29b91ba4d913819b37f99941bf1c5191b5b12f9f",
+      "finalSHA256": "f1e49199d1957b6a80d2f95c29b91ba4d913819b37f99941bf1c5191b5b12f9f",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/healthcare_test.go",
+      "baselineSHA256": "ea99f8ea6f12cf415bfb490cc2250643f743f256462c92c31cd7828f6baa9dbd",
+      "finalSHA256": "ea99f8ea6f12cf415bfb490cc2250643f743f256462c92c31cd7828f6baa9dbd",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/income_source.go",
+      "baselineSHA256": "d3df750277ebaf15c1f7290635cad4df7fefa20b8c5d63589f562647ba8c0cd6",
+      "finalSHA256": "d3df750277ebaf15c1f7290635cad4df7fefa20b8c5d63589f562647ba8c0cd6",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/income_source_test.go",
+      "baselineSHA256": "b958b063a9375c4c5038e05620eacc71a0afc935b4cba86cc12d78bdb075966b",
+      "finalSHA256": "b958b063a9375c4c5038e05620eacc71a0afc935b4cba86cc12d78bdb075966b",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/insights.go",
+      "baselineSHA256": "1a34fd95df930fc8df076d8bafcc2813c1478e7fe14741a4bd0965133a5838b4",
+      "finalSHA256": "1a34fd95df930fc8df076d8bafcc2813c1478e7fe14741a4bd0965133a5838b4",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/major_expense.go",
+      "baselineSHA256": "ef269a82fe3df543d4d7187ed09ed6c13c099f8e07cb2b283fd507c85a7e9de0",
+      "finalSHA256": "ef269a82fe3df543d4d7187ed09ed6c13c099f8e07cb2b283fd507c85a7e9de0",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/models_extra_test.go",
+      "baselineSHA256": "9c5936817be2fb106d2d58eb88dc843cb3e4b4efbcbf48943e565caa9f59fcf0",
+      "finalSHA256": "9c5936817be2fb106d2d58eb88dc843cb3e4b4efbcbf48943e565caa9f59fcf0",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/models_tax_optimizer_test.go",
+      "baselineSHA256": "632d69db610b7e8933e8b37673fff0d704c07c1e2b7094df24214b52464079d5",
+      "finalSHA256": "632d69db610b7e8933e8b37673fff0d704c07c1e2b7094df24214b52464079d5",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/money.go",
+      "baselineSHA256": "f42182d820370446cb4048c5793ceeb2ecb04286387e2247d2e19ded37dadcf9",
+      "finalSHA256": "f42182d820370446cb4048c5793ceeb2ecb04286387e2247d2e19ded37dadcf9",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/one_time_expense.go",
+      "baselineSHA256": "c4594fedb806d3d2ca5ad8def9f62e0ea8ccd08e3ac3a4f840cf7f89810a0432",
+      "finalSHA256": "c4594fedb806d3d2ca5ad8def9f62e0ea8ccd08e3ac3a4f840cf7f89810a0432",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/one_time_expense_test.go",
+      "baselineSHA256": "98ea50737185c3676eccb4bc8ff56707ee1ce176fd10e4e6d1ec0e379d25ef97",
+      "finalSHA256": "98ea50737185c3676eccb4bc8ff56707ee1ce176fd10e4e6d1ec0e379d25ef97",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/ptr.go",
+      "baselineSHA256": "b014f6823330351447d469a623860e727cf54008f20b8ba919339e9fb2425284",
+      "finalSHA256": "b014f6823330351447d469a623860e727cf54008f20b8ba919339e9fb2425284",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/roth_first_funded_test.go",
+      "baselineSHA256": "1b4dc2ba0cd59c364125ec1f872b52851837a3632647e51871c5b54303c94ad9",
+      "finalSHA256": "1b4dc2ba0cd59c364125ec1f872b52851837a3632647e51871c5b54303c94ad9",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/set_primary_age_test.go",
+      "baselineSHA256": "36a18a11216024ec5938ddac97695557ff89df26f0cc7ab0952022822f25b6d5",
+      "finalSHA256": "36a18a11216024ec5938ddac97695557ff89df26f0cc7ab0952022822f25b6d5",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/stable_id_test.go",
+      "baselineSHA256": "e4950336eea72098610ea1eaba12205040d9b539f68455d57ab2973da9d3db77",
+      "finalSHA256": "e4950336eea72098610ea1eaba12205040d9b539f68455d57ab2973da9d3db77",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/transaction.go",
+      "baselineSHA256": "6950b87dff6f866c53dd6b311ba911d9f9872b0a6864fc890d8a473bb5781405",
+      "finalSHA256": "6950b87dff6f866c53dd6b311ba911d9f9872b0a6864fc890d8a473bb5781405",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/transaction_test.go",
+      "baselineSHA256": "969aea58292868673768970a46117fa14bef4344d66608705e145cefea568aea",
+      "finalSHA256": "969aea58292868673768970a46117fa14bef4344d66608705e145cefea568aea",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/user_profile.go",
+      "baselineSHA256": "951b91f31e0f1e853c9bc976ea9d0f93aed1be6934d1ef60a73dc2d1e994981e",
+      "finalSHA256": "951b91f31e0f1e853c9bc976ea9d0f93aed1be6934d1ef60a73dc2d1e994981e",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/user_profile_test.go",
+      "baselineSHA256": "444a0c3bd1b1fac8d3c6298edc3f0912db389b15cd920f4ee75a113dec9593bd",
+      "finalSHA256": "444a0c3bd1b1fac8d3c6298edc3f0912db389b15cd920f4ee75a113dec9593bd",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/whatif.go",
+      "baselineSHA256": "652026bbaa2910adc216d47e27d8aa1ad012204ec2cafa2d8ba970d6acc8254b",
+      "finalSHA256": "652026bbaa2910adc216d47e27d8aa1ad012204ec2cafa2d8ba970d6acc8254b",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/whatif_spouse_sole_beneficiary_test.go",
+      "baselineSHA256": "e6f2c68f797a458276e089f8ecb93d50be9618071a494b01786cb60412c5a877",
+      "finalSHA256": "e6f2c68f797a458276e089f8ecb93d50be9618071a494b01786cb60412c5a877",
+      "DI4": false
+    },
+    {
+      "path": "internal/models/whatif_test.go",
+      "baselineSHA256": "49974e22c3e9b8e12ed22d6788a46b521489cc7b6e2396377ed6ce9c52e12bfd",
+      "finalSHA256": "49974e22c3e9b8e12ed22d6788a46b521489cc7b6e2396377ed6ce9c52e12bfd",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/accounts/accounts.go",
+      "baselineSHA256": "2f2fbf656b7e2f80c56fa190141cf6f35f80e94600ef90828f7452e624ca5645",
+      "finalSHA256": "2f2fbf656b7e2f80c56fa190141cf6f35f80e94600ef90828f7452e624ca5645",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/accounts/accounts_test.go",
+      "baselineSHA256": "8dc96844b96d4f23ad60c0d471810dc6c2472bcb920ee3c76af0bf44432bdb07",
+      "finalSHA256": "8dc96844b96d4f23ad60c0d471810dc6c2472bcb920ee3c76af0bf44432bdb07",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/accounts/balance.go",
+      "baselineSHA256": "9c69246e2f396fdca38fc54a7bc69a06d1d567f857a00a8ed738916be3b81749",
+      "finalSHA256": "9c69246e2f396fdca38fc54a7bc69a06d1d567f857a00a8ed738916be3b81749",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/accounts/balance_test.go",
+      "baselineSHA256": "2918962eb7fdf257f03eb0bfbea7ab5172842e1bb1bb38ad4a7488720cd271ab",
+      "finalSHA256": "2918962eb7fdf257f03eb0bfbea7ab5172842e1bb1bb38ad4a7488720cd271ab",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/accounts/mutate_warnings_test.go",
+      "baselineSHA256": "9e289738abf20c55877ac3021ff7ef598b5d595639bb407276c8c19fec5da05e",
+      "finalSHA256": "9e289738abf20c55877ac3021ff7ef598b5d595639bb407276c8c19fec5da05e",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/accounts/projection.go",
+      "baselineSHA256": "54ecbe7b2fe4ce9a5c1df58478d1dade0d57911a1dc831c4c5060ea15a779d68",
+      "finalSHA256": "54ecbe7b2fe4ce9a5c1df58478d1dade0d57911a1dc831c4c5060ea15a779d68",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/accounts/projection_test.go",
+      "baselineSHA256": "41b7e409748ff52a93beadd3eecc4f37c0c2d95cce67ac0b87a48712b6bbdb69",
+      "finalSHA256": "41b7e409748ff52a93beadd3eecc4f37c0c2d95cce67ac0b87a48712b6bbdb69",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/amazon/matcher.go",
+      "baselineSHA256": "4562690b46d1ad010d873798536b6116a698a9f968d45bb57f5a3e52ac544618",
+      "finalSHA256": "4562690b46d1ad010d873798536b6116a698a9f968d45bb57f5a3e52ac544618",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/amazon/matcher_test.go",
+      "baselineSHA256": "ce266719c438c6725dfb43aa98e35d13550f3c6f75b2ac2667d1860b40b9815a",
+      "finalSHA256": "ce266719c438c6725dfb43aa98e35d13550f3c6f75b2ac2667d1860b40b9815a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/amazon/order.go",
+      "baselineSHA256": "4946bb22c4fdcf7389ed3f63778b8f38ec10f215de0972450651d71dc5498f99",
+      "finalSHA256": "4946bb22c4fdcf7389ed3f63778b8f38ec10f215de0972450651d71dc5498f99",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/amazon/order_test.go",
+      "baselineSHA256": "72b5f87d7676a95e56832cbc6ef5d172f009623ffdcd06b9b4d0e8ed9ed5b85e",
+      "finalSHA256": "72b5f87d7676a95e56832cbc6ef5d172f009623ffdcd06b9b4d0e8ed9ed5b85e",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/anomalies/anomalies.go",
+      "baselineSHA256": "436b1616feb26097c27152ca00cb89e8fba4087ee28ef6b019e4958d3e4d2267",
+      "finalSHA256": "436b1616feb26097c27152ca00cb89e8fba4087ee28ef6b019e4958d3e4d2267",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/anomalies/anomalies_test.go",
+      "baselineSHA256": "d10e7d999ff8e9cc21cf3b2385783919a1c8f2aa7985c611b7eca107f4f51a7f",
+      "finalSHA256": "d10e7d999ff8e9cc21cf3b2385783919a1c8f2aa7985c611b7eca107f4f51a7f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/anomalies/fixture_test.go",
+      "baselineSHA256": "1e0212134c1a734904d7d9fbc421c62ffa58c56a2acfa2448ab289dadf6511fd",
+      "finalSHA256": "1e0212134c1a734904d7d9fbc421c62ffa58c56a2acfa2448ab289dadf6511fd",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/clock.go",
+      "baselineSHA256": "eb141723f091ab434c7fd63196f61d6b9d076c084e8d36868b5192eee12f0c05",
+      "finalSHA256": "eb141723f091ab434c7fd63196f61d6b9d076c084e8d36868b5192eee12f0c05",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/coverage_test.go",
+      "baselineSHA256": "1d615ac518992ed20908e58a8f91c840a35ce73ca6136da07f440940dbbbf867",
+      "finalSHA256": "1d615ac518992ed20908e58a8f91c840a35ce73ca6136da07f440940dbbbf867",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/list.go",
+      "baselineSHA256": "9367a773c2a47a51f42b26701c1846e78b6802b3b1235253f90b5be83ccc50b0",
+      "finalSHA256": "9367a773c2a47a51f42b26701c1846e78b6802b3b1235253f90b5be83ccc50b0",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/list_test.go",
+      "baselineSHA256": "8f7464455e8c3663115d1c4f8408ee6f6ec5bce6c6a4f1460ad474c10df350bd",
+      "finalSHA256": "8f7464455e8c3663115d1c4f8408ee6f6ec5bce6c6a4f1460ad474c10df350bd",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/meta.go",
+      "baselineSHA256": "267f5787108c62e58beb35baad94e49d7c528053f06c2ed8caa5dc9b0d6fafb8",
+      "finalSHA256": "267f5787108c62e58beb35baad94e49d7c528053f06c2ed8caa5dc9b0d6fafb8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/meta_test.go",
+      "baselineSHA256": "f9e6d24ab1ce474cf9c17944af981c3e5725b7822a179064e984d4f3ca39c8d7",
+      "finalSHA256": "f9e6d24ab1ce474cf9c17944af981c3e5725b7822a179064e984d4f3ca39c8d7",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/retention.go",
+      "baselineSHA256": "6f84202ffa5f4fcf1deba94ab2e2eeed2e729a1ceade1d6ddf63d32e4027e9a8",
+      "finalSHA256": "6f84202ffa5f4fcf1deba94ab2e2eeed2e729a1ceade1d6ddf63d32e4027e9a8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/retention_test.go",
+      "baselineSHA256": "f7b1db72c62cb77c8ab634603ffa37eac1037777d18a2c5fca972a1eb9980538",
+      "finalSHA256": "f7b1db72c62cb77c8ab634603ffa37eac1037777d18a2c5fca972a1eb9980538",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/scheduler.go",
+      "baselineSHA256": "3beed6f3d9694556671a696d0b1d78b53ccede02d4a365584c70a5d506be3004",
+      "finalSHA256": "3beed6f3d9694556671a696d0b1d78b53ccede02d4a365584c70a5d506be3004",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/scheduler_test.go",
+      "baselineSHA256": "fede61f0880ff2aaeeba91dcf8a481ab1626a96c8626cd4c0661d6c8e14c6a02",
+      "finalSHA256": "fede61f0880ff2aaeeba91dcf8a481ab1626a96c8626cd4c0661d6c8e14c6a02",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/service.go",
+      "baselineSHA256": "e948e56abad20f6331582cea3a103a2ca4d9b3cf22c9b1903e4a7d9e219032c1",
+      "finalSHA256": "e948e56abad20f6331582cea3a103a2ca4d9b3cf22c9b1903e4a7d9e219032c1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/service_test.go",
+      "baselineSHA256": "537dd74988f253a533cbddbebcd33a805d9a2b3b5d2ecd72fded97c5293c2e6e",
+      "finalSHA256": "537dd74988f253a533cbddbebcd33a805d9a2b3b5d2ecd72fded97c5293c2e6e",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/snapshot.go",
+      "baselineSHA256": "f57f34070bcab737979a3aa57cd1841665198a7c1b9da87ca59e668f804143de",
+      "finalSHA256": "f57f34070bcab737979a3aa57cd1841665198a7c1b9da87ca59e668f804143de",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/backup/snapshot_test.go",
+      "baselineSHA256": "b55e36db010f44c1719811b8296f84f6772ffe5e116f1ea606360dbb99da63b7",
+      "finalSHA256": "b55e36db010f44c1719811b8296f84f6772ffe5e116f1ea606360dbb99da63b7",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/classifier/classifier.go",
+      "baselineSHA256": "e71c4775f1b6870fb5a8e49270da1362b0bb4dcaf7d2997b563131168eac4836",
+      "finalSHA256": "e71c4775f1b6870fb5a8e49270da1362b0bb4dcaf7d2997b563131168eac4836",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/classifier/classifier_test.go",
+      "baselineSHA256": "67c0e4743a188a5095530ecda16aed02013b298d4893583e8801700af5b8e296",
+      "finalSHA256": "67c0e4743a188a5095530ecda16aed02013b298d4893583e8801700af5b8e296",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/account_attribution_test.go",
+      "baselineSHA256": "07e0186e4a5b4887c797d54d4b30a157fdd3b7e0efdeab4ca51e0a830182e6a8",
+      "finalSHA256": "07e0186e4a5b4887c797d54d4b30a157fdd3b7e0efdeab4ca51e0a830182e6a8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/alias_stable_id_test.go",
+      "baselineSHA256": "6466ca78e6a11c8803ce0317a55e273cf3dfafadc5832e78daa83c3aa55fab27",
+      "finalSHA256": "6466ca78e6a11c8803ce0317a55e273cf3dfafadc5832e78daa83c3aa55fab27",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/amazon_enrichment.go",
+      "baselineSHA256": "7b59a604e74f6a6a8f4046236565943e9fa349c3ac63f2709f6b863535478a2f",
+      "finalSHA256": "7b59a604e74f6a6a8f4046236565943e9fa349c3ac63f2709f6b863535478a2f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/amazon_enrichment_test.go",
+      "baselineSHA256": "4e03a2b6fb45754b5c82177f1522eeac6d7b2a861cf87d7f2adbe761d986d947",
+      "finalSHA256": "4e03a2b6fb45754b5c82177f1522eeac6d7b2a861cf87d7f2adbe761d986d947",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/concurrency_test.go",
+      "baselineSHA256": "854a4dde8e581ab3688045296ac7b9ade9dbd543927b5a4043b9367a77edc1e1",
+      "finalSHA256": "854a4dde8e581ab3688045296ac7b9ade9dbd543927b5a4043b9367a77edc1e1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/coverage_test.go",
+      "baselineSHA256": "c53b8c1ae8b29bcfe8d88f6d47767c705e6f662b07fca55a32fa6f31fb8e7433",
+      "finalSHA256": "c53b8c1ae8b29bcfe8d88f6d47767c705e6f662b07fca55a32fa6f31fb8e7433",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/duplicate_decisions.go",
+      "baselineSHA256": "74eb1463b005f0f4ee95434e954c2b5907cdbabca07c3c2bb9991860c4586482",
+      "finalSHA256": "74eb1463b005f0f4ee95434e954c2b5907cdbabca07c3c2bb9991860c4586482",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/duplicate_decisions_test.go",
+      "baselineSHA256": "f3c80ceacde39140564d35d079dfbb52647c00d7e087c93bbdf4177001540462",
+      "finalSHA256": "f3c80ceacde39140564d35d079dfbb52647c00d7e087c93bbdf4177001540462",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/loader.go",
+      "baselineSHA256": "f08fe0d47d200f67f49c2f96be43162c812a44106a46b4355b961a3edc74de90",
+      "finalSHA256": "f08fe0d47d200f67f49c2f96be43162c812a44106a46b4355b961a3edc74de90",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/loader_test.go",
+      "baselineSHA256": "9ea610454649ed784ed8ed1e83ef22a46188a5d4706ddd62b9b020ff3202609d",
+      "finalSHA256": "9ea610454649ed784ed8ed1e83ef22a46188a5d4706ddd62b9b020ff3202609d",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/major_expense_names.go",
+      "baselineSHA256": "77aff3ebb55274df48daa234ec3219a9800acbcac17d6b4b8e50707f4784748b",
+      "finalSHA256": "77aff3ebb55274df48daa234ec3219a9800acbcac17d6b4b8e50707f4784748b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/major_expense_names_test.go",
+      "baselineSHA256": "2a9b8ee6deede3b4685302a16fad535260ee258a39de7bbf4ae5bbde793fffe6",
+      "finalSHA256": "2a9b8ee6deede3b4685302a16fad535260ee258a39de7bbf4ae5bbde793fffe6",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/major_expenses.go",
+      "baselineSHA256": "114919c064441b7233c6dbac7b543080c7af0705dea3e45f28edb671454a2b0e",
+      "finalSHA256": "114919c064441b7233c6dbac7b543080c7af0705dea3e45f28edb671454a2b0e",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/major_expenses_test.go",
+      "baselineSHA256": "56ba2f8f6d0a23966774d97d8de2ec82a3ba098d9f5010a53b95cece88ab51ba",
+      "finalSHA256": "56ba2f8f6d0a23966774d97d8de2ec82a3ba098d9f5010a53b95cece88ab51ba",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/near_duplicates.go",
+      "baselineSHA256": "6f3bfc2c4db8fcba6272b06c0ec2fa9ba3cb6afbc3ceeaf721f60932a6a85d20",
+      "finalSHA256": "6f3bfc2c4db8fcba6272b06c0ec2fa9ba3cb6afbc3ceeaf721f60932a6a85d20",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/near_duplicates_test.go",
+      "baselineSHA256": "b6820f17f9bc885b8e4826e93ef7cbcadf118507a643987efef83518aefbc6e5",
+      "finalSHA256": "b6820f17f9bc885b8e4826e93ef7cbcadf118507a643987efef83518aefbc6e5",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/plan_sync_exclusion_test.go",
+      "baselineSHA256": "59985395fda3a7555ba223b5b0fbb32202a8156dc19a92451145675b13ed003a",
+      "finalSHA256": "59985395fda3a7555ba223b5b0fbb32202a8156dc19a92451145675b13ed003a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/reimport_accounts_test.go",
+      "baselineSHA256": "7752b2a75a7b05c0e3d8f5bd95760bb473aba6c5d5df391ff4463b3d92558a11",
+      "finalSHA256": "7752b2a75a7b05c0e3d8f5bd95760bb473aba6c5d5df391ff4463b3d92558a11",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/restore_exclusion_test.go",
+      "baselineSHA256": "19bc6709d29232aa43c0d8cb060624700ca2a24c4735566c76bb33879aa0d164",
+      "finalSHA256": "19bc6709d29232aa43c0d8cb060624700ca2a24c4735566c76bb33879aa0d164",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/stable_id.go",
+      "baselineSHA256": "94f49775e82c3cad6b58bbf07b2254a8c96da53a6ff6858a426376b88911e513",
+      "finalSHA256": "94f49775e82c3cad6b58bbf07b2254a8c96da53a6ff6858a426376b88911e513",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/stable_id_test.go",
+      "baselineSHA256": "d18affa0c76ae7e3d714e18f0ae7a3cace8836e4a13354ee5beac8eb032e3fd5",
+      "finalSHA256": "d18affa0c76ae7e3d714e18f0ae7a3cace8836e4a13354ee5beac8eb032e3fd5",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/transaction_pins.go",
+      "baselineSHA256": "eda736ba833612956fbfc7a1edbc922ba49bd1be7d6bd3566e865f6c2e491430",
+      "finalSHA256": "eda736ba833612956fbfc7a1edbc922ba49bd1be7d6bd3566e865f6c2e491430",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/transaction_pins_test.go",
+      "baselineSHA256": "f339df340d23bf7289db6b36e667009e26fd999b9a3745da4fb19b8a42cabae4",
+      "finalSHA256": "f339df340d23bf7289db6b36e667009e26fd999b9a3745da4fb19b8a42cabae4",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/transfer_decisions.go",
+      "baselineSHA256": "ff3c5e0d83a197e733f1e60784561d963263c7c3d8c27034b4f0211428ecea87",
+      "finalSHA256": "ff3c5e0d83a197e733f1e60784561d963263c7c3d8c27034b4f0211428ecea87",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/transfers.go",
+      "baselineSHA256": "4a243b3e01ee0ba3b0677328d9c206d45a419471f4ad68ebd4699a059cb746b2",
+      "finalSHA256": "4a243b3e01ee0ba3b0677328d9c206d45a419471f4ad68ebd4699a059cb746b2",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/transfers_test.go",
+      "baselineSHA256": "3739451929173444a7d55cc101b86d2fe12e1eaed96d6873eb0f82b61294c5af",
+      "finalSHA256": "3739451929173444a7d55cc101b86d2fe12e1eaed96d6873eb0f82b61294c5af",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/dataloader/zz_probe_od1_test.go",
+      "baselineSHA256": "08da7efa66a8ee701a1514b2f1ca27a6d4c309a495af0ba9acdf672300ec82fa",
+      "finalSHA256": "08da7efa66a8ee701a1514b2f1ca27a6d4c309a495af0ba9acdf672300ec82fa",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/insights/classification.go",
+      "baselineSHA256": "37bcc56c2414b75bc9e569a65e3c69c151f44d00475e305005ead7cf124a9de5",
+      "finalSHA256": "37bcc56c2414b75bc9e569a65e3c69c151f44d00475e305005ead7cf124a9de5",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/insights/classification_test.go",
+      "baselineSHA256": "1cd1e03690e2ca0bd9f2c5a3ddfb75654718fc7079d8efaf41617b1753d5f4c8",
+      "finalSHA256": "1cd1e03690e2ca0bd9f2c5a3ddfb75654718fc7079d8efaf41617b1753d5f4c8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/insights/di1_bank_rows_test.go",
+      "baselineSHA256": "062bb765c93a3ed9113eb23abc0bc3c507c720758b772a930a0a029b3965754f",
+      "finalSHA256": "062bb765c93a3ed9113eb23abc0bc3c507c720758b772a930a0a029b3965754f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/insights/period.go",
+      "baselineSHA256": "9a4dad3ad1297b77419c76f432c7603553be40b3e4f7806fbb8ee036c6eb7531",
+      "finalSHA256": "9a4dad3ad1297b77419c76f432c7603553be40b3e4f7806fbb8ee036c6eb7531",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/insights/period_test.go",
+      "baselineSHA256": "b05239a1e43c8780ad79d664110eee73f4c82c08fd0cf854febe6f0034e9ef35",
+      "finalSHA256": "b05239a1e43c8780ad79d664110eee73f4c82c08fd0cf854febe6f0034e9ef35",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/insights/recurring.go",
+      "baselineSHA256": "c2444ce737bcbdab9285ede335018a1a593a11e23843b9cf801b288ddeb79abc",
+      "finalSHA256": "c2444ce737bcbdab9285ede335018a1a593a11e23843b9cf801b288ddeb79abc",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/insights/recurring_test.go",
+      "baselineSHA256": "b21e5a7618490ceb2cd36840ce72285b7aeef9369b2ff013fd1490176ec04220",
+      "finalSHA256": "b21e5a7618490ceb2cd36840ce72285b7aeef9369b2ff013fd1490176ec04220",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/insights/trends.go",
+      "baselineSHA256": "0f70ba3e8a876340e633459086063d85a88f3417008b678426ae33afc3b81c4a",
+      "finalSHA256": "0f70ba3e8a876340e633459086063d85a88f3417008b678426ae33afc3b81c4a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/insights/trends_test.go",
+      "baselineSHA256": "1234db36dc3567ea0dbfd9dc2affa371826d9d85a0ed97471cecca28d0194993",
+      "finalSHA256": "1234db36dc3567ea0dbfd9dc2affa371826d9d85a0ed97471cecca28d0194993",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/majorexpenses/engine.go",
+      "baselineSHA256": "cb188eab2cc7bfc864edce81b4df7c8096b864b9ad998b5919c9ed58ce931b28",
+      "finalSHA256": "cb188eab2cc7bfc864edce81b4df7c8096b864b9ad998b5919c9ed58ce931b28",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/majorexpenses/engine_test.go",
+      "baselineSHA256": "5687d97af99e25f3a1a7586985e31571451e2e33f0742bc031024363579456d8",
+      "finalSHA256": "5687d97af99e25f3a1a7586985e31571451e2e33f0742bc031024363579456d8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/majorexpenses/plan_sync_test.go",
+      "baselineSHA256": "e22af5f219e66a485a64eae79ce09fefebaee87ad2abb68cadfcb45b22d6527b",
+      "finalSHA256": "e22af5f219e66a485a64eae79ce09fefebaee87ad2abb68cadfcb45b22d6527b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/majorexpenses/validate.go",
+      "baselineSHA256": "99745ea9ab046b35a09b465d798c97b72682c982e949f7b10e740bfdd64b9501",
+      "finalSHA256": "99745ea9ab046b35a09b465d798c97b72682c982e949f7b10e740bfdd64b9501",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/majorexpenses/validate_test.go",
+      "baselineSHA256": "525b317e299ccdd4082cad95ad9565feddb2dcff36c270200cf41c134f6626fc",
+      "finalSHA256": "525b317e299ccdd4082cad95ad9565feddb2dcff36c270200cf41c134f6626fc",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/approval.go",
+      "baselineSHA256": "dc161c83d69bccd2baff70f84ebfac2112ed223a7a9797eda4fb7f5109a98f7b",
+      "finalSHA256": "dc161c83d69bccd2baff70f84ebfac2112ed223a7a9797eda4fb7f5109a98f7b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/approval_test.go",
+      "baselineSHA256": "5627d6fa7129d58dc37c9b7c348b96aad3341422650f92066f0c0c65503baa80",
+      "finalSHA256": "5627d6fa7129d58dc37c9b7c348b96aad3341422650f92066f0c0c65503baa80",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/backup.go",
+      "baselineSHA256": "6d614368f8f3def89df63cac2e848e04e2b29e38b21404ad0f5d9dd8ccf94592",
+      "finalSHA256": "6d614368f8f3def89df63cac2e848e04e2b29e38b21404ad0f5d9dd8ccf94592",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/backup_test.go",
+      "baselineSHA256": "6d456ff311f1e472924d3e39aa206765151757f0382d7612c3b93882241d18b4",
+      "finalSHA256": "6d456ff311f1e472924d3e39aa206765151757f0382d7612c3b93882241d18b4",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/duplicates.go",
+      "baselineSHA256": "e3535b86709279d8a9e1f5f859f0421119b2de5360d42e978e9ff4fb19b21e6e",
+      "finalSHA256": "e3535b86709279d8a9e1f5f859f0421119b2de5360d42e978e9ff4fb19b21e6e",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/duplicates_test.go",
+      "baselineSHA256": "a6c83baca6f14626ac742485cac8e5e6111b0d41424e30e4428bb5846b860454",
+      "finalSHA256": "a6c83baca6f14626ac742485cac8e5e6111b0d41424e30e4428bb5846b860454",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/files.go",
+      "baselineSHA256": "243bac6d7d41c20e203547ebf345e7c898be8cb23270ff396125af1fd8b5000c",
+      "finalSHA256": "243bac6d7d41c20e203547ebf345e7c898be8cb23270ff396125af1fd8b5000c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/files_test.go",
+      "baselineSHA256": "7069486e516c9a8889b0be0ce805ae8e7cdb52899b46c8d0634299dc0d83a4d7",
+      "finalSHA256": "7069486e516c9a8889b0be0ce805ae8e7cdb52899b46c8d0634299dc0d83a4d7",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/register.go",
+      "baselineSHA256": "b062a239128b470934c205892b34d4bef01c0d6af7237f60d17db05148bc772f",
+      "finalSHA256": "b062a239128b470934c205892b34d4bef01c0d6af7237f60d17db05148bc772f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/register_test.go",
+      "baselineSHA256": "8394da0f827b4d3220875d536ad46e1566131f143acfb6d7c38942791cc73f36",
+      "finalSHA256": "8394da0f827b4d3220875d536ad46e1566131f143acfb6d7c38942791cc73f36",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/resolve.go",
+      "baselineSHA256": "33413258009f59a8722f40886c2952e6dd22f9bdb315b2af39e8a709280908d2",
+      "finalSHA256": "33413258009f59a8722f40886c2952e6dd22f9bdb315b2af39e8a709280908d2",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/resolve_test.go",
+      "baselineSHA256": "c1f3137f3e228981afad74d062f97e55551ba69008241f6d835bd141dafd9a6e",
+      "finalSHA256": "c1f3137f3e228981afad74d062f97e55551ba69008241f6d835bd141dafd9a6e",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/restore.go",
+      "baselineSHA256": "da1f167ee40fb33d4203c593c214a097533ae6941af3ef5178a3102d917e8303",
+      "finalSHA256": "da1f167ee40fb33d4203c593c214a097533ae6941af3ef5178a3102d917e8303",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/restore_test.go",
+      "baselineSHA256": "03deba2e827617fb73f11ecb88229214a4aba9b68a73f3531dca902fa0f18977",
+      "finalSHA256": "03deba2e827617fb73f11ecb88229214a4aba9b68a73f3531dca902fa0f18977",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/shutdown.go",
+      "baselineSHA256": "d4b8a60ee648d73b963c36ebba35e9f50a91068f2eaa78e34fc14b6b01eb9c2a",
+      "finalSHA256": "d4b8a60ee648d73b963c36ebba35e9f50a91068f2eaa78e34fc14b6b01eb9c2a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/shutdown_test.go",
+      "baselineSHA256": "030386ae53ff3f3f6f5591ca02511c6c75d4af9cea1f77bb0e10f03e8aef884c",
+      "finalSHA256": "030386ae53ff3f3f6f5591ca02511c6c75d4af9cea1f77bb0e10f03e8aef884c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/status.go",
+      "baselineSHA256": "ca1288e72c231f84eee4ea7825a5a83223870f0197ff7e9a0ae86fa390cc7f18",
+      "finalSHA256": "ca1288e72c231f84eee4ea7825a5a83223870f0197ff7e9a0ae86fa390cc7f18",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/status_test.go",
+      "baselineSHA256": "9475d3f6d7b6976cec4b3136213433f16aaafd823b20db7a3bc335c9c12f24e1",
+      "finalSHA256": "9475d3f6d7b6976cec4b3136213433f16aaafd823b20db7a3bc335c9c12f24e1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/undo.go",
+      "baselineSHA256": "1e6f944aee9f62d7a8fc78a452892422a371868acc03c9597d1a008552067e61",
+      "finalSHA256": "1e6f944aee9f62d7a8fc78a452892422a371868acc03c9597d1a008552067e61",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/admin/undo_test.go",
+      "baselineSHA256": "dc06d7f17235fa92372c652338f3274df2664317e324e900faaa63f0f232231f",
+      "finalSHA256": "dc06d7f17235fa92372c652338f3274df2664317e324e900faaa63f0f232231f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/confirm/approvals.go",
+      "baselineSHA256": "7f2c9f35805c55ee8c27add6b9ab8b66d2e4999f62e2477a04e792756e7268b2",
+      "finalSHA256": "7f2c9f35805c55ee8c27add6b9ab8b66d2e4999f62e2477a04e792756e7268b2",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/confirm/approvals_test.go",
+      "baselineSHA256": "7b74cadd4ca9fbaa0bbe64c17957e3de6b4b758d11fcda42f4063702d2626dff",
+      "finalSHA256": "7b74cadd4ca9fbaa0bbe64c17957e3de6b4b758d11fcda42f4063702d2626dff",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/confirm/ask.go",
+      "baselineSHA256": "7da00c481d47df57d2053bc62bce44654f6a43bd9d5f7d519332b4b593f6566d",
+      "finalSHA256": "7da00c481d47df57d2053bc62bce44654f6a43bd9d5f7d519332b4b593f6566d",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/confirm/ask_test.go",
+      "baselineSHA256": "994aa07060d87d3e3d23325263d2907988e433f9197b3477dea8d02bf6445223",
+      "finalSHA256": "994aa07060d87d3e3d23325263d2907988e433f9197b3477dea8d02bf6445223",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/confirm/confirm.go",
+      "baselineSHA256": "aeee5abd2f9623a4581d0d06520cc5bbef00e649e86491974a5fea2a824a93ce",
+      "finalSHA256": "aeee5abd2f9623a4581d0d06520cc5bbef00e649e86491974a5fea2a824a93ce",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/confirm/confirm_test.go",
+      "baselineSHA256": "76ae704791b65b2907384c1ea12c5b5831d441990135fb98ef2019d1d970492c",
+      "finalSHA256": "76ae704791b65b2907384c1ea12c5b5831d441990135fb98ef2019d1d970492c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/delete.go",
+      "baselineSHA256": "e57d967bb52ba6885f4398e512fe7d6a8c5d852c2b906d9af16630a04a2b415b",
+      "finalSHA256": "e57d967bb52ba6885f4398e512fe7d6a8c5d852c2b906d9af16630a04a2b415b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/delete_test.go",
+      "baselineSHA256": "43bf2d59366c86fb259bde3c95205815a7f2508105e65e187c4517b941466c10",
+      "finalSHA256": "43bf2d59366c86fb259bde3c95205815a7f2508105e65e187c4517b941466c10",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/exceptions.go",
+      "baselineSHA256": "858b7ba5a4d48eea3a3cc1a32ada21273f0b79892909eaf99af0e13f4101d6d2",
+      "finalSHA256": "858b7ba5a4d48eea3a3cc1a32ada21273f0b79892909eaf99af0e13f4101d6d2",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/exceptions_test.go",
+      "baselineSHA256": "fc26afc770fba1b920741e6b19c48557e2ded4e1d789604db8e853a9c850dcc1",
+      "finalSHA256": "fc26afc770fba1b920741e6b19c48557e2ded4e1d789604db8e853a9c850dcc1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/expenses.go",
+      "baselineSHA256": "e9da433c9896b8ef6a6053b10f26d1251f601e9fe39f9bb30f86ccc292b12219",
+      "finalSHA256": "e9da433c9896b8ef6a6053b10f26d1251f601e9fe39f9bb30f86ccc292b12219",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/expenses_test.go",
+      "baselineSHA256": "c576674ce38e4f6cc8bf86457749cc511f7cb36acbe68e35d97bc7240aa5cdc3",
+      "finalSHA256": "c576674ce38e4f6cc8bf86457749cc511f7cb36acbe68e35d97bc7240aa5cdc3",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/pins.go",
+      "baselineSHA256": "41ffc40cec0a890a9264517d7a5f89943c5ccdf508270e328cb221251da25297",
+      "finalSHA256": "41ffc40cec0a890a9264517d7a5f89943c5ccdf508270e328cb221251da25297",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/pins_test.go",
+      "baselineSHA256": "d62a7539e79f5467d63d355ce1092d52dab3367dad8ba43b9806dc1a75b14795",
+      "finalSHA256": "d62a7539e79f5467d63d355ce1092d52dab3367dad8ba43b9806dc1a75b14795",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/register.go",
+      "baselineSHA256": "02baa07a39b0cd5a263498fc2227d5e83780dc534110aa0a07e1feca9705eedc",
+      "finalSHA256": "02baa07a39b0cd5a263498fc2227d5e83780dc534110aa0a07e1feca9705eedc",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/register_test.go",
+      "baselineSHA256": "b5f1d43bd1e737e7e0a2e089275051cebff715d041416557741807fdf31896f0",
+      "finalSHA256": "b5f1d43bd1e737e7e0a2e089275051cebff715d041416557741807fdf31896f0",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/upsert.go",
+      "baselineSHA256": "8a860257cb65acf5f228c405e2bd81cb1c50f45f835b79471c0b38284cb30dbc",
+      "finalSHA256": "8a860257cb65acf5f228c405e2bd81cb1c50f45f835b79471c0b38284cb30dbc",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/curate/upsert_test.go",
+      "baselineSHA256": "4f44bd530c1d28e8485f263ee82a063b04bed4336137ac01f87694352fe2f35f",
+      "finalSHA256": "4f44bd530c1d28e8485f263ee82a063b04bed4336137ac01f87694352fe2f35f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/accounts.go",
+      "baselineSHA256": "4fa7b67ef63275daf494e987e01fcca356890281e5593c7c628e88267949e63f",
+      "finalSHA256": "4fa7b67ef63275daf494e987e01fcca356890281e5593c7c628e88267949e63f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/accounts_test.go",
+      "baselineSHA256": "412f0996f4363dd86b58617b08fe13a356cab4dcc349741b65df7f6011430edb",
+      "finalSHA256": "412f0996f4363dd86b58617b08fe13a356cab4dcc349741b65df7f6011430edb",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/anchor.go",
+      "baselineSHA256": "06c86d975f61b5c39dd64e2155b99b32b46abe1b775b87ccbc7437f55651eb8f",
+      "finalSHA256": "06c86d975f61b5c39dd64e2155b99b32b46abe1b775b87ccbc7437f55651eb8f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/anchor_load_failure_test.go",
+      "baselineSHA256": "b8842f888e7a478aaf6134859ca5d3d39d3529bae08f201ea147e6d0d25daad8",
+      "finalSHA256": "b8842f888e7a478aaf6134859ca5d3d39d3529bae08f201ea147e6d0d25daad8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/anchor_test.go",
+      "baselineSHA256": "4a795fcdd7becf4d4cc448aaa71c85d08b8ddcb747a27f62315cb809be5562b6",
+      "finalSHA256": "4a795fcdd7becf4d4cc448aaa71c85d08b8ddcb747a27f62315cb809be5562b6",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/approval.go",
+      "baselineSHA256": "a5ae1dcef7e8e14f998003aae72d209c5a76bab23768dd510d0b41d9bb832e17",
+      "finalSHA256": "a5ae1dcef7e8e14f998003aae72d209c5a76bab23768dd510d0b41d9bb832e17",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/browser_approval_test.go",
+      "baselineSHA256": "3f221fe35b729e2f81e135dd96e171d0ea37c45551cb2a0e91bcbc74981df9e8",
+      "finalSHA256": "3f221fe35b729e2f81e135dd96e171d0ea37c45551cb2a0e91bcbc74981df9e8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/consequences_test.go",
+      "baselineSHA256": "5b01ab6e54955cbcdbb80b999bbd207fe31b99f8ce5b1208964e5545b84d8725",
+      "finalSHA256": "5b01ab6e54955cbcdbb80b999bbd207fe31b99f8ce5b1208964e5545b84d8725",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/dashboard_parity_test.go",
+      "baselineSHA256": "3481b0f5a979c39a8385e2c61dc228fad1970230a03468bd9e1a856aeab76133",
+      "finalSHA256": "3481b0f5a979c39a8385e2c61dc228fad1970230a03468bd9e1a856aeab76133",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/helpers.go",
+      "baselineSHA256": "0bca0ba380bc0aff2a0831feda364ba075941c7d98cede1d919672fc79d260f8",
+      "finalSHA256": "0bca0ba380bc0aff2a0831feda364ba075941c7d98cede1d919672fc79d260f8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/register.go",
+      "baselineSHA256": "ec5900bf3164dc9345e5fba71d5c2bd59325bf5983ff97a9bc5e8321fc4b8cd2",
+      "finalSHA256": "ec5900bf3164dc9345e5fba71d5c2bd59325bf5983ff97a9bc5e8321fc4b8cd2",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/register_test.go",
+      "baselineSHA256": "764f1f94df9d7879bddd4056cab92996e0a1b20db2bf02773ba8258786a93892",
+      "finalSHA256": "764f1f94df9d7879bddd4056cab92996e0a1b20db2bf02773ba8258786a93892",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/resolve.go",
+      "baselineSHA256": "8b4103c40cfef7874f2e790aa4648dcdfc963e7bd0fce741c4bce1206aa5b981",
+      "finalSHA256": "8b4103c40cfef7874f2e790aa4648dcdfc963e7bd0fce741c4bce1206aa5b981",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/resolve_test.go",
+      "baselineSHA256": "e9f813ce94470093ce900218a5aa770800044c1a6b7c64df28dd63dd18835d1e",
+      "finalSHA256": "e9f813ce94470093ce900218a5aa770800044c1a6b7c64df28dd63dd18835d1e",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/suspected.go",
+      "baselineSHA256": "f7a8d55ef2f2ceaa0022550ba4bbb4049c5a4c9314e2fba812e4fdfe7b28caf9",
+      "finalSHA256": "f7a8d55ef2f2ceaa0022550ba4bbb4049c5a4c9314e2fba812e4fdfe7b28caf9",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/suspected_test.go",
+      "baselineSHA256": "960fa3fb27917e7e2ff87bc9817153d594ff37603d5957dfd1ae09dfd0eff807",
+      "finalSHA256": "960fa3fb27917e7e2ff87bc9817153d594ff37603d5957dfd1ae09dfd0eff807",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/transfers.go",
+      "baselineSHA256": "f9bcc9b1b3842e8fa73fec56216bb7413998d52711a404e44751c49434a510d5",
+      "finalSHA256": "f9bcc9b1b3842e8fa73fec56216bb7413998d52711a404e44751c49434a510d5",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/transfers_test.go",
+      "baselineSHA256": "9598c4adf5f9f7c46b9d3c4f035d94787773f940b86e6024afcc220c1a401c77",
+      "finalSHA256": "9598c4adf5f9f7c46b9d3c4f035d94787773f940b86e6024afcc220c1a401c77",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/months.go",
+      "baselineSHA256": "eccd75e4f61cc98460f6129c109c55a13d644b9f114d7c45832fdcd3da4f8c1b",
+      "finalSHA256": "eccd75e4f61cc98460f6129c109c55a13d644b9f114d7c45832fdcd3da4f8c1b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/months_test.go",
+      "baselineSHA256": "ac6bc21e5234756de9e7aa79eb14a90c81efeefb594c6479f76bd294685ac4a1",
+      "finalSHA256": "ac6bc21e5234756de9e7aa79eb14a90c81efeefb594c6479f76bd294685ac4a1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/overrides.go",
+      "baselineSHA256": "19bc3c2cc2b7a07ad3f5b7588a411fbb7491563b2e9cfa7388fabc3ed35db983",
+      "finalSHA256": "19bc3c2cc2b7a07ad3f5b7588a411fbb7491563b2e9cfa7388fabc3ed35db983",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/overrides_test.go",
+      "baselineSHA256": "93b87b1063550973049db813626bab7bf3fda50d61a576ce125bed467b3a1d0e",
+      "finalSHA256": "93b87b1063550973049db813626bab7bf3fda50d61a576ce125bed467b3a1d0e",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/register.go",
+      "baselineSHA256": "376886492012c6198ff3004f8ed0861401a363b7efd2aa355bb35096cb8d6e69",
+      "finalSHA256": "376886492012c6198ff3004f8ed0861401a363b7efd2aa355bb35096cb8d6e69",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/register_test.go",
+      "baselineSHA256": "71907273f699fb03e0aedef453166d33d81fe56933f82d1b825b55393cb7fcab",
+      "finalSHA256": "71907273f699fb03e0aedef453166d33d81fe56933f82d1b825b55393cb7fcab",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/scenarios.go",
+      "baselineSHA256": "85c4e61c04cf339c2aaade666a9930420c0dc8371275eb973edfbd1dabae3f4c",
+      "finalSHA256": "85c4e61c04cf339c2aaade666a9930420c0dc8371275eb973edfbd1dabae3f4c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/scenarios_test.go",
+      "baselineSHA256": "15aca3d2714c99ea6c1a28fd5837e761a7dac43c1b7cb53151ecd94d471be413",
+      "finalSHA256": "15aca3d2714c99ea6c1a28fd5837e761a7dac43c1b7cb53151ecd94d471be413",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/view.go",
+      "baselineSHA256": "db499ecf7e5fdd3799b711d27324bcbdd5d46ff725b8b58d0f07a2e5815d9752",
+      "finalSHA256": "db499ecf7e5fdd3799b711d27324bcbdd5d46ff725b8b58d0f07a2e5815d9752",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/plan/view_test.go",
+      "baselineSHA256": "8a59e4aa05d209c9e0f05e3b7434c6f11df68bbf09ac4d37de05ef2d646b7922",
+      "finalSHA256": "8a59e4aa05d209c9e0f05e3b7434c6f11df68bbf09ac4d37de05ef2d646b7922",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/refresh_test.go",
+      "baselineSHA256": "038193ad0b8a775cd927f86257a6c80818b546ce2bdf9ece40232c54455da29e",
+      "finalSHA256": "038193ad0b8a775cd927f86257a6c80818b546ce2bdf9ece40232c54455da29e",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/server.go",
+      "baselineSHA256": "934dd599792d76842b17bc153e08cfd4483e20165df8b8ce59c9a74cef622b82",
+      "finalSHA256": "934dd599792d76842b17bc153e08cfd4483e20165df8b8ce59c9a74cef622b82",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/server_test.go",
+      "baselineSHA256": "64c5ebfd2163e29209e6a3b0c10f746c70572b85ef48125e394d522ff5608cb3",
+      "finalSHA256": "64c5ebfd2163e29209e6a3b0c10f746c70572b85ef48125e394d522ff5608cb3",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/snapshot/snapshot.go",
+      "baselineSHA256": "b956115b22ab7ed6b4d5c89e863620b28176cfb2c5af12d9a5f8bb688ea20f10",
+      "finalSHA256": "b956115b22ab7ed6b4d5c89e863620b28176cfb2c5af12d9a5f8bb688ea20f10",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/snapshot/snapshot_test.go",
+      "baselineSHA256": "0386670fe312184f61ac8ac1fa1551924613e1a865f2d68d7f799091da770afc",
+      "finalSHA256": "0386670fe312184f61ac8ac1fa1551924613e1a865f2d68d7f799091da770afc",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/insights.go",
+      "baselineSHA256": "7338de2280ce98217f7ece03f6184efcdfab15b86a971e243f40257fa95ea7ba",
+      "finalSHA256": "7338de2280ce98217f7ece03f6184efcdfab15b86a971e243f40257fa95ea7ba",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/insights_test.go",
+      "baselineSHA256": "86037f61035464939a4a4bca0463c2d3148df361efb13d92603d751ca3b9b1f7",
+      "finalSHA256": "86037f61035464939a4a4bca0463c2d3148df361efb13d92603d751ca3b9b1f7",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/insights_tools.go",
+      "baselineSHA256": "1c63f58c407b971e58517af8a61d1c9b21681dea99e09b466f77fd20a56a5d2f",
+      "finalSHA256": "1c63f58c407b971e58517af8a61d1c9b21681dea99e09b466f77fd20a56a5d2f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/period_di2_test.go",
+      "baselineSHA256": "3e0c130f2c273885139164f7b22e48f4384f50b4dee87432a7b4b4ec0b2546cb",
+      "finalSHA256": "3e0c130f2c273885139164f7b22e48f4384f50b4dee87432a7b4b4ec0b2546cb",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/plan_exclusions_test.go",
+      "baselineSHA256": "29cacc34e0ebf39878856daa0c4e372361eef5e248c9b9e9ad31cdc583f82a20",
+      "finalSHA256": "29cacc34e0ebf39878856daa0c4e372361eef5e248c9b9e9ad31cdc583f82a20",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/recurring.go",
+      "baselineSHA256": "e4506699ead0979bf9dc9a42e46747ed6730c015af5efa61aa26985e5e20423d",
+      "finalSHA256": "e4506699ead0979bf9dc9a42e46747ed6730c015af5efa61aa26985e5e20423d",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/recurring_test.go",
+      "baselineSHA256": "fa282663388975b7e876caca0166cd35044eed766cc8fdb6020542fd5fb1af78",
+      "finalSHA256": "fa282663388975b7e876caca0166cd35044eed766cc8fdb6020542fd5fb1af78",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/register.go",
+      "baselineSHA256": "39104877135c23936273a893005bdc9381fe345b94a0c728a04a65343098c204",
+      "finalSHA256": "39104877135c23936273a893005bdc9381fe345b94a0c728a04a65343098c204",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/register_test.go",
+      "baselineSHA256": "0fec79a1293667bb71cdc9534e26d4a52de0af21e65610af752de162d8750d45",
+      "finalSHA256": "0fec79a1293667bb71cdc9534e26d4a52de0af21e65610af752de162d8750d45",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/rounding_di3_test.go",
+      "baselineSHA256": "154e25ac7ec8123b62cd4da3260c9ca81334adf66c80fd11462d249948ab8646",
+      "finalSHA256": "154e25ac7ec8123b62cd4da3260c9ca81334adf66c80fd11462d249948ab8646",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/search.go",
+      "baselineSHA256": "458d52f54a54ddca96d6b756c1e769773f0e1f8ec3dd142c11c4b84f089101d2",
+      "finalSHA256": "458d52f54a54ddca96d6b756c1e769773f0e1f8ec3dd142c11c4b84f089101d2",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/search_test.go",
+      "baselineSHA256": "255da984989aff223a75b630ec12f83251073507e73d511686c4fd2dfa7a1d85",
+      "finalSHA256": "255da984989aff223a75b630ec12f83251073507e73d511686c4fd2dfa7a1d85",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/summary.go",
+      "baselineSHA256": "1e356bf28b96204ccbbdae02762a3914fa9abaf8863523c8ee904e0d157b2b2a",
+      "finalSHA256": "1e356bf28b96204ccbbdae02762a3914fa9abaf8863523c8ee904e0d157b2b2a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/summary_test.go",
+      "baselineSHA256": "3e4a00e3fcb72a1975dd3a43bdb563cd6e86e7a454d23fe6948684028c97735f",
+      "finalSHA256": "3e4a00e3fcb72a1975dd3a43bdb563cd6e86e7a454d23fe6948684028c97735f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/trends.go",
+      "baselineSHA256": "2d7f2efcde1be0ee4142df1cd839dbe66cd0bd89e6b84822c6a056c4c1f14520",
+      "finalSHA256": "2d7f2efcde1be0ee4142df1cd839dbe66cd0bd89e6b84822c6a056c4c1f14520",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/trends_test.go",
+      "baselineSHA256": "94199887203c6480daa898b90ec72ba88936d3711bbb3f407870f12b2e99f627",
+      "finalSHA256": "94199887203c6480daa898b90ec72ba88936d3711bbb3f407870f12b2e99f627",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/merchants/merchants.go",
+      "baselineSHA256": "b37217676df92525ad978a52b04aff9211d6318a31e5b21b28b432b312daebd2",
+      "finalSHA256": "b37217676df92525ad978a52b04aff9211d6318a31e5b21b28b432b312daebd2",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/merchants/merchants_test.go",
+      "baselineSHA256": "670c93c0a7b40845b70d21643a6e3b9386be919de70a1ae86815dddc0f96fc40",
+      "finalSHA256": "670c93c0a7b40845b70d21643a6e3b9386be919de70a1ae86815dddc0f96fc40",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/metrics/cb2_signed_trend_test.go",
+      "baselineSHA256": "d4ab66440835a12d382ff1bb069d82320fad36e62c5ba9f8f3eecdf367c2d675",
+      "finalSHA256": "d4ab66440835a12d382ff1bb069d82320fad36e62c5ba9f8f3eecdf367c2d675",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/metrics/metrics.go",
+      "baselineSHA256": "a739c24591bd5391a38404f25956b4a73547a00e0d2d55b07e42c3e17beb7d79",
+      "finalSHA256": "a739c24591bd5391a38404f25956b4a73547a00e0d2d55b07e42c3e17beb7d79",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/metrics/metrics_test.go",
+      "baselineSHA256": "fd2642a39694b9bc163ba1b9105f8e62e1ed7db7e72e9e56891a313d1c735531",
+      "finalSHA256": "fd2642a39694b9bc163ba1b9105f8e62e1ed7db7e72e9e56891a313d1c735531",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/metrics/plan_exclusions_remainder_test.go",
+      "baselineSHA256": "c78cf2fd5fd705a2a05a12756e68018b86cb7c0e41e613281335bb2ac4f95332",
+      "finalSHA256": "c78cf2fd5fd705a2a05a12756e68018b86cb7c0e41e613281335bb2ac4f95332",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/metrics/plan_exclusions_signed_net_test.go",
+      "baselineSHA256": "2bb5c22f12db2a8beb102fb39cf503c2bdbe997eff18f895a9008b60efc48dca",
+      "finalSHA256": "2bb5c22f12db2a8beb102fb39cf503c2bdbe997eff18f895a9008b60efc48dca",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/metrics/plan_exclusions_test.go",
+      "baselineSHA256": "19fb6fdd2b4543243fd49869185903f86584f8251bfd837c5a6ddb89b6706929",
+      "finalSHA256": "19fb6fdd2b4543243fd49869185903f86584f8251bfd837c5a6ddb89b6706929",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/metrics/reporting.go",
+      "baselineSHA256": "3d081bc6df0b3be138022d9c6936ed1122599f13cea25d5b77c08b02169ec0bc",
+      "finalSHA256": "3d081bc6df0b3be138022d9c6936ed1122599f13cea25d5b77c08b02169ec0bc",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/pricecreep/pricecreep.go",
+      "baselineSHA256": "5e1a9f3f4cf7c07526373f8aa3d30ccc252214889961a82211d3ef03ff116c7c",
+      "finalSHA256": "5e1a9f3f4cf7c07526373f8aa3d30ccc252214889961a82211d3ef03ff116c7c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/pricecreep/pricecreep_test.go",
+      "baselineSHA256": "4303297d4baea58edcb51c7dc72983780616d34ef2bb98d7ed345f51d7fc7e68",
+      "finalSHA256": "4303297d4baea58edcb51c7dc72983780616d34ef2bb98d7ed345f51d7fc7e68",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/restore/archive.go",
+      "baselineSHA256": "45b9fb365aad033b54a6f59a0bff270b1537675d2fc4a7e664a863f3c66e1e34",
+      "finalSHA256": "45b9fb365aad033b54a6f59a0bff270b1537675d2fc4a7e664a863f3c66e1e34",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/restore/archive_test.go",
+      "baselineSHA256": "35005e6bcdcacea1ef50d2c9af77847a55d4811f5305f13b18f2dec91e5b6767",
+      "finalSHA256": "35005e6bcdcacea1ef50d2c9af77847a55d4811f5305f13b18f2dec91e5b6767",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/restore/gate_test.go",
+      "baselineSHA256": "c5d0e684cc8dfef13321c570a2da68e749a36d5f38999f6f781f16b81ae2a33a",
+      "finalSHA256": "c5d0e684cc8dfef13321c570a2da68e749a36d5f38999f6f781f16b81ae2a33a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/restore/restore.go",
+      "baselineSHA256": "1b0ec3e784da1dcef2102d8ae85cba4c57a68ea14de0e6d6dc1cb0f377919fd8",
+      "finalSHA256": "1b0ec3e784da1dcef2102d8ae85cba4c57a68ea14de0e6d6dc1cb0f377919fd8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/restore/restore_test.go",
+      "baselineSHA256": "13c8e8b9a021e6d6351fa7404533c23139da25909a02981fe509855b80b0c38b",
+      "finalSHA256": "13c8e8b9a021e6d6351fa7404533c23139da25909a02981fe509855b80b0c38b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/backtest.go",
+      "baselineSHA256": "4f96d9b18ebde1ca04f0506017656eebee221c04505e1c8b1413c97db19a3135",
+      "finalSHA256": "4f96d9b18ebde1ca04f0506017656eebee221c04505e1c8b1413c97db19a3135",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/backtest_test.go",
+      "baselineSHA256": "0044c2b8d825b8c89fdd97c6375c4cfc30520f397320b3a8f2b6a29b47cd35f0",
+      "finalSHA256": "0044c2b8d825b8c89fdd97c6375c4cfc30520f397320b3a8f2b6a29b47cd35f0",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/budget_fit.go",
+      "baselineSHA256": "9f72d39ed8bd1276c2e79b0443ee82d892bed8faa7ea290322a6fa227adbacb8",
+      "finalSHA256": "9f72d39ed8bd1276c2e79b0443ee82d892bed8faa7ea290322a6fa227adbacb8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/budget_fit_distribution_timing_test.go",
+      "baselineSHA256": "d5e4491bf262b302286b10e19847acde901d2c5fb91b07e1a6d37aa54f4f06d1",
+      "finalSHA256": "d5e4491bf262b302286b10e19847acde901d2c5fb91b07e1a6d37aa54f4f06d1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/budget_fit_healthcare_subitems_test.go",
+      "baselineSHA256": "fc15a36e5e35f8ef31bc352f094b007f07460fa4e5527724747052af6cd408e9",
+      "finalSHA256": "fc15a36e5e35f8ef31bc352f094b007f07460fa4e5527724747052af6cd408e9",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/budget_fit_irmaa_seed_test.go",
+      "baselineSHA256": "a11dca282ae102ed961b02c6e52a872d10fdd3169250d08ca4b718e547ea91e4",
+      "finalSHA256": "a11dca282ae102ed961b02c6e52a872d10fdd3169250d08ca4b718e547ea91e4",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/budget_fit_living_expense_subitems_test.go",
+      "baselineSHA256": "c9970978acc81d69e1b9490bc14a58ceb97a2e7370494766580ae4d05dcdab7a",
+      "finalSHA256": "c9970978acc81d69e1b9490bc14a58ceb97a2e7370494766580ae4d05dcdab7a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/budget_fit_mix_shares_test.go",
+      "baselineSHA256": "6eeb23603e0d9599e6c13f1ffc6d8d5ea0daa8310804d31cab4cd0d293819579",
+      "finalSHA256": "6eeb23603e0d9599e6c13f1ffc6d8d5ea0daa8310804d31cab4cd0d293819579",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/budget_fit_phase_reconcile_test.go",
+      "baselineSHA256": "74a54c0e96e9e072bfa19c3e8d65c3e378273be655342d66be096ae8d523146f",
+      "finalSHA256": "74a54c0e96e9e072bfa19c3e8d65c3e378273be655342d66be096ae8d523146f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/budget_fit_shares_test.go",
+      "baselineSHA256": "3bdd8f6946f3306283024070322c61bc89eab523e3ba33b3faa402b2f1b5beb0",
+      "finalSHA256": "3bdd8f6946f3306283024070322c61bc89eab523e3ba33b3faa402b2f1b5beb0",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/budget_fit_steady_state_rate_test.go",
+      "baselineSHA256": "b88e7dab5698081c2ad212cafc7d8811a8c18756b2b96db6523189916d46f2f8",
+      "finalSHA256": "b88e7dab5698081c2ad212cafc7d8811a8c18756b2b96db6523189916d46f2f8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/budget_fit_tax_base_year_test.go",
+      "baselineSHA256": "e484ec4655e5f8c32012707bc8f887f00990a11ec16578388404abc68dc4cb7f",
+      "finalSHA256": "e484ec4655e5f8c32012707bc8f887f00990a11ec16578388404abc68dc4cb7f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/buffer_language_test.go",
+      "baselineSHA256": "e965ad783c83a664989bffdc8dffad2ed574bc7d3dcea715076772d7e11736c4",
+      "finalSHA256": "e965ad783c83a664989bffdc8dffad2ed574bc7d3dcea715076772d7e11736c4",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/calculator_pv_test.go",
+      "baselineSHA256": "e22c99fae8a4823bc2dc87801246f087c41e20e0c6a03eec61fac48bccf72a08",
+      "finalSHA256": "e22c99fae8a4823bc2dc87801246f087c41e20e0c6a03eec61fac48bccf72a08",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/calculator_rmd_gross_test.go",
+      "baselineSHA256": "d71a651e677b3069a57dcf954654b4dbb78f1b317fa0bc1759a1ef7b6031fabc",
+      "finalSHA256": "d71a651e677b3069a57dcf954654b4dbb78f1b317fa0bc1759a1ef7b6031fabc",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/cliff_registry_test.go",
+      "baselineSHA256": "f05da9ee95df18dcc5cfb1c0d24f8f7c10706fd1c1247762195a2c6fbe1d195b",
+      "finalSHA256": "f05da9ee95df18dcc5cfb1c0d24f8f7c10706fd1c1247762195a2c6fbe1d195b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/coverage_gaps_test.go",
+      "baselineSHA256": "23db62ffdbfacb391050dfd2eaa791386abfab190c8be4bdeca03c5096a76602",
+      "finalSHA256": "23db62ffdbfacb391050dfd2eaa791386abfab190c8be4bdeca03c5096a76602",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/explainability.go",
+      "baselineSHA256": "5d69d70ca43494df1ca294c70f6a83d5f63df1db3dbd9f54b1196ba87269575a",
+      "finalSHA256": "5d69d70ca43494df1ca294c70f6a83d5f63df1db3dbd9f54b1196ba87269575a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/exports_coverage_test.go",
+      "baselineSHA256": "a8f15b6f0e2cf6b58c1803634c6d01663240ba8bea92719e824441ba0f069ba7",
+      "finalSHA256": "a8f15b6f0e2cf6b58c1803634c6d01663240ba8bea92719e824441ba0f069ba7",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/failure_bounds_test.go",
+      "baselineSHA256": "cba6589fafb017ac1812421dd241af349cca71c62a36f274155b100f34e2c429",
+      "finalSHA256": "cba6589fafb017ac1812421dd241af349cca71c62a36f274155b100f34e2c429",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/failure_points.go",
+      "baselineSHA256": "37f01869a129f3945d4a72b724444d847c8253fe52e0d05a7cf0ea104079f369",
+      "finalSHA256": "37f01869a129f3945d4a72b724444d847c8253fe52e0d05a7cf0ea104079f369",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/failure_points_test.go",
+      "baselineSHA256": "a1aa24b3b4ba6227a67d2e1834129042d3b86a4971ead917181faef121ed5c6c",
+      "finalSHA256": "a1aa24b3b4ba6227a67d2e1834129042d3b86a4971ead917181faef121ed5c6c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/helpers_test.go",
+      "baselineSHA256": "ca2a25d605cc10709cbe5f2ed1d409c8a5b2a047dc2c20870f35e5c191bc301f",
+      "finalSHA256": "ca2a25d605cc10709cbe5f2ed1d409c8a5b2a047dc2c20870f35e5c191bc301f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/income_breakdown_ss_test.go",
+      "baselineSHA256": "f8b37245c20fb6e18c1d4279c1b7b84357dc999eddb0295dc87d21c91bdd5a5a",
+      "finalSHA256": "f8b37245c20fb6e18c1d4279c1b7b84357dc999eddb0295dc87d21c91bdd5a5a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/irmaa_lookback_seed_analysis_test.go",
+      "baselineSHA256": "762e593c3696709dc40581315c433328f476dbafb330de781151c3c0fdfd47b5",
+      "finalSHA256": "762e593c3696709dc40581315c433328f476dbafb330de781151c3c0fdfd47b5",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/lifestyle_evidence_test.go",
+      "baselineSHA256": "d2d1c8f920883bb67959b5dd69c3bbcd837e9b9e2cc709eb84987db73bd609aa",
+      "finalSHA256": "d2d1c8f920883bb67959b5dd69c3bbcd837e9b9e2cc709eb84987db73bd609aa",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/lifestyle_outcomes.go",
+      "baselineSHA256": "8dd08fc4bcd53d85e7c787658f22f9a0d6a8aa64dec9ee9ae75e45d95b7acfcf",
+      "finalSHA256": "8dd08fc4bcd53d85e7c787658f22f9a0d6a8aa64dec9ee9ae75e45d95b7acfcf",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/lifestyle_outcomes_test.go",
+      "baselineSHA256": "3ac545c9eb0089889c7457c30adf619bc71cc0e805128014c0850420d0f25d66",
+      "finalSHA256": "3ac545c9eb0089889c7457c30adf619bc71cc0e805128014c0850420d0f25d66",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/monte_carlo.go",
+      "baselineSHA256": "051214b47b2e2d4506ce0c039f625bd0de2e5913dc92c379eba79f08fc1c5d92",
+      "finalSHA256": "051214b47b2e2d4506ce0c039f625bd0de2e5913dc92c379eba79f08fc1c5d92",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/monte_carlo_helpers_test.go",
+      "baselineSHA256": "facc1cf81b53eb6a975f175b6f6e406d4a2e81e6a42c401d1d818508db4a88e0",
+      "finalSHA256": "facc1cf81b53eb6a975f175b6f6e406d4a2e81e6a42c401d1d818508db4a88e0",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/monte_carlo_parallel_test.go",
+      "baselineSHA256": "871f1b6bfe501c781c6c6a24fa60ca21f614933240fb85e6df117891c8a32769",
+      "finalSHA256": "871f1b6bfe501c781c6c6a24fa60ca21f614933240fb85e6df117891c8a32769",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/monte_carlo_shocks_test.go",
+      "baselineSHA256": "9fdd628e17f02516adb77c6fac03ffc72416617a20000a9e48738d54b201d6bc",
+      "finalSHA256": "9fdd628e17f02516adb77c6fac03ffc72416617a20000a9e48738d54b201d6bc",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/one_time_expense_test.go",
+      "baselineSHA256": "c3906b0f5c678d3f5ad9053fc2625ee1d4e2e13e7bf5f13c7913ebee77dc53a2",
+      "finalSHA256": "c3906b0f5c678d3f5ad9053fc2625ee1d4e2e13e7bf5f13c7913ebee77dc53a2",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/parallel.go",
+      "baselineSHA256": "c39d4ab46d364e66874f1c7fea2109ce9f218909c046ba580d7564fa4fc05822",
+      "finalSHA256": "c39d4ab46d364e66874f1c7fea2109ce9f218909c046ba580d7564fa4fc05822",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/parallel_test.go",
+      "baselineSHA256": "2d81da5adec20566567efab5a08db4973a2e991be6c296b8379a6f0bbe01fbf4",
+      "finalSHA256": "2d81da5adec20566567efab5a08db4973a2e991be6c296b8379a6f0bbe01fbf4",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/perturb.go",
+      "baselineSHA256": "d7e5748f725dccde795aa41ff4ec81849c00771c84973af3ef81f41cd75db600",
+      "finalSHA256": "d7e5748f725dccde795aa41ff4ec81849c00771c84973af3ef81f41cd75db600",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/present_value.go",
+      "baselineSHA256": "7870e65c30bb44443bfc66a4069a4a4a1c6b7452d920779d6a8f19b643d864f9",
+      "finalSHA256": "7870e65c30bb44443bfc66a4069a4a4a1c6b7452d920779d6a8f19b643d864f9",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/present_value_one_time_test.go",
+      "baselineSHA256": "eed8bbf5326d61e49cb928c63e3c41aab39c0a208b00eb8fb54d6b49d17882d1",
+      "finalSHA256": "eed8bbf5326d61e49cb928c63e3c41aab39c0a208b00eb8fb54d6b49d17882d1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/present_value_phases_test.go",
+      "baselineSHA256": "d2091c5eb8fe64f0c1e3106349e50d3376b9d5f9180b1c399774850f5b89cac8",
+      "finalSHA256": "d2091c5eb8fe64f0c1e3106349e50d3376b9d5f9180b1c399774850f5b89cac8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/present_value_ss_test.go",
+      "baselineSHA256": "1ae95a23cc07dd811144fb594d3158571beed9adda4704976d2c733792150091",
+      "finalSHA256": "1ae95a23cc07dd811144fb594d3158571beed9adda4704976d2c733792150091",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/present_value_taxes_test.go",
+      "baselineSHA256": "86a006770399ed7efd7c466920136cd1b642e8117e6502012781c43868052cd5",
+      "finalSHA256": "86a006770399ed7efd7c466920136cd1b642e8117e6502012781c43868052cd5",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/present_value_timing_test.go",
+      "baselineSHA256": "425a744bc41e4b10074db748874572121dfa86fc0ef81c9e1d88a26f1eb516ef",
+      "finalSHA256": "425a744bc41e4b10074db748874572121dfa86fc0ef81c9e1d88a26f1eb516ef",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/projection_irmaa_early_years_test.go",
+      "baselineSHA256": "97ebe087c043f8d4be60ddf036a8cb1d55dc1880145627b4fe76fbddbbe52715",
+      "finalSHA256": "97ebe087c043f8d4be60ddf036a8cb1d55dc1880145627b4fe76fbddbbe52715",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/property_tax_test.go",
+      "baselineSHA256": "cbc21a73d614477349c326ac91977d9075d213cc06c4ac7808a7fbf9e14992b0",
+      "finalSHA256": "cbc21a73d614477349c326ac91977d9075d213cc06c4ac7808a7fbf9e14992b0",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/rmd.go",
+      "baselineSHA256": "c4f60cad3b3f68449fb87820324ae73e275fd152e31ddb84ccd13172741d2777",
+      "finalSHA256": "c4f60cad3b3f68449fb87820324ae73e275fd152e31ddb84ccd13172741d2777",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/rmd_birth_year_test.go",
+      "baselineSHA256": "b4db994b7bf0f33ac26c885d0ce420238268669bc9bac61c4696c2b51764cfc9",
+      "finalSHA256": "b4db994b7bf0f33ac26c885d0ce420238268669bc9bac61c4696c2b51764cfc9",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/rmd_calendar_year_test.go",
+      "baselineSHA256": "6536010599b64cec611d15e75dfda7fad07a7b07ee8643972ef34fa0872aaa73",
+      "finalSHA256": "6536010599b64cec611d15e75dfda7fad07a7b07ee8643972ef34fa0872aaa73",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/rmd_edges_test.go",
+      "baselineSHA256": "4bc30dd2182a9a09777081557879d763ec767bdd9e9847144f938c2d6bd3e0d3",
+      "finalSHA256": "4bc30dd2182a9a09777081557879d763ec767bdd9e9847144f938c2d6bd3e0d3",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/rmd_joint_life_test.go",
+      "baselineSHA256": "ca4ebb6962a773c57125360e8ae5aa86edb4efb0e2b4c46cdb3ea8ff6645035e",
+      "finalSHA256": "ca4ebb6962a773c57125360e8ae5aa86edb4efb0e2b4c46cdb3ea8ff6645035e",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/rmd_start_age_projection_test.go",
+      "baselineSHA256": "99c8f218ab5086ba889206f4e46c1359afdf1f1a6c66df0eb5370f367d45151f",
+      "finalSHA256": "99c8f218ab5086ba889206f4e46c1359afdf1f1a6c66df0eb5370f367d45151f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/rmd_tax_test.go",
+      "baselineSHA256": "0f68a898db98270831cbdb9d22390e360e16dfae71df0326b47c4733f9d2230a",
+      "finalSHA256": "0f68a898db98270831cbdb9d22390e360e16dfae71df0326b47c4733f9d2230a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/rmd_test.go",
+      "baselineSHA256": "09743a1ed6011347609313778e6a858a268134fcfdee0f7c21dc9fa34780496b",
+      "finalSHA256": "09743a1ed6011347609313778e6a858a268134fcfdee0f7c21dc9fa34780496b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/rmd_timing_test.go",
+      "baselineSHA256": "85720d68e06eb5e0f09fc3795309ead02f4d660df5cb797b4143949325474c43",
+      "finalSHA256": "85720d68e06eb5e0f09fc3795309ead02f4d660df5cb797b4143949325474c43",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/roth_backtest_smoke_test.go",
+      "baselineSHA256": "f2403b2412cb9453ac815aa120f8eb12bfb77759fe78847445d3bb90f6c4c1c7",
+      "finalSHA256": "f2403b2412cb9453ac815aa120f8eb12bfb77759fe78847445d3bb90f6c4c1c7",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/roth_five_year_parity_test.go",
+      "baselineSHA256": "b0e6d58ac0b01b0f5d61df51c12141d314fa6015a3dd833dde1c07ad2c9f8e7e",
+      "finalSHA256": "b0e6d58ac0b01b0f5d61df51c12141d314fa6015a3dd833dde1c07ad2c9f8e7e",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/roth_monte_carlo_smoke_test.go",
+      "baselineSHA256": "064a2b59750b82df1a8797a3b889aa35bab3d687aac798a1b580244bb130ba82",
+      "finalSHA256": "064a2b59750b82df1a8797a3b889aa35bab3d687aac798a1b580244bb130ba82",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/seed.go",
+      "baselineSHA256": "d4680cd507d7919b4582f9394ae008270344a52fa9ba0b93ef28837dd27395d5",
+      "finalSHA256": "d4680cd507d7919b4582f9394ae008270344a52fa9ba0b93ef28837dd27395d5",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/sensitivity.go",
+      "baselineSHA256": "b1e0e65d0927746fe6c1b897b75274633e0d803f25a810e70bffbeeafc4f8b25",
+      "finalSHA256": "b1e0e65d0927746fe6c1b897b75274633e0d803f25a810e70bffbeeafc4f8b25",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/sensitivity_care_test.go",
+      "baselineSHA256": "f7fb5a33a8cdba76454b0504a0af4100417c82c8aa2d19c38d93b5b68a9221a6",
+      "finalSHA256": "f7fb5a33a8cdba76454b0504a0af4100417c82c8aa2d19c38d93b5b68a9221a6",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/ss.go",
+      "baselineSHA256": "9f0e676b190320bcd1306ca6a06b9c455a95c28f4f8c2f32f452ae1013fc9978",
+      "finalSHA256": "9f0e676b190320bcd1306ca6a06b9c455a95c28f4f8c2f32f452ae1013fc9978",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/ss_baseline_reuse_test.go",
+      "baselineSHA256": "81edbd2a8bf73d104a0d906ebbaa56e10edbbfad9f260d510ade792844ede0cc",
+      "finalSHA256": "81edbd2a8bf73d104a0d906ebbaa56e10edbbfad9f260d510ade792844ede0cc",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/ss_cumulative_base_test.go",
+      "baselineSHA256": "ac0a7d45488608c5d97b88ec2232632f1668051159d95453f61ae2de506849be",
+      "finalSHA256": "ac0a7d45488608c5d97b88ec2232632f1668051159d95453f61ae2de506849be",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/ss_test.go",
+      "baselineSHA256": "937f68a7845d36324086f8092203574ea233113bebb72dfd4bdb2988243fbef4",
+      "finalSHA256": "937f68a7845d36324086f8092203574ea233113bebb72dfd4bdb2988243fbef4",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/sustainability.go",
+      "baselineSHA256": "90e91d9638fb48d40f9614c6de478461af1280b7da45025ddcd28f31490d51bb",
+      "finalSHA256": "90e91d9638fb48d40f9614c6de478461af1280b7da45025ddcd28f31490d51bb",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax.go",
+      "baselineSHA256": "c5a95ea762d48a8a35dc1cca5cffd73ffd5543d696e24f7101149683eb409f94",
+      "finalSHA256": "c5a95ea762d48a8a35dc1cca5cffd73ffd5543d696e24f7101149683eb409f94",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_constants_basis_test.go",
+      "baselineSHA256": "149aa1e8ef561d230c15421c70606f46103dd473a721edd5108762d3e5edb985",
+      "finalSHA256": "149aa1e8ef561d230c15421c70606f46103dd473a721edd5108762d3e5edb985",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_optimizer.go",
+      "baselineSHA256": "d531820aa253f0d1f38f481619e52c2b31b0ff894030af970420340310c4ede1",
+      "finalSHA256": "d531820aa253f0d1f38f481619e52c2b31b0ff894030af970420340310c4ede1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_optimizer_age65_parity_test.go",
+      "baselineSHA256": "402f5ac977d9c95ede552ff4236adf449c1f84737cf29c3863c0785b87987de2",
+      "finalSHA256": "402f5ac977d9c95ede552ff4236adf449c1f84737cf29c3863c0785b87987de2",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_optimizer_bracketfill_earnings_test.go",
+      "baselineSHA256": "2f3e23f728477a390dfce1d97aafddd6c3d096182706f3d7efe8d35d0e2d3b20",
+      "finalSHA256": "2f3e23f728477a390dfce1d97aafddd6c3d096182706f3d7efe8d35d0e2d3b20",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_optimizer_bracketfill_ss_test.go",
+      "baselineSHA256": "84b00b0cda15f541b73fde0bfc6ccaf719cddc3d8b3ac39ceedc5b9506234e58",
+      "finalSHA256": "84b00b0cda15f541b73fde0bfc6ccaf719cddc3d8b3ac39ceedc5b9506234e58",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_optimizer_integration_test.go",
+      "baselineSHA256": "1b14731abf4d36d302feb54dc4d1ccad5488f379a08eb5261698d515df730ffa",
+      "finalSHA256": "1b14731abf4d36d302feb54dc4d1ccad5488f379a08eb5261698d515df730ffa",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_optimizer_reporting_test.go",
+      "baselineSHA256": "6d088d1bcfea5f09146607812454f370fa4d584335e43db52ba333783feb3135",
+      "finalSHA256": "6d088d1bcfea5f09146607812454f370fa4d584335e43db52ba333783feb3135",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_optimizer_strategies.go",
+      "baselineSHA256": "c8255aa6952210235e551ed5223489a63fc6f3bbc4693ef915d8151bf82c4756",
+      "finalSHA256": "c8255aa6952210235e551ed5223489a63fc6f3bbc4693ef915d8151bf82c4756",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_optimizer_strategies_test.go",
+      "baselineSHA256": "516a310fdae7c8bd4b4a0aa4bebae52a4e1d87f5dd415e64ee7c8a30b1063792",
+      "finalSHA256": "516a310fdae7c8bd4b4a0aa4bebae52a4e1d87f5dd415e64ee7c8a30b1063792",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_optimizer_test.go",
+      "baselineSHA256": "598ef8ebc4fa1534f1cec6293b5a0c8e26d09acf86858ae84a16ab32a1fb3d8f",
+      "finalSHA256": "598ef8ebc4fa1534f1cec6293b5a0c8e26d09acf86858ae84a16ab32a1fb3d8f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/tax_test.go",
+      "baselineSHA256": "e8e6fc3390891a6589eec8bf98e724983718dcc35f11ec2195f7dc38ccb6d8fe",
+      "finalSHA256": "e8e6fc3390891a6589eec8bf98e724983718dcc35f11ec2195f7dc38ccb6d8fe",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/analysis/taxable_cost_basis_projection_test.go",
+      "baselineSHA256": "0e3eaa20ac68785a25104a25102e42b505844e6ba1ba0f61d6778e30a6cb79ce",
+      "finalSHA256": "0e3eaa20ac68785a25104a25102e42b505844e6ba1ba0f61d6778e30a6cb79ce",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/backtest_chain_test.go",
+      "baselineSHA256": "f3400bd1cf173c345ff332620d61747f1720fee26ea9af8ba52704c7c654b52b",
+      "finalSHA256": "f3400bd1cf173c345ff332620d61747f1720fee26ea9af8ba52704c7c654b52b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/calculator_coverage_test.go",
+      "baselineSHA256": "6016694ebd6de296a319d3bfa0c5fcae11ca7936062919cbcedab09f390c3de8",
+      "finalSHA256": "6016694ebd6de296a319d3bfa0c5fcae11ca7936062919cbcedab09f390c3de8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/calculator_delay_test.go",
+      "baselineSHA256": "179a4c3c80109660813ad363e12862f9581122006fba5679d1f0e7af50bd465b",
+      "finalSHA256": "179a4c3c80109660813ad363e12862f9581122006fba5679d1f0e7af50bd465b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/calculator_expense_test.go",
+      "baselineSHA256": "be130b7b5f00282241e52c2c03a7fe7950cf5d2ce125c919dbc6c819d1c8af39",
+      "finalSHA256": "be130b7b5f00282241e52c2c03a7fe7950cf5d2ce125c919dbc6c819d1c8af39",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/calculator_helper_test.go",
+      "baselineSHA256": "a7f141f84aaedb4217c9a74e3d9d5af8ef30c0c5b85b3e9daa2ecac944480527",
+      "finalSHA256": "a7f141f84aaedb4217c9a74e3d9d5af8ef30c0c5b85b3e9daa2ecac944480527",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/calculator_state_tax_test.go",
+      "baselineSHA256": "d6f0e0fbe4f96a80d28f534aaad7243ada942947997bcf1cfa1d62b381e00ca8",
+      "finalSHA256": "d6f0e0fbe4f96a80d28f534aaad7243ada942947997bcf1cfa1d62b381e00ca8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/calculator_test.go",
+      "baselineSHA256": "4159707e088a19444e4aa95d8cf115ac6b0a1dbc6870c0fdad2a48142b32043f",
+      "finalSHA256": "4159707e088a19444e4aa95d8cf115ac6b0a1dbc6870c0fdad2a48142b32043f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/chain.go",
+      "baselineSHA256": "52e0d8094fd04162f3b144f95bdf5bb11c6d68a8dd7e168821d65eeb692f905a",
+      "finalSHA256": "52e0d8094fd04162f3b144f95bdf5bb11c6d68a8dd7e168821d65eeb692f905a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/chain_test.go",
+      "baselineSHA256": "0e0ddf45675d987f78711275bc4b747e144efbcaa658be8970be2f1c18521dc6",
+      "finalSHA256": "0e0ddf45675d987f78711275bc4b747e144efbcaa658be8970be2f1c18521dc6",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/completeness/check.go",
+      "baselineSHA256": "0ebaf19119d8e080b7d15a24df07bd6068f3a42aa37f7be63fcc09eee2f8927a",
+      "finalSHA256": "0ebaf19119d8e080b7d15a24df07bd6068f3a42aa37f7be63fcc09eee2f8927a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/completeness/check_test.go",
+      "baselineSHA256": "77ecfd206fbb71cfb71bc57b042e2f787b454817900437b51c05303c177002a1",
+      "finalSHA256": "77ecfd206fbb71cfb71bc57b042e2f787b454817900437b51c05303c177002a1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/completeness/checks_aca.go",
+      "baselineSHA256": "8ea09e5a619a5bbfdac30dece0fb764cf52af1f05f5d690b7fe21915954fa99d",
+      "finalSHA256": "8ea09e5a619a5bbfdac30dece0fb764cf52af1f05f5d690b7fe21915954fa99d",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/completeness/checks_aca_test.go",
+      "baselineSHA256": "6ea9777be9cdcf8d3357f24047dc2618765a1d9a6da328fc0d99973707f21c44",
+      "finalSHA256": "6ea9777be9cdcf8d3357f24047dc2618765a1d9a6da328fc0d99973707f21c44",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/completeness/checks_household.go",
+      "baselineSHA256": "8802bcdf778f9c23f3edba26409b59fef242636049c83cecb42adb7ddee54395",
+      "finalSHA256": "8802bcdf778f9c23f3edba26409b59fef242636049c83cecb42adb7ddee54395",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/completeness/checks_ss.go",
+      "baselineSHA256": "caa4404126d16bcb2842dbec3b2e6d735601df3eb85b01fc4b57a117755459d6",
+      "finalSHA256": "caa4404126d16bcb2842dbec3b2e6d735601df3eb85b01fc4b57a117755459d6",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/completeness/checks_state_tax.go",
+      "baselineSHA256": "846c30c0a80d7a0cedd2fbce909bcb495a89db033db130d0c22ed6f06b2a206b",
+      "finalSHA256": "846c30c0a80d7a0cedd2fbce909bcb495a89db033db130d0c22ed6f06b2a206b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/completeness/checks_taxable_basis.go",
+      "baselineSHA256": "0ff9b8abed518264f0a0aa65952472588f79ad13ea59e7b737b16e25e1846d92",
+      "finalSHA256": "0ff9b8abed518264f0a0aa65952472588f79ad13ea59e7b737b16e25e1846d92",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/completeness/checks_taxable_basis_test.go",
+      "baselineSHA256": "10d5f113a7480fb81d16157febc388f403fc1b77936b2aaa95380450f5119719",
+      "finalSHA256": "10d5f113a7480fb81d16157febc388f403fc1b77936b2aaa95380450f5119719",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/coverage_gaps2_test.go",
+      "baselineSHA256": "0c6addcd00c35d7390a8bf9bf1f73f36fa78ca9a8297542bd4efa31cd33cec4d",
+      "finalSHA256": "0c6addcd00c35d7390a8bf9bf1f73f36fa78ca9a8297542bd4efa31cd33cec4d",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/coverage_gaps3_test.go",
+      "baselineSHA256": "ac96cd1d9732bb77b7885be17fca9b64d0da53b22802da6c09603943dda245d4",
+      "finalSHA256": "ac96cd1d9732bb77b7885be17fca9b64d0da53b22802da6c09603943dda245d4",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/coverage_gaps4_test.go",
+      "baselineSHA256": "eb4630be679118a56498f1e73c3f40c1b192213c36724324f67f9983f04103a1",
+      "finalSHA256": "eb4630be679118a56498f1e73c3f40c1b192213c36724324f67f9983f04103a1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/coverage_gaps_test.go",
+      "baselineSHA256": "9c6f5f0b2a720c22fae696a5a877cd77589a1abcce12486e615cd4fa69e1bb99",
+      "finalSHA256": "9c6f5f0b2a720c22fae696a5a877cd77589a1abcce12486e615cd4fa69e1bb99",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/duration_test.go",
+      "baselineSHA256": "bf8d1bc519d0fcd303846c7d6f03280ca55756d3aafd6eda9bb9e09273cb41fe",
+      "finalSHA256": "bf8d1bc519d0fcd303846c7d6f03280ca55756d3aafd6eda9bb9e09273cb41fe",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/aca_test.go",
+      "baselineSHA256": "ded4d629dd8410dd29a2545fe8fdd44dc73743ec9b2026a0c775ce2fa2d3f6dd",
+      "finalSHA256": "ded4d629dd8410dd29a2545fe8fdd44dc73743ec9b2026a0c775ce2fa2d3f6dd",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/age65_deduction_test.go",
+      "baselineSHA256": "9e09c65420729990fb4c4d611e5cf92459074e95f3c1c2bdf42d252a798ced6f",
+      "finalSHA256": "9e09c65420729990fb4c4d611e5cf92459074e95f3c1c2bdf42d252a798ced6f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/annual_rmd_joint_test.go",
+      "baselineSHA256": "0b97c47fb1d6bc3e94fc1a97500ec886af8fabd43fa607779ba4eb1449adcec4",
+      "finalSHA256": "0b97c47fb1d6bc3e94fc1a97500ec886af8fabd43fa607779ba4eb1449adcec4",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/care_cost_test.go",
+      "baselineSHA256": "0a41b957164c1f8a67187fc146a6c938650cb8a26281627210c404f8c39d9beb",
+      "finalSHA256": "0a41b957164c1f8a67187fc146a6c938650cb8a26281627210c404f8c39d9beb",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/clock_test.go",
+      "baselineSHA256": "f07b09fc75a4742014bca27d0cf5494125b89a449790bfe5b5b08ea4ff9beb09",
+      "finalSHA256": "f07b09fc75a4742014bca27d0cf5494125b89a449790bfe5b5b08ea4ff9beb09",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/engine.go",
+      "baselineSHA256": "eef8135e1041778697c762200bbf14c664a7606e2ad0e83bd49dbc94ac8654db",
+      "finalSHA256": "eef8135e1041778697c762200bbf14c664a7606e2ad0e83bd49dbc94ac8654db",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/engine_run_test.go",
+      "baselineSHA256": "5acdc561ab7d245fe8b29bb809c01845abbab2f0415d65ceff5394621675d694",
+      "finalSHA256": "5acdc561ab7d245fe8b29bb809c01845abbab2f0415d65ceff5394621675d694",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/expense.go",
+      "baselineSHA256": "a44753fc0740636fe87ad8bd60914000fcfb3ea8764b494416238c43afe7516f",
+      "finalSHA256": "a44753fc0740636fe87ad8bd60914000fcfb3ea8764b494416238c43afe7516f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/finance_concerns_gaps_test.go",
+      "baselineSHA256": "03c4e356878fbfeec7cba245464adb0fdd8a3eba3115f1ac99258818a5dd67fd",
+      "finalSHA256": "03c4e356878fbfeec7cba245464adb0fdd8a3eba3115f1ac99258818a5dd67fd",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/finance_concerns_golden_test.go",
+      "baselineSHA256": "f6726a9093a6f224477ae8ca520c0c1f494493a4381a01e01b6c02e1751a8ee2",
+      "finalSHA256": "f6726a9093a6f224477ae8ca520c0c1f494493a4381a01e01b6c02e1751a8ee2",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/guardrails.go",
+      "baselineSHA256": "6259c8b1040cdee150754814a7b20167a62750a85039cadd547f098d23d84f8e",
+      "finalSHA256": "6259c8b1040cdee150754814a7b20167a62750a85039cadd547f098d23d84f8e",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/healthcare.go",
+      "baselineSHA256": "55cc939db5929397554f6c74cdb2e64cc5c33a58e6e87b7a297af4eb9362eb56",
+      "finalSHA256": "55cc939db5929397554f6c74cdb2e64cc5c33a58e6e87b7a297af4eb9362eb56",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/income.go",
+      "baselineSHA256": "83c73b22d7095bcb466c9d17e5ab8d3f4c9876ea0bef81165a0efada167ad5d1",
+      "finalSHA256": "83c73b22d7095bcb466c9d17e5ab8d3f4c9876ea0bef81165a0efada167ad5d1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/input.go",
+      "baselineSHA256": "150f6f928e6d89b8c0a19c7c46bd2ed1b03f767d09a9149ddb2ad2c2a6982096",
+      "finalSHA256": "150f6f928e6d89b8c0a19c7c46bd2ed1b03f767d09a9149ddb2ad2c2a6982096",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/input_math_test.go",
+      "baselineSHA256": "2533e1d81c9ffcb2007aed4694418ef4a9f07c17ae0eef5b3931b544cc132a9b",
+      "finalSHA256": "2533e1d81c9ffcb2007aed4694418ef4a9f07c17ae0eef5b3931b544cc132a9b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/irmaa_employer_coverage_test.go",
+      "baselineSHA256": "3c2160c11b4b6932081cc9caf2716b96ef5422bd7247942c9414b7a95a623052",
+      "finalSHA256": "3c2160c11b4b6932081cc9caf2716b96ef5422bd7247942c9414b7a95a623052",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/irmaa_lookback_test.go",
+      "baselineSHA256": "5416be52dfb632afa5354d19cd3f13db0536388504e9d7f9c0729befa5403cd1",
+      "finalSHA256": "5416be52dfb632afa5354d19cd3f13db0536388504e9d7f9c0729befa5403cd1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/irmaa_mid_year_test.go",
+      "baselineSHA256": "e43b801ddf8132a95ae00e8061c12aaadfacb67fb53555b247e4b8f70e67c519",
+      "finalSHA256": "e43b801ddf8132a95ae00e8061c12aaadfacb67fb53555b247e4b8f70e67c519",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/irmaa_surcharge_inflation_test.go",
+      "baselineSHA256": "f177ec7aafa2a09bf2318c1017a10896d3579568c6b48b09117f42b9a3b202ec",
+      "finalSHA256": "f177ec7aafa2a09bf2318c1017a10896d3579568c6b48b09117f42b9a3b202ec",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/joint_life.go",
+      "baselineSHA256": "3e33af5e5d88fe5b586aae090f943581ce3b737f6ca3ea90252df936d200f733",
+      "finalSHA256": "3e33af5e5d88fe5b586aae090f943581ce3b737f6ca3ea90252df936d200f733",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/joint_life_table.go",
+      "baselineSHA256": "020802899811fc684a0dee703e60beeca8f12b284ac0b36cc74288c91821a0da",
+      "finalSHA256": "020802899811fc684a0dee703e60beeca8f12b284ac0b36cc74288c91821a0da",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/joint_life_test.go",
+      "baselineSHA256": "d7e9a694560b40a5060e924d31119add159fe3271d7a8180f6a0db0f723021c7",
+      "finalSHA256": "d7e9a694560b40a5060e924d31119add159fe3271d7a8180f6a0db0f723021c7",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/loop_helpers.go",
+      "baselineSHA256": "d1b4b070d97aa3e72fa01372d6f587573acd67a4c90f305a5c4e679b595f139c",
+      "finalSHA256": "d1b4b070d97aa3e72fa01372d6f587573acd67a4c90f305a5c4e679b595f139c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/loop_helpers_test.go",
+      "baselineSHA256": "05d762201583ba3c7aa7d5c431d3a9b98dbe839fcadf0a33c449423163d28762",
+      "finalSHA256": "05d762201583ba3c7aa7d5c431d3a9b98dbe839fcadf0a33c449423163d28762",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/marginal_rate_long_term_gain_test.go",
+      "baselineSHA256": "b96db6d43598cbcdf850406bbd931779948eb6c73527c4c44434c89c26797e90",
+      "finalSHA256": "b96db6d43598cbcdf850406bbd931779948eb6c73527c4c44434c89c26797e90",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/math.go",
+      "baselineSHA256": "a036176c645d9db83e7094fecc141c7f9a033d928663365b12ce8949f70700ae",
+      "finalSHA256": "a036176c645d9db83e7094fecc141c7f9a033d928663365b12ce8949f70700ae",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/month.go",
+      "baselineSHA256": "3f693823f14adf18485e4cf654d449ff043a77e071ad2d1630712d1efa9fbd3a",
+      "finalSHA256": "3f693823f14adf18485e4cf654d449ff043a77e071ad2d1630712d1efa9fbd3a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/one_time_expense_test.go",
+      "baselineSHA256": "1f870fb9f319eeef20339a9881d55dfdcfdedffec2663baafbde120152211505",
+      "finalSHA256": "1f870fb9f319eeef20339a9881d55dfdcfdedffec2663baafbde120152211505",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/one_time_tax_boundaries_test.go",
+      "baselineSHA256": "5753afb1695ff3f83c28c70a82fad58b571912f9ee9e8f62d50e0014160fee30",
+      "finalSHA256": "5753afb1695ff3f83c28c70a82fad58b571912f9ee9e8f62d50e0014160fee30",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/one_time_tax_test.go",
+      "baselineSHA256": "d1fffbc70c61c631d39528edd17fe69d1040196ddd3ff81d3a449690e0637bb8",
+      "finalSHA256": "d1fffbc70c61c631d39528edd17fe69d1040196ddd3ff81d3a449690e0637bb8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/portfolio_month.go",
+      "baselineSHA256": "bf4e0099f5db4b0b773059549126463a491a0744fe257579c03fba636fc0cd40",
+      "finalSHA256": "bf4e0099f5db4b0b773059549126463a491a0744fe257579c03fba636fc0cd40",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/povertyguidelines.go",
+      "baselineSHA256": "82c711204e6162dff0ee7cbc9c7a5305a8bcf634965e1bf5ff86bfcb029c2db0",
+      "finalSHA256": "82c711204e6162dff0ee7cbc9c7a5305a8bcf634965e1bf5ff86bfcb029c2db0",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/projtax.go",
+      "baselineSHA256": "928c52782598b089f868b8c8b529b8a43296acb441f1a755f0d04eaa8300e101",
+      "finalSHA256": "928c52782598b089f868b8c8b529b8a43296acb441f1a755f0d04eaa8300e101",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/projtax_rmd_timing_test.go",
+      "baselineSHA256": "82d5a1c422863e101f01e8d9f8364933ad215078246fc59b0b093f104d733e08",
+      "finalSHA256": "82d5a1c422863e101f01e8d9f8364933ad215078246fc59b0b093f104d733e08",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/rmd.go",
+      "baselineSHA256": "729a09b61fc580146ddace243a40acb8f9694024c6723eef0005dd7ecd0c2d41",
+      "finalSHA256": "729a09b61fc580146ddace243a40acb8f9694024c6723eef0005dd7ecd0c2d41",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/rmd_conservation_test.go",
+      "baselineSHA256": "b2294b44d3490886742498023275a8ec1e9054c92d16799e7891aee268d8a070",
+      "finalSHA256": "b2294b44d3490886742498023275a8ec1e9054c92d16799e7891aee268d8a070",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/rmd_edges_test.go",
+      "baselineSHA256": "d65707f02790aec480a9f4358af0d8e569d7d62ad43f0adae0c4bd134cb27b70",
+      "finalSHA256": "d65707f02790aec480a9f4358af0d8e569d7d62ad43f0adae0c4bd134cb27b70",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/rmd_life_factor_test.go",
+      "baselineSHA256": "b2534502b429455c9e06c0af7a85f571a1633040c24f28b256d5e847ef8108d0",
+      "finalSHA256": "b2534502b429455c9e06c0af7a85f571a1633040c24f28b256d5e847ef8108d0",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/roth_withdrawal_test.go",
+      "baselineSHA256": "3f4ddda4ca9ece3834907e45e13eb5d73f56faada85a0cca3cb94d12c3f0e9bd",
+      "finalSHA256": "3f4ddda4ca9ece3834907e45e13eb5d73f56faada85a0cca3cb94d12c3f0e9bd",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/short_term_gains_test.go",
+      "baselineSHA256": "154279f6ab73a06ad630a6552d2a49ee0deeb2de49015506427145dac56f76f0",
+      "finalSHA256": "154279f6ab73a06ad630a6552d2a49ee0deeb2de49015506427145dac56f76f0",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/ss_hooks.go",
+      "baselineSHA256": "0cb1902e5bb982a0aabce41774e569bc7e91e022f0527e4c181a28e18b9a94c3",
+      "finalSHA256": "0cb1902e5bb982a0aabce41774e569bc7e91e022f0527e4c181a28e18b9a94c3",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/stepper.go",
+      "baselineSHA256": "5d99c474b49b9ace2b2e8da8abe22da90945762f08801be6b9879e0c10f5ce61",
+      "finalSHA256": "5d99c474b49b9ace2b2e8da8abe22da90945762f08801be6b9879e0c10f5ce61",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/tax.go",
+      "baselineSHA256": "f0478a1d6ee638b437e3bd35f843a0d946e136f6d821bc8b4d2371cdbf893454",
+      "finalSHA256": "f0478a1d6ee638b437e3bd35f843a0d946e136f6d821bc8b4d2371cdbf893454",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/tax_test.go",
+      "baselineSHA256": "217793ef20a4177b03d991c29d2b1f605072f6d45782320603df6cb98c6b9074",
+      "finalSHA256": "217793ef20a4177b03d991c29d2b1f605072f6d45782320603df6cb98c6b9074",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/taxable.go",
+      "baselineSHA256": "352b58cb0d04c3904e36242881ad09f8955c37034065e87ac0db8dd88bda8021",
+      "finalSHA256": "352b58cb0d04c3904e36242881ad09f8955c37034065e87ac0db8dd88bda8021",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/taxable_cost_basis_test.go",
+      "baselineSHA256": "3e6bdcb3b5375d6489074bd9030a2d756dad66462c3abffa2772a22d4a7fc6a1",
+      "finalSHA256": "3e6bdcb3b5375d6489074bd9030a2d756dad66462c3abffa2772a22d4a7fc6a1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/taxable_test.go",
+      "baselineSHA256": "5e2b0c0819ff6df3ae01bdb6f495e5979ba63cf7f6ebb6c3e5a013dcdbd8a19d",
+      "finalSHA256": "5e2b0c0819ff6df3ae01bdb6f495e5979ba63cf7f6ebb6c3e5a013dcdbd8a19d",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/taxyears.go",
+      "baselineSHA256": "c11f85d4533b26edcc7f3ed03dd71344ddc172b123ac41051e8352e0b58efc7b",
+      "finalSHA256": "c11f85d4533b26edcc7f3ed03dd71344ddc172b123ac41051e8352e0b58efc7b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/taxyears_test.go",
+      "baselineSHA256": "293919528cff9366c72159a8c5e47ef757f2e813eab3e664a230f5b12a97adbd",
+      "finalSHA256": "293919528cff9366c72159a8c5e47ef757f2e813eab3e664a230f5b12a97adbd",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/thresholds.go",
+      "baselineSHA256": "ecd3931de7055ec36c2e899fc351153c1824ecb86395024062b9fdd1e5e7d132",
+      "finalSHA256": "ecd3931de7055ec36c2e899fc351153c1824ecb86395024062b9fdd1e5e7d132",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/thresholds_test.go",
+      "baselineSHA256": "a91a557be64193b9b8b16c44b6c64a57ea6fcc93e859b0b9a48e2abbe48cee18",
+      "finalSHA256": "a91a557be64193b9b8b16c44b6c64a57ea6fcc93e859b0b9a48e2abbe48cee18",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine/years_from_tax_base_test.go",
+      "baselineSHA256": "16f76a06100e6eb29ace40966b0bd3dc97549c545805a553840aeaebf7406c65",
+      "finalSHA256": "16f76a06100e6eb29ace40966b0bd3dc97549c545805a553840aeaebf7406c65",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/engine_hooks.go",
+      "baselineSHA256": "e3dbb0a42917c338a9ebd3ad12cdef6f1085c11f5c3177e161744f9456735bc3",
+      "finalSHA256": "e3dbb0a42917c338a9ebd3ad12cdef6f1085c11f5c3177e161744f9456735bc3",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/full_analysis_smoke_test.go",
+      "baselineSHA256": "173d2f14ea629d5227047bfaf277f89fa11afed0c5df08de5a8d374ea188e723",
+      "finalSHA256": "173d2f14ea629d5227047bfaf277f89fa11afed0c5df08de5a8d374ea188e723",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/guardrails_test.go",
+      "baselineSHA256": "b95d01bc5e82f2904864ee9607a5c7ff4ab51a8e3b14e1a4059ea5dea351800c",
+      "finalSHA256": "b95d01bc5e82f2904864ee9607a5c7ff4ab51a8e3b14e1a4059ea5dea351800c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/helpers_test.go",
+      "baselineSHA256": "38b1b9d21391005a6cc80e3f3d112012c55aee83cc458adc9cc6b1c73cc1f4a5",
+      "finalSHA256": "38b1b9d21391005a6cc80e3f3d112012c55aee83cc458adc9cc6b1c73cc1f4a5",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/historical_data.go",
+      "baselineSHA256": "4d30f8bd9833ceb6bea56673cfdb235937fcdc5379fe5fe81c88944970c9c9f1",
+      "finalSHA256": "4d30f8bd9833ceb6bea56673cfdb235937fcdc5379fe5fe81c88944970c9c9f1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/historical_data_test.go",
+      "baselineSHA256": "bba32b67c75bbe0f790cdc479bfc179bf79c23154c30cf5ee63250eead44088d",
+      "finalSHA256": "bba32b67c75bbe0f790cdc479bfc179bf79c23154c30cf5ee63250eead44088d",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/history/data.go",
+      "baselineSHA256": "6c6dc5a808cc5e5a5c1245e8a03ee221e7b4847985b1026eecbbb0deddb2b455",
+      "finalSHA256": "6c6dc5a808cc5e5a5c1245e8a03ee221e7b4847985b1026eecbbb0deddb2b455",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/history/data_test.go",
+      "baselineSHA256": "520f773a2afaea125759096bd00d467a07c8845282ff1174e840fa230573240f",
+      "finalSHA256": "520f773a2afaea125759096bd00d467a07c8845282ff1174e840fa230573240f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/orchestrator.go",
+      "baselineSHA256": "7838dcf75cb3833bcf7003a73ca3d329aefced56b011f4abe8ec8efa594e833a",
+      "finalSHA256": "7838dcf75cb3833bcf7003a73ca3d329aefced56b011f4abe8ec8efa594e833a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/orchestrator_parallel_test.go",
+      "baselineSHA256": "05f2d268511dfba238bfca0affb2977454d2ad6a47ded574341bc621dda5e674",
+      "finalSHA256": "05f2d268511dfba238bfca0affb2977454d2ad6a47ded574341bc621dda5e674",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/overrides/merged_window_test.go",
+      "baselineSHA256": "6a057ca3a3f84ab77742d1d5dc1a2990197f202e4a4ff5363c2f3394e7ba01a0",
+      "finalSHA256": "6a057ca3a3f84ab77742d1d5dc1a2990197f202e4a4ff5363c2f3394e7ba01a0",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/overrides/overrides.go",
+      "baselineSHA256": "afb256b3fb3aa906ad7ef1fc5414dab7a2c094632ce614a624f24e9f38e7513f",
+      "finalSHA256": "afb256b3fb3aa906ad7ef1fc5414dab7a2c094632ce614a624f24e9f38e7513f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/overrides/overrides_test.go",
+      "baselineSHA256": "2df4eea2778d9f5523ba4686103b4639cd4944bb38b0c31bbaf9f178e1676c5f",
+      "finalSHA256": "2df4eea2778d9f5523ba4686103b4639cd4944bb38b0c31bbaf9f178e1676c5f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/prepare/clone_test.go",
+      "baselineSHA256": "17efd4e35b988fafbe229c633654c9245c58ca0ca46945b475a54b18bdd6ccbb",
+      "finalSHA256": "17efd4e35b988fafbe229c633654c9245c58ca0ca46945b475a54b18bdd6ccbb",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/prepare/normalize.go",
+      "baselineSHA256": "4acbcb82288cbbcbe5ae86280fc80ac93a7fd75ac7551cc78513b5dddfb2212c",
+      "finalSHA256": "4acbcb82288cbbcbe5ae86280fc80ac93a7fd75ac7551cc78513b5dddfb2212c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/prepare/normalize_test.go",
+      "baselineSHA256": "54818d5db9d7c01463fed52babd466c713543994826a4a8875070c7975cdf806",
+      "finalSHA256": "54818d5db9d7c01463fed52babd466c713543994826a4a8875070c7975cdf806",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/prepare/prepare.go",
+      "baselineSHA256": "ba924a14b537bda528a83a8f8f4a75285041172c7c5f2691dbb9bf6dedd4dc86",
+      "finalSHA256": "ba924a14b537bda528a83a8f8f4a75285041172c7c5f2691dbb9bf6dedd4dc86",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/prepare/prepare_test.go",
+      "baselineSHA256": "2b4f113a6f9bf1fdf79ae255572a3bb3b3336e6a9f688bb763463288582fd034",
+      "finalSHA256": "2b4f113a6f9bf1fdf79ae255572a3bb3b3336e6a9f688bb763463288582fd034",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/prepare/validate.go",
+      "baselineSHA256": "a164428e408f055aea15007cfdc94671e9907d744d1c7db7409c545c254c2edb",
+      "finalSHA256": "a164428e408f055aea15007cfdc94671e9907d744d1c7db7409c545c254c2edb",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/prepare/validate_test.go",
+      "baselineSHA256": "e36e684d36600a514a2508918ddf71cfa7f71badc5910b6a880e2256ab8a22fe",
+      "finalSHA256": "e36e684d36600a514a2508918ddf71cfa7f71badc5910b6a880e2256ab8a22fe",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/projection_planned_test.go",
+      "baselineSHA256": "8e41213d4cac69bd1d39d997c75c9cffa9db3895bc6e8128af76b523e2e977c5",
+      "finalSHA256": "8e41213d4cac69bd1d39d997c75c9cffa9db3895bc6e8128af76b523e2e977c5",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/property_tax_test.go",
+      "baselineSHA256": "c734ce057d3f095ec0e9c9ee47a93b72ec5931f5e489768aa41a437dd717c7f7",
+      "finalSHA256": "c734ce057d3f095ec0e9c9ee47a93b72ec5931f5e489768aa41a437dd717c7f7",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/roth_five_year_integration_test.go",
+      "baselineSHA256": "75e831f10465b88b1843727efa9604295e1c83ab5fbc098fbf953ed63becc16b",
+      "finalSHA256": "75e831f10465b88b1843727efa9604295e1c83ab5fbc098fbf953ed63becc16b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/settings.go",
+      "baselineSHA256": "d36359aac35d9c2b853a1fd1994ec7e1ba8603435ff875d6a7779793299cbe98",
+      "finalSHA256": "d36359aac35d9c2b853a1fd1994ec7e1ba8603435ff875d6a7779793299cbe98",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/settings_aca_test.go",
+      "baselineSHA256": "d0ff89f42befd1be66dc0a9791b630531a4b8f458e8c8b49ab6b2b6a59aee8c8",
+      "finalSHA256": "d0ff89f42befd1be66dc0a9791b630531a4b8f458e8c8b49ab6b2b6a59aee8c8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/settings_crud_test.go",
+      "baselineSHA256": "9529956a259a542c82948ad7481005a6faf2f7d24ee9297d23907f13a70b44ee",
+      "finalSHA256": "9529956a259a542c82948ad7481005a6faf2f7d24ee9297d23907f13a70b44ee",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/settings_load_copy_test.go",
+      "baselineSHA256": "80b687d1f882e56deed5ee1ce6cfb35e7eff08d0a3ef4080024d418b8f799131",
+      "finalSHA256": "80b687d1f882e56deed5ee1ce6cfb35e7eff08d0a3ef4080024d418b8f799131",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/settings_spouse_sole_beneficiary_test.go",
+      "baselineSHA256": "6fdcce3addd558584541a1446174c9e0a316ff43493a76c06c28a3aaf35227ed",
+      "finalSHA256": "6fdcce3addd558584541a1446174c9e0a316ff43493a76c06c28a3aaf35227ed",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/settings_state_tax_test.go",
+      "baselineSHA256": "b645828a09dde6a38673ab7fa5f28ce66ddc501382543620131b30d3fa42690c",
+      "finalSHA256": "b645828a09dde6a38673ab7fa5f28ce66ddc501382543620131b30d3fa42690c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/settings_taxable_cost_basis_test.go",
+      "baselineSHA256": "0e520d1dd1cee6d30139a1cda8fd080e497c4e27db5c60a01e21aa74aabab529",
+      "finalSHA256": "0e520d1dd1cee6d30139a1cda8fd080e497c4e27db5c60a01e21aa74aabab529",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/settings_test.go",
+      "baselineSHA256": "9ff56d1618548ccb1c118aa03269be948e85b7b68b7e5173c2b589e750ed62cb",
+      "finalSHA256": "9ff56d1618548ccb1c118aa03269be948e85b7b68b7e5173c2b589e750ed62cb",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/social_security.go",
+      "baselineSHA256": "0cfb7b4c5dcb94f614f70b3dd2fbd61edce466c3a0f77c28255d3cda999bc966",
+      "finalSHA256": "0cfb7b4c5dcb94f614f70b3dd2fbd61edce466c3a0f77c28255d3cda999bc966",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/social_security_test.go",
+      "baselineSHA256": "fd2e7c1ce79ddb861dde418ac71d0b52952b3ad0c097e748f4e9de8a163e2dc0",
+      "finalSHA256": "fd2e7c1ce79ddb861dde418ac71d0b52952b3ad0c097e748f4e9de8a163e2dc0",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/tax_test.go",
+      "baselineSHA256": "85b5d8cf32268bb95da015cb06740095bc09fd3dbb426c562a8972dc15765430",
+      "finalSHA256": "85b5d8cf32268bb95da015cb06740095bc09fd3dbb426c562a8972dc15765430",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/retirement/taxable_simulation_test.go",
+      "baselineSHA256": "7f64d3e49378d1ada3e2d593f4864282385d477f7e35ada2c17d5076021757c0",
+      "finalSHA256": "7f64d3e49378d1ada3e2d593f4864282385d477f7e35ada2c17d5076021757c0",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/age_provider.go",
+      "baselineSHA256": "052a91459e25a21364167c7b3c495b26df5cdc24986e9ec94ccaa30ab1a67320",
+      "finalSHA256": "052a91459e25a21364167c7b3c495b26df5cdc24986e9ec94ccaa30ab1a67320",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/age_provider_test.go",
+      "baselineSHA256": "7828eef3b8b3f755d094bdaedde0ab163595cf51e8ec9251cbfafd202fd23c4b",
+      "finalSHA256": "7828eef3b8b3f755d094bdaedde0ab163595cf51e8ec9251cbfafd202fd23c4b",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/auth.go",
+      "baselineSHA256": "b94de83b6318ed3893c231697592cd07b7a40e690bbc60ccde9ac67c76d036a8",
+      "finalSHA256": "b94de83b6318ed3893c231697592cd07b7a40e690bbc60ccde9ac67c76d036a8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/auth_test.go",
+      "baselineSHA256": "bd5126f0b677108ef94f97f44ca62ca5dc4fb41d62329be55fae6fb4f1121c3f",
+      "finalSHA256": "bd5126f0b677108ef94f97f44ca62ca5dc4fb41d62329be55fae6fb4f1121c3f",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/cache_test.go",
+      "baselineSHA256": "f2eb628b2993c2dac653f3900d0a08d62697881c1a3833912064658372cd5e72",
+      "finalSHA256": "f2eb628b2993c2dac653f3900d0a08d62697881c1a3833912064658372cd5e72",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/context_test.go",
+      "baselineSHA256": "22a560260ccf9d7ca5948e479c5349e965e631ef4bf2860198a92b2a8915eb65",
+      "finalSHA256": "22a560260ccf9d7ca5948e479c5349e965e631ef4bf2860198a92b2a8915eb65",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/create_exclusive_test.go",
+      "baselineSHA256": "c73badda58b1d8dc27eedd1051e47e3f95469af2e9baf4827b3bb86cced4965c",
+      "finalSHA256": "c73badda58b1d8dc27eedd1051e47e3f95469af2e9baf4827b3bb86cced4965c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/detect_test.go",
+      "baselineSHA256": "3a1e7a8c0a39fd41ec235308d3022ecfc0725a8ea2218b86020553dcdfa26c4c",
+      "finalSHA256": "3a1e7a8c0a39fd41ec235308d3022ecfc0725a8ea2218b86020553dcdfa26c4c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/doc.go",
+      "baselineSHA256": "3f55240bd76e30ea9ad4679d9534db7cf7e7cbf9505bc0ca643f9d7dea98b2d8",
+      "finalSHA256": "3f55240bd76e30ea9ad4679d9534db7cf7e7cbf9505bc0ca643f9d7dea98b2d8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/durability_test.go",
+      "baselineSHA256": "1617e8c8f82e96c8b387a601cff1e33cb95606940ef1cda35706080283aac92a",
+      "finalSHA256": "1617e8c8f82e96c8b387a601cff1e33cb95606940ef1cda35706080283aac92a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/edge_cases_test.go",
+      "baselineSHA256": "4b4f420d3d625035abeb62d8860dd96bff8f1cfbacaacf79ede09b7176b697a7",
+      "finalSHA256": "4b4f420d3d625035abeb62d8860dd96bff8f1cfbacaacf79ede09b7176b697a7",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/encryption.go",
+      "baselineSHA256": "e111c60957c4776108ad02d9522f7de5167ff8b6b6d8eb77d565f8f78884eeb8",
+      "finalSHA256": "e111c60957c4776108ad02d9522f7de5167ff8b6b6d8eb77d565f8f78884eeb8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/encryption_test.go",
+      "baselineSHA256": "80db64339c5f316170f6042180e2c58c504f4b5baa42950d74dee82b46a01f64",
+      "finalSHA256": "80db64339c5f316170f6042180e2c58c504f4b5baa42950d74dee82b46a01f64",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/errors.go",
+      "baselineSHA256": "085917b6c00e97fe34f49d4a6e61b85c8a2ce3a791585f2cddaab566966f7aa8",
+      "finalSHA256": "085917b6c00e97fe34f49d4a6e61b85c8a2ce3a791585f2cddaab566966f7aa8",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/exclusive_test.go",
+      "baselineSHA256": "e9848db233827227ce5d3d649a340cfa301bd231864b7b81bd3b5feaef6c2589",
+      "finalSHA256": "e9848db233827227ce5d3d649a340cfa301bd231864b7b81bd3b5feaef6c2589",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/migration.go",
+      "baselineSHA256": "a03389eee4b04ee48e264b6918571acf26554c77d0747570873b1768fcc0ffbf",
+      "finalSHA256": "a03389eee4b04ee48e264b6918571acf26554c77d0747570873b1768fcc0ffbf",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/migration_atomic_test.go",
+      "baselineSHA256": "11ded66d8acb8789bf2dcc2355a36c5f856fe7ce9def77c296371b2af869ce90",
+      "finalSHA256": "11ded66d8acb8789bf2dcc2355a36c5f856fe7ce9def77c296371b2af869ce90",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/migration_cache_test.go",
+      "baselineSHA256": "baa2467630d044a47251403edb114089754034f539575e0c93342fbeb58c563c",
+      "finalSHA256": "baa2467630d044a47251403edb114089754034f539575e0c93342fbeb58c563c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/migration_decrypt_rollback_test.go",
+      "baselineSHA256": "abb75100bad61ef5dc9482a9ad8fa0cb98408e88fa09df5592cf81e01b73abed",
+      "finalSHA256": "abb75100bad61ef5dc9482a9ad8fa0cb98408e88fa09df5592cf81e01b73abed",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/migration_perm_test.go",
+      "baselineSHA256": "55b046fa648394e59d379287173394666146c691ec47d55a937e0ac56719430c",
+      "finalSHA256": "55b046fa648394e59d379287173394666146c691ec47d55a937e0ac56719430c",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/migration_test.go",
+      "baselineSHA256": "4620ac569ab5cba93b58ecafb568449e59fcdf902cbb9a3ec33e9e2ad6db86ea",
+      "finalSHA256": "4620ac569ab5cba93b58ecafb568449e59fcdf902cbb9a3ec33e9e2ad6db86ea",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/password_provider.go",
+      "baselineSHA256": "085cb18a6451a9e05d1e55b84841c8a0401ec7d90821ec831dc5aa0c3193ffa6",
+      "finalSHA256": "085cb18a6451a9e05d1e55b84841c8a0401ec7d90821ec831dc5aa0c3193ffa6",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/password_provider_test.go",
+      "baselineSHA256": "c6adea77011d914a85941e6a5f94466cb408a294d238e9c14d6b91c416700339",
+      "finalSHA256": "c6adea77011d914a85941e6a5f94466cb408a294d238e9c14d6b91c416700339",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/ssh_provider.go",
+      "baselineSHA256": "a1ce8ba486481a0fa509103c30864a646dbb48a36cdf8458ebf1695a42c25be3",
+      "finalSHA256": "a1ce8ba486481a0fa509103c30864a646dbb48a36cdf8458ebf1695a42c25be3",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/ssh_provider_test.go",
+      "baselineSHA256": "ee7febe8246e04b37301cd73e54c511fa9f6c86b4eb038c9f9d7a524b2a86cdc",
+      "finalSHA256": "ee7febe8246e04b37301cd73e54c511fa9f6c86b4eb038c9f9d7a524b2a86cdc",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/stage_durable_test.go",
+      "baselineSHA256": "9d47a604dac2ca099803c2bbd614a937ef4cf7392721d96c151209ca890d2e24",
+      "finalSHA256": "9d47a604dac2ca099803c2bbd614a937ef4cf7392721d96c151209ca890d2e24",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/storage.go",
+      "baselineSHA256": "156531b64b3cca55c293bee567dd39be3b9707f6d4263903fe1fe51874588499",
+      "finalSHA256": "156531b64b3cca55c293bee567dd39be3b9707f6d4263903fe1fe51874588499",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/storage_extra_test.go",
+      "baselineSHA256": "5f68cf2ceec5acd0c2ad829f37d559215e269b998d0cab82ee6a07e4ec9c7cd1",
+      "finalSHA256": "5f68cf2ceec5acd0c2ad829f37d559215e269b998d0cab82ee6a07e4ec9c7cd1",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/storage_test.go",
+      "baselineSHA256": "3a4462ede19683764edf4aac46a37ecf519209c90e2957d993533f7a2d1b029a",
+      "finalSHA256": "3a4462ede19683764edf4aac46a37ecf519209c90e2957d993533f7a2d1b029a",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/write_bench_test.go",
+      "baselineSHA256": "39cc3219d32ccdf6b777e5b4a09fda9f4679ee0019c3226af7a178b9a1079bc3",
+      "finalSHA256": "39cc3219d32ccdf6b777e5b4a09fda9f4679ee0019c3226af7a178b9a1079bc3",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/yubikey_provider.go",
+      "baselineSHA256": "cb601c25de8f3b82e498df38cd88887225e347336f8f1930a65161ad399db3fc",
+      "finalSHA256": "cb601c25de8f3b82e498df38cd88887225e347336f8f1930a65161ad399db3fc",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/storage/yubikey_provider_test.go",
+      "baselineSHA256": "6d22801b23f00aefb588d60f46c719e8ca551539cffc13610585f47109e8ca08",
+      "finalSHA256": "6d22801b23f00aefb588d60f46c719e8ca551539cffc13610585f47109e8ca08",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/transfers/transfers.go",
+      "baselineSHA256": "d2fb8c5637e2fbf1fcbf5b72b6f7c35600e5a24a553e8367dccfda45a38052e5",
+      "finalSHA256": "d2fb8c5637e2fbf1fcbf5b72b6f7c35600e5a24a553e8367dccfda45a38052e5",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/transfers/transfers_test.go",
+      "baselineSHA256": "9022aa877a41a1a1f9fc78b3094d1ab74b20978e337a4822e72c3bc47a502483",
+      "finalSHA256": "9022aa877a41a1a1f9fc78b3094d1ab74b20978e337a4822e72c3bc47a502483",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/uirefresh/refresh.go",
+      "baselineSHA256": "08462c261a0fb94f60aa253100c017e0c12f994c49e4e3eb6957dbbf07eb3763",
+      "finalSHA256": "08462c261a0fb94f60aa253100c017e0c12f994c49e4e3eb6957dbbf07eb3763",
+      "DI4": false
+    },
+    {
+      "path": "internal/services/uirefresh/refresh_test.go",
+      "baselineSHA256": "dcabbf2c2be11dcca56b56a9d003f65e3c3e1645842ffebce53b3e485418ad6d",
+      "finalSHA256": "dcabbf2c2be11dcca56b56a9d003f65e3c3e1645842ffebce53b3e485418ad6d",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/budget_gap.go",
+      "baselineSHA256": "589f34e688435f8345829fb89a8f2563886e7de18a3738b8d787abad9e588bdb",
+      "finalSHA256": "589f34e688435f8345829fb89a8f2563886e7de18a3738b8d787abad9e588bdb",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/page_data.go",
+      "baselineSHA256": "c7d80571c8ef4565a98207901916fe004939f5e2c32c5dd48fd5b5fd14057f80",
+      "finalSHA256": "c7d80571c8ef4565a98207901916fe004939f5e2c32c5dd48fd5b5fd14057f80",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/page_data_test.go",
+      "baselineSHA256": "ec94c636821799859a67d1fb595f1b5f95ee34bc9d25d1a41ad70cd690394461",
+      "finalSHA256": "ec94c636821799859a67d1fb595f1b5f95ee34bc9d25d1a41ad70cd690394461",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/period_di2_test.go",
+      "baselineSHA256": "5ced299780cd5312a80104d17366e5e4e9d8c08b140ce8c3fa8531e5b43fed0c",
+      "finalSHA256": "5ced299780cd5312a80104d17366e5e4e9d8c08b140ce8c3fa8531e5b43fed0c",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render.go",
+      "baselineSHA256": "274662b80bc1c5dcec1706043dc05ff590ffc62eaa5b84c5b43b04a590755db5",
+      "finalSHA256": "274662b80bc1c5dcec1706043dc05ff590ffc62eaa5b84c5b43b04a590755db5",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_aca_test.go",
+      "baselineSHA256": "d21c3f3ac289852bb5d2f8d6c14651997a65b700bc14c243d2699ef3f6dd6e1e",
+      "finalSHA256": "d21c3f3ac289852bb5d2f8d6c14651997a65b700bc14c243d2699ef3f6dd6e1e",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_budget_analysis_fractional_cent_test.go",
+      "baselineSHA256": "ba2eac2517f1697b40e337a1d08c71558180a785b5eac00c4d5e04c7b27af9a5",
+      "finalSHA256": "ba2eac2517f1697b40e337a1d08c71558180a785b5eac00c4d5e04c7b27af9a5",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_budget_analysis_phase_subitems_test.go",
+      "baselineSHA256": "495eb88e76e6ee8ca8a286fb33942e8dd5265c84a6141089e6a2722cabbcd23c",
+      "finalSHA256": "495eb88e76e6ee8ca8a286fb33942e8dd5265c84a6141089e6a2722cabbcd23c",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_conversion_sweep_test.go",
+      "baselineSHA256": "991b766fbe1194f693cffd006e459f1469dac9d3defbd1270bae41901658536c",
+      "finalSHA256": "991b766fbe1194f693cffd006e459f1469dac9d3defbd1270bae41901658536c",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_expense_summary_test.go",
+      "baselineSHA256": "acc56b02cf5565fe56c3af076bd6c113d4a4fa70857ad6690e324e2495a45f4e",
+      "finalSHA256": "acc56b02cf5565fe56c3af076bd6c113d4a4fa70857ad6690e324e2495a45f4e",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_healthcare_person_coverage_label_test.go",
+      "baselineSHA256": "1a316799a3c67ba20cd88fa5c0ec5ebfb28ee604a65062f05e7e0d99e3120d38",
+      "finalSHA256": "1a316799a3c67ba20cd88fa5c0ec5ebfb28ee604a65062f05e7e0d99e3120d38",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_helpers_test.go",
+      "baselineSHA256": "52a63b30fde0b1c32eb30556a7e6d560a614035dfe7832f18e4d0c0a786a09cf",
+      "finalSHA256": "52a63b30fde0b1c32eb30556a7e6d560a614035dfe7832f18e4d0c0a786a09cf",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_insights_subscription_test.go",
+      "baselineSHA256": "82246993f5f862fdb485cee8039f5aaf92b1defc61e00458fff78ee94cd85611",
+      "finalSHA256": "82246993f5f862fdb485cee8039f5aaf92b1defc61e00458fff78ee94cd85611",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_joint_life_test.go",
+      "baselineSHA256": "d1f0ba553c87bd609af07f026257d8988793486f8a4e4c275330acbe021e33b6",
+      "finalSHA256": "d1f0ba553c87bd609af07f026257d8988793486f8a4e4c275330acbe021e33b6",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_kpi_month_detail_test.go",
+      "baselineSHA256": "221dd97f47dc9cf7f213eb00fa2bd6a02966836257dbda5933b4cb8a8dded158",
+      "finalSHA256": "221dd97f47dc9cf7f213eb00fa2bd6a02966836257dbda5933b4cb8a8dded158",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_major_expenses_test.go",
+      "baselineSHA256": "1fa3fc40aa58c7d7292b3177fe9a8f5da84cfe1a688b9a97fa8f4b3877631d8c",
+      "finalSHA256": "1fa3fc40aa58c7d7292b3177fe9a8f5da84cfe1a688b9a97fa8f4b3877631d8c",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_major_expenses_verdict_test.go",
+      "baselineSHA256": "dcbf7a8ecba48258940621d13a4c2b8ed15cdc23f334bc95e033aabcb067cd81",
+      "finalSHA256": "dcbf7a8ecba48258940621d13a4c2b8ed15cdc23f334bc95e033aabcb067cd81",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_nav_range_test.go",
+      "baselineSHA256": "c8eacc73542dbe5ff41184d1c4cb3ad96c3a9ba5ea47dedbdd39849becba62c4",
+      "finalSHA256": "c8eacc73542dbe5ff41184d1c4cb3ad96c3a9ba5ea47dedbdd39849becba62c4",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_range_picker_hx_attr_test.go",
+      "baselineSHA256": "8b995cc0fb342feed337992066850695c2670448717c94aea35d00052036261f",
+      "finalSHA256": "8b995cc0fb342feed337992066850695c2670448717c94aea35d00052036261f",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_range_picker_preset_attr_test.go",
+      "baselineSHA256": "9802646db061ed45da282de882412c2ed52114e1233c4d5f17794e11b25dd42f",
+      "finalSHA256": "9802646db061ed45da282de882412c2ed52114e1233c4d5f17794e11b25dd42f",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_recurring_di1_test.go",
+      "baselineSHA256": "fd1e9f8ba624e5aa3e0f61ee434098006a2bf8878274e824332f8ca47b61bc7b",
+      "finalSHA256": "fd1e9f8ba624e5aa3e0f61ee434098006a2bf8878274e824332f8ca47b61bc7b",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_spending_preview_test.go",
+      "baselineSHA256": "fb54dbe06e5317916b448e2077dcb28b95a1593c0f105967403eb0cbd1a97cef",
+      "finalSHA256": "fb54dbe06e5317916b448e2077dcb28b95a1593c0f105967403eb0cbd1a97cef",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_taxable_cost_basis_test.go",
+      "baselineSHA256": "d853f2313de500cd0141d1de2b64f3d92fea511be44f015b47f3e47cf6079662",
+      "finalSHA256": "d853f2313de500cd0141d1de2b64f3d92fea511be44f015b47f3e47cf6079662",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_test.go",
+      "baselineSHA256": "cdc5cfa9046e8aa60bf09c607b4501d6926407fb6163c9f2c6121dacbf63cd3c",
+      "finalSHA256": "cdc5cfa9046e8aa60bf09c607b4501d6926407fb6163c9f2c6121dacbf63cd3c",
+      "DI4": false
+    },
+    {
+      "path": "internal/templates/render_verdict_class_test.go",
+      "baselineSHA256": "3bab057336efc76bd75b68d53438a20d419415c83d59430405acd65cfc21696e",
+      "finalSHA256": "3bab057336efc76bd75b68d53438a20d419415c83d59430405acd65cfc21696e",
+      "DI4": false
+    },
+    {
+      "path": "internal/testutil/assertions.go",
+      "baselineSHA256": "49716d69b295d629604004cd0a6999eaac868e7cdbdc482db02e0d3f603809fa",
+      "finalSHA256": "49716d69b295d629604004cd0a6999eaac868e7cdbdc482db02e0d3f603809fa",
+      "DI4": false
+    },
+    {
+      "path": "internal/testutil/assertions_test.go",
+      "baselineSHA256": "fb18c458ee1f1cb39f215ee16f1e4fa91b41f15498a917594350a455eca35fb1",
+      "finalSHA256": "fb18c458ee1f1cb39f215ee16f1e4fa91b41f15498a917594350a455eca35fb1",
+      "DI4": false
+    },
+    {
+      "path": "internal/testutil/forms.go",
+      "baselineSHA256": "1372863b15bdda052c9fd1299f9364a78e2b9d2e51d809d8c338ca2dae50980b",
+      "finalSHA256": "1372863b15bdda052c9fd1299f9364a78e2b9d2e51d809d8c338ca2dae50980b",
+      "DI4": false
+    },
+    {
+      "path": "internal/testutil/testutil.go",
+      "baselineSHA256": "9e590f31e2aaf4f57f5e646bb9407371a40ac049a6959bf8ce0b7982f03f3eb6",
+      "finalSHA256": "9e590f31e2aaf4f57f5e646bb9407371a40ac049a6959bf8ce0b7982f03f3eb6",
+      "DI4": false
+    },
+    {
+      "path": "internal/testutil/testutil_test.go",
+      "baselineSHA256": "6d89f205a525d62e463efcf6d9b7b0d6229ef35f679980285151a5aa17d20907",
+      "finalSHA256": "6d89f205a525d62e463efcf6d9b7b0d6229ef35f679980285151a5aa17d20907",
+      "DI4": false
+    },
+    {
+      "path": "internal/version/version.go",
+      "baselineSHA256": "63f41b30acf97d70d5ce0b61c80289fe345be08da2eb4afcecfbc8567aa9fc1c",
+      "finalSHA256": "63f41b30acf97d70d5ce0b61c80289fe345be08da2eb4afcecfbc8567aa9fc1c",
+      "DI4": false
+    },
+    {
+      "path": "internal/version/version_test.go",
+      "baselineSHA256": "6f037b14bac9f7d2c1ae1e11724edeaec04b684ca289c3958f2fee79e5237bb5",
+      "finalSHA256": "6f037b14bac9f7d2c1ae1e11724edeaec04b684ca289c3958f2fee79e5237bb5",
+      "DI4": false
+    },
+    {
+      "path": "web/embed.go",
+      "baselineSHA256": "af83de5e2dba08479673602c928af13182ec7853a3f85396c7b2d2f597b69216",
+      "finalSHA256": "af83de5e2dba08479673602c928af13182ec7853a3f85396c7b2d2f597b69216",
+      "DI4": false
+    },
+    {
+      "path": "web/offline_assets_test.go",
+      "baselineSHA256": "a458028b0835319e655a079af5f859b57c9ada46ff101722bdd0397ae38c6a40",
+      "finalSHA256": "a458028b0835319e655a079af5f859b57c9ada46ff101722bdd0397ae38c6a40",
+      "DI4": false
+    },
+    {
+      "path": "web/static/css/styles.css",
+      "baselineSHA256": "2128e66326f1080a237fecbb3531ec2ea3293d82ebcf0f0fbb106caae6f3caf3",
+      "finalSHA256": "2128e66326f1080a237fecbb3531ec2ea3293d82ebcf0f0fbb106caae6f3caf3",
+      "DI4": false
+    },
+    {
+      "path": "web/static/css/tailwind.css",
+      "baselineSHA256": "e12bfb73c1d79b1a372f2e8e202ec271898963d1c0a619c3439a6d1dfa7a2637",
+      "finalSHA256": "f09162945444f745061980d04d5d3eafd8c7c9d67c178381837555429adb6c5c",
+      "DI4": true
+    },
+    {
+      "path": "web/static/css/tailwind.src.css",
+      "baselineSHA256": "cc1a7ad0d019ddb1d32d0ecb588ba0ac26ce41d8625dd6c366348b25f83a28ec",
+      "finalSHA256": "cc1a7ad0d019ddb1d32d0ecb588ba0ac26ce41d8625dd6c366348b25f83a28ec",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/accounts.js",
+      "baselineSHA256": "6a6c08fbbf865ee74aaa153cd654dd058764282b5f0169df42bccb6235735473",
+      "finalSHA256": "6a6c08fbbf865ee74aaa153cd654dd058764282b5f0169df42bccb6235735473",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/base.js",
+      "baselineSHA256": "bcc28a968da42fe53de1ca9485f704a8e8be24a0c2733bd7c656b9289bac5372",
+      "finalSHA256": "bcc28a968da42fe53de1ca9485f704a8e8be24a0c2733bd7c656b9289bac5372",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/charts.js",
+      "baselineSHA256": "0fde82998bba1214a2f9d54b08cc016f32b85fd1292a46ef03154b1c88f3d8d4",
+      "finalSHA256": "0fde82998bba1214a2f9d54b08cc016f32b85fd1292a46ef03154b1c88f3d8d4",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/dashboard.js",
+      "baselineSHA256": "872b8d1d5f932fabd5445a41ad68a75e12eeddb8d6f317153143d99a1c9c4bd4",
+      "finalSHA256": "872b8d1d5f932fabd5445a41ad68a75e12eeddb8d6f317153143d99a1c9c4bd4",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/explorer.js",
+      "baselineSHA256": "cbd1e93fed1c1628012fd2cda81627f25c9912dc248e9be6cbf60fb5b7e9732b",
+      "finalSHA256": "cbd1e93fed1c1628012fd2cda81627f25c9912dc248e9be6cbf60fb5b7e9732b",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/filemanager.js",
+      "baselineSHA256": "9eae0299aaeb6198b17ad9b6035ac7fb305d29e785edef799b1c2cbd8f46fe1f",
+      "finalSHA256": "9eae0299aaeb6198b17ad9b6035ac7fb305d29e785edef799b1c2cbd8f46fe1f",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/insights.js",
+      "baselineSHA256": "ceb18537b1bbdea8691556cf130d7908c68f5ca040c22c5302dea07f768d1591",
+      "finalSHA256": "d04a9ede382606d3807e3eae14861744b93812dace1b21cbbbfb68ade22ec06c",
+      "DI4": true
+    },
+    {
+      "path": "web/static/js/interactions.js",
+      "baselineSHA256": "e555cac1408124fc8f82daa1ebc19836fd89c17807093b0187361c18a215368d",
+      "finalSHA256": "e555cac1408124fc8f82daa1ebc19836fd89c17807093b0187361c18a215368d",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/major-expenses.js",
+      "baselineSHA256": "102f319a7aab11049d1f93367445457b12c11541466b64fd66652110df8cc75f",
+      "finalSHA256": "102f319a7aab11049d1f93367445457b12c11541466b64fd66652110df8cc75f",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/page-refresh.js",
+      "baselineSHA256": "e4f515e7adcd11c4bad42d5ec1207a37809203e19899c25591d9574cb3e5aca8",
+      "finalSHA256": "e4f515e7adcd11c4bad42d5ec1207a37809203e19899c25591d9574cb3e5aca8",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/page-refresh.test.cjs",
+      "baselineSHA256": "57b82793a441c79e051aad7bfa068921318f05d9712767b747fe2dce643b73c4",
+      "finalSHA256": "57b82793a441c79e051aad7bfa068921318f05d9712767b747fe2dce643b73c4",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/transfers.js",
+      "baselineSHA256": "4f8205bc1d1f7dc691aa3bf35a1a84d5043b646128bddda5c424b7c6e609ac68",
+      "finalSHA256": "4f8205bc1d1f7dc691aa3bf35a1a84d5043b646128bddda5c424b7c6e609ac68",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/unlock.js",
+      "baselineSHA256": "c2b430a937a27a7948c202b8f1b0cc0bd2f1951f5b87b04603056c1e9c00901e",
+      "finalSHA256": "c2b430a937a27a7948c202b8f1b0cc0bd2f1951f5b87b04603056c1e9c00901e",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/whatif-healthcare-card.js",
+      "baselineSHA256": "e8a49e8b5a58d463cfc6b9ee954e92bd03794d1b3c7e32a15e088991a9e737c6",
+      "finalSHA256": "e8a49e8b5a58d463cfc6b9ee954e92bd03794d1b3c7e32a15e088991a9e737c6",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/whatif-income-chart.js",
+      "baselineSHA256": "1a3946bada3de18995ddd65f3fba07e7d5cf48bab68624694482c31e76774226",
+      "finalSHA256": "1a3946bada3de18995ddd65f3fba07e7d5cf48bab68624694482c31e76774226",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/whatif-income-toast.js",
+      "baselineSHA256": "46dc0f3b5b97d5871735bc62c4ab3b8055233844147c54aa1459e8e5c62d7b4a",
+      "finalSHA256": "46dc0f3b5b97d5871735bc62c4ab3b8055233844147c54aa1459e8e5c62d7b4a",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/whatif-poll.js",
+      "baselineSHA256": "dbde3e0e27f6dbe39f42d2fea79db9541ebcefc62ee0ebeb4b53cc03eb737f42",
+      "finalSHA256": "dbde3e0e27f6dbe39f42d2fea79db9541ebcefc62ee0ebeb4b53cc03eb737f42",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/whatif-portfolio-settings.js",
+      "baselineSHA256": "415a68fe3a7c1ef075e6c98274e330072428ac557cb06510d37774da5ee8a985",
+      "finalSHA256": "415a68fe3a7c1ef075e6c98274e330072428ac557cb06510d37774da5ee8a985",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/whatif-quick-adjust.js",
+      "baselineSHA256": "36cc8e1e72847d180ea1e89b3a8a2feb4bb5b874dab703ca5764ff844dccb502",
+      "finalSHA256": "36cc8e1e72847d180ea1e89b3a8a2feb4bb5b874dab703ca5764ff844dccb502",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/whatif-rate-assumptions.js",
+      "baselineSHA256": "0772000a406e1703567a4cf4ec5fc101ff02f76ed993599e52486489cbb0db7f",
+      "finalSHA256": "0772000a406e1703567a4cf4ec5fc101ff02f76ed993599e52486489cbb0db7f",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/whatif-roth-conversion.js",
+      "baselineSHA256": "e2b6a71809bc2d9145abb3996e5a54a5e72d9524fae2f7e3c975b5f888eccffd",
+      "finalSHA256": "e2b6a71809bc2d9145abb3996e5a54a5e72d9524fae2f7e3c975b5f888eccffd",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/whatif-spending-phases.js",
+      "baselineSHA256": "aeed73531b7474ac4dcff64c5680aaf273afdb897d4d93e80a6d969c04c39d96",
+      "finalSHA256": "aeed73531b7474ac4dcff64c5680aaf273afdb897d4d93e80a6d969c04c39d96",
+      "DI4": false
+    },
+    {
+      "path": "web/static/js/whatif-tabs.js",
+      "baselineSHA256": "7fca94ffaef70ce1b37b5813ebe99e92be14ae24c7b97a3e86799ae359dc4f8d",
+      "finalSHA256": "7fca94ffaef70ce1b37b5813ebe99e92be14ae24c7b97a3e86799ae359dc4f8d",
+      "DI4": false
+    },
+    {
+      "path": "web/static/vendor/htmx.min.js",
+      "baselineSHA256": "e209dda5c8235479f3166defc7750e1dbcd5a5c1808b7792fc2e6733768fb447",
+      "finalSHA256": "e209dda5c8235479f3166defc7750e1dbcd5a5c1808b7792fc2e6733768fb447",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/accounts_card.html",
+      "baselineSHA256": "baa83ebe63f0416a96a9104dfe37a394ae762f3d793d421d5ba904b419d31603",
+      "finalSHA256": "baa83ebe63f0416a96a9104dfe37a394ae762f3d793d421d5ba904b419d31603",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/alerts.html",
+      "baselineSHA256": "b4ec65c8a483aa976a42090453f90853df09fe9d77e0e49cb45f8d0a827371fd",
+      "finalSHA256": "b4ec65c8a483aa976a42090453f90853df09fe9d77e0e49cb45f8d0a827371fd",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/anomalies-section.html",
+      "baselineSHA256": "5b29b35a39b970c8925eb6b4a019fc58e829edff6ecf0a9866a71051b887cccd",
+      "finalSHA256": "751dcfb5dd0092e9b81a48850d3aa555e78e46806b2eba9461bbd54f8cc9bc76",
+      "DI4": true
+    },
+    {
+      "path": "web/templates/components/budget-vs-actual.html",
+      "baselineSHA256": "01a6f3d2e5787736fdddd474b8c99c205a93b4007403311cfac6d2f645273e3e",
+      "finalSHA256": "01a6f3d2e5787736fdddd474b8c99c205a93b4007403311cfac6d2f645273e3e",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/dashboard-verdict-bar.html",
+      "baselineSHA256": "873841ae363f40ae30d032244c9d127a13a1540fb2d14a0b2a1e2e836bb0da43",
+      "finalSHA256": "873841ae363f40ae30d032244c9d127a13a1540fb2d14a0b2a1e2e836bb0da43",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/insights-verdict-bar.html",
+      "baselineSHA256": "ddc05a3ab46b8851811f6f9855c752a81c93096665436f0a579cf4fe652f5e9a",
+      "finalSHA256": "ddc05a3ab46b8851811f6f9855c752a81c93096665436f0a579cf4fe652f5e9a",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/kpi-detail.html",
+      "baselineSHA256": "a1599af1f9cee920b85bc0b5d0c00623df409bfa62308b20525eeeb65c3c8445",
+      "finalSHA256": "a1599af1f9cee920b85bc0b5d0c00623df409bfa62308b20525eeeb65c3c8445",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/kpi-month-detail.html",
+      "baselineSHA256": "549d6d6c5fd36e0f119e70fe10ac4587851b97e65cfd3c6ac05fb2262866044b",
+      "finalSHA256": "549d6d6c5fd36e0f119e70fe10ac4587851b97e65cfd3c6ac05fb2262866044b",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/kpis.html",
+      "baselineSHA256": "b59581cea9b37fdb4efd2f169c176c31312ecf067f5f20616e5600912ea4b5f3",
+      "finalSHA256": "b59581cea9b37fdb4efd2f169c176c31312ecf067f5f20616e5600912ea4b5f3",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/major-expense-drilldown.html",
+      "baselineSHA256": "a6c765d1575c26550db102882c9373ff1406d9764f3f55e18812dd8265ccb92d",
+      "finalSHA256": "a6c765d1575c26550db102882c9373ff1406d9764f3f55e18812dd8265ccb92d",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/major-expenses-verdict-bar.html",
+      "baselineSHA256": "6d305a9fb8902f016fe865c47dea703e80f2d02dd7c93bb7e907f5f6ade6445b",
+      "finalSHA256": "6d305a9fb8902f016fe865c47dea703e80f2d02dd7c93bb7e907f5f6ade6445b",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/pricecreep-section.html",
+      "baselineSHA256": "e342a82837250b667ba313742d37bd1016f41cd397a09e297039bca4c67b255d",
+      "finalSHA256": "681e940eeb5a7028d07b869717004c88cf39096430690b51f6006737758ebbf2",
+      "DI4": true
+    },
+    {
+      "path": "web/templates/components/shared/card.html",
+      "baselineSHA256": "7ce8ea6aaf993942fb55e11e2e4201fae197447a64110468d377313057af6a64",
+      "finalSHA256": "7ce8ea6aaf993942fb55e11e2e4201fae197447a64110468d377313057af6a64",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/shared/data-table.html",
+      "baselineSHA256": "7074b412ab20536044ed18b58e46fd443ed24b94f77f43df32b19f35fa61414b",
+      "finalSHA256": "7074b412ab20536044ed18b58e46fd443ed24b94f77f43df32b19f35fa61414b",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/shared/kpi-tile.html",
+      "baselineSHA256": "7cc34d33cfbdfe44e462c1c8c53a89de82487dd3df43ca34955a078ba428743d",
+      "finalSHA256": "7cc34d33cfbdfe44e462c1c8c53a89de82487dd3df43ca34955a078ba428743d",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/shared/period-context.html",
+      "baselineSHA256": "2599e6cd431c496f13cdd081f1d3d2444013d5ff3f92b64f205cf2b5508f8949",
+      "finalSHA256": "2599e6cd431c496f13cdd081f1d3d2444013d5ff3f92b64f205cf2b5508f8949",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/shared/range-picker.html",
+      "baselineSHA256": "04e4b5f42a1485a3d6695237eaec5985a182a8c24e120102ab3d9d47f63254c6",
+      "finalSHA256": "04e4b5f42a1485a3d6695237eaec5985a182a8c24e120102ab3d9d47f63254c6",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/unassigned_banner.html",
+      "baselineSHA256": "602bb0d3367a11276e1c1a63f78c4f6845826e0c5f48ec782c86102013962b80",
+      "finalSHA256": "602bb0d3367a11276e1c1a63f78c4f6845826e0c5f48ec782c86102013962b80",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/bigticket-card.html",
+      "baselineSHA256": "e7153e5050447db8f444e2fe375b7e175620da50afcdef249c1e67cce7e71478",
+      "finalSHA256": "e7153e5050447db8f444e2fe375b7e175620da50afcdef249c1e67cce7e71478",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/budget-analysis.html",
+      "baselineSHA256": "dd92705ebf35cd445d0311a81d099d156c0d3a02989f8a2f8191d750d4d58ddd",
+      "finalSHA256": "dd92705ebf35cd445d0311a81d099d156c0d3a02989f8a2f8191d750d4d58ddd",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/completeness.html",
+      "baselineSHA256": "cbb844e4d814c7f239e148ae32612dc489c6e6ec04d2f43da21175e1ef8876be",
+      "finalSHA256": "cbb844e4d814c7f239e148ae32612dc489c6e6ec04d2f43da21175e1ef8876be",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/conversion-sweep.html",
+      "baselineSHA256": "73e667b7467defc617b867c47b54bf5453d20d64315bda3d9b55a7b33f1e1636",
+      "finalSHA256": "73e667b7467defc617b867c47b54bf5453d20d64315bda3d9b55a7b33f1e1636",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/expense-card.html",
+      "baselineSHA256": "1cfb67acca1aa247ce122a4a46dfc8dfe60a5d75f677019e36761a554f242ef9",
+      "finalSHA256": "1cfb67acca1aa247ce122a4a46dfc8dfe60a5d75f677019e36761a554f242ef9",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/expense-sources-list.html",
+      "baselineSHA256": "ee0ba0d8038cb4645d83c8169f6cf69aa9736ed9b3e9f5fd9f84a83d23326224",
+      "finalSHA256": "ee0ba0d8038cb4645d83c8169f6cf69aa9736ed9b3e9f5fd9f84a83d23326224",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/expense-summary.html",
+      "baselineSHA256": "6fc747663050586f4a4a1d85856771b53879c6fabb92eb17ec3fde54b8240ef7",
+      "finalSHA256": "6fc747663050586f4a4a1d85856771b53879c6fabb92eb17ec3fde54b8240ef7",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/failure-points.html",
+      "baselineSHA256": "b454c09335b6913e2ed3281598bc83401d476611afd751b8d19515261d08bbc0",
+      "finalSHA256": "b454c09335b6913e2ed3281598bc83401d476611afd751b8d19515261d08bbc0",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/guardrails.html",
+      "baselineSHA256": "21f29f8339b1e453eabeacbd4dec8fae8e4f593b3e197c197c0c96285ef36156",
+      "finalSHA256": "21f29f8339b1e453eabeacbd4dec8fae8e4f593b3e197c197c0c96285ef36156",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/healthcare-card.html",
+      "baselineSHA256": "ee5cf78063f012738e15884eaaae47ba216612453f28a7e0541743de61e8dc64",
+      "finalSHA256": "ee5cf78063f012738e15884eaaae47ba216612453f28a7e0541743de61e8dc64",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/healthcare-person.html",
+      "baselineSHA256": "0f1e79452b4f0bfac1fe9fac2d8501e11952172a8cad9b7c36e355fe13ca09af",
+      "finalSHA256": "0f1e79452b4f0bfac1fe9fac2d8501e11952172a8cad9b7c36e355fe13ca09af",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/historical-backtest.html",
+      "baselineSHA256": "2df2d3db0124e16963ee986a4c566c6bffd43745ea108ff257813e95056d9e97",
+      "finalSHA256": "2df2d3db0124e16963ee986a4c566c6bffd43745ea108ff257813e95056d9e97",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/income-card.html",
+      "baselineSHA256": "15108b1b9a03dc9dde3c432c160c04272537a35244289e6cc0f9ea6d88b462dc",
+      "finalSHA256": "15108b1b9a03dc9dde3c432c160c04272537a35244289e6cc0f9ea6d88b462dc",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/income-chart.html",
+      "baselineSHA256": "c3929266fa508940fc6f8cd73b613d337eed5a88174d3f0f822346243245db0b",
+      "finalSHA256": "c3929266fa508940fc6f8cd73b613d337eed5a88174d3f0f822346243245db0b",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/income-sources-list.html",
+      "baselineSHA256": "67679a47e78b79ecd9e82de5195febe8c57e1167eb444624f59c4154816ad7c6",
+      "finalSHA256": "67679a47e78b79ecd9e82de5195febe8c57e1167eb444624f59c4154816ad7c6",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/lifestyle-outcomes.html",
+      "baselineSHA256": "b54f935518cc57ac96f1e158070d05592b90b528950f633b3175848aff500651",
+      "finalSHA256": "b54f935518cc57ac96f1e158070d05592b90b528950f633b3175848aff500651",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/monte-carlo.html",
+      "baselineSHA256": "8a3955e3bb3c13fd956eae1a99cf65d3a336bf662106998d753686856d0676b8",
+      "finalSHA256": "8a3955e3bb3c13fd956eae1a99cf65d3a336bf662106998d753686856d0676b8",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/onetime-card.html",
+      "baselineSHA256": "56a5afbad13bfa0a8ba1a29eb1eda9384f5773b7922bcfdffdeb24da0c3f5f13",
+      "finalSHA256": "56a5afbad13bfa0a8ba1a29eb1eda9384f5773b7922bcfdffdeb24da0c3f5f13",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/portfolio-settings.html",
+      "baselineSHA256": "356a3227564aae6e0981ec2667318337b3f405edab3d0a82142729cfa6d37e79",
+      "finalSHA256": "356a3227564aae6e0981ec2667318337b3f405edab3d0a82142729cfa6d37e79",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/present-value.html",
+      "baselineSHA256": "a9cd62e8d949908062e5b2119aa3c7430637742cbf6fee63a07e7594be78d66e",
+      "finalSHA256": "a9cd62e8d949908062e5b2119aa3c7430637742cbf6fee63a07e7594be78d66e",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/projection-breakdown.html",
+      "baselineSHA256": "3a89eb46119fc0d7ed7c94b783c8dff07a783a316195334c911b086216ba94a8",
+      "finalSHA256": "3a89eb46119fc0d7ed7c94b783c8dff07a783a316195334c911b086216ba94a8",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/projection-chart.html",
+      "baselineSHA256": "37a50221d589dbea45c602f53082599174d7d7c84d571c0751dd672a1fc5c80d",
+      "finalSHA256": "37a50221d589dbea45c602f53082599174d7d7c84d571c0751dd672a1fc5c80d",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/quick-adjust-scripts.html",
+      "baselineSHA256": "eb963c6326c639e0024f21157d965cb34e44944f8ffb88bbcb70d7715c5d3ebf",
+      "finalSHA256": "eb963c6326c639e0024f21157d965cb34e44944f8ffb88bbcb70d7715c5d3ebf",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/quick-adjust.html",
+      "baselineSHA256": "5463b84cb79a9e440009281da534b61812b41138ff69ae5eca02a536a84b29f6",
+      "finalSHA256": "5463b84cb79a9e440009281da534b61812b41138ff69ae5eca02a536a84b29f6",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/rate-assumptions.html",
+      "baselineSHA256": "b177ae3bb1e7cc16c1c6387728cdf05a0adbc54d077d950b3d1f6801077aa07b",
+      "finalSHA256": "b177ae3bb1e7cc16c1c6387728cdf05a0adbc54d077d950b3d1f6801077aa07b",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/rmd.html",
+      "baselineSHA256": "13e4355ef69f6353b3a2a8ba8c33cd1fac982c5dd7880a456cad0b383c973796",
+      "finalSHA256": "13e4355ef69f6353b3a2a8ba8c33cd1fac982c5dd7880a456cad0b383c973796",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/roth-conversion.html",
+      "baselineSHA256": "6a10c073a29846320b17ad2f4057b2c49c88eb81188a1136ef7cfdeaac6596c2",
+      "finalSHA256": "6a10c073a29846320b17ad2f4057b2c49c88eb81188a1136ef7cfdeaac6596c2",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/scenario-chain-card.html",
+      "baselineSHA256": "bf77843dd014b44021bfc316ce6b80e749ad3a10b728109e9a850c3f267d54cf",
+      "finalSHA256": "bf77843dd014b44021bfc316ce6b80e749ad3a10b728109e9a850c3f267d54cf",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/sensitivity.html",
+      "baselineSHA256": "82ee39f36d74632e0ed83968153203e459a5d5e39af30db67fb317370d07ae47",
+      "finalSHA256": "82ee39f36d74632e0ed83968153203e459a5d5e39af30db67fb317370d07ae47",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/social-security.html",
+      "baselineSHA256": "059496659a5470f670d2cd8bea3cfa206d9422c1709b51e9155a062a77fc9041",
+      "finalSHA256": "059496659a5470f670d2cd8bea3cfa206d9422c1709b51e9155a062a77fc9041",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/spending-phases.html",
+      "baselineSHA256": "ddbd1d6c3f2eff0345a75bb39dbcdb0cc4f8b8709bef97fc99ab6244cc2e8b90",
+      "finalSHA256": "ddbd1d6c3f2eff0345a75bb39dbcdb0cc4f8b8709bef97fc99ab6244cc2e8b90",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/sync-preview.html",
+      "baselineSHA256": "da8d554d44cc67c0ae015ab0257017e75fd71fd90687d7afd4cd659bf6a53ef1",
+      "finalSHA256": "da8d554d44cc67c0ae015ab0257017e75fd71fd90687d7afd4cd659bf6a53ef1",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/tax-optimizer.html",
+      "baselineSHA256": "ecb7ed2acbd81d89f1d442ad580693af1be39e55000fcce9e59766c1322f5c5e",
+      "finalSHA256": "ecb7ed2acbd81d89f1d442ad580693af1be39e55000fcce9e59766c1322f5c5e",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/tax-summary.html",
+      "baselineSHA256": "066913acefae60e8980acc41c8081bb2f659cb81a3f03c915ca2f9e906f6fff6",
+      "finalSHA256": "066913acefae60e8980acc41c8081bb2f659cb81a3f03c915ca2f9e906f6fff6",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/components/whatif/verdict-bar.html",
+      "baselineSHA256": "81bf4609e1e066439c6f4d1e35504f8d412df55045b8abff2db557d64c120da7",
+      "finalSHA256": "81bf4609e1e066439c6f4d1e35504f8d412df55045b8abff2db557d64c120da7",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/layouts/base.html",
+      "baselineSHA256": "16019f58797fe797debc4d181021312927b304a531a17e02bbdc368237d8777d",
+      "finalSHA256": "16019f58797fe797debc4d181021312927b304a531a17e02bbdc368237d8777d",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/pages/accounts.html",
+      "baselineSHA256": "9167bcd4e20333fbb71885bb2ba014df0ad2017b8bfab09fe0e911d52ed43c85",
+      "finalSHA256": "9167bcd4e20333fbb71885bb2ba014df0ad2017b8bfab09fe0e911d52ed43c85",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/pages/dashboard.html",
+      "baselineSHA256": "2cd634edd3bb4c635fee3817f9ff49d9fa09c0cdd9ff04a5b39ff48aa192ab79",
+      "finalSHA256": "2cd634edd3bb4c635fee3817f9ff49d9fa09c0cdd9ff04a5b39ff48aa192ab79",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/pages/duplicates.html",
+      "baselineSHA256": "6b2645d13d3c137172d0239768ef1034e7e215a464e96dc6546643704b8f2496",
+      "finalSHA256": "6b2645d13d3c137172d0239768ef1034e7e215a464e96dc6546643704b8f2496",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/pages/explorer.html",
+      "baselineSHA256": "9ea154548768e471d1a811ff8b922f1d8d80a897aa0bf9fe9d5fc03d39b91a55",
+      "finalSHA256": "9ea154548768e471d1a811ff8b922f1d8d80a897aa0bf9fe9d5fc03d39b91a55",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/pages/filemanager.html",
+      "baselineSHA256": "5cdfb99a61d603a83f7ce9511845a7eecc420fa52c533757332f820b92985a9c",
+      "finalSHA256": "5cdfb99a61d603a83f7ce9511845a7eecc420fa52c533757332f820b92985a9c",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/pages/insights.html",
+      "baselineSHA256": "535aa7bcd5e46e65443bdde6e7404db82f12626a5d1a1c4001db908a5e26d45d",
+      "finalSHA256": "d8fa8459c9b0b64f4be1be60e0d2e9a0ffc485b27d4abe5171d173116f33ff1e",
+      "DI4": true
+    },
+    {
+      "path": "web/templates/pages/major-expenses.html",
+      "baselineSHA256": "1783a555b020660a300b5c4a26759fb3d8bea860fda0efd5bbdf838410b3398a",
+      "finalSHA256": "1783a555b020660a300b5c4a26759fb3d8bea860fda0efd5bbdf838410b3398a",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/pages/transfers.html",
+      "baselineSHA256": "5732f6299df70473edfaf6f354878d066ccc49bbeeeccd7ce2bac8a1a58fdd98",
+      "finalSHA256": "5732f6299df70473edfaf6f354878d066ccc49bbeeeccd7ce2bac8a1a58fdd98",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/pages/unlock.html",
+      "baselineSHA256": "ee73cfbeebcb9ffd5de1525ddbdb19116c74490ace0faa65f090630178adaec3",
+      "finalSHA256": "ee73cfbeebcb9ffd5de1525ddbdb19116c74490ace0faa65f090630178adaec3",
+      "DI4": false
+    },
+    {
+      "path": "web/templates/pages/whatif.html",
+      "baselineSHA256": "7a48dbf30ae93b31f2167612938d6ff243cf744c5996dd4884af7b4b7d6b01e5",
+      "finalSHA256": "7a48dbf30ae93b31f2167612938d6ff243cf744c5996dd4884af7b4b7d6b01e5",
+      "DI4": false
+    },
+    {
+      "path": "web/test/whatif-tabs.test.js",
+      "baselineSHA256": "6ebeb4ca021e507a0d2c8c965a7b1bc2e218552783e8f2acb13e981fe1ede732",
+      "finalSHA256": "6ebeb4ca021e507a0d2c8c965a7b1bc2e218552783e8f2acb13e981fe1ede732",
+      "DI4": false
+    },
+    {
+      "path": "ACCESSIBILITY.md",
+      "baselineSHA256": "5eaf322961a8af9da9579ccdaabd89728cb442f3eedd9b0142fc1866ebd1e0b4",
+      "finalSHA256": "5eaf322961a8af9da9579ccdaabd89728cb442f3eedd9b0142fc1866ebd1e0b4",
+      "DI4": false
+    },
+    {
+      "path": "go.mod",
+      "baselineSHA256": "748e4f351df8d88c7fca8560f1224c2962bb058f7f69e377c2a5f3e92e1f457b",
+      "finalSHA256": "748e4f351df8d88c7fca8560f1224c2962bb058f7f69e377c2a5f3e92e1f457b",
+      "DI4": false
+    },
+    {
+      "path": "go.sum",
+      "baselineSHA256": "33747cc3d9abd288a710b9b2ea42d6a59e7c154f882d6ff53539169c3fbffd6e",
+      "finalSHA256": "33747cc3d9abd288a710b9b2ea42d6a59e7c154f882d6ff53539169c3fbffd6e",
+      "DI4": false
+    },
+    {
+      "path": "Makefile",
+      "baselineSHA256": "07c71d1e8a036fe47942e12bb60b23e60dcd927df0a663dcef0a6f245a0a96b4",
+      "finalSHA256": "07c71d1e8a036fe47942e12bb60b23e60dcd927df0a663dcef0a6f245a0a96b4",
+      "DI4": false
+    },
+    {
+      "path": "tailwind.config.js",
+      "baselineSHA256": "c019e1e65946f4fa68b09be0cca0060b16d79a050f89a076e5ae8442a3af7889",
+      "finalSHA256": "c019e1e65946f4fa68b09be0cca0060b16d79a050f89a076e5ae8442a3af7889",
+      "DI4": false
+    }
+  ],
+  "owned": [
+    {
+      "path": "internal/services/insights/classification_di5_test.go",
+      "sha256": "dba836c2f7dde7e114b8cf958a848fec05979937f60b6da0f4a54706bab9dcc8"
+    },
+    {
+      "path": "internal/services/insights/period_matrix_di5_test.go",
+      "sha256": "2e34bd0b494f9002452a27b167f99ff3f14adf419bfd17e7fa164f6b284e0b03"
+    },
+    {
+      "path": "internal/services/insights/period_coverage_di5_test.go",
+      "sha256": "ab4563717674b31afeefb45828ca05d6dc730e0bcc4c7cd746e298208742bd03"
+    },
+    {
+      "path": "internal/services/insights/forecast_bounds_di5_test.go",
+      "sha256": "ab033286c3fac2c111ddc588a9dca6e750f2e12ddfc02aa76e199d4e54e26a33"
+    },
+    {
+      "path": "internal/services/insights/recurring_cadence_di5_test.go",
+      "sha256": "3842fe15e2473cab144f86f63b8930efda97992f43ab011444889a25fe0a5b40"
+    },
+    {
+      "path": "internal/handlers/dashboard/recurring_di5_test.go",
+      "sha256": "288d389bb56ae4310f5f5a02eddbccf5645018af67b16ea1caa0c5dd7d4185ba"
+    },
+    {
+      "path": "internal/services/mcpsvc/ledger/recurring_di5_test.go",
+      "sha256": "7ecd80d9f2d4c20e9a586e69d7390dfd69b084e0cd0379f038a3aa86d8f9bbb5"
+    },
+    {
+      "path": "internal/handlers/dashboard/period_consumers_di5_test.go",
+      "sha256": "68680ef4c688f4cab71e7c79f00bc1f71320e5fb7936612c8e1206dd4c82f411"
+    },
+    {
+      "path": "internal/templates/period_boundaries_di5_test.go",
+      "sha256": "21970e1a07b85d1ffdc80013ff19cb4d2433970bbf01e7973e83af9e4ef4f6ac"
+    },
+    {
+      "path": "internal/services/mcpsvc/spend/grouping_di5_test.go",
+      "sha256": "dd6dfd9742814820c4c137e67d1a8716d1c40681c1a8ba5d8e8254e3193fa781"
+    },
+    {
+      "path": "internal/handlers/insights/estimate_sums_di5_test.go",
+      "sha256": "d837065a5b0a87ea9135bc4d40bd4d8aac81ac9b405a1e7562953068f9149e0f"
+    },
+    {
+      "path": "internal/handlers/dashboard/reporting_di5_test.go",
+      "sha256": "6f63ad7dccaf2d93d6c65257a6047564f6b3adfb7106726aa00eb0e50250cd5c"
+    },
+    {
+      "path": "internal/handlers/insights/http_links_di5_test.go",
+      "sha256": "4fa67dce1821935c969bd91263d9b19c0599967b4c40c3e524dd32252dade891"
+    },
+    {
+      "path": "internal/handlers/insights/pricecreep_di5_test.go",
+      "sha256": "b0eacaa17a75aa7c8f507ea7212f48227fa301362060b3bcc380e9674673efc3"
+    },
+    {
+      "path": "cmd/server/saved_data_di5_test.go",
+      "sha256": "76ec62898d2e7e18e6bed9cef680ce066b778cca752944bc91889534eee9ceec"
+    },
+    {
+      "path": "internal/handlers/insights/recurring_render_di5_test.go",
+      "sha256": "0a91ac5749a0bef945d258904418f96c4e862d3aae3a58d31c1da77777513a0c"
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5-dashboard-browser.cjs",
+      "sha256": "41fcb97361fa0938a5488038f50b196d7cf190327e62882f72d2adb724a3938e"
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5-integration-browser.cjs",
+      "sha256": "e73855c5361826759bea98ff4c1b0e8ab0da5f87acf3dae7fe4f9dad36a1297c"
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5-a11y-browser.cjs",
+      "sha256": "27f3fc0b1232e737a34d188e26ba98f6f8eb5f28a5b8269b94eca8a409354af2"
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5-refresh-browser.cjs",
+      "sha256": "5713da8d0b574a483b657b33fc6a0ce5837580412a60c711a881cb709b7c3306"
+    },
+    {
+      "path": "cmd/server/same_date_di5_test.go",
+      "sha256": "d2fcf38c3959fb66d452b69c70b7add6157769979d16f35820e0ae7edb38653e"
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5-findings-browser.cjs",
+      "sha256": "8464269ec5ea4c72a28fedea1c26ef2a6383f8e40879164a4326aeabebffb701"
+    },
+    {
+      "path": ".swarm/DI-run/reports/DI5-verify.cjs",
+      "sha256": "9e5acc345989a2b1168c2e43c925abfd5140f09be22845bf1a7ddc64ae465611"
+    }
+  ],
+  "refreshAttribution": [
+    {
+      "path": "web/static/js/page-refresh.js",
+      "baseline": "e4f515e7adcd11c4bad42d5ec1207a37809203e19899c25591d9574cb3e5aca8",
+      "final": "e4f515e7adcd11c4bad42d5ec1207a37809203e19899c25591d9574cb3e5aca8"
+    },
+    {
+      "path": "web/static/css/tailwind.css",
+      "baseline": "e12bfb73c1d79b1a372f2e8e202ec271898963d1c0a619c3439a6d1dfa7a2637",
+      "final": "f09162945444f745061980d04d5d3eafd8c7c9d67c178381837555429adb6c5c"
+    },
+    {
+      "path": "web/static/css/styles.css",
+      "baseline": "2128e66326f1080a237fecbb3531ec2ea3293d82ebcf0f0fbb106caae6f3caf3",
+      "final": "2128e66326f1080a237fecbb3531ec2ea3293d82ebcf0f0fbb106caae6f3caf3"
+    },
+    {
+      "path": "web/templates/components/kpis.html",
+      "baseline": "b59581cea9b37fdb4efd2f169c176c31312ecf067f5f20616e5600912ea4b5f3",
+      "final": "b59581cea9b37fdb4efd2f169c176c31312ecf067f5f20616e5600912ea4b5f3"
+    },
+    {
+      "path": "web/templates/pages/dashboard.html",
+      "baseline": "2cd634edd3bb4c635fee3817f9ff49d9fa09c0cdd9ff04a5b39ff48aa192ab79",
+      "final": "2cd634edd3bb4c635fee3817f9ff49d9fa09c0cdd9ff04a5b39ff48aa192ab79"
+    },
+    {
+      "path": "web/templates/layouts/base.html",
+      "baseline": "16019f58797fe797debc4d181021312927b304a531a17e02bbdc368237d8777d",
+      "final": "16019f58797fe797debc4d181021312927b304a531a17e02bbdc368237d8777d"
+    }
+  ]
+}

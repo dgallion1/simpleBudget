@@ -1,0 +1,168 @@
+== run_check.sh ==
+ok   - tier1 all-pass accepts
+ok   - tier2 lean single-checker PASS accepts
+ok   - tier2 empty checks column rejects
+ok   - tier2 missing named second checker rejects
+ok   - tier2 dual-checker two-lane accepts
+ok   - tier2 second requested but single-lane rejects
+ok   - tier2 dual-family accepts
+ok   - tier2 dispute overruled accepts
+ok   - malformed ledger rejected
+ok   - incomplete verdicts rejected
+ok   - CHECKER/filename mismatch rejected
+ok   - TASK/filename mismatch rejected
+ok   - invalid FAMILY rejected
+ok   - duplicate judge family rejected
+ok   - unique judges 3x overrule accepts
+ok   - no-change (see-SPEC) -> check accepts
+ok   - check prints explicit no-change line
+ok   - no-change (ruling-2026-08-20d) -> check accepts
+ok   - no-change (ruling-2026-08-20, no letter) -> check accepts
+ok   - no-change without justification -> check rejects
+ok   - no-change with verdict file present -> check rejects
+ok   - no-change with unresolved flag -> check rejects
+ok   - no-change with FAIL verdict at other attempt -> check rejects
+ok   - no-change reason substring-not-token -> check rejects
+ok   - no-change reason impossible-date -> check rejects
+ok   - dotted-sibling verdict does not block no-change
+ok   - dotted-parent verdict does not block no-change
+ok   - tier3 oracle + dual-lane accepts
+ok   - tier3 single-lane PASS still rejects
+ok   - tier3 failed oracle log rejects
+ok   - stats exits 0
+ok   - stats reports tA clean
+ok   - stats reports tB first-attempt failed
+ok   - stats summary line correct
+ALL PASS
+== run_escalate.sh ==
+ok   - escalate-scan exits 0
+ok   - two consecutive fails -> flag
+ok   - e1 target tier 2
+ok   - critical-glob match -> flag
+ok   - overrule -> flag
+ok   - clean task -> no flag
+ok   - unresolved flag blocks check
+ok   - multi-task scan flags glob task a
+ok   - multi-task scan still flags later task c (no stdin/nullglob drop)
+ok   - root-level critical file escalates (leading **/ glob)
+ok   - judge-panel OVERRULE does not escalate (only boss overrule does)
+ok   - test-only manifest under critical glob does not escalate
+ok   - mixed production+test manifest still escalates
+ok   - default test-glob fallback exempts *_test.go with no test.globs file
+ok   - dotted-sibling overrule does not flag task A
+ok   - dotted-sibling overrule still flags its own task A.1
+ok   - task A's own overrule flags A
+ok   - dotted-sibling attempt-collision does not flag A.1
+ALL PASS
+== run_done.sh ==
+ok   - all accepted + evidence -> done ok
+ok   - pending task -> done fails
+ok   - unresolved flag -> done fails
+ok   - resolved flag + evidence -> done ok
+ok   - accepted without evidence -> done fails
+ok   - accepted with malformed verdicts -> done fails
+ok   - no-change (see-SPEC) -> done ok
+ok   - no-change (see-SPEC) line is visible in done output
+ok   - no-change (ruling-2026-08-20d) -> done ok
+ok   - no-change (ruling) line is visible in done output
+ok   - no-change (ruling-2026-08-20, no letter) -> done ok
+ok   - no-change without justification -> done fails
+ok   - no-change with verdict file present -> done fails
+ok   - accepted + no-change together -> done ok
+ok   - accepted + unjustified no-change -> done fails
+ok   - no-change with unresolved flag -> done fails
+ok   - no-change with FAIL verdict at other attempt -> done fails
+ok   - no-change reason substring-not-token -> done fails
+ok   - no-change reason impossible-date -> done fails
+ok   - dotted-sibling verdict does not block no-change (done)
+ok   - dotted-parent verdict does not block no-change (done)
+ALL PASS
+== agents_test.sh ==
+ok   - worker-coder.md: writes manifest
+ok   - worker-local.md: writes manifest
+ok   - worker-local.md: no longer mentions blind arms
+ok   - checker-content.md: writes verdict
+ok   - checker-a11y.md: writes verdict
+ok   - checker-second.md: declares adversarial family
+ok   - checker-tests.md: checker-tests family
+ok   - checker-a11y.md: checker-a11y family
+ok   - checker-content.md: checker-content family
+ok   - judge-claude.md: judge-claude family
+ok   - judge-standards.md: judge-standards family
+ok   - judge-impact.md: judge-impact family
+ok   - judge-claude.md: judge writes verdict
+ok   - checker-a11y.md: frontmatter carries a model: key
+ok   - checker-content.md: frontmatter carries a model: key
+ok   - checker-second.md: frontmatter carries a model: key
+ok   - checker-tests.md: frontmatter carries a model: key
+ok   - judge-claude.md: frontmatter carries a model: key
+ok   - judge-impact.md: frontmatter carries a model: key
+ok   - judge-standards.md: frontmatter carries a model: key
+ok   - worker-coder.md: frontmatter carries a model: key
+ok   - worker-local.md: frontmatter carries a model: key
+ALL PASS
+== tier3_test.sh ==
+ok   - setup creates 2 worktrees
+ok   - compare writes report
+ok   - report has oracle output
+ok   - no premature RESOLUTION
+ALL PASS
+== doc_test.sh ==
+ok   - TIERS.md: oracle question
+ok   - TIERS.md: reversible question
+ok   - TIERS.md: blast radius question
+ok   - TIERS.md: round-up tie-break
+ok   - TIERS.md: critical.globs
+ok   - TIERS.md: test-code exemption glob
+ok   - TIERS.md: lean checks-column guidance
+ok   - CLAUDE.md: gate.sh check hard rule
+ok   - CLAUDE.md: gate.sh done hard rule
+ok   - CLAUDE.md: escalate-scan loop
+ok   - CLAUDE.md: judge panel on disputes
+ok   - CLAUDE.md: tier 3 oracle contract
+ok   - CLAUDE.md: tier 3 oracle pass marker
+ok   - CLAUDE.md: points at the smoketest suite
+ok   - CLAUDE.md: lean experiment stats hook
+ok   - CLAUDE.md: lean dispute default
+ok   - README.md: documents tiers
+ok   - README.md: points at gate tests
+ALL PASS
+== verify_layout.sh ==
+ok   - README.md
+ok   - CLAUDE.md
+ok   - TIERS.md
+ok   - swarm/gate.sh
+ok   - .claude/agents/worker-coder.md
+ok   - .claude/agents/worker-local.md
+ok   - .claude/agents/checker-content.md
+ok   - .claude/agents/checker-a11y.md
+ok   - .gitignore
+ok   - .gitignore ignores .swarm/
+ok   - .gitignore ignores .env
+ok   - .env.example present
+ok   - dir swarm
+ok   - dir smoketest
+ok   - dir .claude/agents
+== checker-evals ==
+ok   - faults/paraphrased-quote/source.txt
+ok   - faults/paraphrased-quote/page.html
+ok   - faults/hidden-opacity/page.html
+ok   - faults/dark-mode-invisible/page.html
+ok   - clean/paraphrased-quote/page.html
+ok   - clean/hidden-opacity/page.html
+ok   - clean/dark-mode-invisible/page.html
+ok   - expected.tsv
+ok   - RUNBOOK.md
+ok   - expected.tsv well-formed
+ALL PASS
+== e2e ==
+ok   - SPEC.md
+ok   - ACCESSIBILITY.md
+ok   - critical.globs
+ok   - RUNBOOK.md
+ok   - SPEC.md: has a tier 1 task
+ok   - SPEC.md: has a tier 2 task
+ok   - SPEC.md: has a tier 3 task
+ok   - SPEC.md: tier1 task touches critical glob
+ok   - critical.globs: glob covers deploy path
+ALL PASS

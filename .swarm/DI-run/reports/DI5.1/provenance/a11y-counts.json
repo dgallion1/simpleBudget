@@ -1,0 +1,250 @@
+{
+  "pages": 18,
+  "violations": 0,
+  "incompleteRules": 20,
+  "incompleteNodeOccurrences": 458,
+  "explicitUnlabelled": [
+    {
+      "id": "dashboard-light",
+      "controls": []
+    },
+    {
+      "id": "dashboard-dark",
+      "controls": []
+    },
+    {
+      "id": "explorer-light",
+      "controls": [
+        {
+          "id": "search-input",
+          "type": "text",
+          "placeholder": "Search descriptions..."
+        }
+      ]
+    },
+    {
+      "id": "explorer-dark",
+      "controls": [
+        {
+          "id": "search-input",
+          "type": "text",
+          "placeholder": "Search descriptions..."
+        }
+      ]
+    },
+    {
+      "id": "insights-light",
+      "controls": []
+    },
+    {
+      "id": "insights-dark",
+      "controls": []
+    },
+    {
+      "id": "major-expenses-light",
+      "controls": [
+        {
+          "id": "major-expenses-search",
+          "type": "search",
+          "placeholder": "Filter expenses, keywords, notes, transactions, amounts, dates…"
+        }
+      ]
+    },
+    {
+      "id": "major-expenses-dark",
+      "controls": [
+        {
+          "id": "major-expenses-search",
+          "type": "search",
+          "placeholder": "Filter expenses, keywords, notes, transactions, amounts, dates…"
+        }
+      ]
+    },
+    {
+      "id": "whatif-light",
+      "controls": [
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Name (e.g., Social Security)"
+        },
+        {
+          "id": "",
+          "type": "number",
+          "placeholder": "Monthly $"
+        },
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Name (e.g., Home Sale)"
+        },
+        {
+          "id": "",
+          "type": "number",
+          "placeholder": "Amount"
+        },
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Notes (optional)"
+        },
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Name (e.g., Travel)"
+        },
+        {
+          "id": "",
+          "type": "number",
+          "placeholder": "Monthly $"
+        }
+      ]
+    },
+    {
+      "id": "whatif-dark",
+      "controls": [
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Name (e.g., Social Security)"
+        },
+        {
+          "id": "",
+          "type": "number",
+          "placeholder": "Monthly $"
+        },
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Name (e.g., Home Sale)"
+        },
+        {
+          "id": "",
+          "type": "number",
+          "placeholder": "Amount"
+        },
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Notes (optional)"
+        },
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Name (e.g., Travel)"
+        },
+        {
+          "id": "",
+          "type": "number",
+          "placeholder": "Monthly $"
+        }
+      ]
+    },
+    {
+      "id": "accounts-light",
+      "controls": []
+    },
+    {
+      "id": "accounts-dark",
+      "controls": []
+    },
+    {
+      "id": "transfers-light",
+      "controls": []
+    },
+    {
+      "id": "transfers-dark",
+      "controls": []
+    },
+    {
+      "id": "filemanager-light",
+      "controls": []
+    },
+    {
+      "id": "filemanager-dark",
+      "controls": []
+    },
+    {
+      "id": "duplicates-light",
+      "controls": []
+    },
+    {
+      "id": "duplicates-dark",
+      "controls": []
+    }
+  ],
+  "animations": [
+    {
+      "id": "dashboard-light",
+      "animations": []
+    },
+    {
+      "id": "dashboard-dark",
+      "animations": []
+    },
+    {
+      "id": "explorer-light",
+      "animations": []
+    },
+    {
+      "id": "explorer-dark",
+      "animations": []
+    },
+    {
+      "id": "insights-light",
+      "animations": []
+    },
+    {
+      "id": "insights-dark",
+      "animations": []
+    },
+    {
+      "id": "major-expenses-light",
+      "animations": []
+    },
+    {
+      "id": "major-expenses-dark",
+      "animations": []
+    },
+    {
+      "id": "whatif-light",
+      "animations": []
+    },
+    {
+      "id": "whatif-dark",
+      "animations": []
+    },
+    {
+      "id": "accounts-light",
+      "animations": []
+    },
+    {
+      "id": "accounts-dark",
+      "animations": []
+    },
+    {
+      "id": "transfers-light",
+      "animations": []
+    },
+    {
+      "id": "transfers-dark",
+      "animations": []
+    },
+    {
+      "id": "filemanager-light",
+      "animations": []
+    },
+    {
+      "id": "filemanager-dark",
+      "animations": []
+    },
+    {
+      "id": "duplicates-light",
+      "animations": []
+    },
+    {
+      "id": "duplicates-dark",
+      "animations": []
+    }
+  ]
+}

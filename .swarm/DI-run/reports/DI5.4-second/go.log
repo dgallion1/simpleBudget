@@ -1,0 +1,7 @@
+ok  	budget2/internal/services/insights	0.005s
+ok  	budget2/internal/handlers/dashboard	0.192s
+ok  	budget2/internal/handlers/insights	0.733s
+ok  	budget2/internal/templates	0.016s
+ok  	budget2/internal/services/mcpsvc/spend	0.048s
+ok  	budget2/internal/services/mcpsvc/ledger	0.005s
+ok  	budget2/cmd/server	0.926s

@@ -8,6 +8,7 @@ import (
 	"budget2/internal/models"
 	"budget2/internal/services/anomalies"
 	"budget2/internal/services/merchants"
+	"budget2/internal/services/metrics"
 	"budget2/internal/services/pricecreep"
 )
 
@@ -83,7 +84,7 @@ type priceCreepOutput struct {
 // every other spend tool's cent precision -- round0 is now used only by
 // search_transactions' sum_amount (search.go), not for any currency field
 // in this file.
-func round2(v float64) float64 { return math.Round(v*100) / 100 }
+func round2(v float64) float64 { return metrics.ReportingMoney(v) }
 
 // nilableString returns nil for an empty string, otherwise a pointer to a
 // copy of s -- used to echo an optional input parameter back as JSON null

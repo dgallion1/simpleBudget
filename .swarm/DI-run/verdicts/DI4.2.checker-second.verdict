@@ -1,0 +1,86 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: DI4
+ATTEMPT: 2
+---
+SCOPE: Independent adversarial re-review of conceded F1 and regressions from
+the narrowly authorized copy correction. Read DI4.2 report/cumulative manifest,
+canonical approved design including concession, all ACCESSIBILITY.md points
+1-17, and my DI4.1 verdict. No blocker. Lead owns acceptance/gates/deployment.
+
+ISOLATION AND DELTA PROOF
+Fresh snapshot /tmp/DI4-second-attempt2.xzIZlK made with mktemp -d,
+cp -a /tmp/budget2-DI4-base.KPl7oY/. into it, then cp -a ONLY each path
+from .swarm/DI-run/manifests/DI4.2.files from frozen worktree.
+35 manifest entries; ten internal/web application/test/CSS paths (one new
+test over attempt 1). Evidence and tmp/tailwind.check.css remain artifacts.
+rtk proxy bash -c 'set -eu; while IFS= read -r p; do cmp "$p" "/home/darrell/bin/ai/budget2/.worktrees/dashboard-insights/$p"; done < .swarm/DI-run/manifests/DI4.2.files'
+Exit 0 after all tests: every manifest entry matches frozen source exactly.
+
+Commands below run in that snapshot:
+rtk proxy diff -qr /tmp/DI4-second.wfflqf/internal internal
+After copying my two unchanged prior scratch tests, only new file is
+internal/handlers/insights/recurring_scope_di4_test.go (expected diff exit 1).
+rtk proxy diff -qr /tmp/DI4-second.wfflqf/web web
+Only pages/insights.html and components/insights-investigation.html differ.
+rtk proxy diff -u /tmp/DI4-second.wfflqf/web/templates/pages/insights.html web/templates/pages/insights.html
+rtk proxy diff -u /tmp/DI4-second.wfflqf/web/templates/components/insights-investigation.html web/templates/components/insights-investigation.html
+Both expected exit 1; each shows exactly one sentence replacement with
+'All detected recurring series are shown without a row limit.' No markup,
+class, handler, JS, money, period, grouping or accessibility behavior change.
+rtk proxy diff -u /tmp/DI4-second.wfflqf/.swarm/DI-run/reports/DI4.1.md .swarm/DI-run/reports/DI4.1.md
+Expected exit 1: only matching false maximum claim corrected.
+rtk proxy diff -qr /tmp/budget2-DI4-base.KPl7oY/internal/services internal/services
+Exit 0: all accepted detector/period/MCP services byte-identical.
+
+F1 FRESH EXECUTABLE CORRECTION EVIDENCE
+rtk proxy go test ./internal/handlers/insights -run '^(TestDI4Second|TestCheckerDI4RecurringLimitWording)' -v -count=1
+Exit 0, package 0.158s. Actual loader/detector/templates, synthetic 66-row
+fixtures only. My unchanged TestDI4SecondUncappedScopeRendered previously
+failed specifically on both false claims (DI4.1 verdict), now passes full,
+HX and recurring. Each actual detector/result contains 22 series, every
+merchant is present, each response has 22 expected-payment rows; both false
+cap strings absent. Selected end August 31, Category Other fixture.
+Inspected durable TestCheckerDI4RecurringLimitWording assertions, then ran
+independently: full/HX/standalone all HTTP 200; actual detector=22, recurring
+table rows=22, each of all 22 merchant names exactly once; no false wording.
+Its distinct August 28/Household fixture also passes. Not a source-text-only
+test or an assumption based on author green logs. No truncation introduced.
+
+RELATED ADVERSARIAL REGRESSIONS (same fresh command)
+TestDI4SecondCreepTieMedianAndHistory PASS: exact subset group join,
+latest full-history date/hash anchor before selected eligibility; later
+suppressed/transfer rows do not steal anchor; actual -27 differs from median
+20; duplicate evidence dedups by hash/type while retaining two finding types;
+historical May selection cannot borrow June anchor.
+TestDI4SecondRenderedEstimateSums PASS: actual printed cells in all three
+groups; 2.675/.005 payment precision; two .06 annual rows yield independently
+rounded .01 monthly rows, .02 monthly sum and .12 annual sum. No invented
+monthly-times-12 equality demanded. Scratch probes copied byte-for-byte:
+/tmp/DI4-second-attempt2.xzIZlK/internal/handlers/insights/di4_second_probe_test.go
+/tmp/DI4-second-attempt2.xzIZlK/internal/handlers/insights/di4_second_money_test.go
+Durable scope probe is recurring_scope_di4_test.go in manifest. Other scratch
+promotion remains lead-owned; no production/test source was edited by checker.
+
+FRESH FOCUSED CHECKS
+rtk proxy go test ./internal/handlers/insights ./internal/templates ./internal/services/insights -count=1
+Exit 0: handlers 0.606s, templates 1.113s, service 0.007s.
+rtk proxy go build ./...
+Exit 0.
+
+CRITERIA AND PRIOR EVIDENCE ASSOCIATION
+DI4.1.checker-second.verdict remains the explicitly associated substantive
+attempt-1 evidence, not another checker's conclusion. Recursive byte diffs
+above prove unchanged investigation/handler algorithms, original render
+tests, JS/CSS, supporting templates and all services. Therefore its verified
+consumer inventory and signed comparison/ranking/no-history/empty-state,
+preview-five/full-list/date-link, merchant/median/estimate and full-HX order
+evidence remain applicable. Fresh handler suite reruns those original tests;
+the monetary and identity adversarial extensions were also freshly rerun.
+Full/HX and standalone corrected copy independently rendered this attempt.
+No renewed full-site or browser accessibility claim: no structural/behavioral
+a11y delta, unchanged CSS/JS proved; named a11y lane retains its own authority.
+No broader polish, DI5 work, ledger/git changes, subagents, real/demo data or
+ports, server launch, deployment, or production edits. Only this verdict was
+written to the real worktree.

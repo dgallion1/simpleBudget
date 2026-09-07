@@ -1,0 +1,105 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: DI2
+ATTEMPT: 1
+---
+SCOPE: DI2 shared periods, civil clock/history, forecast eligibility and
+consumer parity. No DI3/DI4 layout requirements, year AddDate policy change,
+source fixes, git-state changes, subagents or ledger edits. Lead gates.
+
+F1 — New year-control history check compares raw instants to civil bounds.
+Criteria: task-2-brief.md calendar-day/DST-safe logic and consistent full/HTMX
+adapters; approved design Periods, comparisons and freshness (civil dates and
+truthful history availability). Location: internal/handlers/dashboard/period.go:32.
+BuildPeriodContext normalizes evidence dates to civil midnight; dashboardPeriod
+overwrites its history availability for comparison=year using raw MinDate and
+MaxDate against normalized PreviousStart/PreviousEnd. A transaction on the
+first prior calendar day can therefore incorrectly fail the coverage test.
+
+Exact synthetic reproduction:
+- Now 2026-03-06; selected 2026-02-01..2026-02-28; comparison=year.
+- Prior row: 2025-02-01 12:00 UTC, $100 outflow.
+- Current row: 2026-02-28 12:00 UTC, $200 outflow.
+- Prior bounds remain exactly 2025-02-01..2025-02-28. No leap-day fixture.
+- Got HistoryAvailable=false; dashboardPeriodComparison.HasData=false;
+  shared/period-context renders 'Not enough history to compare'. The $100
+  prior comparison is suppressed despite civil evidence bounds enclosing it.
+- Midnight UTC on the same first day passes. UTC noon, west-offset midnight
+  and noon, and east-offset noon fail. East-offset midnight passes the new
+  check. The difference is raw instant comparison, not missing evidence.
+
+Fresh executable evidence in /tmp/DI2-second.ArN3VU:
+rtk proxy go test ./internal/handlers/dashboard -run '^TestDI2SecondYear' -v -count=1
+Exit 1. TestDI2SecondYearCivilHistory fails four of six time/zone variants;
+TestDI2SecondYearHistoryRendered fails on the actual rendered false statement.
+Probe retained at internal/handlers/dashboard/di2_second_year_test.go in copy.
+The candidate was raised by the lead and independently executed/confirmed here.
+
+Premise and remedy checked:
+- The unchanged legacy metrics.Comparison returns HasData=true, prior $100
+  for the UTC-noon fixture. Compared metrics/metrics.go to immutable baseline
+  with cmp: identical. Thus the concrete UTC-noon failure is newly introduced,
+  not the prior year-range normalization behavior.
+- Test changes only the generated PeriodContext's availability/reason metadata
+  in memory (not source, dates, transactions or bounds). The same real adapter
+  then returns prior $100 and real context rendering removes the false message.
+  Remedy is consistent civil-date history evaluation in this new override;
+  changing year AddDate or hiding only the text would not repair the cause.
+
+Other criteria and fresh checks:
+1. Calendar/forecast refutation matrix PASS:
+   rtk proxy go test ./internal/services/insights ./internal/handlers/dashboard -run '^TestDI2Second' -v -count=1
+   Overall exit 1 solely for year-history probe. Service tests passed:
+   TestDI2SecondCalendarMatrix checks all completed months and every MTD day
+   across 2023-2027 (including leap February and prior-month clamp); ten-day
+   inclusive ranges and actual date-only selection across spring/fall New York
+   DST. TestDI2SecondForecastNoBorrowing checks today Sep6..16, data ages 0..8,
+   selected end yesterday/today/tomorrow with a west-offset injected clock.
+   Earlier-current-month end never borrows later data. Forecast requires >=7
+   elapsed days, <=7-day freshness and current-month data; stale iff age>7.
+   Probe: internal/services/insights/di2_second_period_test.go in scratch.
+2. Required focused suite PASS before adding checker probes:
+   rtk proxy go test ./internal/services/insights ./internal/handlers/insights ./internal/handlers/dashboard ./internal/services/mcpsvc/spend ./internal/templates -count=1
+   Exit 0: services/insights 0.011s; handlers/insights 0.339s;
+   handlers/dashboard 0.950s; MCP spend 0.759s; templates 1.224s.
+   Assertion bodies inspected for DI2 calendar, explicit rounded/signed
+   category/major comparisons, refund forecast, negative zero, suppressed and
+   transfer exclusion, unknown history versus observed zero, real full/HTMX
+   context rendering, exact chart prior dates and MCP calendar bounds.
+   Existing dashboard export/chart/refund/negative-zero regressions included.
+3. Build PASS: rtk proxy go build ./... ; exit 0 in the same isolated copy.
+4. History/caveat PASS outside F1: missing-history trend rows absent; MCP
+   historical_daily and burn_rate_change omitted; real rendered unavailable
+   text and explicit first/last-evidence-not-completeness caveat present.
+5. Signed/ChangeCell preservation: explicit comparison producer rounds signed
+   category/major totals and derives ChangeDisplay from those totals. Existing
+   fractional-cent/refund fixture asserts current -50, prior 30, dollar delta
+   -80, down direction. My preliminary suspicion that extracting Percent
+   necessarily produced 0 for new/dollar changes was disproved by reading the
+   real ChangeDisplay implementation; no FAIL or finding rests on that premise.
+6. Evidence report/19-path manifest present and read. No classifier changes
+   requested/reviewed; DI1 and DI6 accepted baseline retained. CSS freshness
+   is lead-owned: lead reported pinned make css-verify passing with no delta;
+   this checker does not claim to have run that command.
+
+Consumer enumeration (rg production references, handler diffs and template reads):
+- Shared BuildPeriodContext -> Insights explicit adapter and calculateInsightsAt,
+  Dashboard adapter, MCP trendsForWindow. Shared TransactionsForPeriod ->
+  explicit trends/velocity and Dashboard selected-window consumers.
+- Insights full/HTMX page; category trends partial and chart JSON; velocity
+  partial. Prior/current chart labels use exact context dates. Full context,
+  forecast, prior-pace and days-remaining templates use availability fields.
+- Dashboard full/KPI HTMX (both affected by F1), chart endpoints (major expense,
+  spending trend, merchant, cumulative, budget-vs-actual), major drilldown, KPI
+  detail, KPI month detail, CSV export share selected adapter/civil filter.
+- MCP get_trends -> explicit category and major rows, velocity, period bounds,
+  history/forecast metadata. Unknown history omitted rather than zero.
+- Legacy service wrappers remain for compatibility. Income detection, recurring
+  classification/account card and future DI3/DI4 layout are not re-scoped.
+
+Isolation: cp -a of immutable /tmp/budget2-DI2-base.USPhZp into fresh
+/tmp/DI2-second.ArN3VU, then overlay ONLY DI2.1.files from frozen worktree.
+No live whole-tree copy; baseline untouched. Synthetic scratch probes only.
+Scoped apply_patch escalation used for known Landlock helper issue. Only this
+verdict written to real tree. Fresh FAIL is limited to F1 above.

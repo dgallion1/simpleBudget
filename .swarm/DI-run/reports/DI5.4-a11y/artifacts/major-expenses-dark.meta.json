@@ -1,0 +1,163 @@
+{
+  "id": "major-expenses-dark",
+  "route": "/major-expenses",
+  "theme": "dark",
+  "requestedURL": "http://127.0.0.1:18873/major-expenses",
+  "responses": [],
+  "requestFailures": [],
+  "blocked": [],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "status": 200,
+  "finalURL": "http://127.0.0.1:18873/major-expenses",
+  "dom": {
+    "title": "Major Expenses - simpleBudget",
+    "theme": "dark",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "headings": [
+      {
+        "tag": "H1",
+        "id": "",
+        "text": "Major Expenses"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Exceptions"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Your Major Expenses"
+      }
+    ],
+    "landmarks": [
+      {
+        "name": "main",
+        "count": 1
+      },
+      {
+        "name": "nav",
+        "count": 1
+      },
+      {
+        "name": "header",
+        "count": 1
+      },
+      {
+        "name": "footer",
+        "count": 1
+      }
+    ],
+    "unscopedHeaders": [],
+    "forms": [
+      {
+        "tag": "INPUT",
+        "id": "major-expenses-date-start",
+        "type": "date",
+        "required": false,
+        "label": "From",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "major-expenses-date-end",
+        "type": "date",
+        "required": false,
+        "label": "To",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "major-expenses-search",
+        "type": "search",
+        "required": false,
+        "label": "",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      }
+    ],
+    "clickable": [],
+    "live": [
+      {
+        "tag": "SPAN",
+        "id": "major-expenses-search-status",
+        "text": "",
+        "visible": false,
+        "live": "polite"
+      },
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "1 flagged · 0 selected",
+        "visible": true,
+        "live": "polite"
+      }
+    ],
+    "hiddenText": [
+      {
+        "tag": "SUMMARY",
+        "id": "",
+        "text": "Your Major Expenses — definitions list"
+      },
+      {
+        "tag": "SUMMARY",
+        "id": "",
+        "text": "Add a major expense"
+      }
+    ],
+    "images": [],
+    "dialogs": [],
+    "animations": [],
+    "charts": [],
+    "nav": [
+      {
+        "text": "simpleBudget",
+        "href": "/"
+      },
+      {
+        "text": "Dashboard",
+        "href": "/dashboard?end=2026-08-28&start=2026-03-01"
+      },
+      {
+        "text": "Explorer",
+        "href": "/explorer?end=2026-08-28&start=2026-03-01"
+      },
+      {
+        "text": "Insights",
+        "href": "/insights?end=2026-08-28&start=2026-03-01"
+      },
+      {
+        "text": "Major Expenses",
+        "href": "/major-expenses?end=2026-08-28&start=2026-03-01"
+      },
+      {
+        "text": "What-If",
+        "href": "/whatif"
+      },
+      {
+        "text": "Accounts",
+        "href": "/accounts"
+      },
+      {
+        "text": "Transfers",
+        "href": "/transfers"
+      },
+      {
+        "text": "File Manager",
+        "href": "/filemanager"
+      },
+      {
+        "text": "Duplicates\n                            1",
+        "href": "/duplicates"
+      }
+    ]
+  },
+  "htmlFile": "major-expenses-dark.html"
+}

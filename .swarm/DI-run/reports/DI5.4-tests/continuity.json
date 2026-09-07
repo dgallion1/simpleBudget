@@ -1,0 +1,9 @@
+{
+  "prior": "/tmp/DI5-Go-checker.vZNpAR/tmp/checker-evidence/source-hashes.json",
+  "count": 696,
+  "differences": [
+    "web/static/js/page-refresh.js",
+    "web/static/js/page-refresh.test.cjs"
+  ],
+  "goSame": true
+}

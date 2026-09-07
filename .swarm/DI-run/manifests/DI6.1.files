@@ -1,0 +1,12 @@
+cmd/server/main.go
+cmd/server/refresh_di6_test.go
+internal/services/mcpsvc/server.go
+internal/services/mcpsvc/server_test.go
+internal/services/mcpsvc/refresh_test.go
+internal/services/uirefresh/refresh.go
+internal/services/uirefresh/refresh_test.go
+web/static/js/page-refresh.js
+web/static/js/page-refresh.test.cjs
+web/templates/layouts/base.html
+.swarm/DI-run/reports/DI6.1.md
+.swarm/DI-run/manifests/DI6.1.files

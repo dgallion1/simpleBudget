@@ -1,0 +1,99 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: DI1
+ATTEMPT: 2
+---
+SCOPE: DI1 classification, original-bank evidence, retention, estimates and
+merchant/UI/MCP parity. Same task-1-brief.md and approved design Shared accuracy
+rules / Subscription classification criteria as attempt 1; global plan
+constraints and previously read ACCESSIBILITY.md points 1-17 retained. No
+future DI2-4 requirements imposed. No source fixes, git changes, subagents,
+DI6 edits or real-data access/writes. Lead owns escalation scan and gate.
+
+ISOLATION:
+Fresh /tmp/DI1-second-attempt2.T0x6Cm created with git archive 69e484a, .git
+retained, then cp -a overlay of ONLY the 18 paths in DI1.2.files. All DI6
+uncommitted edits excluded. Prior independent classification/ordering/cadence
+probe copied from /tmp/DI1-second.ka8SuZ; one new test-only boundary fixture
+added in this scratch snapshot. Only this verdict is written to the real tree.
+
+FINDINGS: No remaining in-scope blocking defect reproduced. Attempt-1 F1/F2
+are repaired by two original-bank evidence phrases, without a new edited-name
+fallback, category-wide rule, cadence rule or conflict-precedence change.
+
+Criterion 1 — required positive/negative classifications, rename guards, parity:
+PASS. Fresh command in snapshot:
+rtk proxy go test ./internal/services/insights ./internal/handlers/insights -run '^TestDI1Attempt2EvidenceBoundaries$|^TestDI1Adversarial|^TestDI1BankEvidenceGuards$|^TestDI1UncappedTotals$' -v -count=1
+Exit 0, both packages passed.
+- TestDI1AdversarialExactBankRows: exact
+  CLOUDBOX*STORAGE PLAN CLOUDBOX.COM CA / Electronics & Software becomes
+  subscription; AUTOLOAN FINANCE BILL PMT / Auto Payment becomes bill.
+  Each synthetic three-month $25 series retains annual estimate $300.
+- TestDI1AdversarialExactBankUIAndMCP: UI subscriptions=1 bills=1 other=0,
+  MonthlySubscriptions=25.00, TotalRecurring=600.00. In-memory SDK MCP
+  returns cloud storage as subscription/is_subscription=true and autoloan
+  finance as bill/is_subscription=false; subscriptions_only=true returns
+  exactly cloud storage, count=1, annual_cost=300. Reasons present in output.
+- TestDI1AdversarialClassificationOrdering and TestDI1BankEvidenceGuards:
+  Netflix/Spotify/cloud positives; all named everyday-spending exclusions;
+  unknowns remain other; original evidence beats edited display aliases;
+  three Major Expense renames cannot change classification; both transaction
+  orders for retail/subscription and bill/subscription conflicts remain other.
+- New TestDI1Attempt2EvidenceBoundaries (13 cases, each four display/Major
+  Expense aliases): punctuation/case/POS variants of new phrases match;
+  NOTCLOUDBOX, STORAGE PLANT, incomplete CLOUDBOX STORAGE, NOTAUTOLOAN,
+  and BILL PMTS do not match. Embedded Target retail evidence overrides
+  both new phrases. Cloudbox with Shopping or Utilities, and AutoLoan with
+  Subscriptions, remain other. Wrapper agrees with classification and every
+  reason is nonempty. Probe file retained at
+  /tmp/DI1-second-attempt2.T0x6Cm/internal/services/insights/di1_attempt2_adversarial_test.go.
+
+Criterion 2 — shared producer and caller impact:
+PASS. Compared classification.go against prior independent snapshot using
+diff -u: exactly two evidence entries added (cloudbox storage plan and
+autoloan finance bill pmt). Compared cumulative production/template manifest
+files using cmp: no other production or template changes since attempt 1.
+rtk proxy rg -n 'ClassifyRecurring\(|IsSubscription\(' internal --glob '!*_test.go'
+finds the compatibility wrapper, detector classification assignment and MCP
+recurringRows using the same producer. UI grouping consumes detector fields.
+Worker report includes before-edit gopls references; no API change this attempt.
+Template rg confirms merchant-first recurring surfaces, OtherRecurring and
+classification reasons remain present. Prior full/HTMX consumer enumeration
+still applies; no independent classification was introduced.
+
+Criterion 3 — merchant identity, estimate preservation, cap and total scope:
+PASS. TestDI1UncappedTotals executed above asserts 22 unique retained rows:
+20 other, one bill, one low-cost subscription; annual=25320, monthly=2110,
+subscription monthly=10. It checks actual MCP merchant/classification/reason/
+annual-value parity, duplicate rejection and subscription-filtered count.
+Reused TestDI1AdversarialCadenceAndMerchantRetention also passes: separate
+monthly $0.99 Netflix => $11.88/year, quarterly $12.34 Spotify => $49.36/year,
+yearly $25.50 Cloud Storage => $25.50/year. No cap/estimate code changed in
+attempt 2. This establishes the requested retained-sum scope, not a claim of
+general fractional-cent rendered-string reconciliation across future layouts.
+
+Criterion 4 — required executable checks:
+PASS. Fresh uncached focused suite in isolated snapshot:
+rtk proxy go test ./internal/services/insights ./internal/handlers/insights ./internal/services/mcpsvc/spend ./internal/templates -count=1
+Exit 0: insights 0.008s, handlers/insights 0.234s, MCP spend 0.704s,
+templates 1.240s. Includes classification negatives/annotation tests, actual
+bank probes, retention/MCP tests and actual template rendering for retained
+other rows and merchant labels. Ran before the additional scratch-only boundary
+test; that additional test then passed in the named focused command above.
+rtk proxy go build ./...
+Exit 0, no output, in this same baseline-plus-DI1-only snapshot.
+No live-server, browser/theme or broad unrelated suite claim is made.
+
+Criterion 5 — durable evidence and manifest:
+PASS. Read DI1.2.md and its cumulative 18-path manifest. Promoted original
+independent failing bank probes are identical after gofmt:
+rtk proxy bash -c 'diff -u <(gofmt /tmp/DI1-second.ka8SuZ/internal/services/insights/di1_bank_rows_test.go) internal/services/insights/di1_bank_rows_test.go; diff -u <(gofmt /tmp/DI1-second.ka8SuZ/internal/handlers/insights/di1_exact_bank_parity_test.go) internal/handlers/insights/di1_exact_bank_parity_test.go'
+Both diffs had no output; exit 0. Assertion bodies inspected, not inferred
+from test names. Worker report records red then green for these exact probes
+and identifies the two-entry correction, consumers and verification commands.
+
+Scope limitation: conservative known-evidence coverage is intentionally finite;
+unrecognized merchants remain other. No beyond-scope backlog defect asserted.
+No accessibility changes in attempt 2; minimal cumulative compatibility render
+tests passed. Gate acceptance remains the lead's separate decision.

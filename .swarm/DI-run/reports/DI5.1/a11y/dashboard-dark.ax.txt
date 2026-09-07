@@ -1,0 +1,156 @@
+- banner:
+  - navigation:
+    - link "simpleBudget":
+      - /url: /
+    - group "Money":
+      - text: Money
+      - link "Dashboard":
+        - /url: /dashboard?end=2026-08-28&start=2026-03-01
+      - link "Explorer":
+        - /url: /explorer?end=2026-08-28&start=2026-03-01
+      - link "Insights":
+        - /url: /insights?end=2026-08-28&start=2026-03-01
+      - link "Major Expenses":
+        - /url: /major-expenses?end=2026-08-28&start=2026-03-01
+    - group "Plan":
+      - text: Plan
+      - link "What-If":
+        - /url: /whatif
+    - group "Setup":
+      - text: Setup
+      - link "Accounts":
+        - /url: /accounts
+      - link "Transfers":
+        - /url: /transfers
+      - link "File Manager":
+        - /url: /filemanager
+      - link "Duplicates 1":
+        - /url: /duplicates
+    - button "Toggle dark mode":
+      - img
+- main:
+  - heading "Dashboard" [level=1]
+  - button "Import CSV"
+  - button "Or drop CSV or backup ZIP files anywhere on this page, or click to browse"
+  - text: From
+  - textbox "From": 2026-03-01
+  - text: To
+  - textbox "To": 2026-08-28
+  - button "Step back"
+  - button "YTD"
+  - button "1M"
+  - button "2M"
+  - button "3M"
+  - button "6M"
+  - button "12M"
+  - button "All"
+  - button "Step forward"
+  - text: Compare
+  - combobox "Compare":
+    - option "No comparison" [selected]
+    - option "Previous period"
+    - option "Same period last year"
+  - paragraph: "Selected period: 2026-03-01 to 2026-08-28 (181 calendar days)"
+  - paragraph: "Prior period: 2025-09-01 to 2026-02-28 (181 calendar days)"
+  - paragraph: "Latest transaction: 2026-08-28"
+  - group:
+    - text: Data freshness
+    - paragraph: Data is more than seven calendar days old (9 days). Current-month forecast is unavailable.
+  - paragraph: Not enough history to compare
+  - paragraph: First and last transaction dates are evidence bounds, not proof that all accounts or transactions were imported.
+  - region "Selected-period overview":
+    - heading "Recorded income" [level=2]
+    - paragraph: $26,461.47
+    - button "Income details"
+    - heading "Net spending" [level=2]
+    - paragraph: $32,057.26
+    - paragraph: Includes refunds and separately modeled costs.
+    - button "Spending details"
+    - heading "Cash-flow balance" [level=2]
+    - paragraph: "-$5,595.79"
+    - paragraph: Spending not covered by recorded income
+    - button "Cash-flow details"
+    - heading "Spending versus plan" [level=2]
+    - paragraph: $30.42 under
+    - paragraph: Living and healthcare for this period. Separately modeled costs are outside this comparison.
+    - link "Budget details":
+      - /url: "#dashboard-budget-details"
+    - paragraph:
+      - text: Cash flow is recorded income minus net spending; transfers between your own accounts are excluded. It does not measure portfolio withdrawals or retirement sustainability. Use
+      - link "What-If":
+        - /url: /whatif
+      - text: for long-term projections.
+    - link "Investigate this period in Insights →":
+      - /url: /insights?start=2026-03-01&end=2026-08-28
+    - heading "Budget details" [level=2]
+    - paragraph: Monthly equivalents below use the selected range (5.9 average calendar months); healthcare is prorated from its coverage start.
+    - heading "Monthly Living Expenses" [level=3]
+    - paragraph: "Monthly equivalent: $4,381.87"
+    - paragraph: "Living: $26,057.26 of $26,165.09 for this period. $107.83 under"
+    - paragraph: Target $4,400.00/mo — from What-If plan.
+    - button "Living expense details"
+    - heading "Monthly Healthcare" [level=3]
+    - paragraph: "Monthly equivalent: $663.16"
+    - paragraph: "Health: $3,900.00 of $3,822.59 for this period. $77.41 over"
+    - paragraph: Target $650.00/mo — from What-If healthcare plan.
+    - paragraph: Coverage since Mar 3, 2026
+    - paragraph: "Category: Health Insurance"
+    - button "Healthcare details"
+    - paragraph: $2,100.00 modeled elsewhere (1 transactions). Included in net spending; excluded from the living budget to avoid counting costs twice.
+    - group: Plan explanation and comparison
+  - region "Accounts":
+    - heading "Accounts" [level=2]
+    - list:
+      - listitem:
+        - paragraph: Demo Checking
+        - paragraph: Data through Aug 27, 2026
+        - paragraph: $18,432.10
+        - text: Projected to stay above the $500 threshold for the next 35 days.
+      - listitem:
+        - paragraph: Demo Health Checking
+        - paragraph: Data through Aug 27, 2026
+        - paragraph: $3,215.40
+        - text: Projected to stay above the $500 threshold for the next 35 days.
+      - listitem:
+        - paragraph: Demo Credit Card
+        - paragraph: Data through Aug 28, 2026
+        - paragraph: "-$1,204.55"
+  - heading "Budget vs Actual Over Time" [level=2]
+  - paragraph: "Top: monthly Living + Healthcare vs combined target. Bottom: cumulative running balance — green = ahead of budget, red = behind."
+  - img: 0 2000 4000 6000 Mar 2026 Apr 2026 May 2026 Jun 2026 Jul 2026 Aug 2026 0 500 1000
+  - img: Cumulative balance Healthcare Living Monthly $ Cumulative balance $ Target $5043
+  - img
+  - group: View chart data
+  - heading "Spending by Major Expense" [level=2]
+  - img: 23.4% 17.7% 12.2% 10.3% 8.69% 8.42% 7.71% 6.55% 5.11%
+  - img: Mortgage Other Medicare & Health Insurance Travel & Hobbies Groceries Home Maintenance & Appliances Auto Loan Property Taxes Utilities
+  - img
+  - group: View chart data
+  - text: Other categories
+  - button "Shopping & Household Supplies $930.98 2.9%"
+  - button "Home Insurance $900.00 2.8%"
+  - button "Auto Insurance $840.00 2.6%"
+  - button "Dining Out $669.62 2.1%"
+  - button "Fuel $588.96 1.8%"
+  - button "Internet $479.94 1.5%"
+  - button "Pets $457.66 1.4%"
+  - button "Cash Spending $400.00 1.2%"
+  - button "Pharmacy & Medical Supplies $212.82 0.66%"
+  - button "Subscriptions $182.82 0.57%"
+  - heading "Spending Trend" [level=2]
+  - img: Apr 2026 May 2026 Jun 2026 Jul 2026 Aug 2026 −20% 0% 20% 40%
+  - img: Spending Change Change (%)
+  - img
+  - group: View chart data
+  - heading "Top Spending" [level=2]
+  - img: 0 2000 4000 6000 Home Insurance Shopping & Household Supplies Utilities Property Taxes Auto Loan Home Maintenance & Appliances Groceries Travel & Hobbies Medicare & Health Insurance Mortgage
+  - img: trace 0
+  - img
+  - group: View chart data
+  - heading "Cumulative Balance" [level=2]
+  - img: Mar 2026 Apr 2026 May 2026 Jun 2026 Jul 2026 Aug 2026 −6000 −4000 −2000 0
+  - img: Cumulative Balance Cumulative ($)
+  - img
+  - group: View chart data
+- contentinfo: simpleBudget © 2026
+- img

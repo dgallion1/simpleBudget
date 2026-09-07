@@ -1,0 +1,350 @@
+[
+  {
+    "dark": false,
+    "width": 390,
+    "removal": "dismiss",
+    "state": {
+      "main": true,
+      "tabindex": "-1",
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 4938,
+        "top": 0,
+        "right": 390,
+        "bottom": 4938,
+        "left": 0
+      },
+      "status": false,
+      "notice": false,
+      "value": "2026-07-01"
+    },
+    "after": {
+      "tag": "BUTTON",
+      "id": "import-csv-btn",
+      "tabindex": null,
+      "inside": true
+    }
+  },
+  {
+    "dark": false,
+    "width": 390,
+    "removal": "epoch",
+    "state": {
+      "main": true,
+      "tabindex": "-1",
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 4938,
+        "top": 0,
+        "right": 390,
+        "bottom": 4938,
+        "left": 0
+      },
+      "status": false,
+      "notice": false,
+      "value": "2026-07-01"
+    },
+    "after": {
+      "tag": "BUTTON",
+      "id": "import-csv-btn",
+      "tabindex": null,
+      "inside": true
+    }
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "removal": "dismiss",
+    "state": {
+      "main": true,
+      "tabindex": "-1",
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 768,
+        "height": 4198,
+        "top": 0,
+        "right": 768,
+        "bottom": 4198,
+        "left": 0
+      },
+      "status": false,
+      "notice": false,
+      "value": "2026-07-01"
+    },
+    "after": {
+      "tag": "BUTTON",
+      "id": "import-csv-btn",
+      "tabindex": null,
+      "inside": true
+    }
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "removal": "epoch",
+    "state": {
+      "main": true,
+      "tabindex": "-1",
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 768,
+        "height": 4198,
+        "top": 0,
+        "right": 768,
+        "bottom": 4198,
+        "left": 0
+      },
+      "status": false,
+      "notice": false,
+      "value": "2026-07-01"
+    },
+    "after": {
+      "tag": "BUTTON",
+      "id": "import-csv-btn",
+      "tabindex": null,
+      "inside": true
+    }
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "removal": "dismiss",
+    "state": {
+      "main": true,
+      "tabindex": "-1",
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "rect": {
+        "x": 80,
+        "y": 0,
+        "width": 1280,
+        "height": 3476,
+        "top": 0,
+        "right": 1360,
+        "bottom": 3476,
+        "left": 80
+      },
+      "status": false,
+      "notice": false,
+      "value": "2026-07-01"
+    },
+    "after": {
+      "tag": "BUTTON",
+      "id": "import-csv-btn",
+      "tabindex": null,
+      "inside": true
+    }
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "removal": "epoch",
+    "state": {
+      "main": true,
+      "tabindex": "-1",
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "rect": {
+        "x": 80,
+        "y": 0,
+        "width": 1280,
+        "height": 3476,
+        "top": 0,
+        "right": 1360,
+        "bottom": 3476,
+        "left": 80
+      },
+      "status": false,
+      "notice": false,
+      "value": "2026-07-01"
+    },
+    "after": {
+      "tag": "BUTTON",
+      "id": "import-csv-btn",
+      "tabindex": null,
+      "inside": true
+    }
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "removal": "dismiss",
+    "state": {
+      "main": true,
+      "tabindex": "-1",
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 4938,
+        "top": 0,
+        "right": 390,
+        "bottom": 4938,
+        "left": 0
+      },
+      "status": false,
+      "notice": false,
+      "value": "2026-07-01"
+    },
+    "after": {
+      "tag": "BUTTON",
+      "id": "import-csv-btn",
+      "tabindex": null,
+      "inside": true
+    }
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "removal": "epoch",
+    "state": {
+      "main": true,
+      "tabindex": "-1",
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 4938,
+        "top": 0,
+        "right": 390,
+        "bottom": 4938,
+        "left": 0
+      },
+      "status": false,
+      "notice": false,
+      "value": "2026-07-01"
+    },
+    "after": {
+      "tag": "BUTTON",
+      "id": "import-csv-btn",
+      "tabindex": null,
+      "inside": true
+    }
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "removal": "dismiss",
+    "state": {
+      "main": true,
+      "tabindex": "-1",
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 768,
+        "height": 4198,
+        "top": 0,
+        "right": 768,
+        "bottom": 4198,
+        "left": 0
+      },
+      "status": false,
+      "notice": false,
+      "value": "2026-07-01"
+    },
+    "after": {
+      "tag": "BUTTON",
+      "id": "import-csv-btn",
+      "tabindex": null,
+      "inside": true
+    }
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "removal": "epoch",
+    "state": {
+      "main": true,
+      "tabindex": "-1",
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 768,
+        "height": 4198,
+        "top": 0,
+        "right": 768,
+        "bottom": 4198,
+        "left": 0
+      },
+      "status": false,
+      "notice": false,
+      "value": "2026-07-01"
+    },
+    "after": {
+      "tag": "BUTTON",
+      "id": "import-csv-btn",
+      "tabindex": null,
+      "inside": true
+    }
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "removal": "dismiss",
+    "state": {
+      "main": true,
+      "tabindex": "-1",
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "rect": {
+        "x": 80,
+        "y": 0,
+        "width": 1280,
+        "height": 3476,
+        "top": 0,
+        "right": 1360,
+        "bottom": 3476,
+        "left": 80
+      },
+      "status": false,
+      "notice": false,
+      "value": "2026-07-01"
+    },
+    "after": {
+      "tag": "BUTTON",
+      "id": "import-csv-btn",
+      "tabindex": null,
+      "inside": true
+    }
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "removal": "epoch",
+    "state": {
+      "main": true,
+      "tabindex": "-1",
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "rect": {
+        "x": 80,
+        "y": 0,
+        "width": 1280,
+        "height": 3476,
+        "top": 0,
+        "right": 1360,
+        "bottom": 3476,
+        "left": 80
+      },
+      "status": false,
+      "notice": false,
+      "value": "2026-07-01"
+    },
+    "after": {
+      "tag": "BUTTON",
+      "id": "import-csv-btn",
+      "tabindex": null,
+      "inside": true
+    }
+  }
+]

@@ -1,0 +1,278 @@
+[
+  {
+    "dark": false,
+    "width": 390,
+    "loads": 4,
+    "tabs": 28,
+    "obstructions": [
+      {
+        "id": "",
+        "tag": "BUTTON",
+        "text": "Income details",
+        "rect": {
+          "x": 33,
+          "y": 852,
+          "width": 96.5625,
+          "height": 20,
+          "top": 852,
+          "right": 129.5625,
+          "bottom": 872,
+          "left": 33
+        },
+        "notice": {
+          "x": 24,
+          "y": 738,
+          "width": 350,
+          "height": 146,
+          "top": 738,
+          "right": 374,
+          "bottom": 884,
+          "left": 24
+        }
+      },
+      {
+        "id": "",
+        "tag": "A",
+        "text": "Budget details",
+        "rect": {
+          "x": 33,
+          "y": 763,
+          "width": 94.90625,
+          "height": 20,
+          "top": 763,
+          "right": 127.90625,
+          "bottom": 783,
+          "left": 33
+        },
+        "notice": {
+          "x": 24,
+          "y": 738,
+          "width": 350,
+          "height": 146,
+          "top": 738,
+          "right": 374,
+          "bottom": 884,
+          "left": 24
+        }
+      }
+    ],
+    "refusal": true,
+    "dismissal": true,
+    "restart": true,
+    "acceptance": true,
+    "cleanReload": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "loads": 4,
+    "tabs": 28,
+    "obstructions": [
+      {
+        "id": "",
+        "tag": "BUTTON",
+        "text": "Cash-flow details",
+        "rect": {
+          "x": 33,
+          "y": 847,
+          "width": 111.1875,
+          "height": 20,
+          "top": 847,
+          "right": 144.1875,
+          "bottom": 867,
+          "left": 33
+        },
+        "notice": {
+          "x": 24,
+          "y": 762,
+          "width": 728,
+          "height": 122,
+          "top": 762,
+          "right": 752,
+          "bottom": 884,
+          "left": 24
+        }
+      },
+      {
+        "id": "",
+        "tag": "BUTTON",
+        "text": "Healthcare details",
+        "rect": {
+          "x": 392,
+          "y": 795,
+          "width": 118.40625,
+          "height": 20,
+          "top": 795,
+          "right": 510.40625,
+          "bottom": 815,
+          "left": 392
+        },
+        "notice": {
+          "x": 24,
+          "y": 762,
+          "width": 728,
+          "height": 122,
+          "top": 762,
+          "right": 752,
+          "bottom": 884,
+          "left": 24
+        }
+      }
+    ],
+    "refusal": true,
+    "dismissal": true,
+    "restart": true,
+    "acceptance": true,
+    "cleanReload": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "loads": 4,
+    "tabs": 28,
+    "obstructions": [],
+    "refusal": true,
+    "dismissal": true,
+    "restart": true,
+    "acceptance": true,
+    "cleanReload": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "loads": 4,
+    "tabs": 28,
+    "obstructions": [
+      {
+        "id": "",
+        "tag": "BUTTON",
+        "text": "Income details",
+        "rect": {
+          "x": 33,
+          "y": 852,
+          "width": 96.5625,
+          "height": 20,
+          "top": 852,
+          "right": 129.5625,
+          "bottom": 872,
+          "left": 33
+        },
+        "notice": {
+          "x": 24,
+          "y": 738,
+          "width": 350,
+          "height": 146,
+          "top": 738,
+          "right": 374,
+          "bottom": 884,
+          "left": 24
+        }
+      },
+      {
+        "id": "",
+        "tag": "A",
+        "text": "Budget details",
+        "rect": {
+          "x": 33,
+          "y": 763,
+          "width": 94.90625,
+          "height": 20,
+          "top": 763,
+          "right": 127.90625,
+          "bottom": 783,
+          "left": 33
+        },
+        "notice": {
+          "x": 24,
+          "y": 738,
+          "width": 350,
+          "height": 146,
+          "top": 738,
+          "right": 374,
+          "bottom": 884,
+          "left": 24
+        }
+      }
+    ],
+    "refusal": true,
+    "dismissal": true,
+    "restart": true,
+    "acceptance": true,
+    "cleanReload": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "loads": 4,
+    "tabs": 28,
+    "obstructions": [
+      {
+        "id": "",
+        "tag": "BUTTON",
+        "text": "Cash-flow details",
+        "rect": {
+          "x": 33,
+          "y": 847,
+          "width": 111.1875,
+          "height": 20,
+          "top": 847,
+          "right": 144.1875,
+          "bottom": 867,
+          "left": 33
+        },
+        "notice": {
+          "x": 24,
+          "y": 762,
+          "width": 728,
+          "height": 122,
+          "top": 762,
+          "right": 752,
+          "bottom": 884,
+          "left": 24
+        }
+      },
+      {
+        "id": "",
+        "tag": "BUTTON",
+        "text": "Healthcare details",
+        "rect": {
+          "x": 392,
+          "y": 795,
+          "width": 118.40625,
+          "height": 20,
+          "top": 795,
+          "right": 510.40625,
+          "bottom": 815,
+          "left": 392
+        },
+        "notice": {
+          "x": 24,
+          "y": 762,
+          "width": 728,
+          "height": 122,
+          "top": 762,
+          "right": 752,
+          "bottom": 884,
+          "left": 24
+        }
+      }
+    ],
+    "refusal": true,
+    "dismissal": true,
+    "restart": true,
+    "acceptance": true,
+    "cleanReload": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "loads": 4,
+    "tabs": 28,
+    "obstructions": [],
+    "refusal": true,
+    "dismissal": true,
+    "restart": true,
+    "acceptance": true,
+    "cleanReload": true
+  }
+]

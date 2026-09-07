@@ -1,0 +1,2889 @@
+[
+  {
+    "id": "dashboard-light",
+    "route": "/dashboard",
+    "dark": false,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Dashboard"
+        },
+        {
+          "level": "H2",
+          "text": "Recorded income"
+        },
+        {
+          "level": "H2",
+          "text": "Net spending"
+        },
+        {
+          "level": "H2",
+          "text": "Cash-flow balance"
+        },
+        {
+          "level": "H2",
+          "text": "Spending versus plan"
+        },
+        {
+          "level": "H2",
+          "text": "Budget details"
+        },
+        {
+          "level": "H3",
+          "text": "Monthly Living Expenses"
+        },
+        {
+          "level": "H3",
+          "text": "Monthly Healthcare"
+        },
+        {
+          "level": "H2",
+          "text": "Accounts"
+        },
+        {
+          "level": "H2",
+          "text": "Budget vs Actual Over Time"
+        },
+        {
+          "level": "H2",
+          "text": "Spending by Major Expense"
+        },
+        {
+          "level": "H2",
+          "text": "Spending Trend"
+        },
+        {
+          "level": "H2",
+          "text": "Top Spending"
+        },
+        {
+          "level": "H2",
+          "text": "Cumulative Balance"
+        }
+      ],
+      "unlabelled": [],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .bg-white\\/20.hover\\:bg-white\\/10[aria-current=\"page\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10:nth-child(3)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10:nth-child(4)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10:nth-child(5)"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-plan\"] > .hover\\:bg-white\\/10[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .hover\\:bg-white\\/10[href$=\"accounts\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .hover\\:bg-white\\/10[href$=\"transfers\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .hover\\:bg-white\\/10[href$=\"filemanager\"]"
+          ],
+          [
+            ".relative"
+          ],
+          [
+            "text[transform=\"translate(0,163.7)\"][data-unformatted=\"0\"][x=\"69\"]"
+          ],
+          [
+            "text[data-unformatted=\"2000\"][transform=\"translate(0,124.2)\"][x=\"69\"]"
+          ],
+          [
+            "text[data-unformatted=\"4000\"][transform=\"translate(0,84.69)\"][x=\"69\"]"
+          ],
+          [
+            "text[data-unformatted=\"6000\"][transform=\"translate(0,45.19)\"][x=\"69\"]"
+          ],
+          [
+            "text[data-unformatted=\"Mar 2026\"][transform=\"translate(70,0)\"][y=\"323\"]"
+          ],
+          [
+            "text[data-unformatted=\"Apr 2026\"][y=\"323\"][text-anchor=\"middle\"]"
+          ],
+          [
+            "text[transform=\"translate(511.35,0)\"][data-unformatted=\"May 2026\"][y=\"323\"]"
+          ],
+          [
+            "text[transform=\"translate(735.65,0)\"][data-unformatted=\"Jun 2026\"][y=\"323\"]"
+          ],
+          [
+            "text[transform=\"translate(952.71,0)\"][data-unformatted=\"Jul 2026\"][y=\"323\"]"
+          ],
+          [
+            "text[transform=\"translate(1177,0)\"]"
+          ],
+          [
+            "text[transform=\"translate(0,310)\"][data-unformatted=\"0\"][x=\"69\"]"
+          ],
+          [
+            "text[data-unformatted=\"500\"]"
+          ],
+          [
+            "text[data-unformatted=\"1000\"]"
+          ],
+          [
+            "text[data-unformatted=\"Cumulative balance\"]"
+          ],
+          [
+            "text[data-unformatted=\"Healthcare\"]"
+          ],
+          [
+            "text[data-unformatted=\"Living\"]"
+          ],
+          [
+            "text[transform=\"rotate(-90,32,103.85)\"]"
+          ],
+          [
+            ".y2title"
+          ],
+          [
+            ".annotation-text"
+          ],
+          [
+            "text[data-unformatted=\"23.4%\"]"
+          ],
+          [
+            "text[data-unformatted=\"17.7%\"]"
+          ],
+          [
+            "text[data-unformatted=\"12.2%\"]"
+          ],
+          [
+            "text[data-unformatted=\"10.3%\"]"
+          ],
+          [
+            "text[data-unformatted=\"8.69%\"]"
+          ],
+          [
+            "text[data-unformatted=\"8.42%\"]"
+          ],
+          [
+            "text[data-unformatted=\"7.71%\"]"
+          ],
+          [
+            "text[data-unformatted=\"6.55%\"]"
+          ],
+          [
+            "text[data-unformatted=\"5.11%\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Mortgage\"][text-anchor=\"start\"]"
+          ],
+          [
+            "text[data-unformatted=\"Other\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Medicare & Health Insurance\"][text-anchor=\"start\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Travel & Hobbies\"][text-anchor=\"start\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Groceries\"][text-anchor=\"start\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Home Maintenance & Appliances\"][text-anchor=\"start\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Auto Loan\"][text-anchor=\"start\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Property Taxes\"][text-anchor=\"start\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Utilities\"][text-anchor=\"start\"]"
+          ],
+          [
+            "text[transform=\"translate(118.36,0)\"][data-unformatted=\"Apr 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(215.07,0)\"][data-unformatted=\"May 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(315,0)\"][data-unformatted=\"Jun 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(411.71,0)\"][data-unformatted=\"Jul 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(511.64,0)\"][data-unformatted=\"Aug 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[data-unformatted=\"−20%\"]"
+          ],
+          [
+            "text[data-unformatted=\"0%\"]"
+          ],
+          [
+            "text[data-unformatted=\"20%\"]"
+          ],
+          [
+            "text[data-unformatted=\"40%\"]"
+          ],
+          [
+            "text[data-unformatted=\"Spending Change\"]"
+          ],
+          [
+            "text[data-unformatted=\"Change (%)\"]"
+          ],
+          [
+            "text[transform=\"translate(200,0)\"][data-unformatted=\"0\"][y=\"242\"]"
+          ],
+          [
+            "text[data-unformatted=\"2000\"][transform=\"translate(291.2,0)\"][y=\"242\"]"
+          ],
+          [
+            "text[data-unformatted=\"4000\"][transform=\"translate(382.4,0)\"][y=\"242\"]"
+          ],
+          [
+            "text[data-unformatted=\"6000\"][transform=\"translate(473.6,0)\"][y=\"242\"]"
+          ],
+          [
+            "text[data-unformatted=\"Home Insurance\"]"
+          ],
+          [
+            "text[data-unformatted=\"Shopping & Household Supplies\"]"
+          ],
+          [
+            "text[data-unformatted=\"Utilities\"][transform=\"translate(0,179.25)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Property Taxes\"][transform=\"translate(0,159.35)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Auto Loan\"][transform=\"translate(0,139.45)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Home Maintenance & Appliances\"][transform=\"translate(0,119.55)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Groceries\"][transform=\"translate(0,99.65)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Travel & Hobbies\"][transform=\"translate(0,79.75)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Medicare & Health Insurance\"][transform=\"translate(0,59.85)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Mortgage\"][transform=\"translate(0,39.95)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"trace 0\"]"
+          ],
+          [
+            "text[data-unformatted=\"Mar 2026\"][transform=\"translate(70,0)\"][y=\"242\"]"
+          ],
+          [
+            ".xtick:nth-child(2) > text[data-unformatted=\"Apr 2026\"][y=\"242\"][text-anchor=\"middle\"]"
+          ],
+          [
+            "text[transform=\"translate(451.59,0)\"][data-unformatted=\"May 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(645.51,0)\"][data-unformatted=\"Jun 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(833.18,0)\"][data-unformatted=\"Jul 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(1027.1,0)\"][data-unformatted=\"Aug 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[data-unformatted=\"−6000\"]"
+          ],
+          [
+            "text[data-unformatted=\"−4000\"]"
+          ],
+          [
+            "text[data-unformatted=\"−2000\"]"
+          ],
+          [
+            "text[transform=\"translate(0,61.93)\"][data-unformatted=\"0\"][x=\"69\"]"
+          ],
+          [
+            "text[data-unformatted=\"Cumulative Balance\"]"
+          ],
+          [
+            "text[data-unformatted=\"Cumulative ($)\"]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dashboard-dark",
+    "route": "/dashboard",
+    "dark": true,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Dashboard"
+        },
+        {
+          "level": "H2",
+          "text": "Recorded income"
+        },
+        {
+          "level": "H2",
+          "text": "Net spending"
+        },
+        {
+          "level": "H2",
+          "text": "Cash-flow balance"
+        },
+        {
+          "level": "H2",
+          "text": "Spending versus plan"
+        },
+        {
+          "level": "H2",
+          "text": "Budget details"
+        },
+        {
+          "level": "H3",
+          "text": "Monthly Living Expenses"
+        },
+        {
+          "level": "H3",
+          "text": "Monthly Healthcare"
+        },
+        {
+          "level": "H2",
+          "text": "Accounts"
+        },
+        {
+          "level": "H2",
+          "text": "Budget vs Actual Over Time"
+        },
+        {
+          "level": "H2",
+          "text": "Spending by Major Expense"
+        },
+        {
+          "level": "H2",
+          "text": "Spending Trend"
+        },
+        {
+          "level": "H2",
+          "text": "Top Spending"
+        },
+        {
+          "level": "H2",
+          "text": "Cumulative Balance"
+        }
+      ],
+      "unlabelled": [],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .bg-white\\/20.hover\\:bg-white\\/10[aria-current=\"page\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10:nth-child(3)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10:nth-child(4)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10:nth-child(5)"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-plan\"] > .hover\\:bg-white\\/10[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .hover\\:bg-white\\/10[href$=\"accounts\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .hover\\:bg-white\\/10[href$=\"transfers\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .hover\\:bg-white\\/10[href$=\"filemanager\"]"
+          ],
+          [
+            ".relative"
+          ],
+          [
+            "text[transform=\"translate(0,163.7)\"][data-unformatted=\"0\"][x=\"69\"]"
+          ],
+          [
+            "text[data-unformatted=\"2000\"][transform=\"translate(0,124.2)\"][x=\"69\"]"
+          ],
+          [
+            "text[data-unformatted=\"4000\"][transform=\"translate(0,84.69)\"][x=\"69\"]"
+          ],
+          [
+            "text[data-unformatted=\"6000\"][transform=\"translate(0,45.19)\"][x=\"69\"]"
+          ],
+          [
+            "text[data-unformatted=\"Mar 2026\"][transform=\"translate(70,0)\"][y=\"323\"]"
+          ],
+          [
+            "text[data-unformatted=\"Apr 2026\"][y=\"323\"][text-anchor=\"middle\"]"
+          ],
+          [
+            "text[transform=\"translate(511.35,0)\"][data-unformatted=\"May 2026\"][y=\"323\"]"
+          ],
+          [
+            "text[transform=\"translate(735.65,0)\"][data-unformatted=\"Jun 2026\"][y=\"323\"]"
+          ],
+          [
+            "text[transform=\"translate(952.71,0)\"][data-unformatted=\"Jul 2026\"][y=\"323\"]"
+          ],
+          [
+            "text[transform=\"translate(1177,0)\"]"
+          ],
+          [
+            "text[transform=\"translate(0,310)\"][data-unformatted=\"0\"][x=\"69\"]"
+          ],
+          [
+            "text[data-unformatted=\"500\"]"
+          ],
+          [
+            "text[data-unformatted=\"1000\"]"
+          ],
+          [
+            "text[data-unformatted=\"Cumulative balance\"]"
+          ],
+          [
+            "text[data-unformatted=\"Healthcare\"]"
+          ],
+          [
+            "text[data-unformatted=\"Living\"]"
+          ],
+          [
+            "text[transform=\"rotate(-90,32,103.85)\"]"
+          ],
+          [
+            ".y2title"
+          ],
+          [
+            ".annotation-text"
+          ],
+          [
+            "text[data-unformatted=\"23.4%\"]"
+          ],
+          [
+            "text[data-unformatted=\"17.7%\"]"
+          ],
+          [
+            "text[data-unformatted=\"12.2%\"]"
+          ],
+          [
+            "text[data-unformatted=\"10.3%\"]"
+          ],
+          [
+            "text[data-unformatted=\"8.69%\"]"
+          ],
+          [
+            "text[data-unformatted=\"8.42%\"]"
+          ],
+          [
+            "text[data-unformatted=\"7.71%\"]"
+          ],
+          [
+            "text[data-unformatted=\"6.55%\"]"
+          ],
+          [
+            "text[data-unformatted=\"5.11%\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Mortgage\"][text-anchor=\"start\"]"
+          ],
+          [
+            "text[data-unformatted=\"Other\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Medicare & Health Insurance\"][text-anchor=\"start\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Travel & Hobbies\"][text-anchor=\"start\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Groceries\"][text-anchor=\"start\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Home Maintenance & Appliances\"][text-anchor=\"start\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Auto Loan\"][text-anchor=\"start\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Property Taxes\"][text-anchor=\"start\"]"
+          ],
+          [
+            ".legendtext[data-unformatted=\"Utilities\"][text-anchor=\"start\"]"
+          ],
+          [
+            "text[transform=\"translate(118.36,0)\"][data-unformatted=\"Apr 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(215.07,0)\"][data-unformatted=\"May 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(315,0)\"][data-unformatted=\"Jun 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(411.71,0)\"][data-unformatted=\"Jul 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(511.64,0)\"][data-unformatted=\"Aug 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[data-unformatted=\"−20%\"]"
+          ],
+          [
+            "text[data-unformatted=\"0%\"]"
+          ],
+          [
+            "text[data-unformatted=\"20%\"]"
+          ],
+          [
+            "text[data-unformatted=\"40%\"]"
+          ],
+          [
+            "text[data-unformatted=\"Spending Change\"]"
+          ],
+          [
+            "text[data-unformatted=\"Change (%)\"]"
+          ],
+          [
+            "text[transform=\"translate(200,0)\"][data-unformatted=\"0\"][y=\"242\"]"
+          ],
+          [
+            "text[data-unformatted=\"2000\"][transform=\"translate(291.2,0)\"][y=\"242\"]"
+          ],
+          [
+            "text[data-unformatted=\"4000\"][transform=\"translate(382.4,0)\"][y=\"242\"]"
+          ],
+          [
+            "text[data-unformatted=\"6000\"][transform=\"translate(473.6,0)\"][y=\"242\"]"
+          ],
+          [
+            "text[data-unformatted=\"Home Insurance\"]"
+          ],
+          [
+            "text[data-unformatted=\"Shopping & Household Supplies\"]"
+          ],
+          [
+            "text[data-unformatted=\"Utilities\"][transform=\"translate(0,179.25)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Property Taxes\"][transform=\"translate(0,159.35)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Auto Loan\"][transform=\"translate(0,139.45)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Home Maintenance & Appliances\"][transform=\"translate(0,119.55)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Groceries\"][transform=\"translate(0,99.65)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Travel & Hobbies\"][transform=\"translate(0,79.75)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Medicare & Health Insurance\"][transform=\"translate(0,59.85)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"Mortgage\"][transform=\"translate(0,39.95)\"][x=\"199\"]"
+          ],
+          [
+            "text[data-unformatted=\"trace 0\"]"
+          ],
+          [
+            "text[data-unformatted=\"Mar 2026\"][transform=\"translate(70,0)\"][y=\"242\"]"
+          ],
+          [
+            ".xtick:nth-child(2) > text[data-unformatted=\"Apr 2026\"][y=\"242\"][text-anchor=\"middle\"]"
+          ],
+          [
+            "text[transform=\"translate(451.59,0)\"][data-unformatted=\"May 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(645.51,0)\"][data-unformatted=\"Jun 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(833.18,0)\"][data-unformatted=\"Jul 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[transform=\"translate(1027.1,0)\"][data-unformatted=\"Aug 2026\"][y=\"242\"]"
+          ],
+          [
+            "text[data-unformatted=\"−6000\"]"
+          ],
+          [
+            "text[data-unformatted=\"−4000\"]"
+          ],
+          [
+            "text[data-unformatted=\"−2000\"]"
+          ],
+          [
+            "text[transform=\"translate(0,61.93)\"][data-unformatted=\"0\"][x=\"69\"]"
+          ],
+          [
+            "text[data-unformatted=\"Cumulative Balance\"]"
+          ],
+          [
+            "text[data-unformatted=\"Cumulative ($)\"]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "explorer-light",
+    "route": "/explorer",
+    "dark": false,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Data Explorer"
+        }
+      ],
+      "unlabelled": [
+        {
+          "id": "search-input",
+          "type": "text",
+          "placeholder": "Search descriptions..."
+        }
+      ],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10:nth-child(2)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .bg-white\\/20.hover\\:bg-white\\/10[aria-current=\"page\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10:nth-child(4)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10:nth-child(5)"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-plan\"] > .hover\\:bg-white\\/10[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .hover\\:bg-white\\/10[href$=\"accounts\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .hover\\:bg-white\\/10[href$=\"transfers\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .hover\\:bg-white\\/10[href$=\"filemanager\"]"
+          ],
+          [
+            ".relative.hover\\:bg-white\\/10[href$=\"duplicates\"]"
+          ]
+        ]
+      },
+      {
+        "id": "th-has-data-cells",
+        "targets": [
+          [
+            ".border-b > table"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "explorer-dark",
+    "route": "/explorer",
+    "dark": true,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Data Explorer"
+        }
+      ],
+      "unlabelled": [
+        {
+          "id": "search-input",
+          "type": "text",
+          "placeholder": "Search descriptions..."
+        }
+      ],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10:nth-child(2)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .bg-white\\/20.hover\\:bg-white\\/10[aria-current=\"page\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10:nth-child(4)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10:nth-child(5)"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-plan\"] > .hover\\:bg-white\\/10[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .hover\\:bg-white\\/10[href$=\"accounts\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .hover\\:bg-white\\/10[href$=\"transfers\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .hover\\:bg-white\\/10[href$=\"filemanager\"]"
+          ],
+          [
+            ".relative.hover\\:bg-white\\/10[href$=\"duplicates\"]"
+          ]
+        ]
+      },
+      {
+        "id": "th-has-data-cells",
+        "targets": [
+          [
+            ".border-b > table"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "insights-light",
+    "route": "/insights",
+    "dark": false,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Insights"
+        },
+        {
+          "level": "H2",
+          "text": "What changed"
+        },
+        {
+          "level": "H2",
+          "text": "Review these transactions"
+        },
+        {
+          "level": "H2",
+          "text": "Detected recurring spending"
+        },
+        {
+          "level": "H3",
+          "text": "Detected subscriptions"
+        },
+        {
+          "level": "H3",
+          "text": "Recurring bills"
+        },
+        {
+          "level": "H3",
+          "text": "Other recurring spending"
+        },
+        {
+          "level": "H2",
+          "text": "Supporting charts and tables"
+        },
+        {
+          "level": "H3",
+          "text": "Spending trends"
+        },
+        {
+          "level": "H3",
+          "text": "Income sources"
+        },
+        {
+          "level": "H3",
+          "text": "Anomalies"
+        },
+        {
+          "level": "H3",
+          "text": "Price Creep"
+        },
+        {
+          "level": "H3",
+          "text": "Spending pace"
+        }
+      ],
+      "unlabelled": [],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .py-2.hover\\:bg-white\\/10.transition-colors:nth-child(2)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .py-2.hover\\:bg-white\\/10.transition-colors:nth-child(3)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .bg-white\\/20.py-2[aria-current=\"page\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .py-2.hover\\:bg-white\\/10.transition-colors:nth-child(5)"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-plan\"] > .py-2.hover\\:bg-white\\/10[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .py-2.hover\\:bg-white\\/10[href$=\"accounts\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .py-2.hover\\:bg-white\\/10[href$=\"transfers\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .py-2.hover\\:bg-white\\/10[href$=\"filemanager\"]"
+          ],
+          [
+            ".relative"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "insights-dark",
+    "route": "/insights",
+    "dark": true,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Insights"
+        },
+        {
+          "level": "H2",
+          "text": "What changed"
+        },
+        {
+          "level": "H2",
+          "text": "Review these transactions"
+        },
+        {
+          "level": "H2",
+          "text": "Detected recurring spending"
+        },
+        {
+          "level": "H3",
+          "text": "Detected subscriptions"
+        },
+        {
+          "level": "H3",
+          "text": "Recurring bills"
+        },
+        {
+          "level": "H3",
+          "text": "Other recurring spending"
+        },
+        {
+          "level": "H2",
+          "text": "Supporting charts and tables"
+        },
+        {
+          "level": "H3",
+          "text": "Spending trends"
+        },
+        {
+          "level": "H3",
+          "text": "Income sources"
+        },
+        {
+          "level": "H3",
+          "text": "Anomalies"
+        },
+        {
+          "level": "H3",
+          "text": "Price Creep"
+        },
+        {
+          "level": "H3",
+          "text": "Spending pace"
+        }
+      ],
+      "unlabelled": [],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .py-2.hover\\:bg-white\\/10.transition-colors:nth-child(2)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .py-2.hover\\:bg-white\\/10.transition-colors:nth-child(3)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .bg-white\\/20.py-2[aria-current=\"page\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .py-2.hover\\:bg-white\\/10.transition-colors:nth-child(5)"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-plan\"] > .py-2.hover\\:bg-white\\/10[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .py-2.hover\\:bg-white\\/10[href$=\"accounts\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .py-2.hover\\:bg-white\\/10[href$=\"transfers\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .py-2.hover\\:bg-white\\/10[href$=\"filemanager\"]"
+          ],
+          [
+            ".relative"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "major-expenses-light",
+    "route": "/major-expenses",
+    "dark": false,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Major Expenses"
+        },
+        {
+          "level": "H2",
+          "text": "Exceptions"
+        },
+        {
+          "level": "H2",
+          "text": "Your Major Expenses"
+        },
+        {
+          "level": "H3",
+          "text": ""
+        }
+      ],
+      "unlabelled": [
+        {
+          "id": "major-expenses-search",
+          "type": "search",
+          "placeholder": "Filter expenses, keywords, notes, transactions, amounts, dates…"
+        }
+      ],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10.transition-colors.py-2:nth-child(2)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10.transition-colors.py-2:nth-child(3)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10.transition-colors.py-2:nth-child(4)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .bg-white\\/20.hover\\:bg-white\\/10[aria-current=\"page\"]"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            ".hover\\:bg-white\\/10.transition-colors[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            ".hover\\:bg-white\\/10.transition-colors[href$=\"accounts\"]"
+          ],
+          [
+            ".hover\\:bg-white\\/10.transition-colors[href$=\"transfers\"]"
+          ],
+          [
+            ".hover\\:bg-white\\/10.transition-colors[href$=\"filemanager\"]"
+          ],
+          [
+            ".relative.hover\\:bg-white\\/10[href$=\"duplicates\"]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "major-expenses-dark",
+    "route": "/major-expenses",
+    "dark": true,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Major Expenses"
+        },
+        {
+          "level": "H2",
+          "text": "Exceptions"
+        },
+        {
+          "level": "H2",
+          "text": "Your Major Expenses"
+        },
+        {
+          "level": "H3",
+          "text": ""
+        }
+      ],
+      "unlabelled": [
+        {
+          "id": "major-expenses-search",
+          "type": "search",
+          "placeholder": "Filter expenses, keywords, notes, transactions, amounts, dates…"
+        }
+      ],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10.transition-colors.py-2:nth-child(2)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10.transition-colors.py-2:nth-child(3)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .hover\\:bg-white\\/10.transition-colors.py-2:nth-child(4)"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > .bg-white\\/20.hover\\:bg-white\\/10[aria-current=\"page\"]"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            ".hover\\:bg-white\\/10.transition-colors[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            ".hover\\:bg-white\\/10.transition-colors[href$=\"accounts\"]"
+          ],
+          [
+            ".hover\\:bg-white\\/10.transition-colors[href$=\"transfers\"]"
+          ],
+          [
+            ".hover\\:bg-white\\/10.transition-colors[href$=\"filemanager\"]"
+          ],
+          [
+            ".relative.hover\\:bg-white\\/10[href$=\"duplicates\"]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "whatif-light",
+    "route": "/whatif",
+    "dark": false,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "What-If Analysis"
+        },
+        {
+          "level": "H2",
+          "text": "Portfolio & Expenses"
+        },
+        {
+          "level": "H2",
+          "text": "Income Sources"
+        },
+        {
+          "level": "H2",
+          "text": "Healthcare Costs"
+        },
+        {
+          "level": "H2",
+          "text": "Big Ticket Items"
+        },
+        {
+          "level": "H2",
+          "text": "One-Time Expenses"
+        },
+        {
+          "level": "H2",
+          "text": "Additional Expenses"
+        },
+        {
+          "level": "H2",
+          "text": "Rate Assumptions"
+        },
+        {
+          "level": "H2",
+          "text": "Retirement Spending Phases"
+        },
+        {
+          "level": "H3",
+          "text": "Spending Trajectory"
+        },
+        {
+          "level": "H2",
+          "text": "Drop/rise guardrails (simple)"
+        },
+        {
+          "level": "H2",
+          "text": "Roth Conversion Strategy"
+        },
+        {
+          "level": "H2",
+          "text": "Scenario Chain"
+        },
+        {
+          "level": "H2",
+          "text": "SS Claiming Age Optimizer"
+        },
+        {
+          "level": "H2",
+          "text": "Funded through Jul 2056"
+        },
+        {
+          "level": "H2",
+          "text": "Simulated lifestyle outcomes"
+        },
+        {
+          "level": "H2",
+          "text": "Portfolio Longevity"
+        },
+        {
+          "level": "H2",
+          "text": "Monthly Expenses Today"
+        },
+        {
+          "level": "H2",
+          "text": "Failure Thresholds"
+        },
+        {
+          "level": "H2",
+          "text": "Monthly Budget Analysis"
+        },
+        {
+          "level": "H3",
+          "text": "Current (Today)"
+        },
+        {
+          "level": "H3",
+          "text": "\n            At Year 0\n            · Age 67\n        "
+        },
+        {
+          "level": "H2",
+          "text": "Present Value Analysis"
+        },
+        {
+          "level": "H2",
+          "text": "Yearly Income by Source"
+        },
+        {
+          "level": "H2",
+          "text": "Year-by-Year Projection"
+        },
+        {
+          "level": "H2",
+          "text": "Sensitivity Analysis"
+        },
+        {
+          "level": "H2",
+          "text": "Monte Carlo Simulation"
+        },
+        {
+          "level": "H2",
+          "text": "Historical Backtesting"
+        },
+        {
+          "level": "H2",
+          "text": "Guardrail Events"
+        },
+        {
+          "level": "H2",
+          "text": "Income Taxes"
+        },
+        {
+          "level": "H2",
+          "text": "Required Minimum Distributions (RMD)"
+        },
+        {
+          "level": "H2",
+          "text": "Social Security Claiming Comparison"
+        },
+        {
+          "level": "H2",
+          "text": "Tax Optimizer"
+        },
+        {
+          "level": "H2",
+          "text": "Conversion Sweep"
+        }
+      ],
+      "unlabelled": [
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Name (e.g., Social Security)"
+        },
+        {
+          "id": "",
+          "type": "number",
+          "placeholder": "Monthly $"
+        },
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Name (e.g., Home Sale)"
+        },
+        {
+          "id": "",
+          "type": "number",
+          "placeholder": "Amount"
+        },
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Notes (optional)"
+        },
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Name (e.g., Travel)"
+        },
+        {
+          "id": "",
+          "type": "number",
+          "placeholder": "Monthly $"
+        }
+      ],
+      "animations": [
+        {
+          "id": "",
+          "name": "spin"
+        },
+        {
+          "id": "",
+          "name": "pulse"
+        }
+      ]
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".md\\:text-2xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"dashboard\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"explorer\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"insights\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"major-expenses\"]"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-plan\"] > .bg-white\\/20[href$=\"whatif\"][aria-current=\"page\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > a[href$=\"accounts\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > a[href$=\"transfers\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > a[href$=\"filemanager\"]"
+          ],
+          [
+            ".relative[href$=\"duplicates\"]"
+          ],
+          [
+            ".col-span-2:nth-child(5) > .bg-accent-soft.text-accent.px-3"
+          ],
+          [
+            ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:1:multiplier\"]"
+          ],
+          [
+            ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:2:multiplier\"]"
+          ],
+          [
+            "text[x=\"158.64\"]"
+          ],
+          [
+            "text[data-unformatted=\"0\"][transform=\"translate(88,0)\"][y=\"251\"]"
+          ],
+          [
+            "text[data-unformatted=\"5\"][transform=\"translate(220.2,0)\"][y=\"251\"]"
+          ],
+          [
+            "text[data-unformatted=\"10\"][transform=\"translate(352.4,0)\"][y=\"251\"]"
+          ],
+          [
+            "text[data-unformatted=\"15\"][transform=\"translate(484.6,0)\"][y=\"251\"]"
+          ],
+          [
+            "text[data-unformatted=\"20\"][transform=\"translate(616.8,0)\"][y=\"251\"]"
+          ],
+          [
+            "text[data-unformatted=\"25\"][transform=\"translate(749,0)\"][y=\"251\"]"
+          ],
+          [
+            "text[data-unformatted=\"$0\"][transform=\"translate(0,238)\"][x=\"87\"]"
+          ],
+          [
+            "text[data-unformatted=\"$1,000,000\"]"
+          ],
+          [
+            "text[data-unformatted=\"$2,000,000\"]"
+          ],
+          [
+            "text[data-unformatted=\"$3,000,000\"]"
+          ],
+          [
+            "text[data-unformatted=\"$4,000,000\"]"
+          ],
+          [
+            "text[data-unformatted=\"Portfolio Balance\"]"
+          ],
+          [
+            "text[data-unformatted=\"Key events\"]"
+          ],
+          [
+            "text[data-unformatted=\"Guardrail cuts / raises\"]"
+          ],
+          [
+            "text[x=\"449.336\"]"
+          ],
+          [
+            "text[x=\"483.5\"]"
+          ],
+          [
+            "text[transform=\"rotate(-90,50,134)\"]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "whatif-dark",
+    "route": "/whatif",
+    "dark": true,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "What-If Analysis"
+        },
+        {
+          "level": "H2",
+          "text": "Portfolio & Expenses"
+        },
+        {
+          "level": "H2",
+          "text": "Income Sources"
+        },
+        {
+          "level": "H2",
+          "text": "Healthcare Costs"
+        },
+        {
+          "level": "H2",
+          "text": "Big Ticket Items"
+        },
+        {
+          "level": "H2",
+          "text": "One-Time Expenses"
+        },
+        {
+          "level": "H2",
+          "text": "Additional Expenses"
+        },
+        {
+          "level": "H2",
+          "text": "Rate Assumptions"
+        },
+        {
+          "level": "H2",
+          "text": "Retirement Spending Phases"
+        },
+        {
+          "level": "H3",
+          "text": "Spending Trajectory"
+        },
+        {
+          "level": "H2",
+          "text": "Drop/rise guardrails (simple)"
+        },
+        {
+          "level": "H2",
+          "text": "Roth Conversion Strategy"
+        },
+        {
+          "level": "H2",
+          "text": "Scenario Chain"
+        },
+        {
+          "level": "H2",
+          "text": "SS Claiming Age Optimizer"
+        },
+        {
+          "level": "H2",
+          "text": "Funded through Jul 2056"
+        },
+        {
+          "level": "H2",
+          "text": "Simulated lifestyle outcomes"
+        },
+        {
+          "level": "H3",
+          "text": "Among runs with cuts · 708 / 1000 runs (70.8%)"
+        },
+        {
+          "level": "H2",
+          "text": "Portfolio Longevity"
+        },
+        {
+          "level": "H2",
+          "text": "Monthly Expenses Today"
+        },
+        {
+          "level": "H2",
+          "text": "Approximate failure thresholds"
+        },
+        {
+          "level": "H3",
+          "text": "Investment Return"
+        },
+        {
+          "level": "H3",
+          "text": "Inflation Rate"
+        },
+        {
+          "level": "H3",
+          "text": "Monthly Expenses"
+        },
+        {
+          "level": "H3",
+          "text": "Portfolio Value"
+        },
+        {
+          "level": "H2",
+          "text": "Monthly Budget Analysis"
+        },
+        {
+          "level": "H3",
+          "text": "Current (Today)"
+        },
+        {
+          "level": "H3",
+          "text": "\n            At Year 0\n            · Age 67\n        "
+        },
+        {
+          "level": "H2",
+          "text": "Present Value Analysis"
+        },
+        {
+          "level": "H2",
+          "text": "Yearly Income by Source"
+        },
+        {
+          "level": "H2",
+          "text": "Year-by-Year Projection"
+        },
+        {
+          "level": "H2",
+          "text": "Sensitivity Analysis"
+        },
+        {
+          "level": "H2",
+          "text": "Monte Carlo Simulation"
+        },
+        {
+          "level": "H3",
+          "text": "Final Balance Distribution"
+        },
+        {
+          "level": "H2",
+          "text": "Historical Backtesting"
+        },
+        {
+          "level": "H3",
+          "text": "Worst Starting Years"
+        },
+        {
+          "level": "H3",
+          "text": "Best Starting Years"
+        },
+        {
+          "level": "H2",
+          "text": "Guardrail Events"
+        },
+        {
+          "level": "H2",
+          "text": "Income Taxes"
+        },
+        {
+          "level": "H2",
+          "text": "Required Minimum Distributions (RMD)"
+        },
+        {
+          "level": "H2",
+          "text": "Social Security Claiming Comparison"
+        },
+        {
+          "level": "H3",
+          "text": "Breakeven Ages"
+        },
+        {
+          "level": "H3",
+          "text": "Spouse Claiming Comparison"
+        },
+        {
+          "level": "H2",
+          "text": "Tax Optimizer"
+        },
+        {
+          "level": "H2",
+          "text": "Conversion Sweep"
+        }
+      ],
+      "unlabelled": [
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Name (e.g., Social Security)"
+        },
+        {
+          "id": "",
+          "type": "number",
+          "placeholder": "Monthly $"
+        },
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Name (e.g., Home Sale)"
+        },
+        {
+          "id": "",
+          "type": "number",
+          "placeholder": "Amount"
+        },
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Notes (optional)"
+        },
+        {
+          "id": "",
+          "type": "text",
+          "placeholder": "Name (e.g., Travel)"
+        },
+        {
+          "id": "",
+          "type": "number",
+          "placeholder": "Monthly $"
+        }
+      ],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".md\\:text-2xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"dashboard\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"explorer\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"insights\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"major-expenses\"]"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-plan\"] > .bg-white\\/20[href$=\"whatif\"][aria-current=\"page\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > a[href$=\"accounts\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > a[href$=\"transfers\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > a[href$=\"filemanager\"]"
+          ],
+          [
+            ".relative[href$=\"duplicates\"]"
+          ],
+          [
+            ".col-span-2:nth-child(5) > .bg-accent-soft.text-accent.px-3"
+          ],
+          [
+            ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:1:multiplier\"]"
+          ],
+          [
+            ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:2:multiplier\"]"
+          ],
+          [
+            "text[x=\"158.64\"]"
+          ],
+          [
+            "text[data-unformatted=\"0\"][transform=\"translate(88,0)\"][y=\"251\"]"
+          ],
+          [
+            "text[data-unformatted=\"5\"][transform=\"translate(220.2,0)\"][y=\"251\"]"
+          ],
+          [
+            "text[data-unformatted=\"10\"][transform=\"translate(352.4,0)\"][y=\"251\"]"
+          ],
+          [
+            "text[data-unformatted=\"15\"][transform=\"translate(484.6,0)\"][y=\"251\"]"
+          ],
+          [
+            "text[data-unformatted=\"20\"][transform=\"translate(616.8,0)\"][y=\"251\"]"
+          ],
+          [
+            "text[data-unformatted=\"25\"][transform=\"translate(749,0)\"][y=\"251\"]"
+          ],
+          [
+            "text[data-unformatted=\"$0\"][transform=\"translate(0,238)\"][x=\"87\"]"
+          ],
+          [
+            "text[data-unformatted=\"$1,000,000\"]"
+          ],
+          [
+            "text[data-unformatted=\"$2,000,000\"]"
+          ],
+          [
+            "text[data-unformatted=\"$3,000,000\"]"
+          ],
+          [
+            "text[data-unformatted=\"$4,000,000\"]"
+          ],
+          [
+            "text[data-unformatted=\"Portfolio Balance\"]"
+          ],
+          [
+            "text[data-unformatted=\"Key events\"]"
+          ],
+          [
+            "text[data-unformatted=\"Guardrail cuts / raises\"]"
+          ],
+          [
+            "text[x=\"449.336\"]"
+          ],
+          [
+            "text[x=\"483.5\"]"
+          ],
+          [
+            "text[transform=\"rotate(-90,50,134)\"]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "accounts-light",
+    "route": "/accounts",
+    "dark": false,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Accounts"
+        },
+        {
+          "level": "H2",
+          "text": "Add an account"
+        },
+        {
+          "level": "H2",
+          "text": "Your accounts"
+        },
+        {
+          "level": "H3",
+          "text": "Demo Checking (first match wins)"
+        },
+        {
+          "level": "H4",
+          "text": "Matched files"
+        },
+        {
+          "level": "H4",
+          "text": "Balance anchors"
+        },
+        {
+          "level": "H3",
+          "text": "Demo Credit Card"
+        },
+        {
+          "level": "H4",
+          "text": "Matched files"
+        },
+        {
+          "level": "H4",
+          "text": "Balance anchors"
+        },
+        {
+          "level": "H3",
+          "text": "Demo Health Checking"
+        },
+        {
+          "level": "H4",
+          "text": "Matched files"
+        },
+        {
+          "level": "H4",
+          "text": "Balance anchors"
+        },
+        {
+          "level": "H2",
+          "text": "Unassigned files"
+        }
+      ],
+      "unlabelled": [],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            ".transition-colors[href$=\"dashboard\"]"
+          ],
+          [
+            ".transition-colors[href$=\"explorer\"]"
+          ],
+          [
+            ".transition-colors[href$=\"insights\"]"
+          ],
+          [
+            ".transition-colors[href$=\"major-expenses\"]"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            ".transition-colors[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .bg-white\\/20[href$=\"accounts\"][aria-current=\"page\"]"
+          ],
+          [
+            ".transition-colors[href$=\"transfers\"]"
+          ],
+          [
+            ".transition-colors[href$=\"filemanager\"]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "accounts-dark",
+    "route": "/accounts",
+    "dark": true,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Accounts"
+        },
+        {
+          "level": "H2",
+          "text": "Add an account"
+        },
+        {
+          "level": "H2",
+          "text": "Your accounts"
+        },
+        {
+          "level": "H3",
+          "text": "Demo Checking (first match wins)"
+        },
+        {
+          "level": "H4",
+          "text": "Matched files"
+        },
+        {
+          "level": "H4",
+          "text": "Balance anchors"
+        },
+        {
+          "level": "H3",
+          "text": "Demo Credit Card"
+        },
+        {
+          "level": "H4",
+          "text": "Matched files"
+        },
+        {
+          "level": "H4",
+          "text": "Balance anchors"
+        },
+        {
+          "level": "H3",
+          "text": "Demo Health Checking"
+        },
+        {
+          "level": "H4",
+          "text": "Matched files"
+        },
+        {
+          "level": "H4",
+          "text": "Balance anchors"
+        },
+        {
+          "level": "H2",
+          "text": "Unassigned files"
+        }
+      ],
+      "unlabelled": [],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            ".transition-colors[href$=\"dashboard\"]"
+          ],
+          [
+            ".transition-colors[href$=\"explorer\"]"
+          ],
+          [
+            ".transition-colors[href$=\"insights\"]"
+          ],
+          [
+            ".transition-colors[href$=\"major-expenses\"]"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            ".transition-colors[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .bg-white\\/20[href$=\"accounts\"][aria-current=\"page\"]"
+          ],
+          [
+            ".transition-colors[href$=\"transfers\"]"
+          ],
+          [
+            ".transition-colors[href$=\"filemanager\"]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "transfers-light",
+    "route": "/transfers",
+    "dark": false,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          2
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Transfers"
+        },
+        {
+          "level": "H2",
+          "text": "Monthly flow between institutions"
+        },
+        {
+          "level": "H2",
+          "text": "Transfer history (12)"
+        },
+        {
+          "level": "H2",
+          "text": "Suspected pairs"
+        }
+      ],
+      "unlabelled": [],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            ".transition-colors[href$=\"dashboard\"]"
+          ],
+          [
+            ".transition-colors[href$=\"explorer\"]"
+          ],
+          [
+            ".transition-colors[href$=\"insights\"]"
+          ],
+          [
+            ".transition-colors[href$=\"major-expenses\"]"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            ".transition-colors[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            ".transition-colors[href$=\"accounts\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .bg-white\\/20[href$=\"transfers\"][aria-current=\"page\"]"
+          ],
+          [
+            ".transition-colors[href$=\"filemanager\"]"
+          ],
+          [
+            "text[data-unformatted=\"Mar 2026\"]"
+          ],
+          [
+            "text[data-unformatted=\"Apr 2026\"]"
+          ],
+          [
+            "text[data-unformatted=\"May 2026\"]"
+          ],
+          [
+            "text[data-unformatted=\"Jun 2026\"]"
+          ],
+          [
+            "text[data-unformatted=\"Jul 2026\"]"
+          ],
+          [
+            "text[data-unformatted=\"Aug 2026\"]"
+          ],
+          [
+            "text[data-unformatted=\"0\"]"
+          ],
+          [
+            "text[data-unformatted=\"500\"]"
+          ],
+          [
+            "text[data-unformatted=\"1000\"]"
+          ],
+          [
+            "text[data-unformatted=\"1500\"]"
+          ],
+          [
+            "text[data-unformatted=\"2000\"]"
+          ],
+          [
+            "text[data-unformatted=\"2500\"]"
+          ],
+          [
+            "g[transform=\"translate(0,14.5)\"] > .legendtext[text-anchor=\"start\"][x=\"40\"]"
+          ],
+          [
+            "g[transform=\"translate(281.515625,14.5)\"] > .legendtext[text-anchor=\"start\"][x=\"40\"]"
+          ],
+          [
+            ".gtitle"
+          ],
+          [
+            ".xtitle"
+          ],
+          [
+            ".ytitle"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "transfers-dark",
+    "route": "/transfers",
+    "dark": true,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          2
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Transfers"
+        },
+        {
+          "level": "H2",
+          "text": "Monthly flow between institutions"
+        },
+        {
+          "level": "H2",
+          "text": "Transfer history (12)"
+        },
+        {
+          "level": "H2",
+          "text": "Suspected pairs"
+        }
+      ],
+      "unlabelled": [],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            ".transition-colors[href$=\"dashboard\"]"
+          ],
+          [
+            ".transition-colors[href$=\"explorer\"]"
+          ],
+          [
+            ".transition-colors[href$=\"insights\"]"
+          ],
+          [
+            ".transition-colors[href$=\"major-expenses\"]"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            ".transition-colors[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            ".transition-colors[href$=\"accounts\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .bg-white\\/20[href$=\"transfers\"][aria-current=\"page\"]"
+          ],
+          [
+            ".transition-colors[href$=\"filemanager\"]"
+          ],
+          [
+            "text[data-unformatted=\"Mar 2026\"]"
+          ],
+          [
+            "text[data-unformatted=\"Apr 2026\"]"
+          ],
+          [
+            "text[data-unformatted=\"May 2026\"]"
+          ],
+          [
+            "text[data-unformatted=\"Jun 2026\"]"
+          ],
+          [
+            "text[data-unformatted=\"Jul 2026\"]"
+          ],
+          [
+            "text[data-unformatted=\"Aug 2026\"]"
+          ],
+          [
+            "text[data-unformatted=\"0\"]"
+          ],
+          [
+            "text[data-unformatted=\"500\"]"
+          ],
+          [
+            "text[data-unformatted=\"1000\"]"
+          ],
+          [
+            "text[data-unformatted=\"1500\"]"
+          ],
+          [
+            "text[data-unformatted=\"2000\"]"
+          ],
+          [
+            "text[data-unformatted=\"2500\"]"
+          ],
+          [
+            "g[transform=\"translate(0,14.5)\"] > .legendtext[text-anchor=\"start\"][x=\"40\"]"
+          ],
+          [
+            "g[transform=\"translate(281.515625,14.5)\"] > .legendtext[text-anchor=\"start\"][x=\"40\"]"
+          ],
+          [
+            ".gtitle"
+          ],
+          [
+            ".xtitle"
+          ],
+          [
+            ".ytitle"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "filemanager-light",
+    "route": "/filemanager",
+    "dark": false,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "File Manager"
+        },
+        {
+          "level": "H2",
+          "text": "Import from Folder"
+        },
+        {
+          "level": "H2",
+          "text": "Automatic Backups"
+        },
+        {
+          "level": "H2",
+          "text": "Data Files"
+        },
+        {
+          "level": "H2",
+          "text": "Data Encryption"
+        }
+      ],
+      "unlabelled": [],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"dashboard\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"explorer\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"insights\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"major-expenses\"]"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-plan\"] > a[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > a[href$=\"accounts\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > a[href$=\"transfers\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .bg-white\\/20[href$=\"filemanager\"][aria-current=\"page\"]"
+          ],
+          [
+            ".relative"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "filemanager-dark",
+    "route": "/filemanager",
+    "dark": true,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          1
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "File Manager"
+        },
+        {
+          "level": "H2",
+          "text": "Import from Folder"
+        },
+        {
+          "level": "H2",
+          "text": "Automatic Backups"
+        },
+        {
+          "level": "H2",
+          "text": "Data Files"
+        },
+        {
+          "level": "H2",
+          "text": "Data Encryption"
+        }
+      ],
+      "unlabelled": [],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"dashboard\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"explorer\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"insights\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-money\"] > a[href$=\"major-expenses\"]"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-plan\"] > a[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > a[href$=\"accounts\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > a[href$=\"transfers\"]"
+          ],
+          [
+            "div[aria-labelledby=\"nav-group-setup\"] > .bg-white\\/20[href$=\"filemanager\"][aria-current=\"page\"]"
+          ],
+          [
+            ".relative"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "duplicates-light",
+    "route": "/duplicates",
+    "dark": false,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          2
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Duplicate Review"
+        },
+        {
+          "level": "H2",
+          "text": "Unresolved (1)"
+        },
+        {
+          "level": "H2",
+          "text": "Suppressed"
+        }
+      ],
+      "unlabelled": [],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"dashboard\"]"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"explorer\"]"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"insights\"]"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"major-expenses\"]"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"accounts\"]"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"transfers\"]"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"filemanager\"]"
+          ],
+          [
+            ".relative"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "duplicates-dark",
+    "route": "/duplicates",
+    "dark": true,
+    "errors": [],
+    "dom": {
+      "h1": 1,
+      "landmarks": [
+        [
+          "main",
+          1
+        ],
+        [
+          "nav",
+          1
+        ],
+        [
+          "header",
+          2
+        ]
+      ],
+      "headings": [
+        {
+          "level": "H1",
+          "text": "Duplicate Review"
+        },
+        {
+          "level": "H2",
+          "text": "Unresolved (1)"
+        },
+        {
+          "level": "H2",
+          "text": "Suppressed"
+        }
+      ],
+      "unlabelled": [],
+      "animations": []
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "targets": [
+          [
+            ".text-xl"
+          ],
+          [
+            "#nav-group-money"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"dashboard\"]"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"explorer\"]"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"insights\"]"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"major-expenses\"]"
+          ],
+          [
+            "#nav-group-plan"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"whatif\"]"
+          ],
+          [
+            "#nav-group-setup"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"accounts\"]"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"transfers\"]"
+          ],
+          [
+            ".transition-colors.py-2[href$=\"filemanager\"]"
+          ],
+          [
+            ".relative"
+          ]
+        ]
+      }
+    ]
+  }
+]

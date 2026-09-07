@@ -1,0 +1,19 @@
+{
+  "name": "worker-oracle",
+  "cwd": "/tmp/DI5-fourth-worker.1ptHqE",
+  "command": [
+    "rtk",
+    "proxy",
+    "bash",
+    "/home/darrell/bin/ai/budget2/.worktrees/dashboard-insights/.swarm/DI-run/tier3/DI5/accept.sh"
+  ],
+  "start": "2026-09-07T11:50:05.803Z",
+  "end": "2026-09-07T11:53:20.528Z",
+  "exit": 0,
+  "signal": null,
+  "env": {
+    "DI5_SOURCE_ROOT": "/tmp/DI5-fourth-worker.1ptHqE",
+    "DI5_BASE": "http://127.0.0.1:18864",
+    "DI5_OUTPUT": "/tmp/DI5-fourth-worker.1ptHqE/.swarm/DI-run/reports/DI5.4/oracle"
+  }
+}

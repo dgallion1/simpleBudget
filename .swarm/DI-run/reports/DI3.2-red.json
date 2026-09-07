@@ -1,0 +1,38 @@
+[
+  {
+    "theme": "light",
+    "visibleText": "Or drop CSV or backup ZIP files anywhere on this page, or click to browse",
+    "matchingName": 0,
+    "ax": "- button \"Choose CSV or backup ZIP files to import\": Or drop CSV or backup ZIP files anywhere on this page, or click to browse",
+    "key": "Enter",
+    "focused": true,
+    "violations": [
+      {
+        "id": "label-content-name-mismatch",
+        "targets": [
+          [
+            "#drop-zone"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "visibleText": "Or drop CSV or backup ZIP files anywhere on this page, or click to browse",
+    "matchingName": 0,
+    "ax": "- button \"Choose CSV or backup ZIP files to import\": Or drop CSV or backup ZIP files anywhere on this page, or click to browse",
+    "key": "Space",
+    "focused": true,
+    "violations": [
+      {
+        "id": "label-content-name-mismatch",
+        "targets": [
+          [
+            "#drop-zone"
+          ]
+        ]
+      }
+    ]
+  }
+]

@@ -291,6 +291,7 @@ func TestBudgetKPICard_BucketRowAbsentWhenUnconfigured(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			m := singleBucketMetrics(c.hasLiving, c.hasHC)
+			m.TransactionCount = 1 // observed spending, not the DI3 empty state
 			v := BuildBudgetVerdict(m)
 
 			bannerOut, err := renderer.RenderToString("dashboard-verdict-bar", map[string]any{"BudgetVerdict": v})
@@ -475,11 +476,12 @@ func TestBudgetKPICard_TintMatchesClassification(t *testing.T) {
 	_, cleanup := setupTestEnvWithRenderer(t, defaultRows())
 	defer cleanup()
 
-	const staticNegative = 2 // Total Expenses + Monthly Healthcare cards
-	const staticPositive = 1 // Total Income card
+	const staticNegative = 0 // DI3 reserves container tints for budget status
+	const staticPositive = 0
 
 	render := func(t *testing.T, m *models.DashboardMetrics) string {
 		t.Helper()
+		m.TransactionCount = 1 // the fixture models observed spending
 		v := BuildBudgetVerdict(m)
 		out, err := renderer.RenderToString("kpis", map[string]any{"Metrics": m, "BudgetVerdict": v})
 		if err != nil {

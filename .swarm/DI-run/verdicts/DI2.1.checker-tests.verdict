@@ -1,0 +1,180 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DI2
+ATTEMPT: 1
+---
+Acceptance numbering follows the six task-2-brief.md checkboxes, read with
+the approved design's Periods, comparisons and freshness section, plan Global
+Constraints, and lead clarification: a selection ending earlier this month
+is historical and must not borrow later transactions for a forecast.
+
+ISOLATION
+Copied immutable /tmp/budget2-DI2-base.USPhZp with cp -a to
+/tmp/DI2-checker-tests.KZqzlM, then overlaid ONLY the 19 DI2.1 manifest paths.
+Baseline was not modified. All checks used the fixed snapshot; shared source
+can be unfrozen independently of this review.
+Mutations ran only in /tmp/DI2-checker-mutant.eO7j4v.
+No source fixes, git-state changes, subagents, ledger/gate edits or real-data
+writes. Only this verdict is written to the real tree.
+
+F1 — FAIL, criteria 2 and 5: year adapter suppresses available civil-day history.
+Location: internal/handlers/dashboard/period.go:32.
+The new comparison=year override compares raw active.MinDate()/MaxDate()
+instants with midnight-normalized previous civil bounds. A first transaction
+at noon on the first prior day spuriously makes HistoryAvailable=false.
+
+Reproduction was raised by the lead/second reviewer. Read its probe assertions,
+copied that synthetic test file into this checker's fixed snapshot, and ran:
+rtk proxy go test -count=1 -v ./internal/handlers/dashboard -run '^TestDI2SecondYear'
+Exit 1:
+- UTC00: prior=2025-02-01..2025-02-28 history=true comparison.HasData=true.
+- UTC12: first=2025-02-01 12:00 UTC, same prior bounds,
+  history=false comparison.HasData=false.
+- west00, west12 and east12 also fail; east00 passes.
+- TestDI2SecondYearHistoryRendered:
+  "rendered false no-history statement for covered 2025-02-01..2025-02-28".
+- "metadata-only counterfactual restores prior $100 and removes false unavailable statement".
+
+Fixture: selected February 2026, now March 6 2026; prior $100 outflow
+February 1 2025 at noon UTC, current $200 February 28 2026 at noon UTC.
+Legacy metrics.Comparison still returns HasData=true with prior $100 for UTC
+controls. The metadata-only counterfactual retains all dates/transactions/year
+bounds and changes no source; it isolates the new availability override.
+This is not a request to alter legacy year AddDate/leap behavior.
+Affected consumers are Dashboard full-page and KPI/HTMX prior comparisons.
+No additional in-scope defect was demonstrated.
+
+COMMAND A — scoped composite verification
+In /tmp/DI2-checker-tests.KZqzlM:
+rtk proxy make -f Makefile -f /tmp/DI2-focused.mk -o css-verify check
+Final run exit 0, "✓ all checks passed".
+Checker-only supplemental makefile narrows vet/staticcheck/govulncheck/test/build
+to services/insights, handlers/insights, handlers/dashboard, mcpsvc/spend,
+and templates. Tests run -count=1; focused go build succeeds.
+Output includes "No vulnerabilities found." and five uncached package passes.
+CSS is explicitly skipped with -o css-verify because the lead owns that check;
+no CSS freshness result is claimed here. This is not an unmodified full-tree check.
+This successful run preceded addition of the year-history reproduction.
+An earlier run failed solely because my scratch JSON struct lacked
+json:"total_expenses"; response output already contained -50. Corrected the
+harness tag, reran focused probe and composite successfully. Not a product defect.
+
+1. PASS on required date/forecast fixtures.
+Command:
+rtk proxy go test -count=1 -v ./internal/services/insights -run '^TestCheckerDI2|^TestDI2'
+Exit 0:
+TestDI2PreviousCalendarBounds PASS (completed August/July, Sep1-6/Aug1-6,
+10 inclusive days, leap February, March MTD clamped to February).
+TestDI2CalendarDaysAcrossDST PASS.
+TestDI2ForecastEligibility PASS, including historical demo, six/seven elapsed
+days, seven/eight-day age, missing month start and selection ending before today.
+TestDI2NoDataAndUnknownHistory and TestDI2ObservedZeroPriorIsAvailable PASS.
+Read these assertions, not just their names.
+
+2. FAIL only for F1; shared/default civil-date logic and history caveat pass.
+Above service command and Command A pass the normal producer's DST/date-only,
+missing-history and observed-zero assertions.
+Additional scratch TestCheckerDI2CivilNowAndForecastBounds PASS:
+"local Sept7 23:30 remains Sept7; projected 300 through today; future data and earlier selection unavailable; civil day includes UTC date-only row".
+Uses America/Los_Angeles injected now, future selected end, active future row,
+and same-day late-hour filter boundaries.
+Worker full/HTMX tests assert actual "Latest transaction", prior date,
+"evidence bounds" and unavailable-history strings; real template test rejects
+a fabricated 0.0% history result. These passed in Command A.
+The year adapter bypasses the producer's normalization, producing F1.
+
+3. PASS — Forecast eligibility and signed estimate.
+Service command above verifies elapsed >=7, freshness <=7 and stale >7,
+current-month data and month-start-through-today selection.
+TestDI2ForecastSignedNetAndFullHistory PASS asserts forecast=-300 for net refunds,
+selected daily=-10 and prior daily=28.57, plus suppression/transfer exclusion
+and zero-sign protection.
+The extra civil-now probe confirms future data is unavailable and an earlier
+current-month selection cannot borrow later data.
+Command A includes TestDI2RenderedForecastAvailability: actual forecast output
+"Estimated September 2026 total through 2026-09-07", "-$300.00",
+"Net refund estimate"; earlier selection renders unavailable and omits forecast.
+Scratch TestCheckerDI2RenderedBoundaries additionally asserts available zero
+renders "$0.00", not "-$0.00" or "Forecast unavailable".
+
+4. PASS — Prior comparison, signed refunds and rounded ChangeCell.
+TestDI2ExplicitComparisonsSignedAndRounded PASS: both category and pinned
+major-expense producers yield current=-50, prior=30, dollar delta=-80, down;
+rounded row delta equals ChangeCell amount.
+rtk proxy go test -count=1 -v ./internal/handlers/dashboard ./internal/templates -run '^TestCheckerDI2'
+Exit 0 after correcting the checker-only JSON tag:
+TestCheckerDI2RenderedBoundaries:
+"rendered clamp 31 vs 28 days; current=-$50.00 prior=$30.00 delta=-$80.00".
+Assertions inspect rendered table cells and visible clamp/evidence text,
+using fractional-cent and refund fixtures.
+TestCheckerDI2DashboardConsumers:
+"KPI signed expenses=-50; rendered CSV=2026-01,-50.00; prior-year sentinel excluded".
+Thus money evidence includes actual strings, not just internal floats.
+
+5. FAIL for year-history availability parity (F1); other exercised consumers pass.
+Command A freshly runs and passes:
+TestDI2ChartUsesSharedBounds (chart prior label July1-31; selected 200/prior100),
+TestDI2InsightsPeriodFullAndPartials (full/HTMX, trends and velocity),
+TestDI2DashboardPeriodFullAndHTMX,
+TestDI2CalendarMonthComparison (MCP February -> Jan1-31),
+TestDI2MCPExplicitClockAndUnknownHistory (missing fields omitted, measured
+zero retained, earlier selection no forecast).
+Read assertions in every new worker test file.
+
+Scratch TestCheckerDI2DashboardConsumers compares full response bytes between
+default and explicit January selection for each of these 11 routes:
+dashboard, kpis, charts/data/major-expense, spending-trend, merchants, cumulative,
+budget-vs-actual, major-expense?name=Unmatched, kpi/expenses,
+kpi/expenses/month/2026-01, kpi/expenses/export.
+All output "byte-identical=true"; a prior-year $999 sentinel is excluded.
+This probe uses JSON fallback for page/KPI/detail handlers and actual CSV export;
+the separate worker tests exercise the actual full/HTMX renderer.
+
+Actual consumer enumeration command:
+rtk proxy bash -c 'rg -n "BuildPeriodContext\(|SpendingVelocityForPeriod\(|CategoryTrendsForPeriod\(|MajorExpenseTrendsForPeriod\(|insightsPeriod\(|dashboardPeriod\(" internal --glob "!*_test.go"'
+Output establishes:
+- shared service period.go:49 and :122, trends.go:258 and :264;
+- Insights period.go:30, :38, :41; handlers.go:156, :161, :234, :322, :345, :400;
+- Dashboard period.go:23; handlers.go:148, :233, :278, :330, :431, :716, :818;
+- MCP spend/trends.go:150 and :229-239.
+Read handler diffs, shared context template and page bindings to enumerate
+full/HTMX context, prior pace, forecast, days remaining and chart trace consumers.
+Legacy wrappers remain for compatibility; recurring/income/account semantics
+are not re-scoped. No new JS arithmetic or JS code changes occur in this diff.
+
+6. PASS — Focused checks, report/interfaces and manifest; acceptance blocked by F1.
+Command A passes focused vet/static/vulnerability/test/build.
+Read DI2.1 report and 19-path manifest; exported interfaces and consumers listed.
+Read-only Node fs comparison of baseline vs isolated internal/web, excluding
+checker-only zz_checker_di2_test.go files, produced:
+"SCOPE PASS: 17 source/test/template differences exactly match manifest; 19 paths including evidence."
+This comparison preceded copying the second reviewer's year probe.
+Read-only manifest glob matching produced "Critical path matches: 0".
+Only declared 14 Go and three template files differ from immutable baseline.
+Accepted DI1/DI6 files outside that list, CSS and metrics implementation remain
+byte-identical. No lead docs/ledger overlaid. Tier 2: no DI2 oracle applies.
+
+REGRESSION MUTATION PROOF
+In /tmp/DI2-checker-mutant.eO7j4v only:
+1. Replaced prior start with selected start minus selected-day count:
+rtk proxy go test -count=1 -v ./internal/services/insights ./internal/handlers/dashboard ./internal/services/mcpsvc/spend -run '^TestDI2PreviousCalendarBounds|^TestDI2DashboardPriorCalendarMonth|^TestDI2CalendarMonthComparison'
+Exit 1, behavioral failures:
+calendar/March clamp and leap bounds wrong;
+"prior-calendar-month spending=0 want 100";
+"February previous range 2026-01-04..2026-01-31; want January 1..31".
+
+2. Restored original bounds, then forced forecast available with amount 999:
+rtk proxy go test -count=1 ./internal/services/insights ./internal/handlers/insights ./internal/services/mcpsvc/spend ./internal/templates -run '^TestDI2ForecastEligibility|^TestDI2HistoricalSelectionHasNoForecast|^TestDI2MCPExplicitClockAndUnknownHistory|^TestDI2RenderedForecastAvailability'
+Exit 1:
+forecast eligibility rejects historical/short/stale/early selections;
+"historical August produced a current-month forecast: 999";
+MCP expected forecast check fails;
+renderer reports missing "-$300.00" and historical subrange shows forecast.
+These are executed assertion failures, not compilation/cache failures.
+
+LIMITS / HANDOFF
+No DI3/DI4 layout, browser/theme/JS execution or whole-repository integration
+claim. CSS verification is lead-owned. Scratch probes and mutant copy remain
+available for promotion/audit. Known Landlock incompatibility handled with scoped
+escalation for scratch patches and this verdict. Lead owns gates and re-dispatch.

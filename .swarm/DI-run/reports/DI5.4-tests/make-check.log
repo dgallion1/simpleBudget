@@ -1,0 +1,75 @@
+/home/darrell/go-sdk/go/bin/go vet ./...
+staticcheck ./...
+govulncheck ./...
+=== Symbol Results ===
+
+No vulnerabilities found.
+
+Your code is affected by 0 vulnerabilities.
+This scan also found 8 vulnerabilities in packages you import and 1
+vulnerability in modules you require, but your code doesn't appear to call these
+vulnerabilities.
+Use '-show verbose' for more details.
+./tmp/tailwindcss-3.4.17 -c tailwind.config.js -i web/static/css/tailwind.src.css -o tmp/tailwind.check.css --minify
+Browserslist: caniuse-lite is outdated. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+Rebuilding...
+
+Done in 592ms.
+tailwind.css is up to date
+/home/darrell/go-sdk/go/bin/go test ./...
+ok  	budget2/cmd/enrich-amazon	7.202s
+ok  	budget2/cmd/server	7.710s
+ok  	budget2/cmd/validate	0.015s
+ok  	budget2/internal/config	0.007s
+ok  	budget2/internal/handlers/accounts	1.672s
+ok  	budget2/internal/handlers/approval	0.010s
+ok  	budget2/internal/handlers/backup	41.451s
+ok  	budget2/internal/handlers/dashboard	2.320s
+ok  	budget2/internal/handlers/duplicates	0.036s
+ok  	budget2/internal/handlers/explorer	1.142s
+ok  	budget2/internal/handlers/insights	2.312s
+ok  	budget2/internal/handlers/majorexpenses	0.633s
+ok  	budget2/internal/handlers/transfers	0.480s
+ok  	budget2/internal/handlers/whatif	20.782s
+ok  	budget2/internal/http	0.005s
+ok  	budget2/internal/models	0.008s
+ok  	budget2/internal/services/accounts	0.031s
+ok  	budget2/internal/services/amazon	0.006s
+ok  	budget2/internal/services/anomalies	0.018s
+ok  	budget2/internal/services/backup	0.587s
+ok  	budget2/internal/services/classifier	0.005s
+ok  	budget2/internal/services/dataloader	1.889s
+ok  	budget2/internal/services/insights	0.022s
+ok  	budget2/internal/services/majorexpenses	0.005s
+ok  	budget2/internal/services/mcpsvc	0.083s
+ok  	budget2/internal/services/mcpsvc/admin	4.630s
+ok  	budget2/internal/services/mcpsvc/confirm	0.047s
+ok  	budget2/internal/services/mcpsvc/curate	0.689s
+ok  	budget2/internal/services/mcpsvc/ledger	0.604s
+ok  	budget2/internal/services/mcpsvc/plan	11.048s
+ok  	budget2/internal/services/mcpsvc/snapshot	0.007s
+ok  	budget2/internal/services/mcpsvc/spend	1.340s
+ok  	budget2/internal/services/merchants	0.008s
+ok  	budget2/internal/services/metrics	0.008s
+ok  	budget2/internal/services/pricecreep	0.007s
+ok  	budget2/internal/services/restore	1.117s
+ok  	budget2/internal/services/retirement	38.591s
+ok  	budget2/internal/services/retirement/analysis	29.454s
+ok  	budget2/internal/services/retirement/completeness	0.005s
+ok  	budget2/internal/services/retirement/engine	0.050s
+ok  	budget2/internal/services/retirement/history	0.007s
+ok  	budget2/internal/services/retirement/overrides	0.010s
+ok  	budget2/internal/services/retirement/prepare	0.006s
+ok  	budget2/internal/services/storage	80.465s
+ok  	budget2/internal/services/transfers	0.005s
+ok  	budget2/internal/services/uirefresh	0.005s
+ok  	budget2/internal/templates	2.247s
+ok  	budget2/internal/testutil	0.006s
+ok  	budget2/internal/version	0.005s
+ok  	budget2/web	0.010s
+/home/darrell/go-sdk/go/bin/go test -count=1 ./internal/handlers/accounts
+ok  	budget2/internal/handlers/accounts	0.757s
+✓ all checks passed

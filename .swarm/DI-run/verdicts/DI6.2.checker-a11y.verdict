@@ -1,0 +1,139 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: DI6
+ATTEMPT: 2
+---
+FAILURES: None in DI6 attempt-2 scope.
+
+Scope / frozen evidence
+Read .swarm/DI-run/reports/DI6.2.md and cumulative DI6.2.files (15 paths).
+All 17 constitution points were reviewed in attempt 1; the explicit per-point
+evidence below carries forward unchanged semantics and refreshes CSS-sensitive
+and browser checks. Prior detailed evidence:
+.swarm/DI-run/verdicts/DI6.1.checker-a11y.verdict.
+Browser skill was already read in this conversation. Used the user-authorized
+synthetic headless Chrome/Playwright fallback, without real data/live app calls.
+
+Snapshot: /tmp/DI6-a11y-attempt2.FnfLXj.
+Created with `rtk proxy bash -c` running `git archive 69e484a | tar -x -C
+"$audit_dir"`, followed by ONLY the 15 manifest-listed overlay files. Active
+DI2 template/Go changes excluded. No whole-live-tree copy, source fixes, git
+state changes, subagents, ledger modifications, or gate calls.
+
+Fresh comparison commands / results
+- `rtk proxy node -e` with fs.readFileSync/assert.deepEqual checked every
+  prior-manifest path against /tmp/DI6-a11y.Ss9tM5, except the authorized
+  page-refresh.test.cjs change: PASS, all unchanged.
+- Same executable asserted that removing exactly
+  `.outline{outline-style:solid}` from the final stylesheet yields the
+  attempt-1 stylesheet byte-for-byte: PASS.
+  Final CSS SHA256:
+  6661373d4a2f2e55f9dc9c4756bcfa38bce8866812025775763ca00410e43e6b.
+- `rtk proxy diff -qr /tmp/DI6-a11y.Ss9tM5/web/templates web/templates`,
+  corresponding comparisons of internal/handlers and internal/templates,
+  and `rtk proxy cmp /tmp/DI6-a11y.Ss9tM5/web/static/css/styles.css
+  web/static/css/styles.css`: no differences.
+- `rtk proxy git diff master -- web/templates/layouts/base.html` in source:
+  sole script inclusion at line 234, as in attempt 1. New JS provenance was
+  established in attempt 1 via diff --no-index /dev/null (untracked file).
+- Final `rtk proxy bash -c` manifest loop using cmp: all 15 copied paths
+  still byte-identical to the frozen source.
+
+Fresh executable accessibility evidence
+A. `rtk proxy node audit.cjs` in the new snapshot: all SIX groups PASS,
+   light and class=dark at 390/768/1440, height 900.
+   Reused the prior actual httptest/Go-template dashboard output bytes after
+   the comparisons above confirmed renderer/handlers/templates unchanged;
+   this is not hand-built HTML or template-source auditing. The harness
+   loads the final real tailwind.css and styles.css, executes the unchanged
+   production page-refresh.js with intercepted synthetic revision responses,
+   and blocks unrelated scripts/resources. Fresh saved runtime DOM includes
+   the actual script-generated notice, with six screenshots/AX snapshots.
+   Traced results: dirty date input 2024-08-01 retained; signal does not steal
+   focus; Tab reaches Refresh page; Enter opens native confirm; refusal keeps
+   edits and document; Tab then reaches Keep editing; Enter removes notice
+   AND status and returns input focus. Same revision remains dismissed;
+   later revision shows a notice. Acceptance causes one reload with
+   /probe?scenario=demo#settings retained; rebaseline does not loop across
+   the next polling interval; subsequent clean signal reloads once.
+   These are accessibility consequences of synthetic traces, not a claim
+   of live-app/full-server behavior coverage.
+B. `rtk proxy npx --no-install @axe-core/cli
+   http://127.0.0.1:18766/light.html http://127.0.0.1:18766/dark.html
+   --chrome-path /home/darrell/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome
+   --chromedriver-path /home/darrell/.config/nvm/versions/node/v24.12.0/lib/node_modules/@axe-core/cli/node_modules/chromedriver/lib/chromedriver/chromedriver
+   --chrome-options=--no-sandbox --save axe.json --exit`
+   Exit 0: axe-core 4.13.0, ZERO violations and 42 passing rules on EACH
+   final-stylesheet rendered page. Artifacts: snapshot/axe.json, light.html,
+   dark.html. Localhost server served only synthetic rendered artifacts/CSS.
+C. `rtk proxy node focus.cjs`: exit 0, all six combinations; 65 Tab steps
+   each, no focused target wholly obscured by the notice. One h1, only h2
+   successors; main/nav/header/footer present. 390px baseline overflow stays
+   496px after notice removal; 768/1440 equal viewport width.
+D. `rtk proxy rg -n 'Page refresh|status|Refresh page|Keep editing'
+   light-390.ax.txt dark-390.ax.txt`: both show named region, status message,
+   Refresh page and Keep editing buttons. A asserts status removal on dismiss.
+   Visually inspected fresh dark mobile, both tablet, both desktop captures;
+   fresh light-mobile capture is byte-identical to the inspected attempt-1
+   light-mobile capture. Screenshot-byte comparison was not used as a blanket
+   assertion: light-tablet PNG differed and was inspected directly.
+
+All 17 constitution points
+1 PASS A/B/C: unchanged semantic structure; one h1, h2 hierarchy and landmarks.
+2 N/A new content: no added tables. Attempt-1 source review unchanged.
+3 PASS A/B: two native named type=button controls, keyboard activated.
+4 N/A new content: no added input. Existing labelled date input used in A.
+5 N/A: no new validation/error UI, unchanged from attempt 1.
+6 N/A: no new required fields or formats, unchanged from attempt 1.
+7 PASS A/B: final computed notice #111827 on #fff in light, #f3f4f6 on
+  #1f2937 in dark. Same RGB pairs as prior measured luminance evidence:
+  17.739717:1 and 13.338408:1. Transparent buttons inherit text color;
+  border/currentColor and 2px focus outline exceed 3:1; text exceeds 4.5:1.
+  WCAG 1.4.3/1.4.11. Axe's status contrast incomplete flag is resolved by
+  the solid computed background and these contrast measurements.
+8 PASS A/D: refresh/discard/preservation is conveyed in text, not color.
+9 PASS A/C: Refresh page then Keep editing in keyboard order; solid 2px
+  currentColor outline plus 2px offset, visible in both themes. Arrival
+  preserves focus; dismissal restores input focus; no wholly hidden focused
+  target in the tab sweep. WCAG 2.1.1/2.4.3/2.4.7/2.4.11.
+10 PASS applicable behavior A/D: status semantics expose request/preservation
+  message without stealing focus; no new HTMX replacement. Prior pending
+  submission/request-deferral trace remains applicable to unchanged JS.
+11 N/A: no chart added or changed by DI6.
+12 PASS A/B/C: full contrast/focus/layout parity on final CSS in both themes.
+13 N/A: notice has no currency or signed numerical values.
+14 PASS A/D: keyboard dismissal; identical revision does not reinsert notice;
+  new revision can show it again, with no polling-driven dialog spam.
+15 PASS A: reduced-motion emulated; animation none, transition 0s. No new
+  animation, motion-only feedback, or hidden-text workaround.
+16 PASS A/D: dismissal removes region and status together, retaining edits;
+  no stale status/hidden announcement node. JS:59-62 unchanged.
+17 PASS/native A: browser confirm used for explicit discard (JS:51), no
+  custom modal layer. Non-modal notice leaves page interaction available.
+
+Responsive / manual details
+Both themes at 900px height: 390 => notice x24,width350,height146;
+768 => x24,width728,height122; 1440 => x24,width1400,height98.
+Right/bottom margins 16px; no notice clipping; button sizes approximately
+125x42 and 121x42 CSS px satisfy WCAG 2.5.8. Final CSS introduces no image,
+alt-text omission, decorative image exposure, or assistive-only junk text.
+Announcement evidence is semantic/AX-tree evidence, not recorded OS screen
+reader speech. Native dialog response traces do not claim an exhaustive AT
+compatibility test. Unchanged hidden deferral/epoch behavior belongs to primary
+tests; no redundant Go/JS suite or mutation run performed this attempt.
+
+OBSERVATIONS
+- The 390px baseline dashboard overflow persists without the DI6 notice.
+  Baseline/master provenance and unchanged markup were recorded in attempt 1;
+  fresh C reconfirms it. PRE-EXISTING, reserved for DI5, not an in-scope FAIL.
+- Axe still lists baseline gradient contrast as incomplete. The DI6 solid
+  notice colors were manually resolved above; no new gradient was introduced.
+- Worker reports CSS freshness and strengthened epoch mutation test now pass.
+  Build freshness/mutation adequacy remain the primary verifier's lane. This
+  verdict validates accessibility with the final CSS, not those separate gates.
+- Known legacy-Landlock runtime failure recurred during final evidence reads;
+  used authorized escalated rtk/apply_patch fallback for this sole project
+  write. No automatic approval rejection.
+
+No failing unified diffs: no in-scope violation found. Lead owns gates.

@@ -1,0 +1,253 @@
+{
+  "id": "filemanager-dark",
+  "route": "/filemanager",
+  "theme": "dark",
+  "requestedURL": "http://127.0.0.1:18873/filemanager",
+  "responses": [],
+  "requestFailures": [],
+  "blocked": [],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "status": 200,
+  "finalURL": "http://127.0.0.1:18873/filemanager",
+  "dom": {
+    "title": "File Manager - simpleBudget",
+    "theme": "dark",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "headings": [
+      {
+        "tag": "H1",
+        "id": "",
+        "text": "File Manager"
+      },
+      {
+        "tag": "H2",
+        "id": "import-folder-heading",
+        "text": "Import from Folder"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Automatic Backups"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Data Files"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Data Encryption"
+      }
+    ],
+    "landmarks": [
+      {
+        "name": "main",
+        "count": 1
+      },
+      {
+        "name": "nav",
+        "count": 1
+      },
+      {
+        "name": "header",
+        "count": 1
+      },
+      {
+        "name": "footer",
+        "count": 1
+      }
+    ],
+    "unscopedHeaders": [],
+    "forms": [
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "file",
+        "required": false,
+        "label": "",
+        "ariaLabel": "CSV files to upload",
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "import-delete-source",
+        "type": "checkbox",
+        "required": false,
+        "label": "Delete source files after import",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "auto-backup-toggle",
+        "type": "checkbox",
+        "required": false,
+        "label": "Enabled",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "checkbox",
+        "required": false,
+        "label": "",
+        "ariaLabel": "Enable demo-checking_2026-03-01_to_2026-06-15.csv",
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "checkbox",
+        "required": false,
+        "label": "",
+        "ariaLabel": "Enable demo-checking_2026-06-01_to_2026-08-28.csv",
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "checkbox",
+        "required": false,
+        "label": "",
+        "ariaLabel": "Enable demo-credit_2026-03-01_to_2026-06-15.csv",
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "checkbox",
+        "required": false,
+        "label": "",
+        "ariaLabel": "Enable demo-credit_2026-06-01_to_2026-08-28.csv",
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "",
+        "type": "checkbox",
+        "required": false,
+        "label": "",
+        "ariaLabel": "Enable demo-health_2026-03-01_to_2026-08-28.csv",
+        "labelledby": null,
+        "describedby": null
+      }
+    ],
+    "clickable": [],
+    "live": [
+      {
+        "tag": "DIV",
+        "id": "import-scan-list",
+        "text": "Click Rescan to list CSV files in the import folder.",
+        "visible": true,
+        "live": "polite"
+      },
+      {
+        "tag": "DIV",
+        "id": "import-result",
+        "text": "",
+        "visible": true,
+        "live": "polite"
+      },
+      {
+        "tag": "DIV",
+        "id": "file-list",
+        "text": "File Rows Date Range On Actions demo-checking_2026-03-01_to_2026-06-15.csv (5K) 54 2026-03-01 - 2026-06-15 demo-checking_2026-06-01_to_2026-08-28.csv ",
+        "visible": true,
+        "live": "polite"
+      },
+      {
+        "tag": "DIV",
+        "id": "enable-encryption-error",
+        "text": "",
+        "visible": false,
+        "live": null
+      },
+      {
+        "tag": "DIV",
+        "id": "age-encryption-error",
+        "text": "",
+        "visible": false,
+        "live": null
+      },
+      {
+        "tag": "DIV",
+        "id": "ssh-encryption-error",
+        "text": "",
+        "visible": false,
+        "live": null
+      },
+      {
+        "tag": "DIV",
+        "id": "yubikey-encryption-error",
+        "text": "",
+        "visible": false,
+        "live": null
+      }
+    ],
+    "hiddenText": [
+      {
+        "tag": "SPAN",
+        "id": "",
+        "text": "Actions"
+      }
+    ],
+    "images": [],
+    "dialogs": [],
+    "animations": [],
+    "charts": [],
+    "nav": [
+      {
+        "text": "simpleBudget",
+        "href": "/"
+      },
+      {
+        "text": "Dashboard",
+        "href": "/dashboard"
+      },
+      {
+        "text": "Explorer",
+        "href": "/explorer"
+      },
+      {
+        "text": "Insights",
+        "href": "/insights"
+      },
+      {
+        "text": "Major Expenses",
+        "href": "/major-expenses"
+      },
+      {
+        "text": "What-If",
+        "href": "/whatif"
+      },
+      {
+        "text": "Accounts",
+        "href": "/accounts"
+      },
+      {
+        "text": "Transfers",
+        "href": "/transfers"
+      },
+      {
+        "text": "File Manager",
+        "href": "/filemanager"
+      },
+      {
+        "text": "Duplicates\n                            1",
+        "href": "/duplicates"
+      }
+    ]
+  },
+  "htmlFile": "filemanager-dark.html"
+}

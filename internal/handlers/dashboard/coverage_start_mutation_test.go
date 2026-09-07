@@ -194,9 +194,8 @@ func TestCoverageStartFullLedgerNotWindow_AllThreeHandlerSites(t *testing.T) {
 			"ledger, not the window-derived %v a mutated handleDashboard call site would produce)",
 			got, wantHealthTargetTotal, mutatedHealthTargetTotal)
 	}
-	if since := sinceDateFromBody(body); since != "" {
-		t.Errorf("/dashboard rendered a coverage-start provenance note (%q); coverage predates the window "+
-			"so none should show (a window-derived mutation would incorrectly show \"since Feb 5, 2025\")", since)
+	if since := sinceDateFromBody(body); since != "Nov 5, 2024" {
+		t.Errorf("/dashboard coverage provenance = %q; want full-ledger Nov 5, 2024, not window-derived Feb 5, 2025", since)
 	}
 
 	// Site 2: handleKPIsPartial.
@@ -210,8 +209,8 @@ func TestCoverageStartFullLedgerNotWindow_AllThreeHandlerSites(t *testing.T) {
 			"ledger, not the window-derived %v a mutated handleKPIsPartial call site would produce)",
 			got, wantHealthTargetTotal, mutatedHealthTargetTotal)
 	}
-	if since := sinceDateFromBody(bodyK); since != "" {
-		t.Errorf("/dashboard/kpis rendered a coverage-start provenance note (%q); want none", since)
+	if since := sinceDateFromBody(bodyK); since != "Nov 5, 2024" {
+		t.Errorf("/dashboard/kpis coverage provenance = %q; want full-ledger Nov 5, 2024", since)
 	}
 
 	// Site 3: handleChartData budget-vs-actual.

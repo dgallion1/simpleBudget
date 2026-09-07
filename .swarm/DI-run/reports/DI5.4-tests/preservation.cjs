@@ -1,0 +1,13 @@
+const fs=require('fs'),p=require('path'),crypto=require('crypto');
+const now='/tmp/DI5-fourth-tests.QbdTEf',old='/tmp/DI5-final-worker.btR0cu';
+const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+const walk=(root,rel)=>fs.readdirSync(p.join(root,rel),{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(root,p.join(rel,e.name)): [p.join(rel,e.name)]);
+const paths=['cmd','internal','web'].flatMap(d=>walk(old,d));
+const diffs=paths.filter(f=>!fs.existsSync(p.join(now,f))||hash(p.join(old,f))!==hash(p.join(now,f)));
+const added=['cmd','internal','web'].flatMap(d=>walk(now,d)).filter(f=>!fs.existsSync(p.join(old,f)));
+const go=paths.filter(f=>f.endsWith('_di5_test.go')).map(f=>({path:f,sha256:hash(p.join(now,f)),same:hash(p.join(old,f))===hash(p.join(now,f))}));
+const manifest=fs.readFileSync('/home/darrell/bin/ai/budget2/.worktrees/dashboard-insights/.swarm/DI-run/manifests/DI5.3.files','utf8').trim().split('\n');
+const previous=manifest.map(f=>({path:f,oldExists:fs.existsSync(p.join(old,f)),newExists:fs.existsSync(p.join(now,f)),same:fs.existsSync(p.join(now,f))&&fs.existsSync(p.join(old,f))&&hash(p.join(now,f))===hash(p.join(old,f))}));
+const result={sourceCount:paths.length,sourceDiffs:diffs,added,go,priorCount:manifest.length,priorDiffs:previous.filter(x=>!x.same),productionSHA256:hash(p.join(now,'web/static/js/page-refresh.js'))};
+console.log(JSON.stringify(result,null,2));
+if(JSON.stringify(diffs)!==JSON.stringify(['web/static/js/page-refresh.js'])||added.length||go.length!==18||go.some(x=>!x.same))process.exitCode=1;

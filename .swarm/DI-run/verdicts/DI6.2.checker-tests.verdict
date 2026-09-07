@@ -1,0 +1,63 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DI6
+ATTEMPT: 2
+---
+Acceptance scope: the explicit attempt-2 reopening governs: ONLY regenerate the missing .outline CSS utility and strengthen the durable pending-dirty-notice/new-epoch test; production JS/server unchanged. Read DI6.2.md, cumulative DI6.2.files, and the complete updated test. Original brief/spec/accessibility criteria and attempt-1 evidence were already read and verified in this checker session.
+
+Isolation: /tmp/di6-attempt2-checker-thIuxd created by git archive 69e484a, then cp -a overlay of ONLY the 15 cumulative manifest paths. No live-tree copy, git metadata mutation, DI1/DI2 overlay, source fix, subagent, deployment, gate or ledger operation. All shell commands use rtk proxy. Relative commands below ran in that isolated snapshot.
+
+1. PASS — generated CSS fresh; exact authorized delta.
+Command: make COMMIT=69e484a css-verify, using the existing pinned Tailwind 3.4.17 executable copied into snapshot tmp/.
+Output: "tailwind.css is up to date", exit 0.
+Independent Node byte assertion reads attempt-1 /tmp/di6-checker-Oa0W6B/web/static/css/tailwind.css and attempt-2 CSS, requires exactly one occurrence of .outline{outline-style:solid}, removes that occurrence, and asserts strict equality with attempt 1.
+Output: "PASS exact CSS delta: .outline{outline-style:solid}". No other byte changes in the shipped stylesheet. This closes attempt-1 criterion 9.
+
+2. PASS — durable epoch regression detects the actual defect and current code passes.
+Read the new test at web/static/js/page-refresh.test.cjs:64. It creates dirty input, signals revision 7, requires an old notice, changes to restarted epoch/revision 0, requires notice removal with zero reloads/dialogs, polls the baseline again, then requires a new protected notice at restarted/revision 1. These assertions exercise both pending-notice clearing and resetting below an old high counter.
+GREEN command: node --test web/static/js/page-refresh.test.cjs.
+Output: "new epoch clears a pending dirty notice and rebaselines below the old revision" passes; tests 7, pass 7, fail 0, exit 0.
+RED command, executed through rtk proxy bash in snapshot:
+node - <<'JS'
+const fs = require("node:fs");
+const read = fs.readFileSync;
+fs.readFileSync = function(path, ...args) {
+ const result=read.call(this,path,...args);
+ if(String(path).endsWith("/page-refresh.js")) {
+  const target=" || state.epoch !== baseline.epoch";
+  if(typeof result!=="string" || !result.includes(target)) throw Error("Mutation target missing");
+  return result.replace(target,"");
+ }
+ return result;
+};
+require("./web/static/js/page-refresh.test.cjs");
+JS
+Output: six original tests PASS; new seventh test FAILS specifically at line 70: "restart must remove the old epoch notice", "1 !== 0"; tests 7, pass 6, fail 1, exit 1. Mutation is only in the VM source string, not a file edit. Subsequent composite run on actual source passes all seven again. This closes attempt-1 criterion 5's test deficiency.
+
+3. PASS — scoped functionality remains intact, with fresh executable evidence.
+Commands: go test -race -count=1 -v ./internal/services/uirefresh ./internal/services/mcpsvc; go test -count=1 -v ./cmd/server -run TestDI6.
+Outputs: PASS TestSignalsAreIsolatedAndReadsAreFresh; PASS TestRefreshToolSchemaAndSharedCoordinator; PASS TestNewServerRegistersAllThirtyTwoTools (assertions require 33); PASS TestDI6MountedRefreshRouteAndLayout. Both service packages and cmd/server pass uncached. Assertions previously read establish independent coordinator epochs, increasing revisions, no-store reads, rejected POST, argument-free registered schema, requested/revision result, shared MCP/route state, rendered script inclusion once, and actual static asset availability.
+Command: node --test web/static/js/page-refresh.test.cjs.
+Output: all seven pass, including clean reload once/query/hash/baseline, hidden coalescing, dirty refusal/no dialog spam, overlapping HTMX/native submission deferral, focus overlap, and dismissal.
+Command: DI6_SOURCE_ROOT=/tmp/di6-attempt2-checker-thIuxd node /tmp/di6-browser.cjs.
+Fresh Chromium outputs:
+"PASS clean actual navigation once, exact query/hash, new-document baseline no-loop"
+"PASS native refusal retains actual input; keyboard dismissal removes notice and status; unchanged signal stays dismissed"
+"PASS restart clears pending notice without discarding actual input or reloading"
+Browser assertions count actual document loads, compare exact URL http://di6.test/whatif?scenario=demo#settings, dismiss a native confirmation, verify actual input remains "keep this edit", activate Keep editing by Enter, and verify both status and named notice are absent. Harness uses synthetic HTML/input and intercepted revision responses; it does not run the full application or independently recertify contrast/screens/readers. Hidden/HTMX lifecycle tests remain mock-driven. No jsdom-specific range-step or matchMedia claims.
+
+4. PASS — composite check scoped to this reopening.
+Command: make -f Makefile -f /tmp/di6-attempt2-scoped.mk COMMIT=69e484a check
+Output log: /tmp/di6-attempt2-composite.log. Exit 0, final line "✓ all checks passed".
+The temporary make overlay preserves the repository check prerequisite graph and original css-verify recipe. It scopes vet/staticcheck/govulncheck to uirefresh, mcpsvc and cmd/server; test recipe runs the two service packages with -race -count=1, cmd/server with -count=1 -run TestDI6, and the seven JS tests. Output includes fresh "tailwind.css is up to date", both service packages ok, cmd/server ok, and JS pass 7/fail 0. This is explicitly a scoped composite, not a fresh full-repository suite claim. The lead retains full integration ownership as requested. Vulnerability scan advisory mentions uncalled dependency vulnerabilities; no update performed, and pipeline exits 0. Existing caniuse-lite advisory does not fail CSS comparison.
+
+5. PASS — exact scope and unchanged production verified at byte level.
+Command: rtk proxy node with fs.readFileSync and assert.deepEqual comparing every attempt-1 manifest path except page-refresh.test.cjs between /tmp/di6-checker-Oa0W6B and /tmp/di6-attempt2-checker-thIuxd.
+Output IDENTICAL for cmd/server/main.go, cmd/server/refresh_di6_test.go, mcpsvc/server.go, mcpsvc/server_test.go, mcpsvc/refresh_test.go, uirefresh/refresh.go, uirefresh/refresh_test.go, page-refresh.js, layouts/base.html, and prior report/manifest.
+Additional byte assertion requires updated JS test to start with the entire old test file: "PASS six original tests byte-identical; seventh appended". Manifest count/existence and DI-run critical-glob comparison: "PASS 15 manifest paths; no critical-glob matches".
+Thus only CSS, the appended test, and attempt-2 report/manifest changed relative to the verified attempt-1 deliverables. Saved-data/no-write implementation and What-If safeguards are unchanged; the prior actual MCP saved-fixture hash probe is retained evidence, not falsely represented as newly rerun. No monetary/formatting behavior changed. DI1/DI2 territories excluded entirely.
+
+VERDICT / PASS: both reopened deficiencies resolved with fresh command evidence and mutation failure.
+FINDINGS / none in attempt-2 scope.
+SCOPE / DI6 attempt 2 only. Only real-tree write is this verdict. Lead owns gates, ledger, full integration and demo deployment.

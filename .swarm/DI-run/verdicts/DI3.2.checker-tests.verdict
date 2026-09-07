@@ -1,0 +1,39 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DI3
+ATTEMPT: 2
+---
+Scoped independent re-review of conceded F1 and new breakage from its narrow correction. Read current task-3-brief.md, canonical design context, DI3.2 report, cumulative manifest, and the complete promoted label-name regression. No other reviewer's verdict transcribed.
+
+Snapshot / scope proof
+Fresh /tmp/DI3-attempt2-checker.Vw68yz copied from immutable /tmp/budget2-DI3-base.rhoTJM, overlaid ONLY DI3.2 cumulative manifest paths. No whole-live-tree copy.
+Ran rtk proxy node -e with fs recursive enumeration and assert/strict comparisons over cmd/internal/web against MY prior /tmp/DI3-checker-tests.eHC5LI. Excluded only my named scratch internal/handlers/dashboard/zz_checker_di3_test.go. Asserted:
+1. Exactly one changed path: web/templates/pages/dashboard.html.
+2. New template bytes equal old template bytes with precisely ' aria-label="Choose CSV or backup ZIP files to import"' removed.
+Output: "PASS sole source delta: exact #drop-zone aria-label removal. All Go, JS, CSS, money templates and tests byte-identical; prior scratch zz_checker_di3_test.go excluded."
+Thus visible copy, role, tabindex, file input, layout/classes, keyboard JavaScript, monetary producers/consumers, targets, dates, charts and CSS are unchanged. New report/harness/evidence paths are separately listed by the cumulative manifest. No critical source path newly touched.
+
+Fresh commands (rtk proxy; cwd attempt2 snapshot)
+A. go test -count=1 ./internal/handlers/dashboard ./internal/services/mcpsvc/spend -run '^TestDI3'
+Exit 0: dashboard 0.149s; spend 0.022s. Existing assertions read in attempt1, confirmed byte-identical here. This reruns the actual rendered cash-flow/empty/healthcare/monthly residual/chart fixtures and MCP fractional/boundary/refund/zero/residual fixtures.
+B. go build -o tmp/budget2 ./cmd/server
+Exit 0. Built isolated attempt2 server.
+C. make css-verify
+Exit 0: "tailwind.css is up to date". Existing caniuse-lite advisory only; no stylesheet regeneration committed.
+D. env DI3_BASE=http://127.0.0.1:18973 DI3_LABEL_OUTPUT=/tmp/DI3-attempt2-checker.Vw68yz/tmp/checker-label-green.json node .swarm/DI-run/reports/DI3-label-name.cjs
+Exit 0. Both light and dark: exact unchanged visible text, matchingName=1, computed accessibility snapshot names the button with that visible text, focused=true, violations=[] for explicit axe label-content-name-mismatch. Actual filechooser opened with Enter in light and Space in dark; empty file selection, no upload.
+E. Same promoted regression with DI3_BASE=http://127.0.0.1:18974 and output tmp/checker-label-red.json against MY original attempt1 binary/snapshot.
+Exit 1 for the intended defect, not a harness failure. Both themes: matchingName=0, old overriding accessible name, explicit label-content-name-mismatch on #drop-zone; keyboard remained functional. Assertion: "Rendered accessible name must equal the visible label", 0 !== 1. This independently proves the new durable regression rejects the original markup. No production mutation needed.
+
+Criteria / prior evidence association
+1. PASS — actual selected-period rendering, refunds, fractional cents, absent plan/data, stale anchors. A freshly passes new DI3 monetary renderer/MCP fixtures. Attempt1 primary verdict criteria 1 and commands D/E/F retain exact component/detail/month/CSV, refund, negative-zero, account stale/no-anchor and period evidence, because those sources/tests are byte-identical by the scope proof.
+2. PASS — four same-period figures, labeled monthly detail, healthcare/separately modeled costs/provenance and canonical rounding. A freshly checks reporting and monthly residual fixtures. Attempt1 criterion 2, consumer enumeration and rendered exact-money probes remain applicable to byte-identical money code/templates: 10.006/0.004 => 10.01/0.00/10.01; 2.675 => 2.67; two monthly 0.004 amounts => period 0.01, rows 0/0, explicit adjustment 0.01. No grouping, CSV schema, ledger or target changes.
+3. PASS — exact positive/negative/neutral explanations and no inferred portfolio withdrawals. A reruns TestDI3RenderedCashFlow; previous exact explanation and displayed-zero assertions remain unchanged. Scope proof excludes any text change outside the removed attribute.
+4. PASS — retained dated accounts, charts, navigable details and selected-range Insights navigation. Attempt1 criteria 4 and F/G results retained by byte identity. No JS, route, account, chart or link change. D also freshly demonstrates that the affected import control remains focusable and keyboard-operable.
+5. PASS for scoped correction — F1 label-in-name fixed under ACCESSIBILITY/WCAG 2.5.3, independently demonstrated by D and calibrated by E. B/C establish current build and CSS freshness. Prior attempt1 package-scoped composite command B, six-state layout/chart-cell/keyboard evidence G, and unchanged-source checks remain associated; not repeated as a full-suite or six-viewport batch. Broad axe tag coverage from attempt1 did not establish this specific rule; the explicit new rule now does. Named a11y reviewer still owns its independent lane.
+
+Prior evidence: .swarm/DI-run/verdicts/DI3.1.checker-tests.verdict and /tmp/DI3-checker-tests.eHC5LI/tmp/{checker-money.log,checker-retained.log,checker-browser.log}; original exact-money scratch probe remains at internal/handlers/dashboard/zz_checker_di3_test.go in that prior snapshot. Attempt2 introduced no additional throwaway probe; promoted harness ran unchanged, using its documented loopback/output overrides.
+
+FINDINGS: No remaining F1 defect or new in-scope breakage established.
+SCOPE: Attribute removal only. No source/git/ledger edits, subagents, real-data writes or real/demo-port access. Synthetic data from authorized fixture and prior isolated synthetic copy; separate data/backup/import directories. Owned test servers on 18973/18974 stopped. Only shared write is this verdict. Verification-before-completion skill used; scoped escalation handled legacy Landlock. Lead owns gate/deployment.

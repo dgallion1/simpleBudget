@@ -19,16 +19,18 @@ type recurringInput struct {
 
 // recurringRow is one detected recurring payment in get_recurring's result.
 type recurringRow struct {
-	Description      string  `json:"description"`
-	Amount           float64 `json:"amount"`
-	Frequency        string  `json:"frequency"`
-	IntervalDays     float64 `json:"interval_days,omitempty"`
-	LastDate         string  `json:"last_date"`
-	NextExpected     string  `json:"next_expected,omitempty"`
-	Occurrences      int     `json:"occurrences"`
-	AnnualCost       float64 `json:"annual_cost"`
-	IsSubscription   bool    `json:"is_subscription"`
-	MajorExpenseName string  `json:"major_expense_name,omitempty"`
+	Classification       string  `json:"classification"`
+	ClassificationReason string  `json:"classification_reason"`
+	Description          string  `json:"description"`
+	Amount               float64 `json:"amount"`
+	Frequency            string  `json:"frequency"`
+	IntervalDays         float64 `json:"interval_days,omitempty"`
+	LastDate             string  `json:"last_date"`
+	NextExpected         string  `json:"next_expected,omitempty"`
+	Occurrences          int     `json:"occurrences"`
+	AnnualCost           float64 `json:"annual_cost"`
+	IsSubscription       bool    `json:"is_subscription"`
+	MajorExpenseName     string  `json:"major_expense_name,omitempty"`
 }
 
 type recurringOutput struct {
@@ -67,19 +69,22 @@ func (d Deps) annotateMajorExpenses(payments []models.RecurringPayment) []models
 func recurringRows(payments []models.RecurringPayment, subscriptionsOnly bool) []recurringRow {
 	rows := make([]recurringRow, 0, len(payments))
 	for _, p := range payments {
-		isSub := insights.IsSubscription(p)
+		classification, reason := insights.ClassifyRecurring(p)
+		isSub := classification == models.RecurringSubscription
 		if subscriptionsOnly && !isSub {
 			continue
 		}
 		row := recurringRow{
-			Description:      p.Description,
-			Amount:           round2(p.Amount),
-			Frequency:        p.Frequency,
-			LastDate:         p.LastDate.Format("2006-01-02"),
-			Occurrences:      p.Occurrences,
-			AnnualCost:       round2(p.AnnualCost),
-			IsSubscription:   isSub,
-			MajorExpenseName: p.MajorExpenseName,
+			Classification:       classification,
+			ClassificationReason: reason,
+			Description:          p.Description,
+			Amount:               round2(p.Amount),
+			Frequency:            p.Frequency,
+			LastDate:             p.LastDate.Format("2006-01-02"),
+			Occurrences:          p.Occurrences,
+			AnnualCost:           round2(p.AnnualCost),
+			IsSubscription:       isSub,
+			MajorExpenseName:     p.MajorExpenseName,
 		}
 		if !p.NextExpected.IsZero() {
 			row.NextExpected = p.NextExpected.Format("2006-01-02")
@@ -110,13 +115,11 @@ func registerRecurring(s *mcp.Server, deps Deps) {
 			"reference_date is correctly omitted as no longer active. reference_date defaults to the " +
 			"ledger's latest transaction date, matching the Insights page (i.e. by default nothing is " +
 			"truncated). Suppressed transactions (rows the user has already marked as a resolved duplicate) " +
-			"are excluded before detection, matching every other spend tool. is_subscription is a HEURISTIC " +
-			"over the payment's frequency and its merchant description (retail stores and utility/bill " +
-			"keywords are excluded), not a fact about the merchant -- treat it as a hint, not ground truth. " +
-			"Set subscriptions_only to return only rows flagged that way -- NOTE this filter is applied " +
-			"AFTER detection caps results at the 20 highest-annual_cost series, so if 20+ higher-cost bills " +
-			"crowd out lower-cost subscriptions, subscriptions_only can return an incomplete list rather " +
-			"than every subscription in the ledger. major_expense_name is populated only when the payment " +
+			"are excluded before detection, matching every other spend tool. classification is subscription, " +
+			"bill, or other, using positive original merchant/category evidence; classification_reason explains " +
+			"the inference. is_subscription is derived from classification. Cadence alone is insufficient. " +
+			"All detected series are returned without a top-20 cap; subscriptions_only filters this full set. " +
+			"major_expense_name is populated only when the payment " +
 			"matches one of the user's declared major expenses (via pin or keyword/amount match) and is " +
 			"omitted otherwise. amount and annual_cost are POSITIVE dollar figures (unlike " +
 			"search_transactions, which returns signed amounts). frequency is lower-case as stored " +

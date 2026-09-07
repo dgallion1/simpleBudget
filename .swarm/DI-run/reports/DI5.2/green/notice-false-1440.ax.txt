@@ -1,0 +1,4 @@
+- region "Page refresh":
+  - status: A page refresh was requested. Your edits have been kept. Refreshing will discard unsaved edits.
+  - button "Refresh page"
+  - button "Keep editing"

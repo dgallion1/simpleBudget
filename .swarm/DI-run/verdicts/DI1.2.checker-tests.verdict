@@ -1,0 +1,143 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DI1
+ATTEMPT: 2
+---
+Scope: full DI1 acceptance, with conceded attempt-1 F1/F2 corrected.
+Acceptance numbers follow the five task-1-brief.md checkboxes, interpreted
+with the approved design's Subscription classification requirements.
+DI2-4 features and DI6 are excluded. Lead owns gates and adjudication.
+
+Isolation:
+Created /tmp/DI1-checker-attempt2.HueN6z using git archive 69e484a, then
+cp -a --parents of ONLY .swarm/DI-run/manifests/DI1.2.files (18 paths).
+All executable attempt-2 checks below ran in that fixed snapshot.
+Retained checker-only synthetic probes were copied from the attempt-1 scratch
+snapshot, never from shared attempt-2 source after the initial overlay.
+No source fixes, git-state changes, subagents, or real-data writes.
+Only this verdict is written to the real tree.
+
+Command A — focused composite validation:
+rtk proxy make -f Makefile -f /tmp/DI1-focused.mk check
+Exit 0: "✓ all checks passed".
+The existing checker-only supplemental makefile narrows Go recipes to:
+./internal/services/insights ./internal/handlers/insights
+./internal/services/mcpsvc/spend ./internal/templates
+./internal/handlers/dashboard ./internal/services/mcpsvc/ledger
+./internal/services/accounts
+It preserves the repository check prerequisites and css-verify recipe,
+runs go test -count=1, and adds focused go build.
+Fresh vet, staticcheck, govulncheck, CSS freshness, tests and build passed.
+Output: "No vulnerabilities found.", "tailwind.css is up to date", and
+seven uncached "ok budget2/internal/..." package lines.
+This is package-scoped verification, not an unmodified whole-repository check.
+
+Command B — exact regressions, conservative guards and retained probes:
+rtk proxy go test -count=1 -v ./internal/services/insights ./internal/handlers/insights ./internal/handlers/dashboard ./internal/services/mcpsvc/ledger -run 'TestDI1AdversarialExactBank|TestDI1BankEvidenceGuards|TestCheckerDI1'
+Exit 0, all selected tests PASS.
+
+1. PASS — Classification fixtures and UI/tool grouping parity.
+Command B output:
+- CLOUDBOX*STORAGE PLAN CLOUDBOX.COM CA / Electronics & Software:
+  merchant="cloud storage" annual=300.00 classification=subscription.
+- AUTOLOAN FINANCE BILL PMT / Auto Payment:
+  merchant="autoloan finance" annual=300.00 classification=bill.
+- UI subscriptions=1 bills=1 other=0 monthlySubscriptions=25.00 totalAnnual=600.00.
+- MCP subscriptions_only=false: count=2, matching subscription/bill rows,
+  nonempty reasons, annual_cost=300 each, derived is_subscription true/false.
+- MCP subscriptions_only=true: count=1, cloud storage, subscription, annual=300.
+- TestDI1BankEvidenceGuards PASS: edited display aliases cannot override an
+  unknown original merchant; retail and subscription/bill conflicts remain
+  other in both transaction orders.
+- Retained independent TestCheckerDI1ExactDemoEvidence PASS for both fixtures.
+Command A additionally ran the original positives, exclusions, category/rename
+guards, compatibility wrapper, retention and complete UI/MCP parity tests.
+
+Read both newly promoted test files and the added guard assertions.
+The exact-bank service test asserts detected count and expected class, with
+recognized-description counterfactual controls. The handler test invokes real
+calculateInsights and SDK in-memory get_recurring, checks UI grouping/monthly
+subscriptions, MCP classes and subscription-filtered count. Its row/count/reason
+coverage is supplemented by the unchanged TestDI1UncappedTotals assertions.
+No inference that logging alone is an assertion.
+
+2. PASS — Shared positive-evidence classifier and all consumers.
+Command:
+rtk proxy bash -c 'rg -n "DetectRecurringAt\(|DetectRecurring\(|ClassifyRecurring\(|IsSubscription\(" internal --glob "!*_test.go"'
+Output enumerates:
+insights/recurring.go:51 wrapper; :423 detector classification;
+handlers/insights/handlers.go:153 main model and :293 standalone partial;
+mcpsvc/spend/recurring.go:72 classifier and :151 detector;
+handlers/dashboard/accounts_card.go:254 detector;
+mcpsvc/ledger/accounts.go:353 explicit and :369 default detector.
+Command B verifies the corrected producer through service, UI model and MCP.
+Retained rendering/projection probes exercise the other consumers (criterion 3).
+Compared classification.go to fixed attempt-1 snapshot with diff -u:
+only "cloudbox storage plan" and "autoloan finance bill pmt" were added.
+No category-wide, display-fallback, cadence or precedence rule was introduced.
+
+3. PASS — Merchant retention, uncapped sum scope and estimate compatibility.
+Command A freshly reran the 25-series service retention regression and
+TestDI1UncappedTotals: 22 distinct merchants, one subscription/one bill/20 other,
+annual=25320, monthly=2110, subscription monthly=10, UI/MCP reason/class/annual
+parity and subscriptions_only annual=120. Their assertions were read in attempt 1.
+
+Command B, TestCheckerDI1RenderedRetention PASS:
+"rendered Monthly Recurring=$2,110.00; annual=$25,320.00; subscriptions=$10.00 / 1 active; other rows=20; standalone rows=22; merchants and shared category annotations retained"
+This checks actual template strings, 20 other merchant rows, all 22 standalone
+rows with classifications/reasons, shared category annotations without merchant
+loss, and merchant-based subscription/bill navigation attributes.
+
+Command B, TestCheckerDI1ProjectionRetention PASS:
+"dashboard: retained 22 classified series, annual=25320, projected minimum=2890 (5000 - 2110)"
+"explicit: retained 22 classified series, annual=25320, projected minimum=2890 (5000 - 2110)"
+"default: retained 22 classified series, annual=25320, projected minimum=2890 (5000 - 2110)"
+These pass detector output into accounts.Project with synthetic anchor data.
+Detector, handler, MCP adapter and template bytes are unchanged since attempt 1;
+their cadence, freshness, estimate and projection tests reran in Command A.
+No new claim of exhaustive fractional-cent reconciliation or DI2-4 semantics.
+
+4. PASS — Required validation under the explicit package-scope instruction.
+Command A exited 0 with all check prerequisites and focused build successful.
+Tests were uncached. Full-tree integration/build remains the lead's responsibility.
+DI1 remains Tier 2; no DI1 Tier-3 acceptance oracle applies.
+
+5. PASS — Cumulative manifest/report and scoped changes.
+Read frozen reports/DI1.2.md and manifests/DI1.2.files.
+Report contains interfaces, consumer inspection, commands, red/green results
+and probe promotion; historical execution is worker-reported, while Commands
+A/B and the fail-end command below are fresh checker evidence.
+Command:
+rtk proxy bash -c 'comm -13 <(sort .swarm/DI-run/manifests/DI1.1.files) <(sort .swarm/DI-run/manifests/DI1.2.files)'
+Output: exactly the two promoted test files and attempt-2 report/manifest.
+wc -l: "Manifest count: 18".
+cmp across pre-existing manifest source/template paths versus fixed attempt-1
+snapshot found changes only in classification.go and classification_test.go.
+diff -u confirms the production delta is exactly the two evidence phrases,
+and the test delta is TestDI1BankEvidenceGuards.
+Read-only shell glob matching against .swarm/DI-run/critical.globs:
+"Critical path matches: 0".
+Cumulative attempt-1 scope was already reconciled against its frozen exact diff
+and manifest; no unrelated production expansion appears in attempt 2.
+
+Fresh regression fail-end proof:
+Copied ONLY the two newly promoted tests into
+/tmp/DI1-checker-tests.X5bN0s, which retains attempt-1 production code.
+rtk proxy go test -count=1 -v ./internal/services/insights ./internal/handlers/insights -run '^TestDI1AdversarialExactBank'
+Exit 1, behavioral failures:
+"classification=other want subscription"
+"classification=other want bill"
+"UI subscriptions=0 bills=0 other=2 monthlySubscriptions=0.00 totalAnnual=600.00"
+"subscription-filtered MCP count=0 want 1"
+The same durable tests pass in Command B against attempt 2.
+Thus both promoted regressions detect the conceded defects.
+Per lead instruction, did not repeat the broad attempt-1 mutation battery for
+unchanged cap, renderer and MCP parity behavior; its evidence remains in
+DI1.1.checker-tests.verdict.
+
+FINDINGS: No remaining in-scope blocker demonstrated. F1/F2 are corrected.
+Limits: no browser/theme audit, JS execution, future feature verification,
+or live-data access claimed. DI1 introduces no JS changes.
+Foreign DI6 files were never overlaid. No shared source edits or git mutations.
+Lead owns gate/escalation scan, acceptance and subsequent dispatch.

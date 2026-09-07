@@ -1,0 +1,74 @@
+[
+  {
+    "dark": false,
+    "width": 390,
+    "loads": 4,
+    "tabs": 32,
+    "obstructions": [],
+    "refusal": true,
+    "dismissal": true,
+    "restart": true,
+    "acceptance": true,
+    "cleanReload": true
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "loads": 4,
+    "tabs": 32,
+    "obstructions": [],
+    "refusal": true,
+    "dismissal": true,
+    "restart": true,
+    "acceptance": true,
+    "cleanReload": true
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "loads": 4,
+    "tabs": 40,
+    "obstructions": [],
+    "refusal": true,
+    "dismissal": true,
+    "restart": true,
+    "acceptance": true,
+    "cleanReload": true
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "loads": 4,
+    "tabs": 32,
+    "obstructions": [],
+    "refusal": true,
+    "dismissal": true,
+    "restart": true,
+    "acceptance": true,
+    "cleanReload": true
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "loads": 4,
+    "tabs": 32,
+    "obstructions": [],
+    "refusal": true,
+    "dismissal": true,
+    "restart": true,
+    "acceptance": true,
+    "cleanReload": true
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "loads": 4,
+    "tabs": 40,
+    "obstructions": [],
+    "refusal": true,
+    "dismissal": true,
+    "restart": true,
+    "acceptance": true,
+    "cleanReload": true
+  }
+]

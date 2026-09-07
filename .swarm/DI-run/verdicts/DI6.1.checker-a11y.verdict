@@ -1,0 +1,146 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: DI6
+ATTEMPT: 1
+---
+FAILURES: None in the authorized DI6 scope.
+
+Scope and provenance
+- Read DI6-brief.md, all 17 ACCESSIBILITY.md points, DI6.1 worker report,
+  and the 12-path manifest. Reviewed shared refresh JS and layout inclusion.
+- Read the browser skill. Used the explicitly permitted synthetic headless
+  Playwright/Chrome fallback; no real data, live application requests, source
+  fixes, commits, subagents, git-state changes, ledger edits, or gate commands.
+- Created /tmp/DI6-a11y.Ss9tM5 from `rtk proxy bash -c` running
+  `git archive 69e484a | tar -x -C "$audit_dir"`, then copied ONLY the
+  manifest-listed paths. No whole-live-tree copy. Concurrent DI1 excluded.
+- `rtk proxy git rev-parse master` resolves to
+  69e484a6736cbc05d57fe76c9345c4e8b15c2194.
+- `rtk proxy git diff master -- web/templates/layouts/base.html` shows only
+  the new script inclusion at line 234. `git diff --no-index /dev/null
+  web/static/js/page-refresh.js` establishes the untracked 107-line JS file
+  as new content (plain git diff omits untracked files).
+- Final manifest-by-manifest `cmp` against the frozen source passed.
+
+Executable evidence (commands prefixed with rtk; cwd below is the temp copy)
+A. `rtk proxy go test ./cmd/server -run '^TestA11yDump$' -count=1`
+   PASS. Temporary test used the existing synthetic newMCPRouter test helper
+   and httptest GET /dashboard, asserted HTTP 200, and saved actual handler /
+   Go-template output bytes as rendered.html. It did not start the live app.
+B. `rtk proxy node --test web/static/js/page-refresh.test.cjs`
+   PASS 6/6. Traced clean reload once, baseline/no loop, retained URL, hidden
+   deferral/coalescing, dirty protection/refusal, concurrent HTMX and native
+   submission deferral, API failure/restart, focus polling guard, dismissal.
+   This supports accessibility consequences; it does not replace tests-lane
+   acceptance of the coordinator/MCP/server behavior.
+C. `rtk proxy node audit.cjs`
+   All six light/dark x 390/768/1440 browser assertion groups PASS.
+   Harness loaded A's actual rendered page and the actual compiled
+   tailwind.css/styles.css. It blocked unrelated scripts/resources and ran
+   the unchanged DI6 script against intercepted synthetic revision responses.
+   Date input changed to 2024-08-01; refresh signal retained value and focus.
+   Tab reached Refresh page, Enter opened native confirmation, refusal retained
+   input and page, next Tab reached Keep editing, Enter removed notice/status
+   and restored input focus. Same revision stayed dismissed; next revision
+   showed the notice. Explicit acceptance produced one reload and retained
+   /probe?scenario=demo#settings. Rebaseline stayed stable through another
+   polling interval; a subsequent clean signal produced one reload.
+   Saved rendered runtime DOM, accessibility snapshots, and six screenshots
+   under the temp directory. Inspected light/dark mobile and dark desktop
+   screenshots. No separate hand-built notice or guessed stylesheet.
+D. `rtk proxy npx --no-install @axe-core/cli
+   http://127.0.0.1:18766/light.html http://127.0.0.1:18766/dark.html
+   --chrome-path /home/darrell/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome
+   --chromedriver-path /home/darrell/.config/nvm/versions/node/v24.12.0/lib/node_modules/@axe-core/cli/node_modules/chromedriver/lib/chromedriver/chromedriver
+   --chrome-options=--no-sandbox --save axe.json --exit`
+   Exit 0, axe-core 4.13.0: ZERO violations on each page, 42 passing rules each.
+   These localhost pages serve C's real rendered DOM including the actual
+   script-created notice and original built CSS; the server serves artifacts
+   only. First invocation used an absolute --save path, which the CLI wrongly
+   appended to cwd; it audited both pages but failed saving. Corrected command
+   above saved /tmp/DI6-a11y.Ss9tM5/axe.json successfully.
+E. `rtk proxy node focus.cjs`
+   PASS: 65 Tab steps per theme/width, no focused element wholly hidden by
+   the notice. One h1, then h2 headings; main/nav/header/footer present.
+   At 390px, document scrollWidth 496 both with and without DI6 notice;
+   at 768/1440 scrollWidth equals viewport width.
+F. `rtk proxy node -e` calculated WCAG relative luminance from C's computed
+   RGB values: light #111827 on #ffffff = 17.739717:1; dark #f3f4f6 on
+   #1f2937 = 13.338408:1. Buttons inherit those colors on transparent
+   backgrounds; borders and focus outlines use currentColor.
+
+Constitution checklist (every numbered point)
+1 PASS (A,D,E): actual page has exactly one h1, h2 successors without skipped
+  levels, main/nav/header/footer. Notice is a named region, no added heading.
+2 N/A to new DI6 content (source lines 36-72, D): no added table/headers.
+3 PASS (C,D; page-refresh.js:44-64): native type=button controls with names
+  Refresh page / Keep editing; both act and support keyboard activation.
+4 N/A to new content: DI6 creates no inputs; C used an existing labelled date
+  input. No new unlabelled form control was introduced.
+5 N/A: DI6 introduces no form validation or failed-submit UI; refusal is an
+  intentional choice, not a validation error.
+6 N/A: no new required field or input format.
+7 PASS (C,D,F; JS:39,46-47,56-57,65-70): notice text exceeds 4.5:1;
+  borders and focus outlines exceed 3:1 in both themes. Axe's incomplete
+  contrast check on the status paragraph was resolved using actual computed
+  solid notice backgrounds plus the luminance calculation, not ignored.
+8 PASS (C,D; JS:42,48,58): request/discard/preservation information is text,
+  independent of color.
+9 PASS (C,E; JS:44-70): native keyboard activation; order Refresh page then
+  Keep editing; solid 2px outline, 2px offset, theme-correct currentColor.
+  Arrival does not steal input focus. Dismissal restores the original input.
+  No wholly obscured keyboard target found in the rendered-page tab sweep.
+10 PASS for applicable new dynamic content (C; JS:41-43,49-62): status role
+  exposes the refresh/preservation message without focus movement; dismissal
+  returns focus. No new HTMX replacement or persisted state mutation. Native
+  confirmation governs explicit discard and reload; pending requests defer.
+11 N/A: DI6 adds no chart, values, or chart controls.
+12 PASS (C,D,F): full notice/button/focus parity in light and class=dark.
+13 N/A: notice contains no currency or signed numeric value.
+14 PASS (B,C; JS:35,59-62,93-97): keyboard dismissal removes the notice;
+  identical revision does not reinsert it; later revision may reinsert once.
+15 PASS (C; JS:39,65-70): no animation or motion-only feedback. Under
+  prefers-reduced-motion:reduce, computed animation none / transition 0s.
+16 PASS (B,C; JS:59-62): Keep editing removes the entire region and its
+  role=status node; no stale hidden announcement remains. Accessibility
+  snapshot before dismissal contains the named region, status text, and two
+  named buttons. New code uses no aria-hidden or screen-reader-only junk.
+17 PASS/NATIVE (C; JS:51): browser-native confirm, not a custom modal overlay.
+  The notice itself does not block page interaction and needs no modal trap.
+  Native confirmation dismissal/acceptance exercised; refusal preserves edits.
+
+Additional manual checks
+- No images/icons are introduced by DI6, hence no new alt-text omission or
+  incorrectly exposed decorative image. No hidden-text workaround in new JS.
+- Notice bounds at 900px viewport height, in BOTH themes: 390px => x24,
+  width350,height146; 768px => x24,width728,height122; 1440px => x24,
+  width1400,height98. Right/bottom margins 16px. No notice clipping; buttons
+  measure approximately 125x42 and 121x42 CSS px (WCAG 2.5.8 minimum met).
+- Behavior conclusions above are based on synthetic executable traces;
+  other site JS was intentionally disabled. No claim of OS/screen-reader
+  speech output: announcement evidence is status semantics and the actual
+  accessibility tree, including removal parity, not an audible AT session.
+
+OBSERVATIONS (non-blocking, for the lead)
+- Lead reports css-verify fails fresh make check in
+  /tmp/budget2-DI6-release.XArdi6 because generated CSS has drifted. This
+  checker audited the frozen attempt-1 compiled output, where the actual
+  notice utilities, contrast, focus, and layouts passed. CSS freshness is a
+  separate build finding, not an accessibility FAIL; not independently rerun.
+  Lead plans to authorize worker CSS rebuild for attempt 2. This PASS does
+  not validate a future rebuilt stylesheet or supersede the primary verdict.
+- At 390px the baseline dashboard has 496px horizontal content width even
+  after removing the new notice. `git diff master --
+  web/templates/pages/dashboard.html web/static/css/tailwind.css
+  web/static/css/styles.css` is empty, and master equals the archive baseline.
+  This is PRE-EXISTING/out of DI6 scope; reserve full-site review for DI5.
+- Axe also leaves the baseline .text-xl gradient background contrast for
+  manual review; DI6 did not modify that markup/CSS. No DI6 FAIL attributed.
+- Synthetic traces validate input preservation and native confirmation use;
+  exhaustive browser/assistive-technology combinations remain untested.
+- The known legacy-Landlock runtime error occurred during image/read checks.
+  Image inspection used shell base64; final reads and this sole project write
+  used the authorized escalated rtk/apply_patch fallback. No approval rejection.
+
+No failing unified diffs: no in-scope failures found. Lead owns gates.

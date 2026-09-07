@@ -1,0 +1,20 @@
+[
+  {
+    "theme": "light",
+    "visibleText": "Or drop CSV or backup ZIP files anywhere on this page, or click to browse",
+    "matchingName": 1,
+    "ax": "- button \"Or drop CSV or backup ZIP files anywhere on this page, or click to browse\"",
+    "key": "Enter",
+    "focused": true,
+    "violations": []
+  },
+  {
+    "theme": "dark",
+    "visibleText": "Or drop CSV or backup ZIP files anywhere on this page, or click to browse",
+    "matchingName": 1,
+    "ax": "- button \"Or drop CSV or backup ZIP files anywhere on this page, or click to browse\"",
+    "key": "Space",
+    "focused": true,
+    "violations": []
+  }
+]

@@ -1,0 +1,28 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DI5
+ATTEMPT: 4
+TIER: 3
+---
+Independent review of immutable /tmp/DI5-fourth-worker.1ptHqE copied to /tmp/DI5-fourth-tests.QbdTEf. Scope: user-reopened fallback-focus repair and regression safety only.
+
+Evidence-backed report: .swarm/DI-run/reports/DI5.4-checker-tests.md
+Raw evidence: /tmp/DI5-fourth-tests.QbdTEf/tmp/checker-evidence/
+
+Commands executed independently (snapshot cwd):
+- rtk proxy node tmp/checker-evidence/preservation.cjs — exit0: 693 sources, only fallback JS changed; all18 Go unchanged including cross_money; no financial/template/CSS delta.
+- rtk proxy node tmp/checker-evidence/continuity.cjs — exit0: 696 prior independent hashes; financial/promotion evidence exact, only refresh JS/VM differ from earlier preparation.
+- rtk proxy env DI5_SOURCE_ROOT=/tmp/DI5-fourth-tests.QbdTEf DI5_OUTPUT=/tmp/DI5-fourth-tests.QbdTEf/tmp/checker-evidence/fallback node .swarm/DI-run/reports/DI5-fallback-lifecycle.cjs — exit0,65/65; same-value external ownership, pre-existing tabindex, repeated fallback, blur cleanup and real Tab escape.
+- Same script against separate scratch old JS — expected exit1,8 actual regression failures; no harness error.
+- rtk proxy env DI5_BASE=http://127.0.0.1:18994 DI5_OUTPUT=/tmp/DI5-fourth-tests.QbdTEf/tmp/checker-evidence/ownership node .swarm/DI-run/reports/DI5-focus-ownership.cjs — exit0,252/252; exact same-node/focus/value/status/region, cancel/delay/non-theft, dismiss/epoch and temporal cleanup assertions retained.
+- rtk proxy env DI5_SOURCE_ROOT=/tmp/DI5-fourth-tests.QbdTEf DI5_BASE=http://127.0.0.1:18994 DI5_OUTPUT=/tmp/DI5-fourth-tests.QbdTEf/tmp/checker-evidence/oracle bash /home/darrell/bin/ai/budget2/.worktrees/dashboard-insights/.swarm/DI-run/tier3/DI5/accept.sh — exit0, final ORACLE PASS;750 transitions,VM10,F1six,layout12,lifecycle6. Both themes/three widths, all nine navigation consumers. Oracle hashes unchanged.
+- rtk proxy go build -buildvcs=false -o tmp/checker-server ./cmd/server — exit0.
+- rtk proxy make COMMIT=di5-checker check — exit0, all checks passed including CSS.
+- rtk proxy go test -count=1 ./... — exit0,50 packages.
+- rtk proxy go test -race -count=1 -v ./cmd/server -run TestDI5SecondCrossMoney — exit0,four fractional-cent/signed/neutral cases across actual HTTP and assembled MCP.
+- rtk proxy bash smoketest/gate/run_tests.sh in /tmp/DI5-agents-smoke.9ZYqse — exit0,ALL PASS.
+
+Source SHA256: d1875b727a3cf990a059538e443e7f1e1dfab799da1d2672dd61d9d7e8a5e115.
+Canonical474 manifest includes all396 prior paths. Twenty-one prior evidence artifacts absent in BOTH worker snapshots are explicitly distinguished from source comparisons in report; only permitted JS/temporal-test differences among present prior files.
+No in-scope blocker found. Prior failed attempts remain upheld; this does not retroactively replace their verdicts. Owned synthetic server PID2899322 stopped, exit0; port18994 confirmed clear. No production/Git/ledger/deploy/real-data changes. Lead owns gate/acceptance.

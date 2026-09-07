@@ -1,0 +1,15 @@
+{
+  "name": "staticcheck",
+  "cwd": "/tmp/DI5-fourth-worker.1ptHqE",
+  "command": [
+    "rtk",
+    "proxy",
+    "staticcheck",
+    "./..."
+  ],
+  "start": "2026-09-07T11:50:48.229Z",
+  "end": "2026-09-07T11:50:50.596Z",
+  "exit": 0,
+  "signal": null,
+  "env": {}
+}

@@ -1,0 +1,31 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: DI5
+ATTEMPT: 4
+TIER: 3
+---
+FAILURES: None within the user-reopened fallback-focus correction and regression-safety scope.
+
+Independent evidence/report: .swarm/DI-run/reports/DI5.4.checker-a11y.md. Scratch /tmp/DI5-4-a11y.xokOQB copied ONLY from immutable /tmp/DI5-fourth-worker.1ptHqE; isolated synthetic server18873/artifact listener18874. No production/Git/ledger/deploy/data edits. Both own servers stopped.
+
+Durable raw evidence/probes: .swarm/DI-run/reports/DI5.4-a11y/. Copied after completed checks and byte-verified with diff -qr/cmp, without duplicate executions. Includes original69/preDI3 and F2 attribution; rerun prerequisites in README.md.
+
+Current production page-refresh.js SHA256 d1875b727a3cf990a059538e443e7f1e1dfab799da1d2672dd61d9d7e8a5e115. `rtk proxy node check-preservation.cjs` exit0: all693 cmd/internal/web files compared to immutable attempt3, only fallback JS differs;18 Go files unchanged. Successful remount/cleanup/notice/confirmation/epoch logic unchanged. Durable test diff is only authorized -1-while-focused expectation plus24 post-blur assertions; original228 retained. Oracle hashes unchanged.693 source equality and prior678-source comparison establish association of unchanged detailed chart/modal evidence, not blanket reliance on author claims.
+
+Commands executed in scratch (all exit0 unless explicitly old-red):
+1. `rtk proxy go build -buildvcs=false -o checker-server ./cmd/server`.
+2. `rtk proxy bash -lc 'set -o pipefail; DI5_SOURCE_ROOT=/tmp/DI5-4-a11y.xokOQB DI5_BASE=http://127.0.0.1:18873 DI5_OUTPUT=/tmp/DI5-4-a11y.xokOQB/checker-evidence/oracle bash /home/darrell/bin/ai/budget2/.worktrees/dashboard-insights/.swarm/DI-run/tier3/DI5/accept.sh |& tee checker-evidence/oracle.log'`:750/750 focus assertions over nine consumers/light+dark/390,768,1440;10/10 VM groups; strict all-scripts F1 six states hits=[];12 layout and six lifecycle states pass. Last line ORACLE PASS. No baseline allowlist. This is own execution, not lead log transcription.
+3. `rtk proxy env DI5_SOURCE_ROOT=/tmp/DI5-4-a11y.xokOQB DI5_BASE=http://127.0.0.1:18873 DI5_OUTPUT=/tmp/DI5-4-a11y.xokOQB/checker-evidence/ownership node .swarm/DI-run/reports/DI5-focus-ownership.cjs`:252/252. Pipefail/log wrapper recorded in report.
+4. `rtk proxy env DI5_SOURCE_ROOT=/tmp/DI5-4-a11y.xokOQB DI5_OUTPUT=/tmp/DI5-4-a11y.xokOQB/checker-evidence/fallback node .swarm/DI-run/reports/DI5-fallback-lifecycle.cjs`:65/65. Same script with immutable old DI5_SOURCE_ROOT=/tmp/DI5-final-worker.btR0cu exits1 with eight actual old focus/attribute failures; not a harness error. Temporary attribute retained until blur, pre-existing and external same-value writes preserved, no new positive tab stop.
+5. `rtk proxy node independent-fallback.cjs`:12/12 independent actual-Dashboard remount/button identity, keyboard dismissal/epoch reset, retained current MAIN focus with -1, unchanged edited date, removed notice/status, and Tab exit/attribute cleanup. Raw state/screenshots checker-evidence/independent-fallback.json and fallback-*.png. Probe available for durable promotion.
+6. `rtk proxy node baseline.cjs`; `rtk proxy node run-axe.cjs`:18 fresh actual Go-render pages with real stylesheet, all nine nav routes both themes1440, HTTP200/no load errors; npx @axe-core/cli zero violations. Exact CLI argv artifacts/axe-command.json; raw axe.json/axe-cli.log.20 incomplete results/464 node occurrences retained, not asserted automatically passing.
+7. `rtk proxy node manual.cjs`:18 fresh route/theme label-name/hidden-text/chart/focus inventories,65 Tab presses each; zero explicit label-content-name mismatches. `rtk proxy node responsive.cjs`:12 Dashboard/Insights390/768/1440 states, oneh1/no horizontal document overflow. Both-theme nine-page contact sheets and actual mobile fallback screenshots inspected.
+
+All17 constitution coverage with commands, fresh vs associated evidence and limitations is explicitly recorded in the supporting report: structure/tables/native controls (1-3); labels/validation/formats (4-6); theme contrast and noncolor context (7-8,12); strict keyboard and real HTMX ownership/fallback (9-10); chart alternatives (11); monetary sign context (13); banner/motion/AT removal (14-16); unchanged modal lifecycle (17). No forbidden write flow or absent conditional modal is claimed exercised; no full manual WCAG certification inferred from axe.
+
+OBSERVATIONS:
+- Nine original69 explicit-label gaps and original What-If chart-alternative/motion caveats remain backlog, not scope expansion. Whole-file original69 hashes rechecked in preservation.json. Prior acceptedDI3 matching alone is not used to excuse defects.
+- Historical F1/F2 and attempt3 fallback failures remain upheld; current strict executions prove corrections. Old verdicts untouched.
+- Cumulative474 manifest includes all396 previous paths. Supplied immutable candidate omits21 older .swarm evidence/manifests, retained canonically;453 present files match candidate/canonical exactly.375 old paths directly compared to old immutable, remaining evidence associated with preserved baseline hashes. No missing production/test dependency and no silent live overlay. Exact omission list in preservation.json and report.
+- Lead owns other lanes, overall Tier3 gate, any acceptance and deployment. This PASS covers the bounded reopening and accessibility regression safety with a completed fresh full-site evidence pass, not unrelated backlog repair.

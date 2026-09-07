@@ -1,0 +1,58 @@
+VERDICT: FAIL
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DI6
+ATTEMPT: 1
+---
+Reviewed DI6-brief.md, approved dashboard-insights design (including DI6 ruling), ACCESSIBILITY.md, worker report, all added tests, and working-tree wiring diff against 69e484a. No worker summary used as proof.
+
+Isolation: /tmp/di6-checker-Oa0W6B was created with git archive 69e484a, then cp -a overlays of ONLY the 12 frozen manifest paths. Baseline: /tmp/di6-baseline-pelqse from the same archive. This follows the explicit freeze authorization instead of copying the live tree or its worktree .git pointer. No live data or server was used. All shell commands below used rtk proxy. Commands with relative paths ran in the isolated DI6 tree unless otherwise stated.
+
+1. PASS — no-argument, server-isolated in-memory refresh revision and honest response.
+Command: go test -race -count=1 -v ./internal/services/uirefresh ./internal/services/mcpsvc ./cmd/server ./internal/templates (output /tmp/di6-go.log).
+Evidence: PASS TestSignalsAreIsolatedAndReadsAreFresh; PASS TestRefreshToolSchemaAndSharedCoordinator; PASS TestNewServerRegistersAllThirtyTwoTools (assertion updated to 33).
+Read assertions check empty object properties/required fields, requested=true, revisions 1 and 2, unique coordinator epochs, three increasing revisions, second coordinator remaining at zero, and rejected POST leaving revision unchanged. Working-tree diff confines registration to the supplied coordinator; descriptions explicitly distinguish connected real/demo server and request versus delivery.
+
+2. PASS — no saved-data mutation.
+Command: go test -count=1 -v -run TestCheckerDI6SavedDataUnchanged ./cmd/server.
+Evidence: "saved-data SHA256 and file inventory unchanged across 3 actual MCP refresh calls and route reads: 5 files"; PASS. Temporary probe /tmp/di6-checker-Oa0W6B/cmd/server/checker_di6_probe_test.go initializes the real server dependencies against synthetic fixtures, snapshots all saved fixture files after initialization, invokes the assembled MCP server, reads the mounted route, and compares byte hashes plus file inventory. This establishes the tested saved-data boundary; it is not a general filesystem-write trace.
+
+3. PASS — no-store route and tool share coordinator; mounted script exists.
+Command: scoped race command in (1).
+Evidence: PASS TestDI6MountedRefreshRouteAndLayout and PASS TestRefreshToolSchemaAndSharedCoordinator. Assertions check HTTP no-store, observed increment, exactly one script in rendered dashboard HTML, actual static route response, and route state after MCP calls. The node --test command in (4) additionally asserts each mocked fetch uses /api/ui-refresh, cache=no-store, mode=same-origin and 2000ms interval. Mutation command: node /tmp/di6-mutations.cjs; changing no-store to public failed with "response: 200 map[Cache-Control:[public] ...]"; replacing supplied MCP coordinator with New() failed "tool and HTTP not sharing coordinator".
+
+4. PASS — clean visible reload once at exact same URL; new-document baseline.
+Commands: node --test web/static/js/page-refresh.test.cjs; node /tmp/di6-browser.cjs.
+Evidence: JS tests 6, pass 6, fail 0. Chromium probe printed "PASS clean actual navigation once, exact query/hash, new-document baseline no-loop". It observes exactly two document loads including initial navigation, exact URL http://di6.test/whatif?scenario=demo#settings, and no extra load after a polling interval. This independently closes the worker mock's location.reload stub limitation.
+
+5. PASS behavior, TEST DEFICIENCY — restart, coalescing, failure/no-loop.
+Commands: node --test web/static/js/page-refresh.test.cjs; node /tmp/di6-browser.cjs.
+Evidence: named failure/restart test passes; Chromium prints "PASS restart clears pending notice without discarding actual input or reloading". Hidden test coalesces revisions 1 and 3; offline test preserves page; dirty test checks absence of automatic confirmation dialogs.
+Deficiency: node /tmp/di6-mutations.cjs reports "restart exit=0 SURVIVED" after removing state.epoch !== baseline.epoch. The worker test starts at revision zero, so it does not require epoch handling to pass. Independent command DI6_SOURCE_ROOT=/tmp/di6-mutant-restart-eHPDgr node /tmp/di6-browser.cjs exits 1 at line 25, "1 !== 0": old notice persists on epoch reset. The same Chromium probe passes on submitted code. Promote a pending-notice/new-epoch fixture to durable coverage; the current worker restart test is not evidence for its name. This is a test-coverage deficiency, not a claim the submitted epoch implementation is broken.
+
+6. PASS within executed harness — hidden and in-flight deferral, overlap guard.
+Command: node --test web/static/js/page-refresh.test.cjs.
+Evidence: passes "hidden signals coalesce until visibility returns", "clean HTMX requests and native submissions defer, including overlapping requests", and "failure and restart rebaseline safely; focus and interval do not overlap". Read assertions track two distinct XHRs, require zero reloads until both complete, and defer a native submit. node /tmp/di6-mutations.cjs removes submission/request guards and fails the in-flight test. Removing only hidden fetch suppression survives because consider() still independently defers reload; that mutation does not remove the required hidden-reload safeguard. Visibility and HTMX events here are simulated, not real browser lifecycle/network submissions.
+
+7. PASS — dirty refusal preserves edits and What-If polling remains intact.
+Commands: node /tmp/di6-browser.cjs; node /tmp/di6-mutations.cjs; cmp /tmp/di6-baseline-pelqse/web/static/js/whatif-poll.js /tmp/di6-checker-Oa0W6B/web/static/js/whatif-poll.js.
+Evidence: "PASS native refusal retains actual input; keyboard dismissal removes notice and status; unchanged signal stays dismissed"; dirty-guard mutant fails the dirty protection test; cmp exits 0 ("PASS What-If polling byte-identical to baseline"). Chromium uses native confirmation dismissal and asserts actual input remains "keep this edit" with no document reload. Worker test separately verifies explicit acceptance reloads once.
+
+8. PASS tested semantics — accessible notice dismissal (ACCESSIBILITY 3, 9, 14, 16).
+Command: node /tmp/di6-browser.cjs.
+Evidence: same native refusal/keyboard dismissal PASS line. Actual buttons are addressed by role and accessible name; Enter dismisses Keep editing; both named region and role=status disappear; unchanged revision does not reannounce after another interval. Worker JS test asserts explicit 2px focus outline. Mutation removing notice.remove() fails dismissal test. No independent claim of full contrast, responsive, screen-reader announcement timing, or complete site accessibility: those remain the named a11y lane. Chromium fixture executes the real script with synthetic input and intercepted revision responses, not a rendered What-If application. No jsdom/range-step/matchMedia simulation was used.
+
+9. FAIL — composite verification introduces stale generated CSS.
+Command: GOFLAGS=-count=1 make check (output /tmp/di6-check.log).
+Evidence: vet/static/vulnerability stages complete ("No vulnerabilities found"), then "ERROR: web/static/css/tailwind.css is stale - run 'make css' and commit the result" and make exits 2. Composite test stage does not run after that failure; independent scoped race suite in (1) passes all four packages uncached.
+Calibration: in /tmp/di6-baseline-pelqse, make css-verify exits 0 and prints "tailwind.css is up to date". cmp of baseline and DI6 regenerated tmp/tailwind.check.css exits 1 at byte 25416. Node rule-set comparison prints "DI6 added rules [ '.outline{outline-style:solid' ]", "DI6 removed rules []", and "Baseline vs committed additions []". Committed CSS itself is byte-identical across snapshots. Thus this is introduced by DI6, not concurrent DI1 or a pre-existing baseline failure. The new page-refresh.js uses style.outline; Tailwind scanning adds this utility to generated output. This finding does not assert that notice focus styling is absent: inline focus styling works. Missing acceptance evidence is a passing composite generated-asset check. No CSS/source repair performed; lead/worker must resolve within their authorized scope.
+
+Lead integration corroboration for (9): lead reports fresh make check in /tmp/budget2-DI6-release.XArdi6 passed vet/staticcheck/govuln before failing css-verify. Checker independently ran cmp on that copy: regenerated tmp/tailwind.check.css versus shipped web/static/css/tailwind.css differs at byte 25416, exit 1; lead regenerated CSS versus checker regenerated CSS compares identical, exit 0. This is the same concrete integration failure.
+
+10. SCOPE — DI6 manifest reconciled, no critical paths touched.
+Command: git diff 69e484a -- cmd/server/main.go internal/services/mcpsvc/server.go internal/services/mcpsvc/server_test.go web/templates/layouts/base.html, plus git status --short and manifest/critical-glob Node check.
+Evidence: only initialization, registration/instructions, refresh route/log exclusion, inventory count, and one script include in existing-file diff. Node check prints "PASS 12 manifest paths exist; zero critical-glob matches". New production/test files match the brief. git diff --check on existing DI6 paths exits 0. Foreign classification/insights/models/MCP-spend/page-insights edits were identified in live status and excluded from snapshot and verdict. No DI6 accept.sh exists at the standard or DI-run tier3 location (Tier 2). No gates or ledger updates run; no source fixes, subagents, commits, or git-state changes. Only real-tree write is this verdict.
+
+VERDICT / FAIL: criterion 9, newly failing composite CSS verification.
+FINDINGS / criterion 5: durable restart regression test survives removal of epoch handling; independent browser mutation proves that gap.
+SCOPE / DI6 attempt 1 only; concurrent DI1 and lead documentation excluded. Temporary probes and mutant snapshots remain under /tmp for evidence inspection.

@@ -1,0 +1,139 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DI2
+ATTEMPT: 2
+---
+Scope: full DI2 acceptance with the conceded year-history F1 correction.
+Numbering follows the six task-2-brief.md checkboxes. Earlier-this-month
+selection ending before today remains historical/no forecast. No DI3/DI4
+layout requirements or year AddDate policy changes were introduced.
+
+ISOLATION
+/tmp/DI2-checker-attempt2.IYhS3b was created with cp -a from immutable
+/tmp/budget2-DI2-base.USPhZp, then ONLY cumulative DI2.2 manifest paths
+were overlaid from frozen source. Baseline untouched; no live whole-tree copy.
+Retained synthetic zz_checker_di2_test.go probes were copied from the primary
+attempt-1 scratch snapshot. All attempt-2 execution used this fixed snapshot.
+No source fixes, git-state changes, subagents, real-data or ledger writes.
+Only this verdict is written to the real tree. Lead owns gates.
+
+COMMAND A (fresh scoped composite):
+rtk proxy make -f Makefile -f /tmp/DI2-focused.mk -o css-verify check
+Exit 0, final "✓ all checks passed".
+Supplemental checker-only recipes narrow vet/staticcheck/govulncheck/test/build
+to internal/services/insights, internal/handlers/insights,
+internal/handlers/dashboard, internal/services/mcpsvc/spend, internal/templates.
+Tests use -count=1. Five uncached package passes; focused go build succeeded.
+"No vulnerabilities found." CSS explicitly skipped as lead-owned.
+No unmodified whole-repository check/build or fresh CSS generation claimed.
+
+COMMAND B (fresh focused acceptance/probe detail):
+rtk proxy go test -count=1 -v ./internal/services/insights ./internal/handlers/insights ./internal/handlers/dashboard ./internal/services/mcpsvc/spend ./internal/templates -run '^TestDI2|^TestCheckerDI2'
+Exit 0, every selected test PASS. Terminal wrapper removed timestamped loader
+log lines only, using pipefail; test/assertion output was retained.
+
+1. PASS — Explicit period fixtures.
+Command B: TestDI2PreviousCalendarBounds, TestDI2CalendarDaysAcrossDST,
+TestDI2ForecastEligibility, TestDI2NoDataAndUnknownHistory and
+TestDI2ObservedZeroPriorIsAvailable all PASS.
+Assertions cover completed calendar months, MTD, prior-month clamping,
+leap February, ten inclusive days, empty/missing history and Sep6/Aug28 demo.
+Assertion bodies were read during attempt 1; files are unchanged this attempt.
+
+2. PASS — Civil clock/history and conceded F1.
+Actual exported helper is insights.HasCivilDateCoverage, not the descriptive
+placeholder in the lead's initial message. Source diff shows shared civil-date
+normalization of active evidence and supplied bounds, with empty/invalid guards.
+Both BuildPeriodContext and the year override consume it.
+Command:
+rtk proxy rg -n HasCivilDateCoverage internal --glob '!**/*_test.go'
+Observed references: services/insights/period.go:46 declaration, :102 builder;
+handlers/dashboard/period.go:32 year override.
+
+Command B: promoted TestDI2SecondYearCivilHistory PASS for UTC00, UTC12,
+west00, west12, east00, east12. Each logs:
+prior=2025-02-01..2025-02-28 history=true comparison.HasData=true.
+Assertions verify prior expense 100. Noon on the first prior day no longer
+suppresses coverage.
+TestDI2SecondYearHistoryRendered PASS: real shared/period-context output
+does not contain the false "Not enough history to compare".
+Read actual assertions, including the unmodified metadata counterfactual;
+the test first checks unmodified adapter/render output before the counterfactual.
+
+The promoted probe is identical to the reviewed attempt-1 checker probe
+after gofmt: diff -u of gofmt(original) versus promoted file exited 0.
+Its fail-end evidence is retained in DI2.1.checker-tests.verdict:
+same tests previously exited 1 on four time/zone cases and false rendered text.
+No redundant mutation battery was run.
+
+Command B also passes ordinary missing-history/observed-zero and full/HTMX
+evidence-bound caveat assertions. Retained civil-now probe logs:
+"local Sept7 23:30 remains Sept7; projected 300 through today; future data and earlier selection unavailable; civil day includes UTC date-only row".
+
+3. PASS — Forecast scope, freshness, elapsed days and signed estimate.
+Command B: TestDI2ForecastEligibility and TestDI2ForecastSignedNetAndFullHistory
+PASS, covering >=7 elapsed days, <=7-day freshness, current-month data,
+month-start-through-today coverage, signed refunds, suppressed rows/transfers
+and negative zero. Earlier selected end cannot borrow later data.
+TestDI2HistoricalSelectionHasNoForecast, TestDI2MCPExplicitClockAndUnknownHistory
+and TestDI2RenderedForecastAvailability PASS.
+Actual refund forecast strings, unavailable historical output, and available
+zero output are exercised by existing and retained renderer probes.
+Source diff confirms forecast code unchanged from attempt 1.
+
+4. PASS — Prior isolation, signed comparisons and rendered rounding.
+Command B: TestDI2ExplicitComparisonsSignedAndRounded PASS for both category
+and major-expense producers: current=-50, prior=30, ChangeCell dollar delta=-80.
+TestCheckerDI2RenderedBoundaries PASS:
+"rendered clamp 31 vs 28 days; current=-$50.00 prior=$30.00 delta=-$80.00".
+It asserts actual table cells, clamp/evidence labels and $0.00 without negative
+zero for an available zero forecast. No float-only display claim.
+TestCheckerDI2DashboardConsumers PASS:
+"KPI signed expenses=-50; rendered CSV=2026-01,-50.00; prior-year sentinel excluded".
+
+5. PASS — Full/HTMX/chart/drilldown/export/MCP consumers.
+Command B passes TestDI2InsightsPeriodFullAndPartials,
+TestDI2DashboardPeriodFullAndHTMX, TestDI2ChartUsesSharedBounds,
+TestDI2DashboardPriorCalendarMonth, TestDI2CalendarMonthComparison and
+TestDI2MCPExplicitClockAndUnknownHistory.
+The chart test asserts actual previous labels and current/prior values;
+MCP tests distinguish omitted unknown history from measured zero.
+Retained TestCheckerDI2DashboardConsumers reports byte-identical default vs
+explicit January responses across 11 routes: dashboard, kpis, all five chart
+types, major drilldown, KPI detail, KPI month detail and CSV export.
+Its page/detail comparisons use JSON fallback; separate worker tests use real
+full/HTMX rendering.
+
+Consumer enumeration from DI2.1 remains valid: all consumer code is byte-
+unchanged except the year adapter's helper call. New helper references were
+enumerated above. The builder still feeds Insights adapters/calculateInsightsAt,
+Dashboard adapter and MCP trendsForWindow; selected filters feed all reported
+Dashboard routes; shared template bindings remain unchanged.
+Year bounds and comparison amounts are unchanged except previously unavailable
+civil-covered history now yields the comparison.
+
+6. PASS — Checks, report, manifest and narrow change.
+Command A passed fresh focused checks. Read DI2.2 report and cumulative manifest.
+Compared production files against fixed attempt-1 snapshot using diff -u:
+only HasCivilDateCoverage insertion and its two caller replacements.
+Other source/template files compare equal; promoted year probe differs only
+by gofmt from the checker-owned original.
+
+Read-only Node fs comparison versus immutable DI2 baseline, excluding retained
+checker-only zz_checker_di2_test.go probes, output:
+"SCOPE PASS: 18 cumulative source/test/template differences; exact manifest match; 22 paths including evidence."
+Read-only manifest matching against .swarm/DI-run/critical.globs:
+"Critical path matches: 0".
+cmp of all three DI2 templates and tailwind.css versus attempt-1 snapshot:
+"Attempt-1 template and CSS byte preservation PASS".
+No changes to accepted DI1/DI6 files outside the DI2 manifest.
+No Tier-3 oracle applies to this Tier-2 task.
+
+FINDINGS
+F1 corrected; no additional in-scope blocker demonstrated.
+Retained attempt-1 calendar/forecast mutation evidence remains applicable to
+unchanged implementations; new year regression's prior fail-end and current
+pass are both evidenced. No broader mutation or speculative scope expansion.
+No browser/theme/JS execution or live-data access claimed. CSS remains lead-
+owned. Known Landlock limitation handled by scoped escalation for this verdict.

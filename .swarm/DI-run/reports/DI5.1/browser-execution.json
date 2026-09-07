@@ -1,0 +1,52 @@
+{
+  "scope": "Author execution evidence; not named-review or gate acceptance",
+  "frozenApplication": "/tmp/DI5-integration.hcuAxN",
+  "base": "http://127.0.0.1:18851",
+  "scripts": [
+    {
+      "script": "DI5-dashboard-browser.cjs",
+      "exit": 0,
+      "output": "dashboard",
+      "checks": "6 states; 5 tables every series/label/value and target; 5 dialogs; open table scroll; post-HTMX table parity"
+    },
+    {
+      "script": "DI5-integration-browser.cjs",
+      "exit": 0,
+      "output": "integration",
+      "checks": "6 states; demo July net $5,757.29; contributors; 22 recurring 3/7/12; navigation and HTMX"
+    },
+    {
+      "script": "DI5-a11y-browser.cjs",
+      "exit": 0,
+      "output": "a11y",
+      "checks": "18 route/themes; 0 violations; 20 incomplete rules / 458 node occurrences"
+    },
+    {
+      "script": "DI5-findings-browser.cjs",
+      "exit": 0,
+      "output": "findings",
+      "checks": "6 states; 5 preview + 6 remaining, Enter/Tab/Space, AX"
+    },
+    {
+      "script": "DI5-refresh-browser.cjs",
+      "exit": 1,
+      "base": "http://127.0.0.1:18852",
+      "source": "/tmp/budget2-DI4-base.KPl7oY",
+      "output": "refresh-baseline",
+      "checks": "Strict absence-of-obstruction assertion fails. All lifecycle assertions complete. Baseline contains DI3; NOT original 69e484a/master."
+    },
+    {
+      "script": "DI5-refresh-browser.cjs",
+      "exit": 0,
+      "output": "refresh",
+      "comparison": "DI5_REFRESH_BASELINE=/tmp/DI5-integration.hcuAxN/di5-evidence/refresh-baseline/refresh.json",
+      "checks": "Exact focus-obstruction comparison and lifecycle. Does NOT clear run-level accessibility issue."
+    },
+    {
+      "script": "DI3-label-name.cjs",
+      "exit": 0,
+      "output": "label-name.json",
+      "checks": "Existing test reused; explicit Label-in-Name; Enter/Space filechooser with empty selection"
+    }
+  ]
+}

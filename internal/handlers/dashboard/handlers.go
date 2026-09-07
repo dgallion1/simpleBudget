@@ -21,6 +21,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/dataloader"
+	insightssvc "budget2/internal/services/insights"
 	"budget2/internal/services/majorexpenses"
 	"budget2/internal/services/metrics"
 	"budget2/internal/services/retirement"
@@ -143,17 +144,18 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse date range from query params
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
 	comparison := r.URL.Query().Get("comparison")
+	period := dashboardPeriod(data, r, dashboardNow())
+	minDate, maxDate := data.Active().MinDate(), data.Active().MaxDate()
+	if minDate.IsZero() {
+		minDate = period.SelectedStart
+	}
+	if maxDate.IsZero() {
+		maxDate = period.SelectedEnd
+	}
+	startDate, endDate := period.SelectedStart, period.SelectedEnd
 
-	minDate := data.MinDate()
-	maxDate := data.MaxDate()
-
-	startDate, endDate := resolveDateRange(startStr, endStr, minDate, maxDate)
-
-	filtered := data.Active().FilterByDateRange(startDate, endDate)
+	filtered := insightssvc.TransactionsForPeriod(data.Active(), startDate, endDate)
 	settings := currentBudgetSettings()
 	// See gatherDashboardCalcInputs: coverage start and plan-sync exclusions
 	// are derived from the FULL active (post duplicate-resolution) set, never
@@ -170,7 +172,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	// Calculate period comparison if requested
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
-		periodComparison = metrics.Comparison(data.Active(), startDate, endDate, comparison, settings, calcInputs.planExclusions)
+		periodComparison = dashboardPeriodComparison(data.Active(), period, comparison, settings, calcInputs.planExclusions)
 	}
 
 	// Accounts card (A8): per-account balance, freshness, low/stale/no-anchor
@@ -202,6 +204,7 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		"TargetProvenance": targetProvenance,
 		"BudgetVerdict":    BuildBudgetVerdict(dashMetrics),
 		"PeriodComparison": periodComparison,
+		"Period":           period,
 		"StartDate":        startDate.Format("2006-01-02"),
 		"EndDate":          endDate.Format("2006-01-02"),
 		"MinDate":          minDate.Format("2006-01-02"),
@@ -227,21 +230,12 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
+	period := dashboardPeriod(data, r, dashboardNow())
 	comparison := r.URL.Query().Get("comparison")
 
-	startDate, _ := time.Parse("2006-01-02", startStr)
-	endDate, _ := time.Parse("2006-01-02", endStr)
+	startDate, endDate := period.SelectedStart, period.SelectedEnd
 
-	if startDate.IsZero() {
-		startDate = data.MinDate()
-	}
-	if endDate.IsZero() {
-		endDate = data.MaxDate()
-	}
-
-	filtered := data.Active().FilterByDateRange(startDate, endDate)
+	filtered := insightssvc.TransactionsForPeriod(data.Active(), startDate, endDate)
 	settings := currentBudgetSettings()
 	target, healthTarget := metrics.BudgetTargets(settings, startDate, endDate)
 	// See handleDashboard: coverage start comes from the full active set,
@@ -254,7 +248,7 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 
 	var periodComparison *models.PeriodComparison
 	if comparison != "" {
-		periodComparison = metrics.Comparison(data.Active(), startDate, endDate, comparison, settings, planExclusions)
+		periodComparison = dashboardPeriodComparison(data.Active(), period, comparison, settings, planExclusions)
 	}
 
 	partialData := map[string]interface{}{
@@ -262,10 +256,11 @@ func handleKPIsPartial(w http.ResponseWriter, r *http.Request) {
 		"TargetProvenance": targetProvenance,
 		"BudgetVerdict":    BuildBudgetVerdict(dashMetrics),
 		"PeriodComparison": periodComparison,
+		"Period":           period,
 	}
 
 	if renderer != nil {
-		_ = renderer.RenderPartial(w, "kpis", partialData)
+		_ = renderer.RenderPartial(w, "dashboard-period-kpis", partialData)
 	} else if err := json.NewEncoder(w).Encode(partialData); err != nil {
 		log.Printf("dashboard: encoding kpis JSON: %v", err)
 	}
@@ -280,20 +275,11 @@ func handleChartData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
+	period := dashboardPeriod(data, r, dashboardNow())
 
-	startDate, _ := time.Parse("2006-01-02", startStr)
-	endDate, _ := time.Parse("2006-01-02", endStr)
+	startDate, endDate := period.SelectedStart, period.SelectedEnd
 
-	if startDate.IsZero() {
-		startDate = data.MinDate()
-	}
-	if endDate.IsZero() {
-		endDate = data.MaxDate()
-	}
-
-	filtered := data.Active().FilterByDateRange(startDate, endDate)
+	filtered := insightssvc.TransactionsForPeriod(data.Active(), startDate, endDate)
 
 	var chartData interface{}
 
@@ -341,20 +327,11 @@ func handleMajorExpenseDrilldown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
+	period := dashboardPeriod(data, r, dashboardNow())
 
-	startDate, _ := time.Parse("2006-01-02", startStr)
-	endDate, _ := time.Parse("2006-01-02", endStr)
+	startDate, endDate := period.SelectedStart, period.SelectedEnd
 
-	if startDate.IsZero() {
-		startDate = data.MinDate()
-	}
-	if endDate.IsZero() {
-		endDate = data.MaxDate()
-	}
-
-	filtered := data.Active().FilterByDateRange(startDate, endDate)
+	filtered := insightssvc.TransactionsForPeriod(data.Active(), startDate, endDate)
 	buckets, unmatched := bucketMajorExpenses(filtered)
 
 	var txns []models.Transaction
@@ -451,20 +428,11 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
+	period := dashboardPeriod(data, r, dashboardNow())
 
-	startDate, _ := time.Parse("2006-01-02", startStr)
-	endDate, _ := time.Parse("2006-01-02", endStr)
+	startDate, endDate := period.SelectedStart, period.SelectedEnd
 
-	if startDate.IsZero() {
-		startDate = data.MinDate()
-	}
-	if endDate.IsZero() {
-		endDate = data.MaxDate()
-	}
-
-	filtered := data.Active().FilterByDateRange(startDate, endDate)
+	filtered := insightssvc.TransactionsForPeriod(data.Active(), startDate, endDate)
 	income := filtered.FilterByType(models.Income)
 	outflows := filtered.FilterByType(models.Outflow)
 
@@ -555,7 +523,9 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 			expAmt = metrics.SignedNet(exp)
 		}
 
-		savings := incAmt - expAmt
+		cashFlow := metrics.ReportingCashFlow(incAmt, expAmt)
+		incAmt, expAmt = cashFlow.Income, cashFlow.Spending
+		savings := cashFlow.Balance
 		rate := 0.0
 		if incAmt > 0 {
 			rate = (savings / incAmt) * 100
@@ -567,8 +537,8 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 		// spend, negative = net refund. A missing month key reads as 0
 		// (Go's zero-value map lookup), matching the ok-checked pattern the
 		// other kinds use.
-		livingAmt := monthlyLivingTotals[m]
-		healthcareAmt := monthlyHealthcareTotals[m]
+		livingAmt := metrics.ReportingMoney(monthlyLivingTotals[m])
+		healthcareAmt := metrics.ReportingMoney(monthlyHealthcareTotals[m])
 
 		var value float64
 		switch kpiType {
@@ -628,6 +598,35 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 	// column's comparison basis (the template's existing mechanism, just fed
 	// the card figure instead of the arithmetic mean) rather than a second,
 	// separately-rendered average stat.
+	// Monthly rows retain their independently rounded values. Preserve the
+	// raw period aggregate as the total and disclose its rounding residual.
+	rowSum := sum
+	periodFlow := metrics.ReportingCashFlow(income.SumAmount(), metrics.SignedNet(outflows))
+	switch kpiType {
+	case "income":
+		sum = periodFlow.Income
+	case "expenses":
+		sum = periodFlow.Spending
+	case "savings":
+		sum = periodFlow.Balance
+	case "living", "healthcare":
+		var rawTotal float64
+		totals := monthlyLivingTotals
+		if kpiType == "healthcare" {
+			totals = monthlyHealthcareTotals
+		}
+		for _, v := range totals {
+			rawTotal += v
+		}
+		sum = metrics.ReportingMoney(rawTotal)
+	}
+	if len(months) > 0 && kpiType != "savings-rate" {
+		avg = sum / float64(len(months))
+	}
+	roundingAdjustment := metrics.ReportingMoney(sum - rowSum)
+	if kpiType == "savings-rate" {
+		roundingAdjustment = 0
+	}
 	if kpiType == "living" || kpiType == "healthcare" {
 		avg = classifiedCardPerMonth
 	}
@@ -643,6 +642,7 @@ func handleKPIDetail(w http.ResponseWriter, r *http.Request) {
 		"Title":                       kpiTitles[kpiType],
 		"Monthly":                     monthlySummaries,
 		"Total":                       sum,
+		"RoundingAdjustment":          roundingAdjustment,
 		"Average":                     avg,
 		"Min":                         min,
 		"Max":                         max,
@@ -745,20 +745,11 @@ func handleKPIMonthDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
+	period := dashboardPeriod(data, r, dashboardNow())
 
-	startDate, _ := time.Parse("2006-01-02", startStr)
-	endDate, _ := time.Parse("2006-01-02", endStr)
+	startDate, endDate := period.SelectedStart, period.SelectedEnd
 
-	if startDate.IsZero() {
-		startDate = data.MinDate()
-	}
-	if endDate.IsZero() {
-		endDate = data.MaxDate()
-	}
-
-	filtered := data.Active().FilterByDateRange(startDate, endDate)
+	filtered := insightssvc.TransactionsForPeriod(data.Active(), startDate, endDate)
 
 	isSavings := kpiType == "savings" || kpiType == "savings-rate"
 
@@ -771,8 +762,9 @@ func handleKPIMonthDetail(w http.ResponseWriter, r *http.Request) {
 	// Spent"/"Healthcare Spent" below) and handleKPIDetail's now-signed
 	// expAmt. A refund-dominant month renders negative (a credit), keeping
 	// this tile and the parent modal row agreeing exactly.
-	incomeTotal := sumSigned(monthIncome)
-	expenseTotal := negSumSigned(monthOutflow)
+	monthFlow := metrics.ReportingCashFlow(sumSigned(monthIncome), negSumSigned(monthOutflow))
+	incomeTotal := monthFlow.Income
+	expenseTotal := monthFlow.Spending
 
 	var txns []models.Transaction
 	var total float64
@@ -811,7 +803,7 @@ func handleKPIMonthDetail(w http.ResponseWriter, r *http.Request) {
 		// shows both sides -- and leaves transfers out, exactly as the
 		// figure itself does.
 		txns = append(append([]models.Transaction{}, monthIncome...), monthOutflow...)
-		total, totalLabel = incomeTotal-expenseTotal, "Net"
+		total, totalLabel = monthFlow.Balance, "Cash-flow balance"
 	}
 
 	sort.SliceStable(txns, func(i, j int) bool {
@@ -856,20 +848,11 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
+	period := dashboardPeriod(data, r, dashboardNow())
 
-	startDate, _ := time.Parse("2006-01-02", startStr)
-	endDate, _ := time.Parse("2006-01-02", endStr)
+	startDate, endDate := period.SelectedStart, period.SelectedEnd
 
-	if startDate.IsZero() {
-		startDate = data.MinDate()
-	}
-	if endDate.IsZero() {
-		endDate = data.MaxDate()
-	}
-
-	filtered := data.Active().FilterByDateRange(startDate, endDate)
+	filtered := insightssvc.TransactionsForPeriod(data.Active(), startDate, endDate)
 	income := filtered.FilterByType(models.Income)
 	outflows := filtered.FilterByType(models.Outflow)
 
@@ -943,7 +926,9 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 			expAmt = metrics.SignedNet(exp)
 		}
 
-		savings := incAmt - expAmt
+		cashFlow := metrics.ReportingCashFlow(incAmt, expAmt)
+		incAmt, expAmt = cashFlow.Income, cashFlow.Spending
+		savings := cashFlow.Balance
 		rate := 0.0
 		if incAmt > 0 {
 			rate = (savings / incAmt) * 100
@@ -959,9 +944,9 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 		case "savings-rate":
 			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", incAmt), fmt.Sprintf("%.2f", expAmt), fmt.Sprintf("%.2f", savings), fmt.Sprintf("%.1f", rate)})
 		case "living":
-			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", monthlyLivingTotals[m])})
+			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", metrics.ReportingMoney(monthlyLivingTotals[m]))})
 		case "healthcare":
-			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", monthlyHealthcareTotals[m])})
+			_ = writer.Write([]string{m, fmt.Sprintf("%.2f", metrics.ReportingMoney(monthlyHealthcareTotals[m]))})
 		}
 	}
 
@@ -983,6 +968,10 @@ func handleKPIExport(w http.ResponseWriter, r *http.Request) {
 // resolveDateRange converts start/end query strings into time.Time values,
 // defaulting to YTD start (clamped to data bounds) and maxDate end.
 func resolveDateRange(startStr, endStr string, minDate, maxDate time.Time) (time.Time, time.Time) {
+	return resolveDateRangeAt(startStr, endStr, minDate, maxDate, dashboardNow())
+}
+
+func resolveDateRangeAt(startStr, endStr string, minDate, maxDate, now time.Time) (time.Time, time.Time) {
 	var startDate, endDate time.Time
 	if startStr != "" {
 		startDate, _ = time.Parse("2006-01-02", startStr)
@@ -993,7 +982,7 @@ func resolveDateRange(startStr, endStr string, minDate, maxDate time.Time) (time
 		// drops January 1 rows, while the filter beside it still reads
 		// 01/01 and every drill-down (which posts explicit dates) counts
 		// them.
-		startDate = time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, time.UTC)
+		startDate = time.Date(now.Year(), 1, 1, 0, 0, 0, 0, time.UTC)
 		// If YTD range starts after our data ends, default to all-time
 		if !maxDate.IsZero() && startDate.After(maxDate) {
 			startDate = minDate
@@ -1653,9 +1642,9 @@ func buildCumulativeChartData(ts *models.TransactionSet) map[string]interface{} 
 	var dateLabels []string
 	var cumulative []float64
 	var runningTotal float64
+	var runningIncome, runningSpending float64
 
 	for _, d := range dates {
-		var dayTotal float64
 		for _, t := range daily[d].Transactions {
 			// A transfer is neither income nor expense (GLOSSARY:
 			// "Transfer"). This loop's else branch is the only
@@ -1675,9 +1664,15 @@ func buildCumulativeChartData(ts *models.TransactionSet) map[string]interface{} 
 			// negative-amount Income row (an income reversal/chargeback)
 			// now correctly SUBTRACTS from cash flow instead of being
 			// forced positive by AbsAmount.
-			dayTotal += t.Amount
+			if t.TransactionType == models.Income {
+				runningIncome += t.Amount
+			} else {
+				runningSpending -= t.Amount
+			}
 		}
-		runningTotal += dayTotal
+		// Same rounded aggregate anchors as the headline, not a sum of
+		// rounded days. No rounding is written back into the ledger.
+		runningTotal = metrics.ReportingCashFlow(runningIncome, runningSpending).Balance
 		dateLabels = append(dateLabels, d)
 		cumulative = append(cumulative, runningTotal)
 	}

@@ -1,0 +1,568 @@
+[
+  {
+    "name": "minimal probe isolates immediate attribute removal",
+    "ok": true,
+    "observation": [
+      {
+        "remove": true,
+        "phase": "before",
+        "active": "MAIN",
+        "tabindex": "-1"
+      },
+      {
+        "remove": true,
+        "phase": "after",
+        "active": "BODY",
+        "tabindex": null
+      },
+      {
+        "remove": false,
+        "phase": "before",
+        "active": "MAIN",
+        "tabindex": "-1"
+      },
+      {
+        "remove": false,
+        "phase": "after",
+        "active": "MAIN",
+        "tabindex": "-1"
+      }
+    ]
+  },
+  {
+    "name": "focused fallback {\"initial\":null,\"removal\":\"dismiss\",\"cycle\":0}",
+    "ok": false,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":null,\"removal\":\"dismiss\",\"cycle\":0}",
+    "ok": true,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":null,\"removal\":\"dismiss\",\"cycle\":1}",
+    "ok": false,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":null,\"removal\":\"dismiss\",\"cycle\":1}",
+    "ok": true,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "existing tabindex untouched during focus {\"initial\":null,\"removal\":\"dismiss\"}",
+    "ok": true
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":null,\"removal\":\"dismiss\",\"external\":\"0\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":null,\"removal\":\"dismiss\",\"external\":\"-1\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":null,\"removal\":\"dismiss\",\"external\":null}",
+    "ok": true,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":null,\"removal\":\"epoch\",\"cycle\":0}",
+    "ok": false,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":null,\"removal\":\"epoch\",\"cycle\":0}",
+    "ok": true,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":null,\"removal\":\"epoch\",\"cycle\":1}",
+    "ok": false,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":null,\"removal\":\"epoch\",\"cycle\":1}",
+    "ok": true,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "existing tabindex untouched during focus {\"initial\":null,\"removal\":\"epoch\"}",
+    "ok": true
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":null,\"removal\":\"epoch\",\"external\":\"0\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":null,\"removal\":\"epoch\",\"external\":\"-1\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":null,\"removal\":\"epoch\",\"external\":null}",
+    "ok": true,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":\"-1\",\"removal\":\"dismiss\",\"cycle\":0}",
+    "ok": true,
+    "main": true,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":\"-1\",\"removal\":\"dismiss\",\"cycle\":0}",
+    "ok": true,
+    "main": false,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":\"-1\",\"removal\":\"dismiss\",\"cycle\":1}",
+    "ok": true,
+    "main": true,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":\"-1\",\"removal\":\"dismiss\",\"cycle\":1}",
+    "ok": true,
+    "main": false,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "existing tabindex untouched during focus {\"initial\":\"-1\",\"removal\":\"dismiss\"}",
+    "ok": true
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"-1\",\"removal\":\"dismiss\",\"external\":\"0\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"-1\",\"removal\":\"dismiss\",\"external\":\"-1\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"-1\",\"removal\":\"dismiss\",\"external\":null}",
+    "ok": true,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":\"-1\",\"removal\":\"epoch\",\"cycle\":0}",
+    "ok": true,
+    "main": true,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":\"-1\",\"removal\":\"epoch\",\"cycle\":0}",
+    "ok": true,
+    "main": false,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":\"-1\",\"removal\":\"epoch\",\"cycle\":1}",
+    "ok": true,
+    "main": true,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":\"-1\",\"removal\":\"epoch\",\"cycle\":1}",
+    "ok": true,
+    "main": false,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "existing tabindex untouched during focus {\"initial\":\"-1\",\"removal\":\"epoch\"}",
+    "ok": true
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"-1\",\"removal\":\"epoch\",\"external\":\"0\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"-1\",\"removal\":\"epoch\",\"external\":\"-1\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"-1\",\"removal\":\"epoch\",\"external\":null}",
+    "ok": true,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":\"0\",\"removal\":\"dismiss\",\"cycle\":0}",
+    "ok": true,
+    "main": true,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":\"0\",\"removal\":\"dismiss\",\"cycle\":0}",
+    "ok": true,
+    "main": false,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":\"0\",\"removal\":\"dismiss\",\"cycle\":1}",
+    "ok": true,
+    "main": true,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":\"0\",\"removal\":\"dismiss\",\"cycle\":1}",
+    "ok": true,
+    "main": false,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "existing tabindex untouched during focus {\"initial\":\"0\",\"removal\":\"dismiss\"}",
+    "ok": false
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"0\",\"removal\":\"dismiss\",\"external\":\"0\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"0\",\"removal\":\"dismiss\",\"external\":\"-1\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"0\",\"removal\":\"dismiss\",\"external\":null}",
+    "ok": true,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":\"0\",\"removal\":\"epoch\",\"cycle\":0}",
+    "ok": true,
+    "main": true,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":\"0\",\"removal\":\"epoch\",\"cycle\":0}",
+    "ok": true,
+    "main": false,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":\"0\",\"removal\":\"epoch\",\"cycle\":1}",
+    "ok": true,
+    "main": true,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":\"0\",\"removal\":\"epoch\",\"cycle\":1}",
+    "ok": true,
+    "main": false,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "existing tabindex untouched during focus {\"initial\":\"0\",\"removal\":\"epoch\"}",
+    "ok": false
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"0\",\"removal\":\"epoch\",\"external\":\"0\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"0\",\"removal\":\"epoch\",\"external\":\"-1\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"0\",\"removal\":\"epoch\",\"external\":null}",
+    "ok": true,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":\"3\",\"removal\":\"dismiss\",\"cycle\":0}",
+    "ok": true,
+    "main": true,
+    "tabindex": "3",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":\"3\",\"removal\":\"dismiss\",\"cycle\":0}",
+    "ok": true,
+    "main": false,
+    "tabindex": "3",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":\"3\",\"removal\":\"dismiss\",\"cycle\":1}",
+    "ok": true,
+    "main": true,
+    "tabindex": "3",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":\"3\",\"removal\":\"dismiss\",\"cycle\":1}",
+    "ok": true,
+    "main": false,
+    "tabindex": "3",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "existing tabindex untouched during focus {\"initial\":\"3\",\"removal\":\"dismiss\"}",
+    "ok": false
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"3\",\"removal\":\"dismiss\",\"external\":\"0\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"3\",\"removal\":\"dismiss\",\"external\":\"-1\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"3\",\"removal\":\"dismiss\",\"external\":null}",
+    "ok": true,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":\"3\",\"removal\":\"epoch\",\"cycle\":0}",
+    "ok": true,
+    "main": true,
+    "tabindex": "3",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":\"3\",\"removal\":\"epoch\",\"cycle\":0}",
+    "ok": true,
+    "main": false,
+    "tabindex": "3",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "focused fallback {\"initial\":\"3\",\"removal\":\"epoch\",\"cycle\":1}",
+    "ok": true,
+    "main": true,
+    "tabindex": "3",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "Tab leaves and cleans only temporary attribute {\"initial\":\"3\",\"removal\":\"epoch\",\"cycle\":1}",
+    "ok": true,
+    "main": false,
+    "tabindex": "3",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "existing tabindex untouched during focus {\"initial\":\"3\",\"removal\":\"epoch\"}",
+    "ok": false
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"3\",\"removal\":\"epoch\",\"external\":\"0\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "0",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"3\",\"removal\":\"epoch\",\"external\":\"-1\"}",
+    "ok": true,
+    "main": false,
+    "tabindex": "-1",
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  },
+  {
+    "name": "preserve external attribute ownership {\"initial\":\"3\",\"removal\":\"epoch\",\"external\":null}",
+    "ok": true,
+    "main": false,
+    "tabindex": null,
+    "notice": false,
+    "status": false,
+    "value": "unsaved"
+  }
+]

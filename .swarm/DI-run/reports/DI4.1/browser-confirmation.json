@@ -1,0 +1,1304 @@
+[
+  {
+    "dark": false,
+    "width": 390,
+    "dimensions": {
+      "width": 390,
+      "scroll": 390
+    },
+    "headings": [
+      "Insights",
+      "What changed",
+      "Largest contributors",
+      "Review these transactions",
+      "Detected recurring spending",
+      "Detected subscriptions",
+      "Recurring bills",
+      "Other recurring spending",
+      "Supporting charts and tables",
+      "Spending trends",
+      "Income sources",
+      "\n            \n                \n            \n            Anomalies\n        ",
+      "\n            \n                \n            \n            Price Creep\n        ",
+      "Spending pace"
+    ],
+    "preview": 2,
+    "remaining": 0,
+    "disclosed": true,
+    "audits": {
+      "violations": [],
+      "label": []
+    },
+    "chart": {
+      "series": [
+        {
+          "name": "2026-08-01 to 2026-08-28",
+          "x": [
+            1250,
+            300,
+            650,
+            594.88,
+            82.49,
+            141.55,
+            64.08,
+            82.67,
+            86.73,
+            262.1,
+            30.47,
+            140,
+            412,
+            100,
+            150,
+            79.99,
+            550
+          ],
+          "y": [
+            "Mortgage",
+            "Home Maintenance & Appliances",
+            "Medicare & Health Insurance",
+            "Groceries",
+            "Dining Out",
+            "Shopping & Household Supplies",
+            "Pharmacy & Medical Supplies",
+            "Pets",
+            "Fuel",
+            "Utilities",
+            "Subscriptions",
+            "Auto Insurance",
+            "Auto Loan",
+            "Cash Spending",
+            "Home Insurance",
+            "Internet",
+            "Travel & Hobbies"
+          ],
+          "color": "rgb(79,70,229)"
+        },
+        {
+          "name": "2026-07-04 to 2026-07-31",
+          "x": [
+            0,
+            1199,
+            0,
+            288.17,
+            156.17,
+            201.15,
+            24.4,
+            64.31,
+            101.07,
+            272.33,
+            27.48,
+            140,
+            412,
+            100,
+            150,
+            79.99,
+            550
+          ],
+          "y": [
+            "Mortgage",
+            "Home Maintenance & Appliances",
+            "Medicare & Health Insurance",
+            "Groceries",
+            "Dining Out",
+            "Shopping & Household Supplies",
+            "Pharmacy & Medical Supplies",
+            "Pets",
+            "Fuel",
+            "Utilities",
+            "Subscriptions",
+            "Auto Insurance",
+            "Auto Loan",
+            "Cash Spending",
+            "Home Insurance",
+            "Internet",
+            "Travel & Hobbies"
+          ],
+          "color": "#6b7280"
+        }
+      ],
+      "rows": [
+        {
+          "name": "Mortgage",
+          "current": 1250,
+          "previous": 0
+        },
+        {
+          "name": "Home Maintenance & Appliances",
+          "current": 300,
+          "previous": 1199
+        },
+        {
+          "name": "Medicare & Health Insurance",
+          "current": 650,
+          "previous": 0
+        },
+        {
+          "name": "Groceries",
+          "current": 594.88,
+          "previous": 288.17
+        },
+        {
+          "name": "Dining Out",
+          "current": 82.49,
+          "previous": 156.17
+        },
+        {
+          "name": "Shopping & Household Supplies",
+          "current": 141.55,
+          "previous": 201.15
+        },
+        {
+          "name": "Pharmacy & Medical Supplies",
+          "current": 64.08,
+          "previous": 24.4
+        },
+        {
+          "name": "Pets",
+          "current": 82.67,
+          "previous": 64.31
+        },
+        {
+          "name": "Fuel",
+          "current": 86.73,
+          "previous": 101.07
+        },
+        {
+          "name": "Utilities",
+          "current": 262.1,
+          "previous": 272.33
+        },
+        {
+          "name": "Subscriptions",
+          "current": 30.47,
+          "previous": 27.48
+        },
+        {
+          "name": "Auto Insurance",
+          "current": 140,
+          "previous": 140
+        },
+        {
+          "name": "Auto Loan",
+          "current": 412,
+          "previous": 412
+        },
+        {
+          "name": "Cash Spending",
+          "current": 100,
+          "previous": 100
+        },
+        {
+          "name": "Home Insurance",
+          "current": 150,
+          "previous": 150
+        },
+        {
+          "name": "Internet",
+          "current": 79.99,
+          "previous": 79.99
+        },
+        {
+          "name": "Travel & Hobbies",
+          "current": 550,
+          "previous": 550
+        }
+      ],
+      "background": "rgba(0, 0, 0, 0)",
+      "contrast": [
+        6.287528596095884,
+        4.834490081424352
+      ]
+    },
+    "focus": true,
+    "wrappers": 1,
+    "refreshedLinks": true,
+    "presetWorks": true,
+    "presetFocus": true,
+    "errors": []
+  },
+  {
+    "dark": false,
+    "width": 768,
+    "dimensions": {
+      "width": 768,
+      "scroll": 768
+    },
+    "headings": [
+      "Insights",
+      "What changed",
+      "Largest contributors",
+      "Review these transactions",
+      "Detected recurring spending",
+      "Detected subscriptions",
+      "Recurring bills",
+      "Other recurring spending",
+      "Supporting charts and tables",
+      "Spending trends",
+      "Income sources",
+      "\n            \n                \n            \n            Anomalies\n        ",
+      "\n            \n                \n            \n            Price Creep\n        ",
+      "Spending pace"
+    ],
+    "preview": 2,
+    "remaining": 0,
+    "disclosed": true,
+    "audits": {
+      "violations": [],
+      "label": []
+    },
+    "chart": {
+      "series": [
+        {
+          "name": "2026-08-01 to 2026-08-28",
+          "x": [
+            1250,
+            300,
+            650,
+            594.88,
+            82.49,
+            141.55,
+            64.08,
+            82.67,
+            86.73,
+            262.1,
+            30.47,
+            140,
+            412,
+            100,
+            150,
+            79.99,
+            550
+          ],
+          "y": [
+            "Mortgage",
+            "Home Maintenance & Appliances",
+            "Medicare & Health Insurance",
+            "Groceries",
+            "Dining Out",
+            "Shopping & Household Supplies",
+            "Pharmacy & Medical Supplies",
+            "Pets",
+            "Fuel",
+            "Utilities",
+            "Subscriptions",
+            "Auto Insurance",
+            "Auto Loan",
+            "Cash Spending",
+            "Home Insurance",
+            "Internet",
+            "Travel & Hobbies"
+          ],
+          "color": "rgb(79,70,229)"
+        },
+        {
+          "name": "2026-07-04 to 2026-07-31",
+          "x": [
+            0,
+            1199,
+            0,
+            288.17,
+            156.17,
+            201.15,
+            24.4,
+            64.31,
+            101.07,
+            272.33,
+            27.48,
+            140,
+            412,
+            100,
+            150,
+            79.99,
+            550
+          ],
+          "y": [
+            "Mortgage",
+            "Home Maintenance & Appliances",
+            "Medicare & Health Insurance",
+            "Groceries",
+            "Dining Out",
+            "Shopping & Household Supplies",
+            "Pharmacy & Medical Supplies",
+            "Pets",
+            "Fuel",
+            "Utilities",
+            "Subscriptions",
+            "Auto Insurance",
+            "Auto Loan",
+            "Cash Spending",
+            "Home Insurance",
+            "Internet",
+            "Travel & Hobbies"
+          ],
+          "color": "#6b7280"
+        }
+      ],
+      "rows": [
+        {
+          "name": "Mortgage",
+          "current": 1250,
+          "previous": 0
+        },
+        {
+          "name": "Home Maintenance & Appliances",
+          "current": 300,
+          "previous": 1199
+        },
+        {
+          "name": "Medicare & Health Insurance",
+          "current": 650,
+          "previous": 0
+        },
+        {
+          "name": "Groceries",
+          "current": 594.88,
+          "previous": 288.17
+        },
+        {
+          "name": "Dining Out",
+          "current": 82.49,
+          "previous": 156.17
+        },
+        {
+          "name": "Shopping & Household Supplies",
+          "current": 141.55,
+          "previous": 201.15
+        },
+        {
+          "name": "Pharmacy & Medical Supplies",
+          "current": 64.08,
+          "previous": 24.4
+        },
+        {
+          "name": "Pets",
+          "current": 82.67,
+          "previous": 64.31
+        },
+        {
+          "name": "Fuel",
+          "current": 86.73,
+          "previous": 101.07
+        },
+        {
+          "name": "Utilities",
+          "current": 262.1,
+          "previous": 272.33
+        },
+        {
+          "name": "Subscriptions",
+          "current": 30.47,
+          "previous": 27.48
+        },
+        {
+          "name": "Auto Insurance",
+          "current": 140,
+          "previous": 140
+        },
+        {
+          "name": "Auto Loan",
+          "current": 412,
+          "previous": 412
+        },
+        {
+          "name": "Cash Spending",
+          "current": 100,
+          "previous": 100
+        },
+        {
+          "name": "Home Insurance",
+          "current": 150,
+          "previous": 150
+        },
+        {
+          "name": "Internet",
+          "current": 79.99,
+          "previous": 79.99
+        },
+        {
+          "name": "Travel & Hobbies",
+          "current": 550,
+          "previous": 550
+        }
+      ],
+      "background": "rgba(0, 0, 0, 0)",
+      "contrast": [
+        6.287528596095884,
+        4.834490081424352
+      ]
+    },
+    "focus": true,
+    "wrappers": 1,
+    "refreshedLinks": true,
+    "presetWorks": true,
+    "presetFocus": true,
+    "errors": []
+  },
+  {
+    "dark": false,
+    "width": 1440,
+    "dimensions": {
+      "width": 1440,
+      "scroll": 1440
+    },
+    "headings": [
+      "Insights",
+      "What changed",
+      "Largest contributors",
+      "Review these transactions",
+      "Detected recurring spending",
+      "Detected subscriptions",
+      "Recurring bills",
+      "Other recurring spending",
+      "Supporting charts and tables",
+      "Spending trends",
+      "Income sources",
+      "\n            \n                \n            \n            Anomalies\n        ",
+      "\n            \n                \n            \n            Price Creep\n        ",
+      "Spending pace"
+    ],
+    "preview": 2,
+    "remaining": 0,
+    "disclosed": true,
+    "audits": {
+      "violations": [],
+      "label": []
+    },
+    "chart": {
+      "series": [
+        {
+          "name": "2026-08-01 to 2026-08-28",
+          "x": [
+            1250,
+            300,
+            650,
+            594.88,
+            82.49,
+            141.55,
+            64.08,
+            82.67,
+            86.73,
+            262.1,
+            30.47,
+            140,
+            412,
+            100,
+            150,
+            79.99,
+            550
+          ],
+          "y": [
+            "Mortgage",
+            "Home Maintenance & Appliances",
+            "Medicare & Health Insurance",
+            "Groceries",
+            "Dining Out",
+            "Shopping & Household Supplies",
+            "Pharmacy & Medical Supplies",
+            "Pets",
+            "Fuel",
+            "Utilities",
+            "Subscriptions",
+            "Auto Insurance",
+            "Auto Loan",
+            "Cash Spending",
+            "Home Insurance",
+            "Internet",
+            "Travel & Hobbies"
+          ],
+          "color": "rgb(79,70,229)"
+        },
+        {
+          "name": "2026-07-04 to 2026-07-31",
+          "x": [
+            0,
+            1199,
+            0,
+            288.17,
+            156.17,
+            201.15,
+            24.4,
+            64.31,
+            101.07,
+            272.33,
+            27.48,
+            140,
+            412,
+            100,
+            150,
+            79.99,
+            550
+          ],
+          "y": [
+            "Mortgage",
+            "Home Maintenance & Appliances",
+            "Medicare & Health Insurance",
+            "Groceries",
+            "Dining Out",
+            "Shopping & Household Supplies",
+            "Pharmacy & Medical Supplies",
+            "Pets",
+            "Fuel",
+            "Utilities",
+            "Subscriptions",
+            "Auto Insurance",
+            "Auto Loan",
+            "Cash Spending",
+            "Home Insurance",
+            "Internet",
+            "Travel & Hobbies"
+          ],
+          "color": "#6b7280"
+        }
+      ],
+      "rows": [
+        {
+          "name": "Mortgage",
+          "current": 1250,
+          "previous": 0
+        },
+        {
+          "name": "Home Maintenance & Appliances",
+          "current": 300,
+          "previous": 1199
+        },
+        {
+          "name": "Medicare & Health Insurance",
+          "current": 650,
+          "previous": 0
+        },
+        {
+          "name": "Groceries",
+          "current": 594.88,
+          "previous": 288.17
+        },
+        {
+          "name": "Dining Out",
+          "current": 82.49,
+          "previous": 156.17
+        },
+        {
+          "name": "Shopping & Household Supplies",
+          "current": 141.55,
+          "previous": 201.15
+        },
+        {
+          "name": "Pharmacy & Medical Supplies",
+          "current": 64.08,
+          "previous": 24.4
+        },
+        {
+          "name": "Pets",
+          "current": 82.67,
+          "previous": 64.31
+        },
+        {
+          "name": "Fuel",
+          "current": 86.73,
+          "previous": 101.07
+        },
+        {
+          "name": "Utilities",
+          "current": 262.1,
+          "previous": 272.33
+        },
+        {
+          "name": "Subscriptions",
+          "current": 30.47,
+          "previous": 27.48
+        },
+        {
+          "name": "Auto Insurance",
+          "current": 140,
+          "previous": 140
+        },
+        {
+          "name": "Auto Loan",
+          "current": 412,
+          "previous": 412
+        },
+        {
+          "name": "Cash Spending",
+          "current": 100,
+          "previous": 100
+        },
+        {
+          "name": "Home Insurance",
+          "current": 150,
+          "previous": 150
+        },
+        {
+          "name": "Internet",
+          "current": 79.99,
+          "previous": 79.99
+        },
+        {
+          "name": "Travel & Hobbies",
+          "current": 550,
+          "previous": 550
+        }
+      ],
+      "background": "rgba(0, 0, 0, 0)",
+      "contrast": [
+        6.287528596095884,
+        4.834490081424352
+      ]
+    },
+    "focus": true,
+    "wrappers": 1,
+    "refreshedLinks": true,
+    "presetWorks": true,
+    "presetFocus": true,
+    "errors": []
+  },
+  {
+    "dark": true,
+    "width": 390,
+    "dimensions": {
+      "width": 390,
+      "scroll": 390
+    },
+    "headings": [
+      "Insights",
+      "What changed",
+      "Largest contributors",
+      "Review these transactions",
+      "Detected recurring spending",
+      "Detected subscriptions",
+      "Recurring bills",
+      "Other recurring spending",
+      "Supporting charts and tables",
+      "Spending trends",
+      "Income sources",
+      "\n            \n                \n            \n            Anomalies\n        ",
+      "\n            \n                \n            \n            Price Creep\n        ",
+      "Spending pace"
+    ],
+    "preview": 2,
+    "remaining": 0,
+    "disclosed": true,
+    "audits": {
+      "violations": [],
+      "label": []
+    },
+    "chart": {
+      "series": [
+        {
+          "name": "2026-08-01 to 2026-08-28",
+          "x": [
+            1250,
+            300,
+            650,
+            594.88,
+            82.49,
+            141.55,
+            64.08,
+            82.67,
+            86.73,
+            262.1,
+            30.47,
+            140,
+            412,
+            100,
+            150,
+            79.99,
+            550
+          ],
+          "y": [
+            "Mortgage",
+            "Home Maintenance & Appliances",
+            "Medicare & Health Insurance",
+            "Groceries",
+            "Dining Out",
+            "Shopping & Household Supplies",
+            "Pharmacy & Medical Supplies",
+            "Pets",
+            "Fuel",
+            "Utilities",
+            "Subscriptions",
+            "Auto Insurance",
+            "Auto Loan",
+            "Cash Spending",
+            "Home Insurance",
+            "Internet",
+            "Travel & Hobbies"
+          ],
+          "color": "rgb(165,180,252)"
+        },
+        {
+          "name": "2026-07-04 to 2026-07-31",
+          "x": [
+            0,
+            1199,
+            0,
+            288.17,
+            156.17,
+            201.15,
+            24.4,
+            64.31,
+            101.07,
+            272.33,
+            27.48,
+            140,
+            412,
+            100,
+            150,
+            79.99,
+            550
+          ],
+          "y": [
+            "Mortgage",
+            "Home Maintenance & Appliances",
+            "Medicare & Health Insurance",
+            "Groceries",
+            "Dining Out",
+            "Shopping & Household Supplies",
+            "Pharmacy & Medical Supplies",
+            "Pets",
+            "Fuel",
+            "Utilities",
+            "Subscriptions",
+            "Auto Insurance",
+            "Auto Loan",
+            "Cash Spending",
+            "Home Insurance",
+            "Internet",
+            "Travel & Hobbies"
+          ],
+          "color": "#9ca3af"
+        }
+      ],
+      "rows": [
+        {
+          "name": "Mortgage",
+          "current": 1250,
+          "previous": 0
+        },
+        {
+          "name": "Home Maintenance & Appliances",
+          "current": 300,
+          "previous": 1199
+        },
+        {
+          "name": "Medicare & Health Insurance",
+          "current": 650,
+          "previous": 0
+        },
+        {
+          "name": "Groceries",
+          "current": 594.88,
+          "previous": 288.17
+        },
+        {
+          "name": "Dining Out",
+          "current": 82.49,
+          "previous": 156.17
+        },
+        {
+          "name": "Shopping & Household Supplies",
+          "current": 141.55,
+          "previous": 201.15
+        },
+        {
+          "name": "Pharmacy & Medical Supplies",
+          "current": 64.08,
+          "previous": 24.4
+        },
+        {
+          "name": "Pets",
+          "current": 82.67,
+          "previous": 64.31
+        },
+        {
+          "name": "Fuel",
+          "current": 86.73,
+          "previous": 101.07
+        },
+        {
+          "name": "Utilities",
+          "current": 262.1,
+          "previous": 272.33
+        },
+        {
+          "name": "Subscriptions",
+          "current": 30.47,
+          "previous": 27.48
+        },
+        {
+          "name": "Auto Insurance",
+          "current": 140,
+          "previous": 140
+        },
+        {
+          "name": "Auto Loan",
+          "current": 412,
+          "previous": 412
+        },
+        {
+          "name": "Cash Spending",
+          "current": 100,
+          "previous": 100
+        },
+        {
+          "name": "Home Insurance",
+          "current": 150,
+          "previous": 150
+        },
+        {
+          "name": "Internet",
+          "current": 79.99,
+          "previous": 79.99
+        },
+        {
+          "name": "Travel & Hobbies",
+          "current": 550,
+          "previous": 550
+        }
+      ],
+      "background": "rgba(0, 0, 0, 0)",
+      "contrast": [
+        7.363342781260568,
+        5.781818271859838
+      ]
+    },
+    "focus": true,
+    "wrappers": 1,
+    "refreshedLinks": true,
+    "presetWorks": true,
+    "presetFocus": true,
+    "errors": []
+  },
+  {
+    "dark": true,
+    "width": 768,
+    "dimensions": {
+      "width": 768,
+      "scroll": 768
+    },
+    "headings": [
+      "Insights",
+      "What changed",
+      "Largest contributors",
+      "Review these transactions",
+      "Detected recurring spending",
+      "Detected subscriptions",
+      "Recurring bills",
+      "Other recurring spending",
+      "Supporting charts and tables",
+      "Spending trends",
+      "Income sources",
+      "\n            \n                \n            \n            Anomalies\n        ",
+      "\n            \n                \n            \n            Price Creep\n        ",
+      "Spending pace"
+    ],
+    "preview": 2,
+    "remaining": 0,
+    "disclosed": true,
+    "audits": {
+      "violations": [],
+      "label": []
+    },
+    "chart": {
+      "series": [
+        {
+          "name": "2026-08-01 to 2026-08-28",
+          "x": [
+            1250,
+            300,
+            650,
+            594.88,
+            82.49,
+            141.55,
+            64.08,
+            82.67,
+            86.73,
+            262.1,
+            30.47,
+            140,
+            412,
+            100,
+            150,
+            79.99,
+            550
+          ],
+          "y": [
+            "Mortgage",
+            "Home Maintenance & Appliances",
+            "Medicare & Health Insurance",
+            "Groceries",
+            "Dining Out",
+            "Shopping & Household Supplies",
+            "Pharmacy & Medical Supplies",
+            "Pets",
+            "Fuel",
+            "Utilities",
+            "Subscriptions",
+            "Auto Insurance",
+            "Auto Loan",
+            "Cash Spending",
+            "Home Insurance",
+            "Internet",
+            "Travel & Hobbies"
+          ],
+          "color": "rgb(165,180,252)"
+        },
+        {
+          "name": "2026-07-04 to 2026-07-31",
+          "x": [
+            0,
+            1199,
+            0,
+            288.17,
+            156.17,
+            201.15,
+            24.4,
+            64.31,
+            101.07,
+            272.33,
+            27.48,
+            140,
+            412,
+            100,
+            150,
+            79.99,
+            550
+          ],
+          "y": [
+            "Mortgage",
+            "Home Maintenance & Appliances",
+            "Medicare & Health Insurance",
+            "Groceries",
+            "Dining Out",
+            "Shopping & Household Supplies",
+            "Pharmacy & Medical Supplies",
+            "Pets",
+            "Fuel",
+            "Utilities",
+            "Subscriptions",
+            "Auto Insurance",
+            "Auto Loan",
+            "Cash Spending",
+            "Home Insurance",
+            "Internet",
+            "Travel & Hobbies"
+          ],
+          "color": "#9ca3af"
+        }
+      ],
+      "rows": [
+        {
+          "name": "Mortgage",
+          "current": 1250,
+          "previous": 0
+        },
+        {
+          "name": "Home Maintenance & Appliances",
+          "current": 300,
+          "previous": 1199
+        },
+        {
+          "name": "Medicare & Health Insurance",
+          "current": 650,
+          "previous": 0
+        },
+        {
+          "name": "Groceries",
+          "current": 594.88,
+          "previous": 288.17
+        },
+        {
+          "name": "Dining Out",
+          "current": 82.49,
+          "previous": 156.17
+        },
+        {
+          "name": "Shopping & Household Supplies",
+          "current": 141.55,
+          "previous": 201.15
+        },
+        {
+          "name": "Pharmacy & Medical Supplies",
+          "current": 64.08,
+          "previous": 24.4
+        },
+        {
+          "name": "Pets",
+          "current": 82.67,
+          "previous": 64.31
+        },
+        {
+          "name": "Fuel",
+          "current": 86.73,
+          "previous": 101.07
+        },
+        {
+          "name": "Utilities",
+          "current": 262.1,
+          "previous": 272.33
+        },
+        {
+          "name": "Subscriptions",
+          "current": 30.47,
+          "previous": 27.48
+        },
+        {
+          "name": "Auto Insurance",
+          "current": 140,
+          "previous": 140
+        },
+        {
+          "name": "Auto Loan",
+          "current": 412,
+          "previous": 412
+        },
+        {
+          "name": "Cash Spending",
+          "current": 100,
+          "previous": 100
+        },
+        {
+          "name": "Home Insurance",
+          "current": 150,
+          "previous": 150
+        },
+        {
+          "name": "Internet",
+          "current": 79.99,
+          "previous": 79.99
+        },
+        {
+          "name": "Travel & Hobbies",
+          "current": 550,
+          "previous": 550
+        }
+      ],
+      "background": "rgba(0, 0, 0, 0)",
+      "contrast": [
+        7.363342781260568,
+        5.781818271859838
+      ]
+    },
+    "focus": true,
+    "wrappers": 1,
+    "refreshedLinks": true,
+    "presetWorks": true,
+    "presetFocus": true,
+    "errors": []
+  },
+  {
+    "dark": true,
+    "width": 1440,
+    "dimensions": {
+      "width": 1440,
+      "scroll": 1440
+    },
+    "headings": [
+      "Insights",
+      "What changed",
+      "Largest contributors",
+      "Review these transactions",
+      "Detected recurring spending",
+      "Detected subscriptions",
+      "Recurring bills",
+      "Other recurring spending",
+      "Supporting charts and tables",
+      "Spending trends",
+      "Income sources",
+      "\n            \n                \n            \n            Anomalies\n        ",
+      "\n            \n                \n            \n            Price Creep\n        ",
+      "Spending pace"
+    ],
+    "preview": 2,
+    "remaining": 0,
+    "disclosed": true,
+    "audits": {
+      "violations": [],
+      "label": []
+    },
+    "chart": {
+      "series": [
+        {
+          "name": "2026-08-01 to 2026-08-28",
+          "x": [
+            1250,
+            300,
+            650,
+            594.88,
+            82.49,
+            141.55,
+            64.08,
+            82.67,
+            86.73,
+            262.1,
+            30.47,
+            140,
+            412,
+            100,
+            150,
+            79.99,
+            550
+          ],
+          "y": [
+            "Mortgage",
+            "Home Maintenance & Appliances",
+            "Medicare & Health Insurance",
+            "Groceries",
+            "Dining Out",
+            "Shopping & Household Supplies",
+            "Pharmacy & Medical Supplies",
+            "Pets",
+            "Fuel",
+            "Utilities",
+            "Subscriptions",
+            "Auto Insurance",
+            "Auto Loan",
+            "Cash Spending",
+            "Home Insurance",
+            "Internet",
+            "Travel & Hobbies"
+          ],
+          "color": "rgb(165,180,252)"
+        },
+        {
+          "name": "2026-07-04 to 2026-07-31",
+          "x": [
+            0,
+            1199,
+            0,
+            288.17,
+            156.17,
+            201.15,
+            24.4,
+            64.31,
+            101.07,
+            272.33,
+            27.48,
+            140,
+            412,
+            100,
+            150,
+            79.99,
+            550
+          ],
+          "y": [
+            "Mortgage",
+            "Home Maintenance & Appliances",
+            "Medicare & Health Insurance",
+            "Groceries",
+            "Dining Out",
+            "Shopping & Household Supplies",
+            "Pharmacy & Medical Supplies",
+            "Pets",
+            "Fuel",
+            "Utilities",
+            "Subscriptions",
+            "Auto Insurance",
+            "Auto Loan",
+            "Cash Spending",
+            "Home Insurance",
+            "Internet",
+            "Travel & Hobbies"
+          ],
+          "color": "#9ca3af"
+        }
+      ],
+      "rows": [
+        {
+          "name": "Mortgage",
+          "current": 1250,
+          "previous": 0
+        },
+        {
+          "name": "Home Maintenance & Appliances",
+          "current": 300,
+          "previous": 1199
+        },
+        {
+          "name": "Medicare & Health Insurance",
+          "current": 650,
+          "previous": 0
+        },
+        {
+          "name": "Groceries",
+          "current": 594.88,
+          "previous": 288.17
+        },
+        {
+          "name": "Dining Out",
+          "current": 82.49,
+          "previous": 156.17
+        },
+        {
+          "name": "Shopping & Household Supplies",
+          "current": 141.55,
+          "previous": 201.15
+        },
+        {
+          "name": "Pharmacy & Medical Supplies",
+          "current": 64.08,
+          "previous": 24.4
+        },
+        {
+          "name": "Pets",
+          "current": 82.67,
+          "previous": 64.31
+        },
+        {
+          "name": "Fuel",
+          "current": 86.73,
+          "previous": 101.07
+        },
+        {
+          "name": "Utilities",
+          "current": 262.1,
+          "previous": 272.33
+        },
+        {
+          "name": "Subscriptions",
+          "current": 30.47,
+          "previous": 27.48
+        },
+        {
+          "name": "Auto Insurance",
+          "current": 140,
+          "previous": 140
+        },
+        {
+          "name": "Auto Loan",
+          "current": 412,
+          "previous": 412
+        },
+        {
+          "name": "Cash Spending",
+          "current": 100,
+          "previous": 100
+        },
+        {
+          "name": "Home Insurance",
+          "current": 150,
+          "previous": 150
+        },
+        {
+          "name": "Internet",
+          "current": 79.99,
+          "previous": 79.99
+        },
+        {
+          "name": "Travel & Hobbies",
+          "current": 550,
+          "previous": 550
+        }
+      ],
+      "background": "rgba(0, 0, 0, 0)",
+      "contrast": [
+        7.363342781260568,
+        5.781818271859838
+      ]
+    },
+    "focus": true,
+    "wrappers": 1,
+    "refreshedLinks": true,
+    "presetWorks": true,
+    "presetFocus": true,
+    "errors": []
+  }
+]

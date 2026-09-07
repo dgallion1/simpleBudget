@@ -252,6 +252,70 @@ func CategoryTrends(ts *models.TransactionSet, currentStart, currentEnd time.Tim
 	return trends
 }
 
+// CategoryTrendsForPeriod compares signed net category spending over the shared
+// explicit windows. No comparison is fabricated when history is unavailable.
+// Results are uncapped and ranked by absolute change, then category name.
+func CategoryTrendsForPeriod(ts *models.TransactionSet, p models.PeriodContext) []models.CategoryTrend {
+	return trendsForPeriod(ts, p, func(t models.Transaction) (string, bool) { return t.Category, true })
+}
+
+// MajorExpenseTrendsForPeriod is the explicit comparison producer for Insights,
+// MCP and DI4. Pins win; unmatched outflows remain excluded as in the legacy API.
+func MajorExpenseTrendsForPeriod(ts *models.TransactionSet, defs []models.MajorExpense, pins map[string]string, p models.PeriodContext) []models.CategoryTrend {
+	names := make(map[string]string, len(defs))
+	for _, d := range defs {
+		names[d.ID] = d.Name
+	}
+	return trendsForPeriod(ts, p, func(t models.Transaction) (string, bool) {
+		if id, _, ok := models.ResolveByIdentity(pins, t); ok {
+			if name, exists := names[id]; exists {
+				return name, true
+			}
+		}
+		id, ok := majorexpenses.MatchTransaction(t, defs)
+		return names[id], ok
+	})
+}
+
+func trendsForPeriod(ts *models.TransactionSet, p models.PeriodContext, group func(models.Transaction) (string, bool)) []models.CategoryTrend {
+	if !p.Valid || !p.HistoryAvailable {
+		return nil
+	}
+	totals := func(start, end time.Time) map[string]float64 {
+		groups := map[string][]models.Transaction{}
+		for _, t := range TransactionsForPeriod(ts, start, end).FilterByType(models.Outflow).Transactions {
+			if name, ok := group(t); ok {
+				groups[name] = append(groups[name], t)
+			}
+		}
+		out := map[string]float64{}
+		for name, txns := range groups {
+			out[name] = models.RoundToCents(metrics.SignedNet(models.NewTransactionSet(txns)))
+		}
+		return out
+	}
+	current, prior := totals(p.SelectedStart, p.SelectedEnd), totals(p.PreviousStart, p.PreviousEnd)
+	names := map[string]bool{}
+	for name := range current {
+		names[name] = true
+	}
+	for name := range prior {
+		names[name] = true
+	}
+	rows := make([]models.CategoryTrend, 0, len(names))
+	for name := range names {
+		cell := ChangeDisplay(prior[name], current[name])
+		rows = append(rows, models.CategoryTrend{Category: name, CurrentAmount: current[name], PreviousAmount: prior[name], Change: cell, ChangeAmount: cell.Amount, ChangePercent: cell.Percent, Direction: cell.Direction})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if math.Abs(rows[i].ChangeAmount) == math.Abs(rows[j].ChangeAmount) {
+			return rows[i].Category < rows[j].Category
+		}
+		return math.Abs(rows[i].ChangeAmount) > math.Abs(rows[j].ChangeAmount)
+	})
+	return rows
+}
+
 // IncomePatterns detects recurring income sources from transaction data.
 // Exported for use by other packages (e.g., whatif).
 func IncomePatterns(ts *models.TransactionSet) []models.IncomePattern {

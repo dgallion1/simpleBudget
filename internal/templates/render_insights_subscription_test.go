@@ -23,9 +23,9 @@ func TestRenderInsightsSubscriptionInitial(t *testing.T) {
 	for _, tc := range []struct {
 		name, major, description, initial, label string
 	}{
-		{"major expense", "Travel & Hobbies", "Other", "T", "Travel & Hobbies"},
+		{"major expense", "Travel & Hobbies", "Other", "O", "Other"},
 		{"description", "", "Netflix", "N", "Netflix"},
-		{"unicode major", "旅行", "Other", "旅", "旅行"},
+		{"unicode major", "旅行", "Other", "O", "Other"},
 		{"unicode description", "", "Éducation", "É", "Éducation"},
 		{"emoji", "🎵 Music", "", "🎵", "🎵 Music"},
 		{"empty", "", "", "?", "Unlabeled subscription"},

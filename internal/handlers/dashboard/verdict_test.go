@@ -25,7 +25,7 @@ func TestBuildBudgetVerdict(t *testing.T) {
 	})
 
 	t.Run("no combined target is neutral", func(t *testing.T) {
-		m := &models.DashboardMetrics{HasCombinedTarget: false, TotalIncome: 5000, NetSavings: 1000}
+		m := &models.DashboardMetrics{HasCombinedTarget: false, TotalIncome: 5000, TotalExpenses: 4000, NetSavings: 1000}
 		v := BuildBudgetVerdict(m)
 		if v.Health != models.HealthNeutral {
 			t.Errorf("Health = %q, want neutral", v.Health)

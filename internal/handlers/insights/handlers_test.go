@@ -161,7 +161,7 @@ func TestCalculateInsights_UsesSelectedEndDateForRecurringFreshness(t *testing.T
 
 	insights := calculateInsights(allData, filtered, startDate, endDate)
 
-	for _, r := range insights.Subscriptions {
+	for _, r := range insights.OtherRecurring {
 		if r.Description == "legacy gym" {
 			return
 		}

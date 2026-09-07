@@ -512,8 +512,8 @@ func TestIsSubscription_YearlyAndQuarterly(t *testing.T) {
 		freq string
 		want bool
 	}{
-		{"annual domain", "yearly", true},
-		{"quarterly report", "quarterly", true},
+		{"annual domain", "yearly", false},
+		{"quarterly report", "quarterly", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.freq, func(t *testing.T) {
@@ -947,13 +947,13 @@ func TestDetectRecurringPaymentsAt_OngoingStaleActivitySkipped(t *testing.T) {
 	}
 }
 
-// TestDetectRecurringPaymentsAt_Max20Results covers the truncation to 20 results
-func TestDetectRecurringPaymentsAt_Max20Results(t *testing.T) {
+// Every distinct recurring merchant must survive detection, including beyond 20.
+func TestDetectRecurringPaymentsAt_UncappedResults(t *testing.T) {
 	now := time.Now()
 	var txns []models.Transaction
 	// Create 25 distinct monthly recurring vendors
 	for v := 0; v < 25; v++ {
-		desc := fmt.Sprintf("vendor-%02d", v)
+		desc := fmt.Sprintf("vendor-%c", 'a'+v)
 		for i := 0; i < 4; i++ {
 			txns = append(txns, models.Transaction{
 				Description:     desc,
@@ -965,8 +965,8 @@ func TestDetectRecurringPaymentsAt_Max20Results(t *testing.T) {
 	}
 	ts := &models.TransactionSet{Transactions: txns}
 	recurring := DetectRecurring(ts)
-	if len(recurring) > 20 {
-		t.Errorf("expected max 20 results, got %d", len(recurring))
+	if len(recurring) != 25 {
+		t.Errorf("expected all 25 results, got %d", len(recurring))
 	}
 }
 

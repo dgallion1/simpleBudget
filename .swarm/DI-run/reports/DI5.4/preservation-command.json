@@ -1,0 +1,16 @@
+{
+  "name": "preservation",
+  "cwd": "/tmp/DI5-fourth-worker.1ptHqE",
+  "command": [
+    "rtk",
+    "proxy",
+    "node",
+    ".swarm/DI-run/reports/DI5.4-preserve.cjs",
+    "verify"
+  ],
+  "start": "2026-09-07T11:53:37.560Z",
+  "end": "2026-09-07T11:53:37.719Z",
+  "exit": 0,
+  "signal": null,
+  "env": {}
+}

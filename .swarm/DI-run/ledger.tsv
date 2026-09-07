@@ -1,0 +1,7 @@
+# task_id	tier	checks	status	attempt	worker	reason
+DI1	2	tests,second	accepted	2	worker-coder	gate-check-exit0; both-named-checkers-PASS
+DI2	2	tests,second	accepted	2	worker-coder	gate-check-exit0; both-named-checkers-PASS
+DI3	2	tests,a11y,second	accepted	2	worker-coder	gate-check-exit0; all-three-named-checkers-PASS
+DI4	2	tests,a11y,second	accepted	2	worker-coder	gate-check-exit0; all-three-named-checkers-PASS
+DI5	3	tests,a11y,second	accepted	4	worker-coder	user-reopened-only-focus-fallback; oracle-and-three-checkers-PASS; gate-check-exit0
+DI6	2	tests,a11y	accepted	2	worker-coder	gate-check-exit0; tests-and-a11y-PASS

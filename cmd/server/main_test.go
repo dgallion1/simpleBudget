@@ -136,8 +136,10 @@ func TestDashboard(t *testing.T) {
 		ContentTypeHTML().
 		ContainsAll(
 			"Dashboard",
-			"Total Income",
-			"Total Expenses",
+			"Recorded income",
+			"Net spending",
+			"Cash-flow balance",
+			"Spending versus plan",
 			"Monthly Living Expenses",
 		)
 }
@@ -151,7 +153,7 @@ func TestDashboardKPIsPartial(t *testing.T) {
 	testutil.AssertResponse(t, resp).
 		StatusOK().
 		ContentTypeHTML().
-		ContainsAll("Total Income", "Total Expenses")
+		ContainsAll("Recorded income", "Net spending", "Cash-flow balance", "Spending versus plan")
 }
 
 // TestDashboardChartData tests chart data endpoints

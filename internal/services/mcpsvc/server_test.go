@@ -95,14 +95,14 @@ func TestNewServerRegistersAllThirtyTwoTools(t *testing.T) {
 		"delete_major_expense", "get_status", "list_data_files", "list_duplicates", "resolve_duplicates",
 		"undo_resolve", "run_backup", "list_backups", "restore_backup", "shutdown_server",
 		"get_accounts", "get_balance_projection", "get_transfers", "get_suspected_transfers",
-		"set_balance_anchor", "resolve_transfer",
+		"set_balance_anchor", "resolve_transfer", "refresh_pages",
 	} {
 		if !got[want] {
 			t.Errorf("tool %q not registered; got %v", want, toolNames(res.Tools))
 		}
 	}
-	if len(res.Tools) != 32 {
-		t.Errorf("expected exactly 32 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
+	if len(res.Tools) != 33 {
+		t.Errorf("expected exactly 33 tools, got %d: %v", len(res.Tools), toolNames(res.Tools))
 	}
 }
 

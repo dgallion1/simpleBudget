@@ -1,0 +1,14 @@
+internal/handlers/insights/handlers.go
+internal/handlers/insights/handlers_test.go
+internal/handlers/insights/recurring_di1_test.go
+internal/models/insights.go
+internal/services/insights/classification.go
+internal/services/insights/classification_test.go
+internal/services/insights/recurring.go
+internal/services/insights/recurring_test.go
+internal/services/mcpsvc/spend/recurring.go
+internal/templates/render_insights_subscription_test.go
+internal/templates/render_recurring_di1_test.go
+web/templates/pages/insights.html
+.swarm/DI-run/reports/DI1.1.md
+.swarm/DI-run/manifests/DI1.1.files

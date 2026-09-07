@@ -1,0 +1,18 @@
+✔ clean tab establishes baseline, reloads once, keeps query/hash; new tab does not loop (14.928021ms)
+✔ hidden signals coalesce until visibility returns (2.831078ms)
+✔ dirty edits require explicit confirmation, refusal preserves edits without dialog spam (3.901662ms)
+✔ clean HTMX requests and native submissions defer, including overlapping requests (2.578903ms)
+✔ failure and restart rebaseline safely; focus and interval do not overlap (1.150505ms)
+✔ dismissal removes visible and announced notice until a new signal (1.417918ms)
+✔ new epoch clears a pending dirty notice and rebaselines below the old revision (4.531207ms)
+✔ notice precedes main content without stealing focus; displaced input is kept visible (1.710789ms)
+✔ HTMX replacement restores the same pending region/status once; partial swaps do not reannounce (1.766845ms)
+✔ no-main fallback precedes body content and does not scroll an already visible control (1.32838ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 111.699294

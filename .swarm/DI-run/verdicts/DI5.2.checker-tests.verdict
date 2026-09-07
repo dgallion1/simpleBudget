@@ -1,0 +1,105 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: DI5
+ATTEMPT: 2
+---
+Independent final primary verification. DI5.1 focus-obstruction F1 remains a valid, run-introduced failure; the final correction resolves it. No accepted-baseline allowlist was used. No additional concrete in-scope failure established. Named a11y/second and lead gates remain independent requirements.
+
+1. Scope, source continuity and preparation association — met
+Read final DI5.2 report/manifest/brief, task5 requirements, canonical design/rulings, all ACCESSIBILITY.md, DI6 brief and conceded DI5.1 a11y verdict. Preparation read the full promotion map and all17 new Go test files/assertions.
+Final snapshot /tmp/DI5-final-tests.yXx4Oi was cp -a from immutable /tmp/budget2-DI4-base.KPl7oY plus ONLY DI4.2 and cumulative DI5.2 manifest overlays. Never a live whole-tree copy.
+Command: rtk proxy node tmp/checker-evidence/provenance.cjs
+Output:694 source/config files unchanged, only web/static/js/page-refresh.js and page-refresh.test.cjs changed;17/17 DI5 Go-test hashes unchanged;373 manifest paths. Ran again at verdict boundary, exit0.
+Compare input: /tmp/DI5-Go-checker.vZNpAR/tmp/checker-evidence/source-hashes.json. Exact hashes/output retained in final tmp/checker-evidence/provenance.json. CSS, templates and every financial/application Go source remain byte-identical to independently tested preparation. Dual manifests cmp exits0.
+Actual production delta independently inspected with diff -u: add normal-flow mountNotice, conditional current-control scroll, afterSwap remount, change fixed-overlay classes, replace body append with mount. No other production source changes; critical financial/storage paths untouched.
+
+2. Go promotions, financial/date/retention and cross-consumer integration — met
+Preparation command, independently executed:
+rtk proxy go test -count=1 -v ./internal/services/insights ./internal/handlers/dashboard ./internal/handlers/insights ./internal/templates ./internal/services/mcpsvc/spend ./internal/services/mcpsvc/ledger ./cmd/server -run '^TestDI5'
+Exit0:22 top-level tests/seven packages. Exact log and assertion audit:
+/tmp/DI5-Go-checker.vZNpAR/tmp/checker-evidence/{go-promotions.log,PREPARATION.md}.
+Final full uncached test run below executes these again. Preparation is associated only after exact hash proof, not author claims or lead's concurrent race run.
+
+Inspected/asserted promotion inventory:
+M01 descriptor/category15 cases x4 aliases: exact classification, nonempty reason and boolean wrapper.
+M02 three distinct mixed-cadence merchants and annual11.88/49.36/25.50.
+M03 actual recurring renderer2110/25320, subscription10/120,20 other rows2000/24000,22 annotations/reasons/decoded merchant links.
+M04 Dashboard plus both ledger projection adapters retain22/class1/1/20/annual25320 and available minimum2890 from5000.
+M05 all completed months/MTD days2023–2027, clamp/day counts, spring/fall DST with actual boundary-row inclusion.
+M06 297 forecast/freshness combinations plus local23:30/date-only/future-row/early-end cases.
+M07 81 enclosure combinations twice plus suppressed/empty/invalid/one-day bounds.
+M08 actual rendered31-vs28 clamp/evidence caveat and -50/30/-80; available zero/tiny-credit without negative zero.
+M09 eleven default/explicit route byte guards, January refundnet-50, prior-year999 exclusion/CSV. These use JSON fallback and are NOT claimed as SSR proof.
+M10 exact full/KPI/detail/month/CSV cent tuples, missing-plan guidance, four two-month rendered integer-cent equations, exact zero-row plus/minus.01 residual, neutral displayed zero.
+M11 sixteen assembled SDK grouping/topN/signed-cent combinations preserve period anchors and monthly adjustment reconciliation.
+M12 freshly exercised Dashboard charts/dialogs/disclosures below.
+M13 actual assembled refresh_pages x3 and mounted route reads leave nonempty synthetic saved-file SHA256/inventory unchanged; t.TempDir and independent backup/import directories. It is fixture preservation, not a universal filesystem-write trace.
+M14 freshly exercised correction/lifecycle/browser guarantees below.
+Additional DI4 Go promotions follow actual Explorer links to actual hashes; preserve five-preview/eleven-findings, actual Major Expense ID versus label, unmatched exclusion/date range; printed per-group estimate sums and tied latest hash/actual27 versus median20/full-history anchor.
+cmd/server/TestDI5SameDateEdgeMatrix checks mounted Dashboard/KPI/Insights/HX and assembled summarize_spending/get_trends across six historical/custom/refund/incomplete/no-history/empty cases. Missing plan covered separately in M10.
+
+Sensitivity, not merely test names: independently mutated disposable /tmp/DI5-Go-mutant.nkqG6R. Promoted tests reject substring evidence, raw timestamp coverage, age>=7 stale, restored20cap and raw cash-flow subtraction. Separate unmasked zero-monthly-adjustment mutation fails "monthly reconciliation failed". Commands/logs in preparation PREPARATION.md and mutant tmp/checker-evidence/{mutations.log,mutation-adjustment.log}. No mutated source enters final snapshot.
+
+3. Refresh correction, same-node HTMX lifecycle, visible focus — met freshly
+All following commands executed in final snapshot, with browser outputs under tmp/checker-evidence.
+rtk proxy node --test web/static/js/page-refresh.test.cjs
+Exit0,10 passed/0 failed: seven original lifecycle groups plus three placement/conditional scroll/same-node-remount groups. Inspected complete harness/assertions.
+Counterfactual: /tmp/DI5-refresh-mutant.oDHM6s contains final web assets/test but old page-refresh.js from preparation.
+rtk proxy node --test /tmp/DI5-refresh-mutant.oDHM6s/web/static/js/page-refresh.test.cjs
+Exit1: seven original groups pass, all three new groups fail specifically h1 versus section/pending region placement. No syntax/setup failure.
+
+Fresh browser command convention (each actual command uses these environment values):
+rtk proxy env DI5_BASE=http://127.0.0.1:18985 DI5_SOURCE_ROOT=/tmp/DI5-final-tests.yXx4Oi DI5_OUTPUT=/tmp/DI5-final-tests.yXx4Oi/tmp/checker-evidence/NAME node .swarm/DI-run/reports/SCRIPT.cjs
+Inspected each script completely before executing; each listed run exit0:
+- NAME=focus SCRIPT=DI5-focus-obstruction: all production scripts/HTMX active, only read-only refresh response mocked. Both themes x390/768/1440: hits=[];46/46/54 Tab events. Trace explicitly requires Income/Cash-flow/Budget/Healthcare details; full rectangle plus nine hit samples, not center-point-only. Arrival keeps focused input/value in viewport; notice reachable. No baseline allowlist.
+- NAME=layout SCRIPT=DI5-refresh-layout: twelve states (main/fallback x six viewport/themes). Actual input displaced110px at390 and62px at768/1440, same focus/value remains exposed at all nine samples. Real HTMX innerHTML and outerHTML swaps preserve same region/status objects and no duplicates; dismissal clears both, same revision stays dismissed.
+- NAME=refresh SCRIPT=DI5-refresh-browser: six states,loads4 each,obstructions=[]; initial clean reload once/no loop/exact query/hash, dirty refusal retains input, keyboard dismissal clears region/status and returns focus, epoch reset preserves edits, confirmed reload then clean signal. This harness intentionally isolates refresh JS on freshly rendered HTML; it is supplemented, not replaced, by all-scripts-active focus run.
+
+Actual-browser counterfactual:
+rtk proxy env DI5_SOURCE_ROOT=/tmp/DI5-refresh-mutant.oDHM6s DI5_OUTPUT=/tmp/DI5-final-tests.yXx4Oi/tmp/checker-evidence/layout-red node .swarm/DI-run/reports/DI5-refresh-layout.cjs
+Exit1 with assertion "fixed" !== "static". Confirms actual-browser regression sensitivity; original/pre-DI3 attribution remains upheld separately, not reinvented.
+VM limitations: mocked DOM/reload cannot establish real visibility or native dialogs; browser runs supply that evidence. Same-node DOM/AX checks do not certify a particular screen reader's spoken announcements. Synthetic main-replacement response preserves its own test value; no claim HTMX automatically preserves arbitrary server-replaced unsaved values.
+
+4. Final Dashboard/Insights drilldowns, dynamic parity and demonstration — met freshly
+Using command convention above:
+- NAME=dashboard SCRIPT=DI5-dashboard-browser, exit0: exactly five chart alternatives; EVERY series/label/value and horizontal target line matches table before/after real HTMX replot; five KPI dialogs Enter/forward/back Tab/Escape/return; scoped headers, disclosures and overflow scroll keyboard behavior when applicable; selected-date focus/Insights link. Six viewport/theme states, no document overflow.
+- NAME=integration SCRIPT=DI5-integration-browser, exit0: real isolated MCP get_trends July1–31/priorJune1–30/history true/forecast false; contributors899.00/108.31/100 with exact component amounts. Actual Dashboard-to-Insights navigation retains selected range; both show net5757.29. Actual HX refresh updates links/context/focus. get_recurring Aug28 returns22=3 subscriptions/7bills/12other, exact cloud storage/netflix/spotify subscriptions; standalone UI contains all names and same group counts. Synthetic observations, not production classifier rules.
+- rtk proxy node tmp/checker-evidence/demo-summary.cjs, exit0: real isolated summarize_spending July1–31 total_expenses5757.29 equals freshly rendered UI $5,757.29.
+- rtk proxy env DI5_ARTIFACT_DIR=/tmp/DI5-final-tests.yXx4Oi/tmp/checker-evidence/findings-input go test -count=1 ./internal/handlers/insights -run '^TestDI5HTTPFindingsLinks$'
+  Exit0; regenerates actual final HTTP findings.html and follows actual Explorer links.
+  rtk proxy env DI5_BASE=http://127.0.0.1:18985 DI5_OUTPUT=/tmp/DI5-final-tests.yXx4Oi/tmp/checker-evidence/findings DI5_FINDINGS=/tmp/DI5-final-tests.yXx4Oi/tmp/checker-evidence/findings-input/findings.html node .swarm/DI-run/reports/DI5-findings-browser.cjs
+  Exit0: six states preview5/remaining6, Enter exposes all, Tab reaches first real link, Space hides, closed/open/reclosed AX parity.
+
+5. Build, quality pipeline, CSS, full tests and agents2 contract — met freshly
+rtk proxy go build -buildvcs=false -o tmp/checker-server ./cmd/server
+rtk proxy make COMMIT=di5-checker -f Makefile -f tmp/checker-full.mk check
+rtk proxy go build -buildvcs=false ./...
+All exit0. Scratch Make overlay changes only test command to go test -count=1 ./...; original composite vet/static/vuln/css-verify retained. tmp/checker-evidence/composite.log:50 package ok lines, "tailwind.css is up to date", final "all checks passed". CSS unchanged hash f09162945444f745061980d04d5d3eafd8c7c9d67c178381837555429adb6c5c.
+Vulnerability scanner reports zero reachable vulnerabilities, eight imported-package and one module advisory not called by analyzed code; no broad security clearance claimed. Outdated caniuse-lite advisory is not generated CSS drift.
+Required agents2 smoketest: cp -a supplied agents2 worktree into /tmp/DI5-agents-smoke.9ZYqse, then
+rtk proxy bash /tmp/DI5-agents-smoke.9ZYqse/smoketest/gate/run_tests.sh
+Exit0, final ALL PASS. Log tmp/checker-evidence/agents-smoke.log. Its disposable git-fixture tests do not modify project git. Lead's concurrent race run is not substituted for any independent result above.
+
+6. Responsive/themes/accessibility evidence and limits — met for this lane
+NAME=a11y SCRIPT=DI5-a11y-browser using convention above: exit0, nine nav routes xboth themes=18 checks, zero automated WCAG-tag violations/page errors; one h1/required landmarks. Twenty incomplete rule results/458 node occurrences remain unresolved manual evidence, not automatically passed. Existing observations and original-run attribution are not overridden by this result. Named accessibility lane owns its complete adjudication.
+rtk proxy env DI3_BASE=http://127.0.0.1:18985 DI3_LABEL_OUTPUT=/tmp/DI5-final-tests.yXx4Oi/tmp/checker-evidence/label-name.json node .swarm/DI-run/reports/DI3-label-name.cjs
+Exit0: exact visible/computed accessible name, explicit label-content-name-mismatch zero; focused Enter/light and Space/dark open real filechooser, selecting no files.
+Screenshots/geometry/AX retained for all tested states. Visually inspected fresh390 light real notice,768 dark displaced-input fixture and1440 light real Insights comparison screenshot: notice above heading, visible outline, retained edge input and readable comparison. Layout fixture deliberately has a plain body; not presented as full-theme site certification. Additional six-state browser geometry checks cover actual pages.
+Known Landlock failure prevented direct view_image; read-only escalated base64 fallback displayed only generated synthetic screenshots. No install/network dependency changes.
+No native screen-reader/speech-recognition or exhaustive validation/motion certification. No UI polishing or unrelated legacy fix required.
+
+Evidence paths and handoff
+Final /tmp/DI5-final-tests.yXx4Oi/tmp/checker-evidence:
+provenance.cjs/json, composite.log, agents-smoke.log;
+focus.log and focus/results.json plus screenshots/AX;
+refresh.log and refresh/refresh.json;
+layout.log and layout/results.json plus screenshots;
+dashboard.log and dashboard/*;
+integration.log and integration/demo-tools.json plus screenshots;
+findings.log and findings/*;
+a11y.log and a11y/summary.json/per-route raw audits/HTML/AX;
+label-name.json; demo-summary.cjs.
+Preparation and mutation locations above remain available. No additional production fix/promotion needed for this lane; correction regression is durable. Only this verdict written to shared source.
+Own server was127.0.0.1:18985 with dereferenced synthetic /tmp fixture and independent temporary data/import/backup directories. PID2726210 stopped; final ss shows no listener. No8080/8081/real-data/installed connector/user-browser access, project git/ledger changes or deployment.
+Lead owns named-lane aggregation, gate check/done/stats, commit/merge/deployment. This is primary verification, not gate acceptance.

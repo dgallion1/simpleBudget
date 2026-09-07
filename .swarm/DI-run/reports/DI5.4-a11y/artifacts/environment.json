@@ -1,0 +1,22 @@
+{
+  "date": "2026-09-07T12:04:53.298Z",
+  "browser": "153.0.8010.12",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "source": "/tmp/DI5-4-a11y.xokOQB",
+  "base": "http://127.0.0.1:18873",
+  "routes": [
+    "/dashboard",
+    "/explorer",
+    "/insights",
+    "/major-expenses",
+    "/whatif",
+    "/accounts",
+    "/transfers",
+    "/filemanager",
+    "/duplicates"
+  ],
+  "node": "v24.12.0"
+}

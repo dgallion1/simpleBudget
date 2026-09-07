@@ -1,0 +1,281 @@
+diff --git a/web/templates/components/kpis.html b/web/templates/components/kpis.html
+index 53efba3..a5457f4 100644
+--- a/web/templates/components/kpis.html
++++ b/web/templates/components/kpis.html
+@@ -1,194 +1,87 @@
+ {{define "kpis"}}
+-{{/* Budget verdict band — health for the selected period */}}
+-{{template "dashboard-verdict-bar" .}}
+-
+-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-4">
+-    {{/* Total Income (shared/kpi-tile.html, U7) */}}
+-    {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-positive bg-positive-soft" "Clickable" true "DetailKey" "income" "LabelClass" "text-positive" "Label" "Total Income")}}
+-                <p class="num text-2xl font-bold text-positive">{{formatMoney .Metrics.TotalIncome}}</p>
+-                {{if .PeriodComparison}}
+-                {{if .PeriodComparison.HasData}}
+-                <p class="num text-sm {{if ge .PeriodComparison.IncomeChange 0.0}}text-positive{{else}}text-negative{{end}}">
+-                    {{formatPercent .PeriodComparison.IncomeChange}}%
+-                </p>
+-                {{end}}
+-                {{end}}
+-    {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-positive-soft" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-positive" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`))}}
+-    <div id="sparkline-income" class="h-10 mt-2" data-values="{{toJSON .Metrics.IncomeTrend}}" data-color="#10b981"></div>
+-    {{template "shared/kpi-tile-close" .}}
+-
+-    {{/* Total Expenses — CB7: signed (no abs), sign-aware color; U6 tokens.
+-         A refund-dominant range nets a credit and shows text-positive. */}}
+-    {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-negative bg-negative-soft" "Clickable" true "DetailKey" "expenses" "LabelClass" "text-negative" "Label" "Total Expenses")}}
+-                <p class="num text-2xl font-bold {{if gt .Metrics.TotalExpenses 0.0}}text-negative{{else}}text-positive{{end}}">{{formatMoney .Metrics.TotalExpenses}}</p>
+-                {{if .PeriodComparison}}
+-                {{if .PeriodComparison.HasData}}
+-                <p class="num text-sm {{if le .PeriodComparison.ExpensesChange 0.0}}text-positive{{else}}text-negative{{end}}">
+-                    {{formatPercent .PeriodComparison.ExpensesChange}}%
+-                </p>
+-                {{end}}
+-                {{end}}
+-    {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-negative-soft" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>`))}}
+-    <div id="sparkline-expenses" class="h-10 mt-2" data-values="{{toJSON .Metrics.ExpensesTrend}}" data-color="#f43f5e"></div>
+-    {{template "shared/kpi-tile-close" .}}
++{{$v := .BudgetVerdict}}
++{{$flow := $v.CashFlow}}
++<section class="mt-4 space-y-4" aria-label="Selected-period overview">
++    {{if eq .Metrics.TransactionCount 0}}
++    <p class="text-gray-700 dark:text-gray-300">No transactions in this selected period. Choose another range or use Import CSV to add records.</p>
++    {{end}}
++    <div id="dashboard-overview" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
++        <div class="min-w-0 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
++            <h2 class="text-sm font-medium text-gray-700 dark:text-gray-300">Recorded income</h2>
++            <p class="num text-2xl font-semibold text-gray-900 dark:text-gray-100">{{formatMoney $flow.Income}}</p>
++            <button type="button" data-kpi-detail="income" class="mt-2 text-sm text-accent underline focus-visible:ring-2 focus-visible:ring-accent rounded">Income details</button>
++        </div>
++        <div class="min-w-0 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
++            <h2 class="text-sm font-medium text-gray-700 dark:text-gray-300">Net spending</h2>
++            <p class="num text-2xl font-semibold {{if lt $flow.Spending 0.0}}text-positive{{else}}text-gray-900 dark:text-gray-100{{end}}">{{formatMoney $flow.Spending}}</p>
++            <p class="text-sm text-gray-600 dark:text-gray-400">{{if lt $flow.Spending 0.0}}Net refund: credits exceeded spending.{{else}}Includes refunds and separately modeled costs.{{end}}</p>
++            <button type="button" data-kpi-detail="expenses" class="mt-2 text-sm text-accent underline focus-visible:ring-2 focus-visible:ring-accent rounded">Spending details</button>
++        </div>
++        <div class="min-w-0 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
++            <h2 class="text-sm font-medium text-gray-700 dark:text-gray-300">Cash-flow balance</h2>
++            <p class="num text-2xl font-semibold {{if lt $flow.Balance 0.0}}text-negative{{else}}text-gray-900 dark:text-gray-100{{end}}">{{formatMoney $flow.Balance}}</p>
++            {{if .Metrics.TransactionCount}}<p class="text-sm text-gray-600 dark:text-gray-400">{{$flow.Explanation}}</p>{{end}}
++            <button type="button" data-kpi-detail="savings" class="mt-2 text-sm text-accent underline focus-visible:ring-2 focus-visible:ring-accent rounded">Cash-flow details</button>
++        </div>
++        <div class="min-w-0 border rounded-lg p-4 {{if and .Metrics.TransactionCount $v.IsOver}}border-negative bg-negative-soft{{else if and .Metrics.TransactionCount $v.IsUnder}}border-positive bg-positive-soft{{else}}border-gray-200 dark:border-gray-700{{end}}">
++            <h2 class="text-sm font-medium text-gray-700 dark:text-gray-300">Spending versus plan</h2>
++            {{if eq .Metrics.TransactionCount 0}}
++            <p class="text-lg font-semibold text-gray-900 dark:text-gray-100">No observed spending</p>
++            {{else if not $v.HasTarget}}
++            <p class="text-lg font-semibold text-gray-900 dark:text-gray-100">Not set</p>
++            <a href="/whatif" class="text-sm text-accent underline">Set a budget in What-If →</a>
++            {{else if $v.IsOver}}
++            <p class="text-2xl font-semibold text-negative"><span class="num">{{formatMoney (abs $v.Delta)}}</span> over</p>
++            {{else if $v.IsUnder}}
++            <p class="text-2xl font-semibold text-positive"><span class="num">{{formatMoney (abs $v.Delta)}}</span> under</p>
++            {{else}}
++            <p class="text-2xl font-semibold text-gray-900 dark:text-gray-100">On budget</p>
++            {{end}}
++            <p class="text-sm text-gray-600 dark:text-gray-400">Living and healthcare for this period. Separately modeled costs are outside this comparison.</p>
++            <a href="#dashboard-budget-details" class="mt-2 inline-block text-sm text-accent underline">Budget details</a>
++        </div>
++    </div>
++    <p class="text-sm text-gray-700 dark:text-gray-300">Cash flow is recorded income minus net spending; transfers between your own accounts are excluded. It does not measure portfolio withdrawals or retirement sustainability. Use <a href="/whatif" class="text-accent underline">What-If</a> for long-term projections.</p>
++    {{with .Period}}<a class="inline-block text-sm text-accent underline" href="/insights?start={{.SelectedStart.Format "2006-01-02"}}&amp;end={{.SelectedEnd.Format "2006-01-02"}}">Investigate this period in Insights →</a>{{end}}
+ 
+-    {{/* Monthly Living Expenses */}}
+-    {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800" "Clickable" true "DetailKey" "living" "LabelClass" "text-gray-600 dark:text-gray-400" "Label" "Monthly Living Expenses")}}
+-                <p class="num text-2xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Metrics.ActualMonthly}}</p>
++    <section id="dashboard-budget-details" class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-3">
++        <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Budget details</h2>
++        <p class="text-sm text-gray-600 dark:text-gray-400">Monthly equivalents below use the selected range ({{printf "%.1f" .Metrics.MonthsInRange}} average calendar months); healthcare is prorated from its coverage start.</p>
++        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
++            <div class="min-w-0 space-y-1">
++                <h3 class="font-medium text-gray-900 dark:text-gray-100">Monthly Living Expenses</h3>
++                <p class="text-gray-700 dark:text-gray-300">Monthly equivalent: <span class="num font-semibold">{{formatMoney .Metrics.ActualMonthly}}</span></p>
++                <p class="text-sm text-gray-600 dark:text-gray-400">{{if $v.Living.Configured}}Living:{{else}}Living spent:{{end}} <span class="num">{{formatMoney .Metrics.LivingExpensesTotal}}</span>{{if $v.Living.Configured}} of <span class="num">{{formatMoney .Metrics.LivingTargetTotal}}</span> for this period. <span class="num">{{formatMoney (abs $v.Living.Delta)}}</span> {{$v.Living.Status}}{{end}}</p>
+                 {{if .Metrics.HasBudgetTarget}}
+-                {{- $prov := .TargetProvenance}}
+-                {{- $targetFigure := formatMoney .Metrics.BudgetTarget}}
+-                {{- $targetAnnotation := ""}}
+-                {{- if $prov.Annotate}}
+-                {{if $prov.Straddles}}
+-                {{$targetAnnotation = printf "Target %s — from What-If plan: %s base × avg %s (crosses phase change)" $targetFigure (formatDollars $prov.Base) (formatMultiplier $prov.Multiplier)}}
++                {{$prov := .TargetProvenance}}
++                <p class="text-sm text-gray-600 dark:text-gray-400">Target <span class="num">{{formatMoney .Metrics.BudgetTarget}}</span>/mo — from What-If plan{{if $prov.Annotate}}: {{formatDollars $prov.Base}} base × {{if $prov.Straddles}}avg {{formatMultiplier $prov.Multiplier}} (crosses phase change){{else}}{{formatMultiplier $prov.Multiplier}} ({{$prov.PhaseName}} phase){{end}}{{end}}.</p>
++                {{else}}<p class="text-sm text-gray-600 dark:text-gray-400">No budget set</p>{{end}}
++                <button type="button" data-kpi-detail="living" class="text-sm text-accent underline focus-visible:ring-2 focus-visible:ring-accent rounded">Living expense details</button>
++            </div>
++            <div class="min-w-0 space-y-1">
++                <h3 class="font-medium text-gray-900 dark:text-gray-100">Monthly Healthcare</h3>
++                {{if or (not .Metrics.HealthcareHasCoverage) (.Metrics.HealthcareCoverageStart.After .Metrics.EndDate)}}
++                <p class="text-gray-700 dark:text-gray-300">Monthly equivalent unavailable: no coverage in this range</p>
+                 {{else}}
+-                {{$targetAnnotation = printf "Target %s — from What-If plan: %s base × %s (%s phase)" $targetFigure (formatDollars $prov.Base) (formatMultiplier $prov.Multiplier) $prov.PhaseName}}
+-                {{end}}
+-                {{end}}
+-                <p class="text-sm {{if gt .Metrics.PerMonthDelta 0.0}}text-negative{{else}}text-positive{{end}}">
+-                    {{if $prov.Annotate}}<span title="{{$targetAnnotation}}" aria-label="{{$targetAnnotation}}">Target <span class="num">{{formatMoney .Metrics.BudgetTarget}}</span></span>{{else}}Target <span class="num">{{formatMoney .Metrics.BudgetTarget}}</span>{{end}} · <span class="num">{{formatMoney (abs .Metrics.PerMonthDelta)}}</span>/mo {{if gt .Metrics.PerMonthDelta 0.0}}over{{else}}under{{end}}
+-                </p>
+-                {{else}}
+-                <p class="text-sm text-gray-500 dark:text-gray-400 italic">No budget set</p>
+-                {{end}}
+-                {{if .PeriodComparison}}
+-                {{if .PeriodComparison.HasData}}
+-                <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">
+-                    {{if ge .PeriodComparison.ActualMonthlyChange 0.0}}+{{else}}-{{end}}<span class="num">{{formatMoney (abs .PeriodComparison.ActualMonthlyChange)}}</span>/mo vs prior
+-                </p>
+-                {{end}}
+-                {{end}}
+-    {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-gray-100 dark:bg-gray-700" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path></svg>`))}}
+-    <div id="sparkline-monthly" class="h-10 mt-2"
+-         data-values="{{toJSON .Metrics.LivingExpensesTrend}}"
+-         data-color="#9ca3af"
+-         {{if .Metrics.HasBudgetTarget}}data-target="{{.Metrics.BudgetTarget}}"{{end}}></div>
+-    {{template "shared/kpi-tile-close" .}}
+-
+-    {{/* Monthly Healthcare (premiums tagged "Health Insurance" vs what-if target) */}}
+-    {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-negative bg-negative-soft" "Clickable" true "DetailKey" "healthcare" "LabelClass" "text-negative" "Label" "Monthly Healthcare")}}
+-                <p class="num text-2xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Metrics.HealthcareActual}}</p>
+-                {{if .Metrics.HasHealthcareTarget}}
+-                <p class="text-sm {{if gt .Metrics.HealthcarePerMonthDelta 0.0}}text-negative{{else}}text-positive{{end}}">
+-                    Target <span class="num">{{formatMoney .Metrics.HealthcareTarget}}</span> · <span class="num">{{formatMoney (abs .Metrics.HealthcarePerMonthDelta)}}</span>/mo {{if gt .Metrics.HealthcarePerMonthDelta 0.0}}over{{else}}under{{end}}
+-                </p>
+-                {{if .Metrics.HealthcareCoverageStartInRange}}
+-                <p class="text-body-sm text-gray-600 dark:text-gray-400">since {{formatDate .Metrics.HealthcareCoverageStart}}</p>
+-                {{end}}
+-                {{else}}
+-                <p class="text-sm text-gray-600 dark:text-gray-400 italic">No premium target set</p>
+-                {{end}}
+-                <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-1">Category: Health Insurance</p>
+-    {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-negative-soft" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-negative" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>`))}}
+-    <div id="sparkline-healthcare" class="h-10 mt-2"
+-         data-values="{{toJSON .Metrics.HealthcareTrend}}"
+-         data-color="#e11d48"
+-         {{if .Metrics.HasHealthcareTarget}}data-target="{{.Metrics.HealthcareTarget}}"{{end}}></div>
+-    {{template "shared/kpi-tile-close" .}}
+-
+-    {{/* Net Savings (moved out of the verdict band, U10 / §2f / D1). Label
+-         states what the figure IS, derived from the code (not the spec's
+-         paraphrase): metrics.Calculate computes
+-         netSavings = totalIncome - totalExpenses
+-         (internal/services/metrics/metrics.go:377-379), where
+-         outflows := ts.FilterByType(models.Outflow) (metrics.go:375).
+-         models.Transfer is a DISTINCT TransactionType from models.Outflow
+-         (internal/models/transaction.go:13-26: "a Transfer row falls out
+-         of Total aggregation"), so FilterByType(Outflow) EXCLUDES
+-         transfers -- the spec's candidate wording "including transfers"
+-         would be wrong and is not used here. One-time expenses have no
+-         distinct TransactionType (models/one_time_expense.go is a
+-         What-If projection input, not a ledger TransactionType); an
+-         actual one-time-expense transaction is an ordinary
+-         Outflow-typed row, and metrics.go's own comment at line 370-372
+-         says TotalIncome/TotalExpenses/NetSavings come "from the FULL
+-         outflow set ... regardless of the flag" (the plan-exclusion
+-         flag), so one-time/major-expense-flagged spending IS included.
+-         Figure and sign coloring are unchanged from the verdict band:
+-         same .Metrics.NetSavings value (= $v.NetSavings, see
+-         verdict.go:176), same formatMoney, positive -> text-positive,
+-         negative -> text-negative. */}}
+-    {{template "shared/kpi-tile-open" (dict "ContainerClass" "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800" "Clickable" true "DetailKey" "savings" "LabelClass" "text-gray-600 dark:text-gray-400" "Label" "Net Savings")}}
+-                <p class="num text-2xl font-bold {{if ge .Metrics.NetSavings 0.0}}text-positive{{else}}text-negative{{end}}">{{formatMoney .Metrics.NetSavings}}</p>
+-                <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-1">Income minus all expenses (transfers between your own accounts are excluded)</p>
+-    {{template "shared/kpi-tile-icon" (dict "IconBgClass" "bg-gray-100 dark:bg-gray-700" "IconSVG" (safeHTML `<svg class="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path></svg>`))}}
+-    {{template "shared/kpi-tile-close" .}}
+-
+-    <!-- Budget (combined cumulative variance: Living + Healthcare for the period) -->
+-    {{/* Ruling 2026-08-29c: the card's container tint and headline must
+-         consume the SAME dead-banded classification as the banner
+-         ($v.IsOver / $v.IsUnder, onBudgetEps) — no bare-sign comparison
+-         against 0, and no separate numeric threshold literal here. */}}
+-    {{$budgetOver := and .BudgetVerdict.HasTarget .BudgetVerdict.IsOver}}
+-    {{$budgetHealthy := and .BudgetVerdict.HasTarget .BudgetVerdict.IsUnder}}
+-    {{$budgetContainerClass := "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800"}}
+-    {{$budgetIconBgClass := "bg-gray-100 dark:bg-gray-700"}}
+-    {{$budgetIconColorClass := "text-gray-500 dark:text-gray-400"}}
+-    {{if $budgetOver}}
+-        {{$budgetContainerClass = "border-negative bg-negative-soft"}}
+-        {{$budgetIconBgClass = "bg-negative-soft"}}
+-        {{$budgetIconColorClass = "text-negative"}}
+-    {{else if $budgetHealthy}}
+-        {{$budgetContainerClass = "border-positive bg-positive-soft"}}
+-        {{$budgetIconBgClass = "bg-positive-soft"}}
+-        {{$budgetIconColorClass = "text-positive"}}
+-    {{end}}
+-    {{template "shared/kpi-tile-open" (dict "ContainerClass" $budgetContainerClass "ColSpanClass" "xl:col-span-2" "Clickable" .Metrics.HasCombinedTarget "DetailKey" "expenses" "LabelClass" "text-gray-600 dark:text-gray-400" "Label" "Budget")}}
+-                {{if .Metrics.HasCombinedTarget}}
+-                {{if $budgetOver}}
+-                <p class="text-2xl font-bold text-negative"><span class="num">{{formatMoney (abs .Metrics.CombinedCumulativeDelta)}}</span> over</p>
+-                {{else if $budgetHealthy}}
+-                <p class="text-2xl font-bold text-positive"><span class="num">{{formatMoney (abs .Metrics.CombinedCumulativeDelta)}}</span> under</p>
+-                {{else}}
+-                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">On budget</p>
+-                {{end}}
+-                <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-1">
+-                    over <span class="num">{{printf "%.1f" .Metrics.MonthsInRange}}</span> mo
+-                </p>
+-                {{- /* Ruling 2026-08-29a: the over/under/on-target wording AND
+-                     coloring below come from the same BudgetVerdict
+-                     classification (with its $1 dead-band) the banner uses —
+-                     no bare >0/<0 comparison here, so the same delta can
+-                     never render "on target" in one surface and "over" in
+-                     the other. */}}
+-                <div class="text-body-sm text-gray-600 dark:text-gray-400 mt-2 space-y-0.5 leading-snug">
+-                    {{- if .BudgetVerdict.Living.Configured}}
+-                    <div class="flex justify-between gap-2">
+-                        <span>Living: <span class="num">{{formatMoney .Metrics.LivingExpensesTotal}}</span> of <span class="num">{{formatMoney .Metrics.LivingTargetTotal}}</span></span>
+-                        <span class="{{if eq .BudgetVerdict.Living.Status "over"}}text-negative{{else if eq .BudgetVerdict.Living.Status "under"}}text-positive{{else}}text-gray-600 dark:text-gray-400{{end}}">
+-                            <span class="num">{{formatMoney (abs .BudgetVerdict.Living.Delta)}}</span> {{.BudgetVerdict.Living.Status}}
+-                        </span>
+-                    </div>
+-                    {{- end}}
+-                    {{- if .BudgetVerdict.Healthcare.Configured}}
+-                    <div class="flex justify-between gap-2">
+-                        <span>Health: <span class="num">{{formatMoney .Metrics.HealthcareTotal}}</span> of <span class="num">{{formatMoney .Metrics.HealthcareTargetTotal}}</span></span>
+-                        <span class="{{if eq .BudgetVerdict.Healthcare.Status "over"}}text-negative{{else if eq .BudgetVerdict.Healthcare.Status "under"}}text-positive{{else}}text-gray-600 dark:text-gray-400{{end}}">
+-                            <span class="num">{{formatMoney (abs .BudgetVerdict.Healthcare.Delta)}}</span> {{.BudgetVerdict.Healthcare.Status}}
+-                        </span>
+-                    </div>
+-                    {{- end}}
+-                </div>
+-                {{if .PeriodComparison}}
+-                {{if .PeriodComparison.HasData}}
+-                <p class="text-body-sm text-gray-600 dark:text-gray-400 mt-1">
+-                    {{if ge .PeriodComparison.CumulativeDeltaChange 0.0}}+{{else}}-{{end}}<span class="num">{{formatMoney (abs .PeriodComparison.CumulativeDeltaChange)}}</span> vs prior
+-                </p>
+-                {{end}}
+-                {{end}}
+-                {{else}}
+-                <p class="text-2xl font-bold text-gray-600 dark:text-gray-400 italic">Not set</p>
+-                <a href="/whatif" class="text-sm text-accent hover:underline mt-1 inline-block">Set a budget in What-If →</a>
+-                {{end}}
+-                {{if .Metrics.HasCombinedTarget}}
+-                <div id="sparkline-budget" class="h-10 mt-2"
+-                     data-values="{{toJSON .Metrics.CombinedCumulativeBalance}}"
+-                     data-color="#6366f1"
+-                     data-mode="balance"
+-                     data-neutral-band="{{.BudgetVerdict.Eps}}"></div>
+-                {{end}}
+-    {{template "shared/kpi-tile-icon" (dict "IconBgClass" $budgetIconBgClass "IconSVG" (safeHTML (printf `<svg class="w-6 h-6 %s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>` $budgetIconColorClass)))}}
+-    {{template "shared/kpi-tile-close" .}}
+-</div>
++                <p class="text-gray-700 dark:text-gray-300">Monthly equivalent: <span class="num font-semibold">{{formatMoney .Metrics.HealthcareActual}}</span></p>
++                {{end}}
++                <p class="text-sm text-gray-600 dark:text-gray-400">{{if $v.Healthcare.Configured}}Health:{{else}}Health spent:{{end}} <span class="num">{{formatMoney .Metrics.HealthcareTotal}}</span>{{if $v.Healthcare.Configured}} of <span class="num">{{formatMoney .Metrics.HealthcareTargetTotal}}</span> for this period. <span class="num">{{formatMoney (abs $v.Healthcare.Delta)}}</span> {{$v.Healthcare.Status}}{{end}}</p>
++                {{if .Metrics.HasHealthcareTarget}}<p class="text-sm text-gray-600 dark:text-gray-400">Target <span class="num">{{formatMoney .Metrics.HealthcareTarget}}</span>/mo — from What-If healthcare plan.</p>{{else}}<p class="text-sm text-gray-600 dark:text-gray-400">No premium target set</p>{{end}}
++                {{if .Metrics.HealthcareHasCoverage}}<p class="text-sm text-gray-600 dark:text-gray-400">Coverage since {{formatDate .Metrics.HealthcareCoverageStart}}</p>{{end}}
++                <p class="text-sm text-gray-600 dark:text-gray-400">Category: Health Insurance</p>
++                <button type="button" data-kpi-detail="healthcare" class="text-sm text-accent underline focus-visible:ring-2 focus-visible:ring-accent rounded">Healthcare details</button>
++            </div>
++        </div>
++        {{if .Metrics.PlanExcludedCount}}<p class="text-sm text-gray-600 dark:text-gray-400">{{formatMoney .Metrics.PlanExcludedTotal}} modeled elsewhere ({{.Metrics.PlanExcludedCount}} transactions). Included in net spending; excluded from the living budget to avoid counting costs twice.</p>{{end}}
++        {{if .Metrics.TransactionCount}}
++        <details>
++            <summary class="text-sm text-accent cursor-pointer">Plan explanation and comparison</summary>
++            {{template "dashboard-verdict-bar" .}}
++            {{with .PeriodComparison}}{{if .HasData}}
++            <p class="text-sm text-gray-600 dark:text-gray-400">Versus prior period: recorded income {{formatPercent .IncomeChange}}%; net spending {{formatPercent .ExpensesChange}}%. Living monthly equivalent changed by {{formatMoney .ActualMonthlyChange}}/mo; budget variance changed by {{formatMoney .CumulativeDeltaChange}}.</p>
++            {{end}}{{end}}
++        </details>
++        {{end}}
++    </section>
++</section>
+ {{end}}

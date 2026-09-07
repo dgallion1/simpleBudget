@@ -1,0 +1,18 @@
+{
+  "name": "red-probe-extended",
+  "cwd": "/tmp/DI5-fourth-worker.1ptHqE",
+  "command": [
+    "rtk",
+    "proxy",
+    "node",
+    ".swarm/DI-run/reports/DI5-fallback-lifecycle.cjs"
+  ],
+  "start": "2026-09-07T11:49:19.945Z",
+  "end": "2026-09-07T11:49:23.787Z",
+  "exit": 1,
+  "signal": null,
+  "env": {
+    "DI5_SOURCE_ROOT": "/tmp/DI5-fourth-worker.1ptHqE",
+    "DI5_OUTPUT": "/tmp/DI5-fourth-worker.1ptHqE/.swarm/DI-run/reports/DI5.4/red-probe-extended"
+  }
+}

@@ -42,6 +42,12 @@ document.addEventListener('DOMContentLoaded', function () {
     var importBtn = document.getElementById('import-csv-btn');
     if (dropZone && fileInput) {
         dropZone.addEventListener('click', function () { fileInput.click(); });
+        dropZone.addEventListener('keydown', function (event) {
+            if (event.target === dropZone && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault();
+                fileInput.click();
+            }
+        });
         fileInput.addEventListener('change', function () { handleFileSelect(this.files); });
     }
     // Page-header "Import CSV" button (U10): same file picker/import path
@@ -55,6 +61,71 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     document.querySelectorAll('#date-filter-form .preset-btn[data-preset]').forEach(function (btn) {
         btn.addEventListener('click', function () { setPreset(btn.dataset.preset); });
+    });
+});
+
+// Chart alternatives follow the actual Plotly series, including HTMX/date
+// refreshes and theme redraws. Values are transcribed as plotted: no client
+// arithmetic, independent cent formatter, or claim that a capped chart sums
+// to a longer selected period. The observer also covers initial async plots.
+document.addEventListener('DOMContentLoaded', function () {
+    const plots = document.querySelectorAll('.chart-container[data-chart-url]');
+    plots.forEach(function (plot) {
+        let signature = '';
+        let listening = false;
+        function updateTable() {
+            if (!Array.isArray(plot.data)) return;
+            const rows = [];
+            plot.data.forEach(function (trace) {
+                const labels = trace.labels || (trace.orientation === 'h' ? trace.y : trace.x) || [];
+                const values = trace.values || (trace.orientation === 'h' ? trace.x : trace.y) || [];
+                labels.forEach(function (label, index) {
+                    if (values[index] != null) rows.push([trace.name || 'Spending', String(label), String(values[index])]);
+                });
+            });
+            // Plotly layout shapes are data too: the budget target is a
+            // horizontal reference line rather than one of its traces.
+            ((plot.layout && plot.layout.shapes) || []).forEach(function (shape) {
+                if (shape.type === 'line' && shape.y0 === shape.y1 && shape.yref === 'y') {
+                    rows.push(['Target', 'Across plotted months', String(shape.y0)]);
+                }
+            });
+            const next = JSON.stringify(rows);
+            if (signature === next) return;
+            signature = next;
+            let details = document.getElementById(plot.id + '-data-table');
+            if (!details) {
+                details = document.createElement('details');
+                details.id = plot.id + '-data-table';
+                details.dataset.dashboardChartTable = '';
+                details.className = 'mt-3 text-sm text-gray-700 dark:text-gray-300';
+                const summary = document.createElement('summary');
+                summary.textContent = 'View chart data';
+                summary.className = 'cursor-pointer text-accent';
+                details.appendChild(summary);
+                plot.after(details);
+            }
+            let wrapper = details.querySelector('div');
+            if (!wrapper) { wrapper = document.createElement('div'); wrapper.className = 'overflow-auto'; details.appendChild(wrapper); }
+            wrapper.replaceChildren();
+            const table = document.createElement('table');
+            table.className = 'w-full text-left';
+            const caption = table.createCaption();
+            caption.textContent = 'Values as plotted; the rows show this chart’s category and time scope. Negative values retain their sign.';
+            const head = table.createTHead().insertRow();
+            ['Series', 'Period or category', 'Value'].forEach(function (name) {
+                const th = document.createElement('th'); th.scope = 'col'; th.textContent = name; th.className = 'p-2'; head.appendChild(th);
+            });
+            const body = table.createTBody();
+            rows.forEach(function (row) { const tr = body.insertRow(); row.forEach(function (value) { const td = tr.insertCell(); td.textContent = value; td.className = 'p-2'; }); });
+            wrapper.appendChild(table);
+        }
+        const observer = new MutationObserver(function () {
+            if (!listening && typeof plot.on === 'function') { plot.on('plotly_afterplot', updateTable); listening = true; }
+            updateTable();
+        });
+        observer.observe(plot, {childList: true, subtree: true});
+        updateTable();
     });
 });
 

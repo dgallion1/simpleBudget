@@ -1,0 +1,246 @@
+{
+  "id": "dashboard-light",
+  "route": "/dashboard",
+  "theme": "light",
+  "requestedURL": "http://127.0.0.1:18873/dashboard",
+  "responses": [],
+  "requestFailures": [],
+  "blocked": [],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "status": 200,
+  "finalURL": "http://127.0.0.1:18873/dashboard",
+  "dom": {
+    "title": "Dashboard - simpleBudget",
+    "theme": "light",
+    "width": 1440,
+    "scrollWidth": 1440,
+    "headings": [
+      {
+        "tag": "H1",
+        "id": "",
+        "text": "Dashboard"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Recorded income"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Net spending"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Cash-flow balance"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Spending versus plan"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Budget details"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "text": "Monthly Living Expenses"
+      },
+      {
+        "tag": "H3",
+        "id": "",
+        "text": "Monthly Healthcare"
+      },
+      {
+        "tag": "H2",
+        "id": "accounts-card-heading",
+        "text": "Accounts"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Budget vs Actual Over Time"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Spending by Major Expense"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Spending Trend"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Top Spending"
+      },
+      {
+        "tag": "H2",
+        "id": "",
+        "text": "Cumulative Balance"
+      }
+    ],
+    "landmarks": [
+      {
+        "name": "main",
+        "count": 1
+      },
+      {
+        "name": "nav",
+        "count": 1
+      },
+      {
+        "name": "header",
+        "count": 1
+      },
+      {
+        "name": "footer",
+        "count": 1
+      }
+    ],
+    "unscopedHeaders": [],
+    "forms": [
+      {
+        "tag": "INPUT",
+        "id": "dashboard-date-start",
+        "type": "date",
+        "required": false,
+        "label": "From",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "INPUT",
+        "id": "dashboard-date-end",
+        "type": "date",
+        "required": false,
+        "label": "To",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      },
+      {
+        "tag": "SELECT",
+        "id": "dashboard-comparison",
+        "type": "select-one",
+        "required": false,
+        "label": "Compare",
+        "ariaLabel": null,
+        "labelledby": null,
+        "describedby": null
+      }
+    ],
+    "clickable": [
+      {
+        "tag": "DIV",
+        "id": "drop-zone",
+        "text": "Or drop CSV or backup ZIP files anywhere on this page, or click to browse Uploading... Upload complete! Refreshing... Upload failed",
+        "role": "button",
+        "tabIndex": 0
+      }
+    ],
+    "live": [],
+    "hiddenText": [],
+    "images": [],
+    "dialogs": [],
+    "animations": [],
+    "charts": [
+      {
+        "id": "chart-budget-vs-actual",
+        "visible": true,
+        "ready": true,
+        "series": 3,
+        "font": "#374151",
+        "adjacentTable": true,
+        "parentTables": 1
+      },
+      {
+        "id": "chart-major-expense",
+        "visible": true,
+        "ready": true,
+        "series": 1,
+        "font": "#374151",
+        "adjacentTable": true,
+        "parentTables": 1
+      },
+      {
+        "id": "chart-spending-trend",
+        "visible": true,
+        "ready": true,
+        "series": 1,
+        "font": "#374151",
+        "adjacentTable": true,
+        "parentTables": 1
+      },
+      {
+        "id": "chart-merchants",
+        "visible": true,
+        "ready": true,
+        "series": 1,
+        "font": "#374151",
+        "adjacentTable": true,
+        "parentTables": 1
+      },
+      {
+        "id": "chart-cumulative",
+        "visible": true,
+        "ready": true,
+        "series": 1,
+        "font": "#374151",
+        "adjacentTable": true,
+        "parentTables": 1
+      }
+    ],
+    "nav": [
+      {
+        "text": "simpleBudget",
+        "href": "/"
+      },
+      {
+        "text": "Dashboard",
+        "href": "/dashboard?end=2026-08-28&start=2026-03-01"
+      },
+      {
+        "text": "Explorer",
+        "href": "/explorer?end=2026-08-28&start=2026-03-01"
+      },
+      {
+        "text": "Insights",
+        "href": "/insights?end=2026-08-28&start=2026-03-01"
+      },
+      {
+        "text": "Major Expenses",
+        "href": "/major-expenses?end=2026-08-28&start=2026-03-01"
+      },
+      {
+        "text": "What-If",
+        "href": "/whatif"
+      },
+      {
+        "text": "Accounts",
+        "href": "/accounts"
+      },
+      {
+        "text": "Transfers",
+        "href": "/transfers"
+      },
+      {
+        "text": "File Manager",
+        "href": "/filemanager"
+      },
+      {
+        "text": "Duplicates\n                            1",
+        "href": "/duplicates"
+      }
+    ]
+  },
+  "htmlFile": "dashboard-light.html"
+}

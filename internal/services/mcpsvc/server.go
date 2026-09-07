@@ -20,6 +20,7 @@ import (
 	"budget2/internal/services/restore"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/storage"
+	"budget2/internal/services/uirefresh"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -28,6 +29,7 @@ import (
 // narrower Deps structs; NewServer maps onto them. Dependencies flow one way
 // (mcpsvc -> subpackages), so no subpackage may import this one.
 type Deps struct {
+	Refresh     *uirefresh.Coordinator
 	Settings    *retirement.SettingsManager
 	Loader      *dataloader.DataLoader
 	Store       *storage.Storage
@@ -116,8 +118,10 @@ const serverInstructions = "These tools cover two things for one household: a pe
 	"SIGNED as stored, negative for a purchase -- the same split the spending tools use. Transactions " +
 	"are addressed by `hash`, derived from date + lower-cased description + amount, so two " +
 	"identical-looking transactions share one hash and are pinned together. Only outflows are matched " +
-	"against major expenses; income never is. Pages other than the what-if planner do not refresh " +
-	"themselves, so a curation write leaves an already-open Major Expenses tab showing stale data." +
+	"against major expenses; income never is. After a curation write, explicitly call refresh_pages " +
+	"to request that this server's open pages refresh. Delivery is not confirmed; hidden pages and " +
+	"submissions may defer, and unsaved edits require browser confirmation. Real and demo instances " +
+	"are separate: refresh_pages affects only the connected server." +
 	" Finally, nine HOUSEKEEPING tools describe the app itself rather than the money in it. get_status is " +
 	"the one to call FIRST when another tool fails inexplicably: if the user's data is encrypted and " +
 	"currently locked, every ledger-reading tool fails and get_status is the only one that still answers. " +
@@ -209,6 +213,7 @@ func NewServer(deps Deps) *mcp.Server {
 		&mcp.Implementation{Name: "budget2", Version: "v0.2.0"},
 		&mcp.ServerOptions{Instructions: serverInstructions},
 	)
+	uirefresh.Register(s, deps.Refresh)
 	plan.Register(s, plan.Deps{
 		Settings:  deps.Settings,
 		Snapshots: snapshot.New(deps.SettingsDir, deps.SnapshotDir),

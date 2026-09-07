@@ -1,0 +1,41 @@
+- banner:
+  - navigation:
+    - link "simpleBudget":
+      - /url: /
+    - group "Money":
+      - text: Money
+      - link "Dashboard":
+        - /url: /dashboard
+      - link "Explorer":
+        - /url: /explorer
+      - link "Insights":
+        - /url: /insights
+      - link "Major Expenses":
+        - /url: /major-expenses
+    - group "Plan":
+      - text: Plan
+      - link "What-If":
+        - /url: /whatif
+    - group "Setup":
+      - text: Setup
+      - link "Accounts":
+        - /url: /accounts
+      - link "Transfers":
+        - /url: /transfers
+      - link "File Manager":
+        - /url: /filemanager
+      - link "Duplicates 1":
+        - /url: /duplicates
+    - button "Toggle dark mode":
+      - img
+- main:
+  - heading "Duplicate Review" [level=1]
+  - paragraph: Bill-pay and posted-check entries that may represent the same payment. Pick one to keep, or mark them as both real.
+  - heading "Unresolved (1)" [level=2]
+  - text: Greenleaf Market 2026-08-14 Posted -$84.12 demo-credit_2026-06-01_to_2026-08-28.csv Greenleaf Market 2026-08-13 Posted -$84.12 demo-credit_2026-06-01_to_2026-08-28.csv
+  - button "Keep left"
+  - button "Keep right"
+  - button "Both real (stop flagging)"
+  - heading "Suppressed" [level=2]
+  - paragraph: No suppressed pairs.
+- contentinfo: simpleBudget © 2026

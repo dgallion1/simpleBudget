@@ -1,0 +1,58 @@
+- banner:
+  - navigation:
+    - link "simpleBudget":
+      - /url: /
+    - group "Money":
+      - text: Money
+      - link "Dashboard":
+        - /url: /dashboard?end=2026-08-28&start=2026-03-01
+      - link "Explorer":
+        - /url: /explorer?end=2026-08-28&start=2026-03-01
+      - link "Insights":
+        - /url: /insights?end=2026-08-28&start=2026-03-01
+      - link "Major Expenses":
+        - /url: /major-expenses?end=2026-08-28&start=2026-03-01
+    - group "Plan":
+      - text: Plan
+      - link "What-If":
+        - /url: /whatif
+    - group "Setup":
+      - text: Setup
+      - link "Accounts":
+        - /url: /accounts
+      - link "Transfers":
+        - /url: /transfers
+      - link "File Manager":
+        - /url: /filemanager
+      - link "Duplicates 1":
+        - /url: /duplicates
+    - button "Toggle dark mode":
+      - img
+- main:
+  - heading "Major Expenses" [level=1]
+  - text: From
+  - textbox "From": 2026-03-01
+  - text: To
+  - textbox "To": 2026-08-28
+  - button "Step back"
+  - button "1M"
+  - button "2M"
+  - button "3M"
+  - button "6M"
+  - button "12M"
+  - button "All"
+  - button "Step forward"
+  - paragraph: Tell the app about expenses you understand. We'll group transactions that match your keywords and call out anything that looks unusual.
+  - searchbox "Filter expenses, keywords, notes, transactions, amounts, dates…"
+  - heading "Exceptions" [level=2]
+  - text: 1 flagged
+  - group: Unmatched (0 over $100)
+  - group: Matched but anomalous amount (1)
+  - group: New merchants (last 30 days) (0)
+  - text: Tracking Coverage 100% of spending tracked Declared $32,057.26 Unmatched $0.00
+  - heading "Your Major Expenses" [level=2]:
+    - button "Your Major Expenses"
+  - text: "Total: $32057 · 21 declared ·"
+  - button "Add a major expense"
+  - group: Your Major Expenses — definitions list
+- contentinfo: simpleBudget © 2026

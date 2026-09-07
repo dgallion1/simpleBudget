@@ -13,7 +13,7 @@
         <span class="num text-gray-800 dark:text-gray-100">Actual transaction: {{formatMoney .Transaction.Amount}} outflow</span>
     </div>
     <p class="text-sm text-gray-600 dark:text-gray-400">{{.Transaction.Date.Format "2006-01-02"}} · {{.Transaction.Category}}{{if .Transaction.MajorExpenseName}} · Major Expense: {{.Transaction.MajorExpenseName}}{{end}}</p>
-    <p class="text-sm text-gray-700 dark:text-gray-300">{{.Label}} · {{.Evidence}}{{with .Creep}}: {{formatMoney .FirstAmount}} → {{formatMoney .CurrentAmount}} ({{printf "%.1f" .PctChange}}% increase), {{.FirstDate.Format "2006-01-02"}} to {{.LastDate.Format "2006-01-02"}}. The linked transaction is the latest in this full-history group; its actual amount may differ from the median.{{end}}</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">{{.Label}} · {{.Evidence}}{{with .Creep}}: {{formatMoney .FirstAmount}} → {{formatMoney .CurrentAmount}} ({{printf "%.1f" .PctChange}}% increase), {{.FirstDate.Format "2006-01-02"}} to {{.LastDate.Format "2006-01-02"}}.{{end}}</p>
 </li>
 {{end}}
 
@@ -22,34 +22,48 @@
     <h3 id="recurring-{{.Group.ID}}" class="text-base font-semibold text-gray-800 dark:text-gray-100">{{.Group.Label}}</h3>
     <p class="text-sm text-gray-700 dark:text-gray-300">{{len .Group.Rows}} retained series · Estimated monthly {{formatMoney .Group.Monthly}} · Estimated annual {{formatMoney .Group.Annual}}</p>
     {{if .Group.Rows}}
-    <div class="overflow-x-auto" tabindex="0" role="region" aria-label="{{.Group.Label}} estimates">
-    <table class="w-full min-w-[640px]">
-        <thead><tr class="border-b border-gray-200 dark:border-gray-700">
-            <th scope="col" class="text-left p-3 text-sm text-gray-600 dark:text-gray-400">Merchant and evidence</th>
-            <th scope="col" class="text-right p-3 text-sm text-gray-600 dark:text-gray-400">Estimated payment</th>
-            <th scope="col" class="text-right p-3 text-sm text-gray-600 dark:text-gray-400">Estimated monthly</th>
-            <th scope="col" class="text-right p-3 text-sm text-gray-600 dark:text-gray-400">Estimated annual</th>
-        </tr></thead>
-        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-        {{range .Group.Rows}}
-        <tr>
-            <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
-                <a class="text-accent underline" href="/explorer?search={{urlquery .Description}}&amp;type=Outflow&amp;start={{$.StartDate}}&amp;end={{$.EndDate}}"><span>{{.Description}}</span></a>
-                {{if .MajorExpenseName}}<p>Major Expense: {{.MajorExpenseName}}</p>{{end}}
+    {{$table := (dict "Rows" .Group.Rows "Period" $.Period "StartDate" $.StartDate "EndDate" $.EndDate "Label" .Group.Label)}}
+    {{if eq .Group.ID "other"}}
+    <details>
+        <summary class="text-sm text-accent cursor-pointer">Show all {{len .Group.Rows}} series</summary>
+        {{template "insights-recurring-table" $table}}
+    </details>
+    {{else}}
+    {{template "insights-recurring-table" $table}}
+    {{end}}
+    {{else}}<p class="text-sm text-gray-600 dark:text-gray-400">No detected payments in this group. Future commitments may not be represented in the available history.</p>{{end}}
+</section>
+{{end}}
+
+{{define "insights-recurring-table"}}
+<div class="overflow-x-auto" tabindex="0" role="region" aria-label="{{.Label}} estimates">
+<table class="w-full min-w-[640px]">
+    <thead><tr class="border-b border-gray-200 dark:border-gray-700">
+        <th scope="col" class="text-left p-3 text-sm text-gray-600 dark:text-gray-400">Merchant and evidence</th>
+        <th scope="col" class="text-right p-3 text-sm text-gray-600 dark:text-gray-400">Estimated payment</th>
+        <th scope="col" class="text-right p-3 text-sm text-gray-600 dark:text-gray-400">Estimated monthly</th>
+        <th scope="col" class="text-right p-3 text-sm text-gray-600 dark:text-gray-400">Estimated annual</th>
+    </tr></thead>
+    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+    {{range .Rows}}
+    <tr>
+        <td class="p-3 text-sm text-gray-700 dark:text-gray-300">
+            <a class="text-accent underline" href="/explorer?search={{urlquery .Description}}&amp;type=Outflow&amp;start={{$.StartDate}}&amp;end={{$.EndDate}}"><span>{{.Description}}</span></a>{{if .MajorExpenseName}} · <span class="text-gray-600 dark:text-gray-400">Major Expense: {{.MajorExpenseName}}</span>{{end}}
+            <details class="mt-1">
+                <summary class="text-sm text-accent cursor-pointer">Evidence</summary>
                 <p>{{.ClassificationReason}}</p>
                 <p>{{.Occurrences}} occurrences · {{.Frequency}} · Last observed {{.LastDate.Format "2006-01-02"}}</p>
                 <p>Expected payment estimate as of {{$.Period.SelectedEnd.Format "2006-01-02"}}: {{.NextExpected.Format "2006-01-02"}} · Detection confidence {{printf "%.0f" (mul .Confidence 100.0)}}%</p>
-            </td>
-            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">{{formatMoney .PaymentEstimate}}</td>
-            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">{{formatMoney .MonthlyEstimate}}</td>
-            <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">{{formatMoney .AnnualEstimate}}</td>
-        </tr>
-        {{end}}
-        </tbody>
-    </table>
-    </div>
-    {{else}}<p class="text-sm text-gray-600 dark:text-gray-400">No detected payments in this group. Future commitments may not be represented in the available history.</p>{{end}}
-</section>
+            </details>
+        </td>
+        <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">{{formatMoney .PaymentEstimate}}</td>
+        <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">{{formatMoney .MonthlyEstimate}}</td>
+        <td class="p-3 text-right num text-sm text-gray-800 dark:text-gray-100">{{formatMoney .AnnualEstimate}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+</div>
 {{end}}
 
 {{define "insights-trends-table"}}

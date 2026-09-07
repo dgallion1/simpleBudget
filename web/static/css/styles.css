@@ -222,6 +222,7 @@ input:focus, select:focus {
 /* What-If keyboard focus — the theme-aware accent stays distinct from a
    tab's selected underline and the chart controls' pressed fills. */
 [data-wf-tab]:focus-visible,
+[data-ins-tab]:focus-visible,
 [data-wf-collapse-toggle]:focus-visible,
 [data-whatif-projection-card] [data-display-dollars]:focus-visible,
 [data-whatif-projection-card] [data-projection-compare-toggle]:focus-visible {

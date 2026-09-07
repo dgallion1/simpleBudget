@@ -334,3 +334,93 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
         }
     }
 });
+
+// Supporting section tabs (Spending trends / Income sources / Anomalies /
+// Price creep / Spending pace). Mirrors whatif-tabs.js's activateTab /
+// resizeChartsIn pattern: hidden panels use the `hidden` property (not a
+// class) so progressive enhancement is a plain attribute toggle, and the
+// active key persists per browser (not per scenario, there is only one
+// insights page).
+(function () {
+    var INSIGHTS_TAB_KEY = 'insightsActiveTab';
+    var INSIGHTS_TAB_KEYS = ['trends', 'income', 'anomalies', 'pricecreep', 'pace'];
+
+    function activateInsightsTab(key, persist) {
+        var section = document.getElementById('insights-supporting');
+        if (!section) return;
+        var panels = section.querySelectorAll('[data-ins-panel]');
+        var tabs = section.querySelectorAll('[data-ins-tab]');
+        panels.forEach(function (p) {
+            p.hidden = p.getAttribute('data-ins-panel') !== key;
+        });
+        tabs.forEach(function (t) {
+            var on = t.getAttribute('data-ins-tab') === key;
+            t.setAttribute('aria-selected', on ? 'true' : 'false');
+            t.setAttribute('tabindex', on ? '0' : '-1');
+            t.classList.toggle('wf-tab-active', on);
+        });
+        if (persist) {
+            try { window.localStorage.setItem(INSIGHTS_TAB_KEY, key); } catch (e) {}
+        }
+        var chart = document.getElementById('chart-trends');
+        if (chart && chart.data && window.Plotly) {
+            try { window.Plotly.Plots.resize(chart); } catch (e) { /* not yet rendered */ }
+        }
+    }
+
+    function restoreInsightsTab() {
+        var key = 'trends';
+        try {
+            var stored = window.localStorage.getItem(INSIGHTS_TAB_KEY);
+            if (stored && INSIGHTS_TAB_KEYS.indexOf(stored) !== -1) key = stored;
+        } catch (e) {}
+        activateInsightsTab(key, false);
+    }
+
+    function initInsightsTabs() {
+        if (document.getElementById('insights-supporting')) restoreInsightsTab();
+    }
+
+    document.addEventListener('click', function (e) {
+        var tab = e.target.closest('[data-ins-tab]');
+        if (!tab) return;
+        activateInsightsTab(tab.getAttribute('data-ins-tab'), true);
+    });
+
+    document.addEventListener('keydown', function (e) {
+        var tab = e.target.closest('[data-ins-tab]');
+        if (!tab) return;
+        var section = document.getElementById('insights-supporting');
+        if (!section) return;
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+            e.preventDefault();
+            activateInsightsTab(tab.getAttribute('data-ins-tab'), true);
+            return;
+        }
+        var tabs = Array.prototype.slice.call(section.querySelectorAll('[data-ins-tab]'));
+        var current = tabs.indexOf(tab);
+        var next = current;
+        if (e.key === 'ArrowRight') next = (current + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabs.length - 1;
+        else return;
+        e.preventDefault();
+        tabs[next].focus();
+        activateInsightsTab(tabs[next].getAttribute('data-ins-tab'), true);
+    });
+
+    if (document.readyState !== 'loading') {
+        initInsightsTabs();
+    } else {
+        document.addEventListener('DOMContentLoaded', initInsightsTabs);
+    }
+
+    document.body.addEventListener('htmx:afterSwap', function (evt) {
+        var t = evt.detail && evt.detail.target;
+        if (!t) return;
+        if (t.id === 'insights-supporting' || (t.querySelector && t.querySelector('#insights-supporting'))) {
+            initInsightsTabs();
+        }
+    });
+})();

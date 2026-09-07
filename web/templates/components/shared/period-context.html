@@ -1,21 +1,16 @@
 {{define "shared/period-context"}}
 {{with .Period}}
 <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-    <p class="text-sm text-gray-700 dark:text-gray-300">Selected period: {{.SelectedStart.Format "2006-01-02"}} to {{.SelectedEnd.Format "2006-01-02"}} ({{.SelectedDays}} calendar days)</p>
-    <p class="text-sm text-gray-700 dark:text-gray-300">Prior period: {{.PreviousStart.Format "2006-01-02"}} to {{.PreviousEnd.Format "2006-01-02"}} ({{.PreviousDays}} calendar days){{if eq .ComparisonKind "year"}} — same period last year{{end}}{{if .ComparisonClamped}} — clamped to the prior month's last day{{end}}</p>
-    {{if .HasData}}
-    <p class="text-sm text-gray-700 dark:text-gray-300">Latest transaction: {{.LatestTransaction.Format "2006-01-02"}}</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Selected period: {{.SelectedStart.Format "2006-01-02"}} to {{.SelectedEnd.Format "2006-01-02"}} ({{.SelectedDays}} calendar days){{if .HasData}} · Latest transaction: {{.LatestTransaction.Format "2006-01-02"}}{{else}} · No transaction data available.{{end}}</p>
     {{if .Stale}}
-    <details open>
-        <summary class="text-sm text-gray-700 dark:text-gray-300">Data freshness</summary>
-        <p class="text-sm text-gray-700 dark:text-gray-300">Data is more than seven calendar days old ({{.DataAgeDays}} days). Current-month forecast is unavailable.</p>
+    <p class="text-sm text-gray-700 dark:text-gray-300">Data is more than seven calendar days old ({{.DataAgeDays}} days). Current-month forecast is unavailable.</p>
+    {{end}}
+    <details>
+        <summary class="text-sm text-accent cursor-pointer">Period details</summary>
+        <p class="text-sm text-gray-700 dark:text-gray-300">Prior period: {{.PreviousStart.Format "2006-01-02"}} to {{.PreviousEnd.Format "2006-01-02"}} ({{.PreviousDays}} calendar days){{if eq .ComparisonKind "year"}} — same period last year{{end}}{{if .ComparisonClamped}} — clamped to the prior month's last day{{end}}</p>
+        {{if not .HistoryAvailable}}<p class="text-sm text-gray-700 dark:text-gray-300">{{.HistoryReason}}</p>{{end}}
+        <p class="text-sm text-gray-600 dark:text-gray-400">First and last transaction dates are evidence bounds, not proof that all accounts or transactions were imported.</p>
     </details>
-    {{end}}
-    {{else}}
-    <p class="text-sm text-gray-700 dark:text-gray-300">No transaction data available.</p>
-    {{end}}
-    {{if not .HistoryAvailable}}<p class="text-sm text-gray-700 dark:text-gray-300">{{.HistoryReason}}</p>{{end}}
-    <p class="text-sm text-gray-600 dark:text-gray-400">First and last transaction dates are evidence bounds, not proof that all accounts or transactions were imported.</p>
 </section>
 {{end}}
 {{end}}

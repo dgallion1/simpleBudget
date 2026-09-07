@@ -42,3 +42,13 @@ reflection-notes.md
 
 # Dev-server output at repo root
 /server.log
+
+# Local agent scaffolding and run scratch (per-machine, never source)
+.codex/
+.agents/
+.impeccable/
+.swarm-local/
+
+# Runtime leftovers at repo root: server log and pre-deploy binary backups
+/nohup.out
+/budget2.old-*

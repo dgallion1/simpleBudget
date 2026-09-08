@@ -40,28 +40,28 @@
 
     <div id="period-context">{{template "shared/period-context" .}}</div>
     {{with .Investigation}}
+    <p id="insights-lead" class="text-xl leading-snug text-gray-900 dark:text-gray-100">Net spending this period: <span class="num">{{formatMoney .Current}}</span>{{if $.Period.HistoryAvailable}} ({{template "insights-dollar-change" .Change}} versus the prior period){{end}}. {{$n := len .Findings}}{{if eq $n 0}}No transactions to review{{else}}{{$n}} {{if eq $n 1}}transaction{{else}}transactions{{end}} to review{{end}}; detected recurring spending is about <span class="num">{{formatMoney .Monthly}}</span> a month.</p>
     <section id="insights-change" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="change-heading">
-        <h2 id="change-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100">What changed</h2>
-        <p class="text-sm text-gray-700 dark:text-gray-300">Actual net spending across all outflows, including refunds and excluding transfers.</p>
-        <p class="text-sm text-gray-700 dark:text-gray-300">Selected period: <span class="num font-semibold">{{formatMoney .Current}}</span>{{if $.Period.HistoryAvailable}} · Prior period: <span class="num">{{formatMoney .Previous}}</span>{{end}}</p>
+        <h2 id="change-heading" class="text-xl font-semibold text-gray-800 dark:text-gray-100">What changed</h2>
+        <p class="text-base text-gray-700 dark:text-gray-300">Actual net spending across all outflows, including refunds and excluding transfers.</p>
+        <p class="text-base text-gray-700 dark:text-gray-300">Selected period: <span class="num font-semibold">{{formatMoney .Current}}</span>{{if $.Period.HistoryAvailable}} · Prior period: <span class="num">{{formatMoney .Previous}}</span>{{end}}</p>
         {{if $.Period.HistoryAvailable}}
         <p class="text-gray-800 dark:text-gray-100">Dollar difference: {{template "insights-dollar-change" .Change}} · {{template "insights-change-cell" .Change}}</p>
-        <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Largest contributors</h3>
-        <p class="text-sm text-gray-600 dark:text-gray-400">Grouped by {{.Grouping}}. Up to three largest absolute dollar changes; these are not a complete reconciliation of all spending.</p>
+        <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Largest contributors</h3>
+        <p class="text-base text-gray-600 dark:text-gray-400">Grouped by {{.Grouping}}. Up to three largest absolute dollar changes; these are not a complete reconciliation of all spending.</p>
         <ul class="divide-y divide-gray-200 dark:divide-gray-700">
             {{range .Contributors}}
-            <li class="py-3 flex flex-wrap justify-between gap-2" data-contributor="{{.Category}}">
+            <li class="py-3 flex flex-wrap justify-between gap-2 text-base" data-contributor="{{.Category}}">
                 <a class="text-accent underline" href="/explorer?{{if index $.Investigation.GroupIDs .Category}}majorExpense={{urlquery (index $.Investigation.GroupIDs .Category)}}{{else}}category={{urlquery .Category}}{{end}}&amp;start={{$.StartDate}}&amp;end={{$.EndDate}}&amp;type=Outflow">{{.Category}}</a>
                 <span class="num text-gray-800 dark:text-gray-100">{{template "insights-dollar-change" .Change}} · {{template "insights-change-cell" .Change}}</span>
             </li>
-            {{else}}<li class="text-sm text-gray-600 dark:text-gray-400">No category changes to compare.</li>{{end}}
+            {{else}}<li class="text-base text-gray-600 dark:text-gray-400">No category changes to compare.</li>{{end}}
         </ul>
-        {{else}}<p class="text-sm text-gray-700 dark:text-gray-300">Not enough history to compare</p>{{end}}
+        {{else}}<p class="text-base text-gray-700 dark:text-gray-300">Not enough history to compare</p>{{end}}
     </section>
     <section id="insights-findings" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="findings-heading">
-        <h2 id="findings-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100">Review these transactions</h2>
-        <p class="text-sm text-gray-700 dark:text-gray-300">{{len .Findings}} findings in the selected period. A transaction can have more than one finding type.</p>
-        <p class="text-sm text-gray-600 dark:text-gray-400">Detection uses loaded active history. Each finding below is tied to an actual transaction in the selected period; price-creep evidence can extend beyond that period.</p>
+        <h2 id="findings-heading" class="text-xl font-semibold text-gray-800 dark:text-gray-100">Review these transactions</h2>
+        <p class="text-base text-gray-700 dark:text-gray-300">{{len .Findings}} findings in the selected period. A transaction can have more than one finding type.</p>
         {{if .Findings}}
         <ul id="findings-preview" class="divide-y divide-gray-200 dark:divide-gray-700">{{range .Preview}}{{template "insights-finding" .}}{{end}}</ul>
         {{if .Remaining}}
@@ -70,18 +70,26 @@
             <ul class="divide-y divide-gray-200 dark:divide-gray-700">{{range .Remaining}}{{template "insights-finding" .}}{{end}}</ul>
         </details>
         {{end}}
-        {{$hasCreep := false}}{{range .Findings}}{{if .Creep}}{{$hasCreep = true}}{{end}}{{end}}
-        {{if $hasCreep}}<p class="text-sm text-gray-600 dark:text-gray-400">Price-creep findings: the linked transaction is the latest in its full-history group; its actual amount may differ from the median.</p>{{end}}
         {{else}}
-        <p class="text-sm text-gray-700 dark:text-gray-300">No detected findings in this period. This does not guarantee that every transaction is expected.</p>
+        <p class="text-base text-gray-700 dark:text-gray-300">No detected findings in this period. This does not guarantee that every transaction is expected.</p>
         {{if not $.Period.HasData}}<a href="/explorer" class="text-accent underline">Import transactions to begin reviewing activity</a>{{end}}
         {{end}}
+        {{$hasCreep := false}}{{range .Findings}}{{if .Creep}}{{$hasCreep = true}}{{end}}{{end}}
+        <details class="border-t border-gray-200 dark:border-gray-700 pt-3">
+            <summary class="text-base text-accent cursor-pointer">About these findings</summary>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Detection uses loaded active history. Each finding is tied to an actual transaction in the selected period; price-creep evidence can extend beyond that period.</p>
+            {{if $hasCreep}}<p class="text-sm text-gray-600 dark:text-gray-400">Price-creep findings: the linked transaction is the latest in its full-history group; its actual amount may differ from the median.</p>{{end}}
+        </details>
     </section>
     <section id="insights-recurring" class="space-y-4" aria-labelledby="recurring-heading">
         <div class="space-y-2">
-            <h2 id="recurring-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100">Detected recurring spending</h2>
-            <p class="text-sm text-gray-700 dark:text-gray-300">Estimates from history through {{$.Period.SelectedEnd.Format "2006-01-02"}}, not actual selected-period spending or confirmed obligations. All detected recurring series are shown without a row limit.</p>
-            <p class="text-sm text-gray-700 dark:text-gray-300">Retained estimates: <span class="num">{{formatMoney .Monthly}}</span> monthly · <span class="num">{{formatMoney .Annual}}</span> annual. Totals sum displayed estimates. Monthly and annual figures are rounded separately.</p>
+            <h2 id="recurring-heading" class="text-xl font-semibold text-gray-800 dark:text-gray-100">Detected recurring spending</h2>
+            <p class="text-base text-gray-700 dark:text-gray-300">Retained estimates: <span class="num">{{formatMoney .Monthly}}</span> monthly · <span class="num">{{formatMoney .Annual}}</span> annual.</p>
+            <details>
+                <summary class="text-base text-accent cursor-pointer">About these estimates</summary>
+                <p class="text-sm text-gray-700 dark:text-gray-300">Estimates from history through {{$.Period.SelectedEnd.Format "2006-01-02"}}, not actual selected-period spending or confirmed obligations. All detected recurring series are shown without a row limit.</p>
+                <p class="text-sm text-gray-700 dark:text-gray-300">Totals sum displayed estimates. Monthly and annual figures are rounded separately.</p>
+            </details>
         </div>
         {{range .Groups}}{{template "insights-recurring-group" (dict "Group" . "Period" $.Period "StartDate" $.StartDate "EndDate" $.EndDate)}}{{end}}
     </section>
@@ -150,7 +158,7 @@
     {{end}}
     {{end}}
     <section id="insights-supporting" class="space-y-4" aria-labelledby="supporting-heading">
-        <h2 id="supporting-heading" class="text-lg font-semibold text-gray-800 dark:text-gray-100">Supporting charts and tables</h2>
+        <h2 id="supporting-heading" class="text-xl font-semibold text-gray-800 dark:text-gray-100">Supporting charts and tables</h2>
         <div role="tablist" aria-label="Supporting charts and tables" class="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-700">
             <button type="button" role="tab" id="insights-tab-trends" aria-controls="insights-panel-trends" aria-selected="false" data-ins-tab="trends" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-100">Spending trends</button>
             <button type="button" role="tab" id="insights-tab-income" aria-controls="insights-panel-income" aria-selected="false" data-ins-tab="income" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-100">Income sources</button>
@@ -160,7 +168,7 @@
         </div>
         <div role="tabpanel" id="insights-panel-trends" aria-labelledby="insights-tab-trends" data-ins-panel="trends" tabindex="0">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
-            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Spending trends</h3>
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Spending trends</h3>
             <p class="text-sm text-gray-600 dark:text-gray-400">Compare the selected and prior periods by {{if .Investigation}}{{.Investigation.Grouping}}{{else}}category{{end}}. Exact values and changes are in the adjacent table.</p>
             {{if .Insights.CategoryTrends}}
             <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Spending trends chart">
@@ -172,7 +180,7 @@
         </div>
         <div role="tabpanel" id="insights-panel-income" aria-labelledby="insights-tab-income" data-ins-panel="income" tabindex="0">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
-            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Income sources</h3>
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Income sources</h3>
             <p class="text-sm text-gray-600 dark:text-gray-400">Recorded income in the selected period.</p>
             {{template "income-patterns" (dict "IncomePatterns" .Insights.IncomePatterns)}}
         </div>
@@ -185,7 +193,7 @@
         </div>
         <div role="tabpanel" id="insights-panel-pace" aria-labelledby="insights-tab-pace" data-ins-panel="pace" tabindex="0">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3">
-            <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100">Spending pace</h3>
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Spending pace</h3>
             {{with .Insights.Velocity}}
             <p class="text-sm text-gray-700 dark:text-gray-300">Selected-period daily average: <span class="num">{{formatMoney .DailyAverage}}</span>{{if and .Period .Period.HistoryAvailable}} · Prior-period daily average: <span class="num">{{formatMoney .HistoricalDaily}}</span>{{end}}</p>
             {{end}}

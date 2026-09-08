@@ -2102,11 +2102,13 @@ func TestDashboardKPIs_TargetProvenance_AbsentWhenNoPhaseConfig(t *testing.T) {
 	if strings.Contains(body, `aria-label="Target`) {
 		t.Errorf("unexpected aria-label on Target when no phase config exists; body:\n%s", body)
 	}
-	// Byte-identical to master's fragment: no wrapper <span> around "Target"
-	// at all when unannotated — just the bare "Target <span class=\"num\">"
-	// text master has always rendered.
-	if !regexp.MustCompile(`<p class="text-sm [^"]*">\s*Target <span class="num">`).MatchString(body) {
-		t.Errorf("expected bare \"Target <span...\" markup (byte-identical to master, no wrapper span) when unannotated; body:\n%s", body)
+	// No wrapper <span> around "Target" at all when unannotated — just the
+	// bare "Target <span class=\"num\">" text. RF2-B (2026-09-07, ruling
+	// RF-2026-09-07b) bumped this paragraph's class text-sm -> text-base;
+	// the assertion tracks that presentational class, not the (unchanged)
+	// "no wrapper span" behavior this test actually guards.
+	if !regexp.MustCompile(`<p class="text-base [^"]*">\s*Target <span class="num">`).MatchString(body) {
+		t.Errorf("expected bare \"Target <span...\" markup (no wrapper span) when unannotated; body:\n%s", body)
 	}
 }
 

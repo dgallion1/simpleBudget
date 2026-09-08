@@ -107,6 +107,10 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             let wrapper = details.querySelector('div');
             if (!wrapper) { wrapper = document.createElement('div'); wrapper.className = 'overflow-auto'; details.appendChild(wrapper); }
+            wrapper.tabIndex = 0;
+            wrapper.setAttribute('role', 'region');
+            const title = plot.closest('.rounded-lg')?.querySelector('h2')?.textContent.trim() || 'Chart';
+            wrapper.setAttribute('aria-label', title + ' chart data');
             wrapper.replaceChildren();
             const table = document.createElement('table');
             table.className = 'w-full text-left';

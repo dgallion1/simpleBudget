@@ -36,6 +36,26 @@ module.exports = {
       // :root/.dark in web/static/css/styles.css so `text-positive` etc.
       // flip color automatically under dark mode with no `dark:` twin.
       colors: {
+        // RF1 (retiree-first refresh, 2026-09-07): warm neutral greys.
+        // Overrides Tailwind's default cool `gray` scale with the stone
+        // scale's hex values, INLINE — the standalone CLI used by `make css`
+        // cannot resolve `require('tailwindcss/colors')` from this config
+        // file (verified 2026-09-07). Every `gray-*` utility in the app
+        // becomes warm with no template edits. accent/positive/negative/
+        // warning/neutral tokens above are UNCHANGED.
+        gray: {
+          50: '#fafaf9',
+          100: '#f5f5f4',
+          200: '#e7e5e4',
+          300: '#d6d3d1',
+          400: '#a8a29e',
+          500: '#78716c',
+          600: '#57534e',
+          700: '#44403c',
+          800: '#292524',
+          900: '#1c1917',
+          950: '#0c0a09',
+        },
         accent: {
           DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
           soft: 'rgb(var(--accent-soft) / <alpha-value>)',

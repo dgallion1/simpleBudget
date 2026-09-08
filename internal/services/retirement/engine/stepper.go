@@ -102,6 +102,9 @@ type MonthReturns struct {
 
 // MonthOutcome reports one stepped month back to the loop.
 type MonthOutcome struct {
+	AdjustedLivingExpenses float64
+	FundedLivingExpenses   float64
+
 	Result TaxAwarePortfolioMonthResult
 	Income MonthlyIncomeBreakdown
 
@@ -281,7 +284,9 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 		prevMult := st.Guardrails.Multiplier()
 		st.Guardrails.Evaluate(s.Guardrails, totalPortfolio)
 		newMult := st.Guardrails.Multiplier()
-		if newMult != prevMult {
+		before, beforeMult := floorAdjustedLiving(s, st.CurrentLivingExpenses, prevMult, st.CumulativeInflation)
+		after, afterMult := floorAdjustedLiving(s, st.CurrentLivingExpenses, newMult, st.CumulativeInflation)
+		if newMult != prevMult && RoundLivingCents(before) != RoundLivingCents(after) {
 			eventType := "cut"
 			if newMult > prevMult {
 				eventType = "raise"
@@ -289,11 +294,11 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 			guardrailEvent = &models.GuardrailEvent{
 				Year:                  currentYear,
 				Type:                  eventType,
-				Multiplier:            newMult,
-				PreviousMultiplier:    prevMult,
+				Multiplier:            afterMult,
+				PreviousMultiplier:    beforeMult,
 				Portfolio:             totalPortfolio,
-				MonthlySpendingBefore: st.CurrentLivingExpenses * prevMult,
-				MonthlySpendingAfter:  st.CurrentLivingExpenses * newMult,
+				MonthlySpendingBefore: before,
+				MonthlySpendingAfter:  after,
 				CumulativeInflation:   st.CumulativeInflation,
 			}
 		}
@@ -303,7 +308,7 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 	if st.Guardrails != nil {
 		activeMultiplier = st.Guardrails.Multiplier()
 	}
-	adjustedLivingExpenses := st.CurrentLivingExpenses * activeMultiplier
+	adjustedLivingExpenses, activeMultiplier := floorAdjustedLiving(s, st.CurrentLivingExpenses, activeMultiplier, st.CumulativeInflation)
 
 	// Expense assembly. ExpenseSources are not subject to guardrail cuts —
 	// planned and adjusted stay in sync for them.
@@ -406,6 +411,8 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 		TotalExpenses:              totalExpenses + monthResult.IRMAAExpense,
 		PlannedExpenses:            plannedTotalExpenses + monthResult.IRMAAExpense,
 		LivingExpenses:             st.CurrentLivingExpenses,
+		AdjustedLivingExpenses:     adjustedLivingExpenses,
+		FundedLivingExpenses:       FundedLiving(adjustedLivingExpenses, monthResult.Shortfall),
 		Healthcare:                 activeHealthcare,
 		GuardrailMultiplier:        activeMultiplier,
 		GuardrailEvent:             guardrailEvent,

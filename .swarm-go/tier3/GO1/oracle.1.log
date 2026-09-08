@@ -1,0 +1,27 @@
+=== RUN   TestGO1SharedMonthlyFloor
+--- PASS: TestGO1SharedMonthlyFloor (0.00s)
+=== RUN   TestGO1CanonicalAndBacktestConsumers
+--- PASS: TestGO1CanonicalAndBacktestConsumers (0.00s)
+=== RUN   TestGO1DisabledAndLegacy
+--- PASS: TestGO1DisabledAndLegacy (0.00s)
+=== RUN   TestGO1FundedFloorNotDepletion
+=== RUN   TestGO1FundedFloorNotDepletion/zero_assets_sufficient_income
+=== RUN   TestGO1FundedFloorNotDepletion/discretionary_gap_above_floor
+=== RUN   TestGO1FundedFloorNotDepletion/gap_below_floor
+=== RUN   TestGO1FundedFloorNotDepletion/round_up_to_floor
+=== RUN   TestGO1FundedFloorNotDepletion/round_below_floor
+=== RUN   TestGO1FundedFloorNotDepletion/temporary_illiquidity
+--- PASS: TestGO1FundedFloorNotDepletion (0.00s)
+    --- PASS: TestGO1FundedFloorNotDepletion/zero_assets_sufficient_income (0.00s)
+    --- PASS: TestGO1FundedFloorNotDepletion/discretionary_gap_above_floor (0.00s)
+    --- PASS: TestGO1FundedFloorNotDepletion/gap_below_floor (0.00s)
+    --- PASS: TestGO1FundedFloorNotDepletion/round_up_to_floor (0.00s)
+    --- PASS: TestGO1FundedFloorNotDepletion/round_below_floor (0.00s)
+    --- PASS: TestGO1FundedFloorNotDepletion/temporary_illiquidity (0.00s)
+=== RUN   TestGO1AnnualCuts
+--- PASS: TestGO1AnnualCuts (0.00s)
+=== RUN   TestGO1LockedAssets
+--- PASS: TestGO1LockedAssets (0.00s)
+PASS
+ok  	budget2/internal/services/retirement/analysis	0.004s
+ORACLE PASS

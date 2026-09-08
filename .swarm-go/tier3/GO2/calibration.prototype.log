@@ -1,0 +1,23 @@
+=== RUN   TestGO2OracleGridSeedsMetricsAndBaselines
+--- PASS: TestGO2OracleGridSeedsMetricsAndBaselines (0.01s)
+=== RUN   TestGO2OracleValidationAndCancellation
+--- PASS: TestGO2OracleValidationAndCancellation (0.00s)
+=== RUN   TestGO2OracleHeldOutFailureAndExactQualification
+=== RUN   TestGO2OracleHeldOutFailureAndExactQualification/95_50
+=== RUN   TestGO2OracleHeldOutFailureAndExactQualification/95.00001_50
+=== RUN   TestGO2OracleHeldOutFailureAndExactQualification/95_51
+=== RUN   TestGO2OracleHeldOutFailureAndExactQualification/99_10
+=== RUN   TestGO2OracleHeldOutFailureAndExactQualification/99.00001_10
+--- PASS: TestGO2OracleHeldOutFailureAndExactQualification (0.03s)
+    --- PASS: TestGO2OracleHeldOutFailureAndExactQualification/95_50 (0.01s)
+    --- PASS: TestGO2OracleHeldOutFailureAndExactQualification/95.00001_50 (0.01s)
+    --- PASS: TestGO2OracleHeldOutFailureAndExactQualification/95_51 (0.01s)
+    --- PASS: TestGO2OracleHeldOutFailureAndExactQualification/99_10 (0.01s)
+    --- PASS: TestGO2OracleHeldOutFailureAndExactQualification/99.00001_10 (0.01s)
+=== RUN   TestGO2OracleRepeatableRanking
+--- PASS: TestGO2OracleRepeatableRanking (0.01s)
+=== RUN   TestGO2OracleDedupAndAutoSeed
+--- PASS: TestGO2OracleDedupAndAutoSeed (0.01s)
+PASS
+ok  	budget2/internal/services/retirement/analysis	0.072s
+ORACLE PASS

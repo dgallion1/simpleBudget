@@ -1,0 +1,36 @@
+=== RUN   TestGO2OracleGridSeedsMetricsAndBaselines
+--- PASS: TestGO2OracleGridSeedsMetricsAndBaselines (0.01s)
+=== RUN   TestGO2OracleValidationAndCancellation
+--- PASS: TestGO2OracleValidationAndCancellation (0.00s)
+=== RUN   TestGO2OracleHeldOutFailureAndExactQualification
+=== RUN   TestGO2OracleHeldOutFailureAndExactQualification/95_50
+=== RUN   TestGO2OracleHeldOutFailureAndExactQualification/95.00001_50
+=== RUN   TestGO2OracleHeldOutFailureAndExactQualification/95_51
+=== RUN   TestGO2OracleHeldOutFailureAndExactQualification/99_10
+=== RUN   TestGO2OracleHeldOutFailureAndExactQualification/99.00001_10
+--- PASS: TestGO2OracleHeldOutFailureAndExactQualification (0.04s)
+    --- PASS: TestGO2OracleHeldOutFailureAndExactQualification/95_50 (0.01s)
+    --- PASS: TestGO2OracleHeldOutFailureAndExactQualification/95.00001_50 (0.01s)
+    --- PASS: TestGO2OracleHeldOutFailureAndExactQualification/95_51 (0.01s)
+    --- PASS: TestGO2OracleHeldOutFailureAndExactQualification/99_10 (0.01s)
+    --- PASS: TestGO2OracleHeldOutFailureAndExactQualification/99.00001_10 (0.01s)
+=== RUN   TestGO2OracleRepeatableRanking
+--- PASS: TestGO2OracleRepeatableRanking (0.01s)
+=== RUN   TestGO2OracleDedupAndAutoSeed
+--- PASS: TestGO2OracleDedupAndAutoSeed (0.01s)
+=== RUN   TestGO2OracleAllExactBoundaries
+    go2_acceptance_external_test.go:380: exact boundary successes=161 target=16.100000000000001 target*runs=16100.000000000002
+    go2_acceptance_external_test.go:380: exact boundary successes=322 target=32.200000000000003 target*runs=32200.000000000004
+    go2_acceptance_external_test.go:380: exact boundary successes=327 target=32.700000000000003 target*runs=32700.000000000004
+    go2_acceptance_external_test.go:380: exact boundary successes=644 target=64.400000000000006 target*runs=64400.000000000007
+    go2_acceptance_external_test.go:380: exact boundary successes=649 target=64.900000000000006 target*runs=64900.000000000007
+    go2_acceptance_external_test.go:380: exact boundary successes=654 target=65.400000000000006 target*runs=65400.000000000007
+--- FAIL: TestGO2OracleAllExactBoundaries (0.00s)
+=== RUN   TestGO2OracleCustomBoundaryService
+    go2_acceptance_external_test.go:390: no recommendations despite exact64.4%; first metrics={Runs:1000 FloorShortfallPaths:356 DepletionPaths:0 FloorSuccessPct:64.4 FloorSuccessCILowPct:61.382393003402235 FloorSuccessCIHighPct:67.30739635221377 DepletionRiskPct:0 MedianLifetimeFundedLivingReal:100 P10LifetimeFundedLivingReal:100 P95WorstAnnualCutPct:0 MeanAnnualCutCount:0 MedianEndingBalanceReal:0} qualifies=false
+--- FAIL: TestGO2OracleCustomBoundaryService (0.00s)
+=== RUN   TestGO2OracleRemedyPremise
+--- PASS: TestGO2OracleRemedyPremise (0.00s)
+FAIL
+FAIL	budget2/internal/services/retirement/analysis	0.075s
+FAIL

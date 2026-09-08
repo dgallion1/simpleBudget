@@ -1,0 +1,12 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: GO4
+ATTEMPT: 1
+---
+Scope: GO4 test-only manifest internal/services/retirement/analysis/guardrail_recovery_regression_test.go; GO-R14 controls scope. No production changes accepted or requested.
+Command: go test ./internal/services/retirement/analysis -run TestGuardrailRecovery -count=3 -v in independent /tmp/go-second-check. All six executions PASS. Observed peak concurrent hooks4; income-funded paths cover full varied horizon; zero-income paths report zero funded spending.
+First-depletion strength: disposable mutation removes !depleted guards from both depletion assignments in monte_carlo.go. Command go test ./internal/services/retirement/analysis -run TestGuardrailRecoveryPreservesFirstDepletion -count=1 fails on actual first metadata changing from1/12 to11/12 despite successful balance recovery6308.470779992307, funded19013.33 and36observed months. Log /tmp/go4-mutant.log. Confirms regression catches overwritten first depletion, not mere termination.
+Concurrency strength: disposable mutation raises guardrailOptimizerWorkers from4 to12. Command go test ./internal/services/retirement/analysis -run TestGuardrailRecoveryRunner -count=1 fails on observed concurrency9. Log /tmp/go4-workers-mutant.log. Test exercises actual runner rather than fake runner. Both mutations restored in copy.
+Income/unfunded: actual SocialSecurity hooks drive positive funded income with depleted portfolio and zero enjoyed spending without income. Assertions inspect FloorFailed, TotalFundedLivingReal, and MonthsObserved rather than names alone.
+FINDINGS: No in-scope defect reproduced. Test-only scope has no UI/accessibility changes.

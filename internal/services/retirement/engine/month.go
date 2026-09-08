@@ -185,6 +185,8 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			WithdrawalFromTaxable:     cashFlow.WithdrawalFromTaxable,
 			WithdrawalFromRoth:        cashFlow.WithdrawalFromRoth,
 			PlannedLivingExpenses:     out.LivingExpenses,
+			AdjustedLivingExpenses:    out.AdjustedLivingExpenses,
+			FundedLivingExpenses:      out.FundedLivingExpenses,
 			GuardrailMultiplier:       out.GuardrailMultiplier,
 		})
 

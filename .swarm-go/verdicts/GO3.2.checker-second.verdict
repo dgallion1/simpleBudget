@@ -1,0 +1,15 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: GO3
+ATTEMPT: 2
+---
+Scope: GO3 manifest and latest GO-R13 user clarification. Independent cp -a copy /tmp/go-second-check retained .git; no production edits in source tree.
+Command: go test ./internal/handlers/whatif ./internal/services/retirement/analysis -run "TestGuardrail(Optimizer|Recovery)" -count=1 -v. PASS (log /tmp/go-second-tests.log).
+Inputs/defaults: handler invalid-input cases reject missing/nonfinite/out-of-range targets and invalid floors without settings changes. Card rendering verifies 7500, unselected target,90/95/99/custom, additional healthcare/tax obligations and positive minimum-maintenance wording. Template places chance first and depletion in supporting details (GO-R13).
+Qualification/figures: actual service all-exact-tenths and custom-boundary regressions pass. Independent TestSecondRenderedBoundaryMoney renders target64.4 and64.4000000001 against64.40% and356/1000; respective Meets/Below labels remain correct and target retains its precision. Exact rendered money assertions $1,234.56/$987.65/$765.43/$7,500.01 pass. Shared formatter is used by all new dollar surfaces; no client numeric formatter exists.
+Preview/Apply: actual service PreviewThenExplicitApply passes, byte-comparing settings before/after preview, comparing persisted configuration to returned candidate, verifying redirect and rejecting replay. Apply/cancellation tests reject forged identity, expiry, mismatched request and stale revision while ignoring forged config fields. Independent TestSecondFingerprintAndCancelApply deliberately updates cached revision after changing settings: fingerprint alone still rejects Apply. Cancelled preview also rejects Apply. Independent TestSecondCancelledSearchNoSave invokes actual cancelled handler and verifies settings equality.
+Ordinary form: preserve/edit/invalid tests pass with absolute floor and legacy minpct0 retained.
+Command for independent probes: go test ./internal/handlers/whatif -run TestSecond -count=1 -v. All PASS; probe source retained only in copy.
+Disclosures/semantics: inspected complete result template and render assertions: all requested metrics, counts, Wilson interval, horizon, seeds, funding convention, annual-cut definition present; five scoped column headers, row headers, details, text qualification, explicit units comply with relevant accessibility18-21. Client generation guard discards late responses; input edits cancel/invalidate previews. Native browser infrastructure unavailable as reported; visual/focus/contrast certification belongs to separately named a11y checker, not claimed from these HTTP/render checks.
+FINDINGS: No in-scope defect reproduced.

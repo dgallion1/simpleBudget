@@ -1,0 +1,38 @@
+=== RUN   TestGO1SharedMonthlyFloor
+    go1_acceptance_test.go:28: GO1 contract missing *models.GuardrailConfig.MinMonthlySpendingReal
+--- FAIL: TestGO1SharedMonthlyFloor (0.00s)
+=== RUN   TestGO1CanonicalAndBacktestConsumers
+    go1_acceptance_test.go:28: GO1 contract missing *models.GuardrailConfig.MinMonthlySpendingReal
+--- FAIL: TestGO1CanonicalAndBacktestConsumers (0.00s)
+=== RUN   TestGO1DisabledAndLegacy
+    go1_acceptance_test.go:28: GO1 contract missing *models.GuardrailConfig.MinMonthlySpendingReal
+--- FAIL: TestGO1DisabledAndLegacy (0.00s)
+=== RUN   TestGO1FundedFloorNotDepletion
+=== RUN   TestGO1FundedFloorNotDepletion/zero_assets_sufficient_income
+    go1_acceptance_test.go:30: GO1 contract missing *analysis.MonteCarloConfig.MinMonthlySpendingReal
+=== RUN   TestGO1FundedFloorNotDepletion/discretionary_gap_above_floor
+    go1_acceptance_test.go:30: GO1 contract missing *analysis.MonteCarloConfig.MinMonthlySpendingReal
+=== RUN   TestGO1FundedFloorNotDepletion/gap_below_floor
+    go1_acceptance_test.go:30: GO1 contract missing *analysis.MonteCarloConfig.MinMonthlySpendingReal
+=== RUN   TestGO1FundedFloorNotDepletion/round_up_to_floor
+    go1_acceptance_test.go:30: GO1 contract missing *analysis.MonteCarloConfig.MinMonthlySpendingReal
+=== RUN   TestGO1FundedFloorNotDepletion/round_below_floor
+    go1_acceptance_test.go:30: GO1 contract missing *analysis.MonteCarloConfig.MinMonthlySpendingReal
+=== RUN   TestGO1FundedFloorNotDepletion/temporary_illiquidity
+    go1_acceptance_test.go:30: GO1 contract missing *analysis.MonteCarloConfig.MinMonthlySpendingReal
+--- FAIL: TestGO1FundedFloorNotDepletion (0.00s)
+    --- FAIL: TestGO1FundedFloorNotDepletion/zero_assets_sufficient_income (0.00s)
+    --- FAIL: TestGO1FundedFloorNotDepletion/discretionary_gap_above_floor (0.00s)
+    --- FAIL: TestGO1FundedFloorNotDepletion/gap_below_floor (0.00s)
+    --- FAIL: TestGO1FundedFloorNotDepletion/round_up_to_floor (0.00s)
+    --- FAIL: TestGO1FundedFloorNotDepletion/round_below_floor (0.00s)
+    --- FAIL: TestGO1FundedFloorNotDepletion/temporary_illiquidity (0.00s)
+=== RUN   TestGO1AnnualCuts
+    go1_acceptance_test.go:30: GO1 contract missing *analysis.MonteCarloConfig.MinMonthlySpendingReal
+--- FAIL: TestGO1AnnualCuts (0.00s)
+=== RUN   TestGO1LockedAssets
+    go1_acceptance_test.go:30: GO1 contract missing *analysis.MonteCarloConfig.MinMonthlySpendingReal
+--- FAIL: TestGO1LockedAssets (0.00s)
+FAIL
+FAIL	budget2/internal/services/retirement/analysis	0.003s
+FAIL

@@ -1,0 +1,11 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: GO4
+ATTEMPT: 1
+---
+Snapshot cp -a /tmp/budget2-guardrail-optimizer /tmp/go-primary-check keeps.git; mutations only further copy /tmp/go-primary-mutants. Read new test assertions before execution. No GO4 executable oracle (Tier2).
+1. First depletion/recovery: go test -count=1 -v ./internal/services/retirement/analysis -run GuardrailRecovery PASS TestGuardrailRecoveryPreservesFirstDepletion. Assertions require first depletion1/12year,!Survives,FloorFailed,36observed months,funded19000..20000,final>=6000. python3 /tmp/go-primary-mutations.py removes !depleted guard in scratch: FAIL incorrect depletion0.9166666666666666. Early termination mutant FAIL MonthsObserved2,funded1013.33,final0. Both caught intended defects; files restored.
+2. Actual runner income/unfunded/concurrency: same fresh command PASS TestGuardrailRecoveryRunnerFundsIncomeAndBoundsConcurrency; output '12 actual paths income-funded through full horizon; peak concurrent hooks=4' and 'unfunded requests score zero real living'. Assertions examine every returned path for full horizon/no failure/positive funding with income; floor failure/zero funded without income. Worker-cap-times3 mutant fails 'concurrency9'; restored.
+3. Composite/scope: make check GOFLAGS="-count=1" exits0,final '✓ all checks passed', fresh full suite,vet,staticcheck,vulnerability and CSS verification. Manifest GO4.1.files contains only internal/services/retirement/analysis/guardrail_recovery_regression_test.go. git status --short and accepted GO1/GO2/GO3 manifests account for existing production edits. GO4 adds no production changes; its test path does not match critical guardrail_optimizer/monte_carlo patterns. No checker edits outside verdicts in real tree.
+FINDINGS: none in GO4 scope.

@@ -2,7 +2,7 @@
 {{define "whatif-guardrails"}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Drop/rise guardrails (simple)</h2>
-    <p class="text-body-sm text-gray-600 dark:text-gray-400 mb-3">These rules adjust your living-expense budget. Healthcare, property tax, and other expense lines are not automatically cut. This does not separately protect essential expenses.</p>
+    <p class="text-body-sm text-gray-600 dark:text-gray-400 mb-3">These rules adjust your living-expense budget. Healthcare, property tax, and other expense lines are not automatically cut. An optional real-dollar floor sets a minimum living-expense request; it does not guarantee funding.</p>
     <p class="text-body-sm text-gray-500 dark:text-gray-400 mb-3">Cuts the living-expense budget when the portfolio drops from peak; raises it when the portfolio rises above baseline. This is a simplified guardrail — not the four-rule Guyton-Klinger (2006) model.</p>
 
     <form hx-post="/whatif/guardrails" hx-target="#whatif-results" class="space-y-3">
@@ -59,7 +59,7 @@
                 <div>
                     <label for="min-spending-pct-input" class="block text-xs text-gray-600 dark:text-gray-400">Min spending %</label>
                     <input type="number" id="min-spending-pct-input" name="min_spending_pct" value="{{printf "%.0f" .Settings.Guardrails.MinSpendingPct}}"
-                        min="50" max="100" step="1"
+                        min="{{if gt .Settings.Guardrails.MinMonthlySpendingReal 0.0}}0{{else}}50{{end}}" max="100" step="1"
                         class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                 </div>
                 <div>
@@ -69,8 +69,11 @@
                         class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                 </div>
             </div>
-            <p class="text-body-sm text-gray-500 dark:text-gray-400">The living-expense budget multiplier never drops below {{printf "%.0f" .Settings.Guardrails.MinSpendingPct}}% or exceeds {{printf "%.0f" .Settings.Guardrails.MaxSpendingPct}}% of the planned living-expense budget. This multiplier does not ensure spending can be funded.</p>
+            <p class="text-body-sm text-gray-500 dark:text-gray-400">The policy multiplier ranges from {{printf "%.0f" .Settings.Guardrails.MinSpendingPct}}% to {{printf "%.0f" .Settings.Guardrails.MaxSpendingPct}}% of the planned living-expense budget. An absolute floor can raise actual spending above this range. These settings do not ensure spending can be funded.</p>
 
+            <div><label for="guardrail-real-floor" class="block text-xs text-gray-600 dark:text-gray-300">Minimum monthly living spending (today's dollars)</label>
+            <input id="guardrail-real-floor" type="number" name="min_monthly_spending_real" min="0" step="0.01" value="{{.Settings.Guardrails.MinMonthlySpendingReal}}" aria-describedby="guardrail-real-floor-help" class="mt-1 block w-full rounded-md border border-gray-500 dark:border-gray-400 dark:bg-gray-700 dark:text-gray-100 p-2 focus:outline focus:outline-2 focus:outline-accent">
+            <p id="guardrail-real-floor-help" class="text-body-sm text-gray-600 dark:text-gray-300 mt-1">Increases with inflation; zero disables the absolute floor. Healthcare, taxes, and other expenses remain additional. Must not exceed starting living expenses. With an absolute floor, minimum spending percentage may be zero.</p></div>
             <button type="submit"
                 class="w-full text-xs px-3 py-1.5 rounded-md bg-accent-strong hover:bg-accent-strong text-white transition-colors">
                 Apply Guardrails
@@ -78,6 +81,7 @@
         </div>
         {{end}}
     </form>
+    {{template "whatif-guardrail-optimizer" .}}
 </div>
 {{end}}
 

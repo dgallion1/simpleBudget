@@ -1,0 +1,124 @@
+{{define "whatif-guardrail-optimizer"}}
+<section id="guardrail-optimizer" class="mt-4 pt-4 border-t border-gray-400 dark:border-gray-500 text-sm text-gray-800 dark:text-gray-100">
+<h3 id="guardrail-optimizer-heading" tabindex="-1" class="font-semibold rounded focus:outline focus:outline-2 focus:outline-accent">Optimize guardrails</h3>
+<form id="guardrail-optimizer-form" class="mt-3 space-y-3">
+<div><label for="guardrail-optimizer-floor" class="block font-medium">Minimum monthly living spending (today's dollars, required)</label>
+<input id="guardrail-optimizer-floor" name="floor_monthly_real" type="number" min="0.01" step="0.01" required value="7500" aria-describedby="guardrail-optimizer-floor-help guardrail-optimizer-status" class="mt-1 w-full rounded border border-gray-500 dark:border-gray-400 bg-white dark:bg-gray-800 p-2 focus:outline focus:outline-2 focus:outline-accent">
+<p id="guardrail-optimizer-floor-help" class="mt-1 text-gray-600 dark:text-gray-300">Editable; increases with inflation. Applies to Monthly Living Expenses only. Healthcare, taxes, and other expenses are additional obligations. Cannot exceed starting monthly living expenses.</p></div>
+<div><label for="guardrail-optimizer-target" class="block font-medium">Chance of maintaining my minimum spending (required)</label>
+<select id="guardrail-optimizer-target" required aria-describedby="guardrail-optimizer-target-help guardrail-optimizer-status" class="mt-1 w-full rounded border border-gray-500 dark:border-gray-400 bg-white dark:bg-gray-800 p-2 focus:outline focus:outline-2 focus:outline-accent">
+<option value="">Choose a target</option><option value="90">90%</option><option value="95">95%</option><option value="99">99%</option><option value="custom">Custom</option>
+</select>
+<div id="guardrail-optimizer-custom-wrap" hidden class="mt-2"><label for="guardrail-optimizer-custom">Custom chance (%, greater than 0 and less than 100)</label><input id="guardrail-optimizer-custom" type="number" step="any" aria-describedby="guardrail-optimizer-target-help guardrail-optimizer-status" class="mt-1 w-full rounded border border-gray-500 dark:border-gray-400 bg-white dark:bg-gray-800 p-2 focus:outline focus:outline-2 focus:outline-accent"></div>
+<p id="guardrail-optimizer-target-help" class="mt-1 text-gray-600 dark:text-gray-300">At 95%, the target is for at least 95 out of 100 simulated futures to fund your minimum every month. This is a simulation target, not a guarantee.</p></div>
+<div class="flex flex-wrap gap-2"><button id="guardrail-optimizer-run" type="submit" class="rounded bg-accent-strong text-white px-3 py-2 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent disabled:cursor-wait">Run optimizer</button><button id="guardrail-optimizer-cancel" type="button" disabled class="rounded border border-gray-500 dark:border-gray-400 px-3 py-2 focus:outline focus:outline-2 focus:outline-accent disabled:cursor-not-allowed">Cancel search</button></div>
+</form>
+<p id="guardrail-optimizer-status" role="status" aria-live="polite" class="mt-2"></p>
+<div id="guardrail-optimizer-results" class="mt-3" aria-busy="false"></div>
+</section>
+<script>
+(function(){
+const root=document.getElementById('guardrail-optimizer');
+if(!root || root.dataset.ready)return;root.dataset.ready='true';
+const form=root.querySelector('form'),target=root.querySelector('#guardrail-optimizer-target'),custom=root.querySelector('#guardrail-optimizer-custom'),wrap=root.querySelector('#guardrail-optimizer-custom-wrap'),run=root.querySelector('#guardrail-optimizer-run'),cancel=root.querySelector('#guardrail-optimizer-cancel'),status=root.querySelector('#guardrail-optimizer-status'),results=root.querySelector('#guardrail-optimizer-results');
+let requestID='',controller=null,generation=0;
+function busy(value){run.disabled=value;cancel.disabled=!value;results.setAttribute('aria-busy',String(value));}
+function invalidate(message){
+ generation++;if(controller)controller.abort();controller=null;
+ if(requestID){fetch('/whatif/guardrails/optimize/cancel',{method:'POST',body:new URLSearchParams({request_id:requestID}),keepalive:true}).catch(()=>{});requestID='';}
+ results.replaceChildren();busy(false);status.textContent=message;
+}
+form.addEventListener('input',()=>invalidate('Inputs changed. Run optimizer to get a new preview.'));
+document.addEventListener('input',event=>{if(root.isConnected&&!root.contains(event.target))invalidate('Plan inputs changed. Run optimizer to get a new preview.');});
+target.addEventListener('change',()=>{wrap.hidden=target.value!=='custom';custom.required=!wrap.hidden;custom.setCustomValidity('');});
+cancel.addEventListener('click',()=>{invalidate('Search cancelled. Nothing was saved.');run.focus();});
+form.addEventListener('submit',async event=>{
+ event.preventDefault();const chance=target.value==='custom'?custom.value:target.value;
+ if(!Number.isFinite(Number(chance))||Number(chance)<=0||Number(chance)>=100){status.textContent='Choose a chance greater than 0% and less than 100%.';(target.value==='custom'?custom:target).focus();return;}
+ invalidate('Searching simulated futures. This may take a few minutes. Nothing is saved until Apply.');
+ requestID=crypto.randomUUID();controller=new AbortController();const current=++generation;
+ const body=new URLSearchParams(new FormData(form));body.set('target_success_pct',chance);body.set('request_id',requestID);busy(true);
+ try{const response=await fetch('/whatif/guardrails/optimize',{method:'POST',body,signal:controller.signal});const markup=await response.text();if(current!==generation)return;results.innerHTML=markup;htmx.process(results);const outcome=results.querySelector('[data-guardrail-outcome]');status.textContent=response.ok?(outcome?.textContent.trim()||'Search complete. Review the preview before applying.'):results.textContent.trim();results.querySelector('[tabindex="-1"]')?.focus();}
+ catch(error){if(current===generation){status.textContent='Search could not complete. Run again. Nothing was saved.';run.focus();}}
+ finally{if(current===generation){controller=null;busy(false);}}
+});
+document.body.addEventListener('htmx:beforeRequest',event=>{
+ if(!root.isConnected)return;
+ const elt=event.detail.elt;
+ if(root.contains(elt)){if(elt.matches('form[data-guardrail-apply]'))status.textContent='Applying recommendation…';return;}
+ if(event.detail.requestConfig?.verb!=='get')invalidate('Plan changed. Run optimizer to get a new preview.');
+});
+document.body.addEventListener('htmx:beforeSwap',event=>{if(event.detail.target===results){event.detail.shouldSwap=true;event.detail.isError=false;}});
+document.body.addEventListener('htmx:afterSwap',event=>{if(event.detail.target===results){status.textContent=results.textContent.trim();results.querySelector('[tabindex="-1"]')?.focus();}});
+if(new URLSearchParams(location.search).has('guardrail_applied')){
+ const announceApplied=()=>requestAnimationFrame(()=>{status.textContent='Guardrail recommendation applied. Projection refreshed.';root.querySelector('h3').focus();});
+ if(document.readyState==='complete')announceApplied();else window.addEventListener('load',announceApplied,{once:true});
+}
+})();
+</script>
+{{end}}
+
+{{define "whatif-guardrail-optimizer-policy-name"}}
+{{if eq .ID "current"}}Current guardrails{{else if eq .ID "no-guardrails"}}Guardrails disabled{{else}}{{if .Labels}}{{range .Labels}}{{.}} · {{end}}{{else}}Alternative{{end}} {{.ID}}{{end}}
+{{end}}
+
+{{define "whatif-guardrail-optimizer-results"}}
+<h4 data-guardrail-outcome="" tabindex="-1" class="font-semibold rounded focus:outline focus:outline-2 focus:outline-accent">{{if .Optimizer.Recommendations}}Options meet your minimum-spending target{{else}}No options met your minimum-spending target{{end}}</h4>
+<p class="mt-2">Your target: <strong>{{.Target}}%</strong> chance of maintaining your minimum every month throughout retirement. These are simulation estimates, not guarantees.</p>
+{{if not .Optimizer.Recommendations}}<p class="mt-2 font-semibold">Your minimum and target were not relaxed.</p>{{end}}
+<div tabindex="0" role="region" aria-label="Guardrail comparison; scroll horizontally for all measures" class="mt-3 max-w-full overflow-x-auto rounded focus:outline focus:outline-2 focus:outline-accent">
+<table class="w-full text-sm text-left">
+<caption class="text-left py-2">All spending is in today's dollars. Worst annual cut is a stress estimate; supporting details explain each measure.</caption>
+<thead><tr>
+<th scope="col" class="p-2">Policy</th>
+<th scope="col" class="p-2">Chance of maintaining minimum</th>
+<th scope="col" class="p-2">Lifetime living spending (median)</th>
+<th scope="col" class="p-2">Worst annual cut</th>
+<th scope="col" class="p-2">Apply</th>
+</tr></thead>
+<tbody>
+{{range .Rows}}{{$c:=.Candidate}}{{$m:=$c.Metrics}}
+<tr class="border-t border-gray-400 dark:border-gray-500 align-top">
+<th scope="row" class="p-2">{{template "whatif-guardrail-optimizer-policy-name" $c}}</th>
+<td class="p-2"><strong class="block text-xl tabular-nums">{{printf "%.2f" $m.FloorSuccessPct}}%</strong><span>{{if $c.Qualifies}}Meets target{{else}}Below target{{end}}</span></td>
+<td class="p-2">{{formatMoney $m.MedianLifetimeFundedLivingReal}}</td>
+<td class="p-2">{{printf "%.2f" $m.P95WorstAnnualCutPct}}%</td>
+<td class="p-2">{{if .Token}}
+<form data-guardrail-apply hx-post="/whatif/guardrails/optimize/apply" hx-target="#guardrail-optimizer-results" hx-disabled-elt="button">
+<input type="hidden" name="request_id" value="{{$.RequestID}}"><input type="hidden" name="recommendation" value="{{.Token}}">
+<button type="submit" aria-label="Apply guardrail policy {{$c.ID}}" class="rounded bg-accent-strong text-white px-3 py-2 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent">Apply</button>
+</form>
+{{else}}{{if $c.Baseline}}Comparison only{{else}}Not a qualifying recommendation{{end}}{{end}}</td>
+</tr>
+<tr><td colspan="5" class="px-2 pb-3">
+<details>
+<summary class="cursor-pointer rounded py-2 focus:outline focus:outline-2 focus:outline-accent">Supporting details: {{template "whatif-guardrail-optimizer-policy-name" $c}}</summary>
+<dl class="mt-2 space-y-2">
+<div><dt class="font-medium">Chance estimate interval (Wilson 95%)</dt><dd>{{printf "%.2f" $m.FloorSuccessCILowPct}}–{{printf "%.2f" $m.FloorSuccessCIHighPct}}%. The interval shows uncertainty in the estimated chance of maintaining your minimum.</dd></div>
+<div><dt class="font-medium">Futures with any month below your minimum</dt><dd>{{$m.FloorShortfallPaths}} / {{$m.Runs}}. Meets target or Below target uses unrounded counts, even when displayed percentages are close.</dd></div>
+<div><dt class="font-medium">Lower spending outcome</dt><dd>{{formatMoney $m.P10LifetimeFundedLivingReal}} of lifetime living spending in today's dollars. This is a lower-end estimate: the 10th percentile (P10) of the ordered simulated outcomes.</dd></div>
+<div><dt class="font-medium">Worst annual cut: how to read the stress estimate</dt><dd>{{printf "%.2f" $m.P95WorstAnnualCutPct}}% is the 95th percentile of each future's largest annual cut in funded living spending. This summarizes severe cuts across the simulated futures.</dd></div>
+<div><dt class="font-medium">Average number of annual cuts</dt><dd>{{printf "%.2f" $m.MeanAnnualCutCount}} over retirement.</dd></div>
+<div><dt class="font-medium">Portfolio depletion (a separate outcome)</dt><dd>{{printf "%.2f" $m.DepletionRiskPct}}% ({{$m.DepletionPaths}} / {{$m.Runs}}). Running out of portfolio assets differs from falling below your spending minimum; income can still fund spending.</dd></div>
+<div><dt class="font-medium">Ending balance (median)</dt><dd>{{formatMoney $m.MedianEndingBalanceReal}} in today's dollars.</dd></div>
+{{if $c.Baseline}}<div><dt class="font-medium">Comparison settings</dt><dd>{{if eq $c.ID "current"}}Current guardrails are unchanged.{{else}}Guardrails and additional adaptive discretionary cuts are disabled.{{end}}</dd></div>{{end}}
+{{with $c.Guardrails}}<div><dt class="font-medium">Guardrail settings</dt><dd>Drop {{.FloorDropPct}}%, cut {{.FloorCutPct}}%; rise {{.CeilingRisePct}}%, raise {{.CeilingRaisePct}}%; policy multiplier {{.MinSpendingPct}}–{{.MaxSpendingPct}}%; minimum monthly living spending {{formatMoney .MinMonthlySpendingReal}} in today's dollars.</dd></div>{{end}}
+</dl>
+</details>
+</td></tr>
+{{end}}
+</tbody>
+</table>
+</div>
+<p class="mt-2">Preview only. Apply saves the selected guardrails and refreshes your projection. Results expire after 15 minutes or when inputs or the plan change.</p>
+<details class="mt-3">
+<summary class="cursor-pointer rounded py-2 font-medium focus:outline focus:outline-2 focus:outline-accent">About these simulations</summary>
+<div class="mt-2 space-y-2 text-gray-600 dark:text-gray-300">
+<p>These are the best choices found in the searched settings, not a global optimum. Candidates must meet your target on an independent validation sample.</p>
+<p>{{.Optimizer.SearchRuns}} search simulations; {{.Optimizer.ValidationRuns}} independent validation simulations per policy, using identical scenario draws for each comparison. Horizon: {{.Optimizer.HorizonMinYears}}–{{.Optimizer.HorizonMaxYears}} years, including longevity variation.</p>
+<p>Funded living spending conservatively pays other obligations first: requested living spending minus any total funding shortfall, with a minimum of zero. Only funded spending counts toward lifetime living spending.</p>
+<p>Outcomes use cumulative CPI to express money in today's dollars, continue through depletion for the full simulated horizon, and count spending below the minimum at cent precision. Annual cuts compare consecutive complete 12-month funded spending totals.</p>
+<p>Search seed <span class="break-all">{{.Optimizer.Seed}}</span>; validation seed <span class="break-all">{{.Optimizer.ValidationSeed}}</span>.</p>
+</div>
+</details>
+{{end}}

@@ -983,6 +983,9 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/social-security", handleWhatIfSocialSecurity)
 	r.Post("/whatif/glide-path", handleWhatIfGlidePath)
 	r.Post("/whatif/guardrails", handleWhatIfGuardrails)
+	r.Post("/whatif/guardrails/optimize", handleGuardrailOptimizer)
+	r.Post("/whatif/guardrails/optimize/cancel", handleCancelGuardrailOptimizer)
+	r.Post("/whatif/guardrails/optimize/apply", handleApplyGuardrailOptimizer)
 	r.Post("/whatif/tax-optimize", handleWhatIfTaxOptimize)
 	r.Post("/whatif/conversion-sweep", handleWhatIfConversionSweep)
 }

@@ -1,0 +1,31 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: GO3
+ATTEMPT: 3
+---
+FAILURES: None in the corrected scope.
+
+Current independent evidence
+Read manifest GO3.3.files and current guardrail_optimizer.html lines32-78. Compared previous template reconstructed verbatim from GO3.2 checker-a11y unified diff with current file using Python difflib: changes limited to outcome-specific h4, removal of redundant no-candidate sentence from following paragraph, and successful-response status selecting outcome heading text. No layout/style/control/motion change in this template.
+
+Actual current handler renders:
+curl -fsS -d 'floor_monthly_real=1000&target_success_pct=95&request_id=a11y-attempt3-noqual' http://127.0.0.1:18086/whatif/guardrails/optimize -o /tmp/go3-a11y-attempt3-noqual.html
+Observed first focusable node is h4[data-guardrail-outcome][tabindex=-1], exact text "No options met your minimum-spending target"; following paragraph states minimum/target not relaxed. This endpoint uses a synthetic no-income fixture. No Apply action in this result.
+curl -fsS -d 'floor_monthly_real=1000&target_success_pct=95&request_id=a11y-attempt3-qual' http://127.0.0.1:18083/whatif/guardrails/optimize -o /tmp/go3-a11y-attempt3-qual.html
+Observed same focusable heading with truthful "Options meet your minimum-spending target" and qualifying Apply form.
+
+Point20 prior failure resolved. Source trace at guardrail_optimizer.html:41 selects [data-guardrail-outcome], writes exactly its trimmed text into existing role=status aria-live=polite, then focuses first tabindex=-1 node, which is that same outcome-specific h4 in both actual responses. It does not copy table text. One concise status assignment per successful response; existing generation guard prevents stale response announcements. Points5,9,10,20,22: focused heading remains logical h4 with visible focus classes; no new forced hidden text or duplicated AT-only copy. This is a traced accessibility consequence, not a claim this checker executed page JS. Behavior lane and worker browser traces are independent execution sources; my prior Browser bootstrap limitation remains.
+
+Independent actual-render regression command:
+rtk proxy go test ./internal/handlers/whatif -run 'TestGuardrailOptimizer(OutcomeHasMeaningfulFocusTarget|CardAndResultsRender)$' -count=1
+PASS: ok budget2/internal/handlers/whatif 0.056s. Tests bind actual HTML element by attribute, assert both h4 texts and tabindex=-1, and polite status semantics; source trace above additionally connects those elements through the successful-response code.
+
+Axe on current actual noqual/qual fragments inserted into previous unchanged actual WhatIf shell, scripts stripped, real built stylesheet file URLs, html.light/html.dark. No guessed HTML/CSS; light/dark snapshot artifacts in /tmp/go3-a11y-render/attempt3-*.html.
+npx --no-install --prefix /home/darrell/.npm/_npx/9e5e191565a58cca @axe-core/cli file:///tmp/go3-a11y-render/attempt3-noqual-light.html file:///tmp/go3-a11y-render/attempt3-noqual-dark.html file:///tmp/go3-a11y-render/attempt3-qual-light.html file:///tmp/go3-a11y-render/attempt3-qual-dark.html --include '#guardrail-optimizer' --chrome-path /home/darrell/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome --chromedriver-path /home/darrell/.npm/_npx/9e5e191565a58cca/node_modules/.bin/chromedriver --chrome-options=--no-sandbox,--allow-file-access-from-files --stdout > /tmp/go3-a11y-attempt3-axe.json
+Exit0; axe4.13 reports0violations in each of4renders. This covers relevant point7/12/23 contrast and semantic consequences of new outcome strings in both themes.
+
+Remaining manual constitution and full-site coverage inherit explicitly from GO3.2.checker-a11y.verdict: points1-19,21-23 unchanged in narrow attempt3; semantic five-column comparison/native disclosures, labels/units/native selected states/error focus, keyboard-scroll region, reduced-motion and absence of hidden-text abuse remain. Original18-page fullsite light/dark audit is not repeated because those surfaces did not change. That audit had16clean renders and40WhatIf contrast findings/theme in baseline disabled spending phases (git diff master empty for spending-phases.html, styles.css and base.html). These remain nonblocking observations outside GO3 scope, not a claim the preexisting entire site has no accessibility defects. Original detailed baseline evidence remains /tmp/go3-a11y-baseline-details.json.
+
+OBSERVATIONS
+Browser-client cannot initialize in this sandbox ('trusted Node services require process isolation; legacy Landlock is not supported for restricted sandboxes'). Current verification used real HTTP rendered bytes, mandatory axe CLI, targeted real-render tests and explicit source tracing, not unsupported replacement interactive browser automation. Prior keyboard/narrow/200% screenshots and traces were worker-provided and attributed in attempt2; test lane owns executable page-JS proof. No production edits.

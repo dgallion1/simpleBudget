@@ -637,6 +637,8 @@ func (s *WhatIfSettings) GetTaxableAllocation() (stock, bond, cash float64) {
 
 // GuardrailConfig defines portfolio-performance-based spending adjustment rules
 type GuardrailConfig struct {
+	MinMonthlySpendingReal float64 `json:"min_monthly_spending_real,omitempty"` // Optional CPI-adjusted living floor; enabled guardrails only.
+
 	Enabled         bool    `json:"enabled"`
 	FloorDropPct    float64 `json:"floor_drop_pct"`    // Portfolio drop from peak to trigger cut (e.g., 20)
 	FloorCutPct     float64 `json:"floor_cut_pct"`     // Spending reduction when floor hit (e.g., 10)
@@ -895,6 +897,9 @@ func (s *WhatIfSettings) GetTaxableQualifiedDividendPercent() float64 {
 
 // ProjectionMonth represents a single month in the projection
 type ProjectionMonth struct {
+	AdjustedLivingExpenses float64 `json:"adjusted_living_expenses"`
+	FundedLivingExpenses   float64 `json:"funded_living_expenses"`
+
 	Month                int     `json:"month"`
 	Year                 float64 `json:"year"`
 	CumulativeInflation  float64 `json:"cumulative_inflation,omitempty"`
@@ -1258,8 +1263,19 @@ type MonteCarloGuardrailImpact struct {
 	BelowPlanAtEnd              bool    `json:"below_plan_at_end"`
 }
 
-// MonteCarloResult represents a single simulation run outcome
+// MonteCarloFloorOutcome measures funded living in today's dollars over the full horizon.
+type MonteCarloFloorOutcome struct {
+	FloorFailed           bool    `json:"floor_failed"`
+	TotalFundedLivingReal float64 `json:"total_funded_living_real"`
+	WorstAnnualCutPct     float64 `json:"worst_annual_cut_pct"`
+	AnnualCutCount        int     `json:"annual_cut_count"`
+	MonthsObserved        int     `json:"months_observed"`
+	FinalBalanceReal      float64 `json:"final_balance_real"`
+}
+
+// MonteCarloResult represents a single simulation run outcome.
 type MonteCarloResult struct {
+	FloorOutcome    *MonteCarloFloorOutcome    `json:"floor_outcome,omitempty"`
 	FinalBalance    float64                    `json:"final_balance"`
 	DepletionYear   float64                    `json:"depletion_year"` // 0 if survives
 	Survives        bool                       `json:"survives"`

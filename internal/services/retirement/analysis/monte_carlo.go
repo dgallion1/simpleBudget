@@ -14,6 +14,8 @@ import (
 // MonteCarloConfig defines parameters for enhanced simulation. Mirrors
 // the parity-window type previously hosted on Calculator.
 type MonteCarloConfig struct {
+	// Observation only: never changes the policy. Positive values observe the full horizon.
+	MinMonthlySpendingReal float64
 	// Market dynamics
 	ReturnVolatility float64 // Annual return standard deviation (e.g., 15 for 15%)
 	CrashProbability float64 // Annual probability of a crash (e.g., 0.05 for 5%)
@@ -368,6 +370,10 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 	lastCrashYear := -999 // Track for recovery boost
 	var totalIRMAA float64
 	var guardrailImpact guardrailImpactTracker
+	var floorTracker *floorOutcomeTracker
+	if config.MinMonthlySpendingReal > 0 {
+		floorTracker = &floorOutcomeTracker{floor: config.MinMonthlySpendingReal}
+	}
 
 	// Annual variation multipliers (redrawn at year boundaries) and
 	// current-month shock expenses.
@@ -451,21 +457,24 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 	}
 
 	for m := 0; m < months; m++ {
-		if depleted {
+		if depleted && floorTracker == nil {
 			break
 		}
 
 		out := st.StepMonth(m, mcReturns)
+		if floorTracker != nil {
+			floorTracker.observe(out.FundedLivingExpenses, st.CumulativeInflation)
+		}
 		guardrailImpact.observe(out.LivingExpenses, out.GuardrailMultiplier, st.CumulativeInflation)
 		guardrailImpact.observeFundingGap(out.Result.Shortfall)
 		totalIRMAA += out.Result.IRMAAExpense
 
 		// Check for depletion
-		if engine.ShortfallCausesDepletion(out.Result.Shortfall, out.AllowTaxDeferredWithdrawal, st.TaxDeferredBalance) {
+		if !depleted && engine.ShortfallCausesDepletion(out.Result.Shortfall, out.AllowTaxDeferredWithdrawal, st.TaxDeferredBalance) {
 			depleted = true
 			depletionYear = float64(m) / 12
 		}
-		if out.TotalBalance <= 0 {
+		if !depleted && out.TotalBalance <= 0 {
 			depleted = true
 			depletionYear = float64(m) / 12
 		}
@@ -479,6 +488,7 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 
 	return models.MonteCarloResult{
 		FinalBalance:    finalBalance,
+		FloorOutcome:    floorTracker.result(finalBalance, st.CumulativeInflation),
 		DepletionYear:   depletionYear,
 		Survives:        !depleted,
 		TotalIRMAA:      totalIRMAA,

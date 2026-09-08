@@ -1,0 +1,16 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: GO2
+ATTEMPT: 2
+---
+Standard: GUARDRAIL_OPTIMIZER_SPEC.md GO2, GO-R4 and GO-R12; GUARDRAIL_OPTIMIZER_PLAN.md GO2. ACCESSIBILITY.md read; no GO2 UI markup scope.
+Isolated cp -a copy: /tmp/go2-second-attempt2 (including .git). No production edits.
+Boundary attack: copied original independent attempt1 probe unchanged from /tmp/go2-second.vKwgio/repo/internal/services/retirement/analysis/go2_second_probe_test.go. go test -count=1 ./internal/services/retirement/analysis -run TestGO2Second -v => PASS for all999 exact tenths, fullservice644/1000 at64.4, and remedy premise. This previously reproduced actual failed qualification; it now passes.
+Strictness: go test -count=1 ./internal/services/retirement/analysis -run GuardrailOptimizer -v => PASS. Inspected assertions: AllExactTenthsBoundaries rejects math.Nextafter(target,+Inf) at every999 boundary; CustomBoundaryService asserts every candidate has1000 runs,356 failures,64.4 observed rate, and recommendations exist only at inclusive64.4, absent at next float above. No epsilon/display rounding used.
+Unchanged decision metrics: diff -u against independent attempt1 snapshot shows production service change confined to guardrailOptimizerQualifies; model diff -q is identical. Metrics aggregation, percentiles, Wilson interval, Pareto dominance and stable rankings unchanged. PercentilesAndBoundary and RecommendationsStayParetoAfterValidation regressions PASS.
+Search/validation/baselines/cancellation: bash .swarm/tier3/GO2/accept.sh => ORACLE PASS. Read oracle assertions: bounded32-grid plus deduplicated current-floor,64 shared search draws,1000 shared independent validation draws, shortlist <=6 plus unchanged current/disabled baselines, no input mutation, funded-real scoring/Wilson95, invalid inputs/chains, canceled requests, infeasible held-out results, deterministic ranking/replay all pass.
+Actual MC required smoke: RealRunnerMatchesScenarioDraws checks actual runner outputs against manual per-run seed derivation including hooks, full horizon, policy immutability and hook-sensitive fixture. RealRunnerObservesBaselineWithoutFloorEnforcement proves observation does not enforce baseline floor. RealRunnerCancelsBetweenRuns proves canceled work returns no partial success. All PASS in above test command; go test -race -count=1 ./internal/services/retirement/analysis -run GuardrailOptimizer => PASS.
+Static checks: go vet ./internal/services/retirement/analysis && staticcheck ./internal/services/retirement/analysis => exit0.
+FINDINGS: No remaining in-scope defect demonstrated. Prior boundary probes promoted into durable worker regressions and expanded oracle. Oracle remedy-premise test alone only tests an expression, but actual service boundary tests and Nextafter regression provide required production evidence.
+SCOPE: GO2 manifest only (model/service/tests). GO1 accepted engine work and foreign active GO3 handler/template/CSS changes excluded. No UI or full-site acceptance claimed.

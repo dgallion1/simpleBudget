@@ -3,6 +3,7 @@ package whatif
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -480,12 +481,24 @@ func handleWhatIfGuardrails(w http.ResponseWriter, r *http.Request) {
 		}
 		settings.Guardrails.Enabled = true
 
+		if value, present := r.PostForm["min_monthly_spending_real"]; present && len(value) > 0 {
+			floor, err := strconv.ParseFloat(value[0], 64)
+			if err != nil || math.IsNaN(floor) || math.IsInf(floor, 0) || floor < 0 || floor > settings.MonthlyLivingExpenses {
+				renderError(w, "Minimum monthly living spending must be finite, at least zero, and no greater than starting living expenses.", http.StatusBadRequest)
+				return
+			}
+			settings.Guardrails.MinMonthlySpendingReal = floor
+		}
+		minPct := 50.0
+		if settings.Guardrails.MinMonthlySpendingReal > 0 {
+			minPct = 0
+		}
 		applyClampedFloatFields(r, []clampedFloatField{
 			{"floor_drop_pct", 1, 50, &settings.Guardrails.FloorDropPct},
 			{"floor_cut_pct", 1, 50, &settings.Guardrails.FloorCutPct},
 			{"ceiling_rise_pct", 1, 100, &settings.Guardrails.CeilingRisePct},
 			{"ceiling_raise_pct", 1, 50, &settings.Guardrails.CeilingRaisePct},
-			{"min_spending_pct", 50, 100, &settings.Guardrails.MinSpendingPct},
+			{"min_spending_pct", minPct, 100, &settings.Guardrails.MinSpendingPct},
 			{"max_spending_pct", 100, 200, &settings.Guardrails.MaxSpendingPct},
 		})
 	} else {

@@ -1,0 +1,14 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: GO1
+ATTEMPT: 1
+---
+Standard: GUARDRAIL_OPTIMIZER_SPEC.md GO1 and GO-R1/R2/R3/R7; GUARDRAIL_OPTIMIZER_PLAN.md GO1. ACCESSIBILITY.md read; no GO1 markup or interaction changes.
+Verification ran in cp -a disposable copy recorded at /tmp/go1-second-path, preserving .git. Working-tree manifest reconciled, not merely committed diff.
+Commands: bash .swarm/tier3/GO1/accept.sh => ORACLE PASS; go test -count=1 ./internal/models ./internal/services/retirement/engine ./internal/services/retirement/analysis => all PASS; go vet and staticcheck on those three packages => exit 0; go build on those packages => exit 0.
+Floor/CPI/phase criterion: oracle variable-CPI, zero-inflation and phase/decline tests pass. Independent TestGO1SecondZeroPhase runs 36 months with zero planned base, CPI 12%, net inflation -90%, verifies adjusted real living exactly 7500, fully funded amounts, and no phantom events. Passed.
+Funding and depletion criterion: oracle verifies zero assets with sufficient income, discretionary gap above floor, gap below floor, cent thresholds and locked assets. Durable healthcare/property tax and actual income-tax tests passed. Independent TestGO1SecondRecovery verifies first depletion remains month1/12 after income begins month12 and positive assets recover; all36 months observed, earlier floor failure retained, real funded lifetime exceeds19000 but below20000, ending assets exceed6000. Passed. Initial exact no-return probe expectation was void: existing MC defaults generate returns even with empty config; revised assertions measure recovery without assuming nonexistent zero returns.
+Annual accounting: complete consecutive 12-month annual cut tests and above-original-budget cut regression passed, including incomplete trailing year exclusion; stochastic CPI ending-balance test passed.
+Consumers/compatibility: canonical monthly adjusted/funded fields, historical backtest floor impact, active chain replacement, effective event dollars/multipliers and clamped no-op suppression tests passed; JSON floor/outcome roundtrip and legacy missing-field decoding passed. Existing impact consumer measures relative cuts, and zero planned base correctly has no relative cut. Observation-only disabled baseline and old no-observer termination oracle pass.
+SCOPE: GO1 manifest only. Foreign GO2 models/guardrail_optimizer.go and analysis/guardrail_optimizer*.go plus GO3 handlers/templates/CSS excluded from acceptance judgment. No production edits. Disposable adversarial probes retained in copy for promotion if desired. No demonstrated in-scope defect.

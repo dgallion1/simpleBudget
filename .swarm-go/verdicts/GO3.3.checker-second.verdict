@@ -1,0 +1,12 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: GO3
+ATTEMPT: 3
+---
+Scope: narrow GO3attempt3 remediation of GO3.2 a11y FAIL against optimizer accessibility20, plus regression tests. Read prior FAIL and current manifest. Independent cp -a /tmp/go-second-attempt3 retained .git. No production files modified.
+Diff against independent attempt2 snapshot confirms only result heading/no-result paragraph and successful-response status extraction changed in optimizer template; handler implementation identical (diff -q). New heading branches on actual recommendation list, stays h4/tabindex-1, and client copies its text to existing polite status before focusing it. Generic completion fallback cannot mask normal rendered outcomes because both branches render the identified heading.
+Command: go test ./internal/handlers/whatif -run TestGuardrailOptimizer -count=1 -v. PASS; /tmp/go3-second3-handler.log. Includes default7500/no-selected-target, finite validation, ordinary-form floor preservation, rejected stale/forged/expired/cancelled Apply, actual service preview/no mutation/explicit Apply/replay rejection, and DOM heading/live-status assertions. Inspected new test assertions: they parse actual heading and require exact outcome text plus focusability and polite status semantics.
+Independent adversarial actual-service probe, not fabricated result rows: go test ./internal/handlers/whatif -run TestSecond3 -count=1 -v. PASS. Actual zero-portfolio/no-income fixture rendered No options met your minimum-spending target with0 Apply forms. Actual income-funded fixture rendered Options meet your minimum-spending target with1 Apply form. Both byte-compared persisted settings before/after search unchanged. Probe source retained only in /tmp/go-second-attempt3/internal/handlers/whatif/second3_probe_test.go.
+Financial smoke: go test ./internal/services/retirement/analysis -run "TestGuardrailOptimizer(AllExactTenthsBoundaries|CustomBoundaryService)" -count=1 -v. PASS. No financial formatting, qualification, persistence or metric changes in this attempt.
+FINDINGS: No in-scope defect reproduced. Temporary worker HTTP servers18086/18087 were unavailable at check time; replaced those requests with independent actual-handler/service/template executions above. Do not claim independent browser announcement/axe execution; separate a11y lane provides dynamic verification. GO4 already accepted and excluded from this recheck.

@@ -351,6 +351,15 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 			t.Errorf("BL5 guard: missing scroll region %s in html=%s", region, html)
 		}
 	}
+	// BK2 (2026-09-08): the row-toggle button meets the 24 px target size
+	// (h-6 w-6 inline-flex, centered) and the chevron column header carries
+	// a sr-only label so axe's empty-table-header rule is satisfied.
+	if !strings.Contains(html, `class="major-expense-row-toggle inline-flex h-6 w-6 items-center justify-center rounded text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"`) {
+		t.Errorf("BL5 guard: row-toggle button must carry inline-flex h-6 w-6 items-center justify-center rounded, got: %s", html)
+	}
+	if !strings.Contains(html, `<th scope="col" class="w-6"><span class="sr-only">Details</span></th>`) {
+		t.Errorf("BL5 guard: chevron column header must carry a sr-only 'Details' label, got: %s", html)
+	}
 	if !strings.Contains(html, "Rent") {
 		t.Errorf("expected expense name in output")
 	}
@@ -731,6 +740,17 @@ func TestRenderMajorExpenses_CountChipAndClearButton(t *testing.T) {
 	}
 	if !strings.Contains(html, `class="major-expenses-bulk-pin-clear hidden`) {
 		t.Errorf("expected Clear button rendered with hidden class, got: %s", html)
+	}
+	// BK2 (2026-09-08): Apply and Clear meet the 24 px target size
+	// (text-body-sm px-3 py-1.5, not text-xs px-2 py-0.5).
+	if !strings.Contains(html, `class="px-3 py-1.5 bg-warning-strong hover:bg-warning-strong text-white rounded text-body-sm disabled:opacity-50 disabled:cursor-not-allowed"`) {
+		t.Errorf("BL5 guard: Apply button must carry text-body-sm px-3 py-1.5, got: %s", html)
+	}
+	if !strings.Contains(html, `class="major-expenses-bulk-pin-clear hidden px-3 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-100 rounded text-body-sm"`) {
+		t.Errorf("BL5 guard: Clear button must carry text-body-sm px-3 py-1.5, got: %s", html)
+	}
+	if strings.Contains(html, `px-2 py-0.5 bg-warning-strong`) || strings.Contains(html, `bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-100 rounded text-xs`) {
+		t.Errorf("BL5 guard: bulk-pin buttons must not retain the old text-xs px-2 py-0.5 sizing, got: %s", html)
 	}
 }
 

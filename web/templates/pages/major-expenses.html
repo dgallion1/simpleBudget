@@ -150,6 +150,7 @@
         <span class="ml-2 text-xs text-gray-600 dark:text-gray-400">({{len .Deleted}})</span>
         <span class="ml-2 text-body-sm italic text-gray-600 dark:text-gray-400">restore brings back the definition and pinned transactions</span>
     </summary>
+    <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Deleted major expense definitions">
     <table class="w-full text-body-sm mt-1">
         <thead class="text-gray-600 dark:text-gray-400">
             <tr>
@@ -171,7 +172,7 @@
                           hx-target="#major-expenses-results" hx-swap="innerHTML"
                           hx-include="#major-expenses-filter-form">
                         <button type="submit"
-                                class="text-xs px-2 py-0.5 rounded border border-positive text-positive hover:bg-positive-soft">
+                                class="text-body-sm px-3 py-1.5 rounded border border-positive text-positive hover:bg-positive-soft">
                             Restore
                         </button>
                     </form>
@@ -180,7 +181,7 @@
                           hx-include="#major-expenses-filter-form"
                           hx-confirm="Permanently discard {{.Expense.Name}}? This cannot be undone.">
                         <button type="submit"
-                                class="text-xs px-2 py-0.5 rounded border border-negative text-negative hover:bg-negative-soft">
+                                class="text-body-sm px-3 py-1.5 rounded border border-negative text-negative hover:bg-negative-soft">
                             Discard
                         </button>
                     </form>
@@ -189,6 +190,7 @@
             {{end}}
         </tbody>
     </table>
+    </div>
 </details>
 {{end}}
 
@@ -541,6 +543,7 @@
     {{if $unmatchedFromExceptions}}
         {{/* Legacy render path for fixtures without AllUnmatched. */}}
         {{if .Match.Exceptions.UnknownLarge}}
+        <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Unmatched exceptions over threshold">
         <table class="w-full text-body-sm mt-1">
             <thead class="text-gray-600 dark:text-gray-400">
                 <tr>
@@ -588,11 +591,13 @@
                 {{end}}
             </tbody>
         </table>
+        </div>
         {{else}}
         <p class="text-body-sm italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
         {{end}}
     {{else}}
         {{if $unmatchedRows}}
+        <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Unmatched exceptions">
         <table class="w-full text-body-sm mt-1 major-expenses-sortable" data-default-sort="amount" data-default-dir="desc">
             <thead class="text-gray-600 dark:text-gray-400">
                 <tr>
@@ -650,6 +655,7 @@
                 {{end}}
             </tbody>
         </table>
+        </div>
         {{else}}
         <p class="text-body-sm italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
         {{end}}
@@ -738,6 +744,7 @@
         <span class="ml-2 text-xs text-accent">({{len .Match.Exceptions.NewMerchants}})</span>
     </summary>
     {{if .Match.Exceptions.NewMerchants}}
+    <div class="overflow-x-auto" tabindex="0" role="region" aria-label="New merchant exceptions">
     <table class="w-full text-body-sm mt-1">
         <thead class="text-gray-600 dark:text-gray-400">
             <tr>
@@ -801,6 +808,7 @@
             {{end}}
         </tbody>
     </table>
+    </div>
     {{else}}
     <p class="text-body-sm italic text-gray-600 dark:text-gray-400 px-3 py-2">None.</p>
     {{end}}

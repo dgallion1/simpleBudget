@@ -58,6 +58,10 @@ func TestRenderMajorExpenses_UnmatchedBucketShowsAllRowsWithDimming(t *testing.T
 	if !strings.Contains(html, "Big Unknown Charge") {
 		t.Errorf("expected over-threshold row in output, got: %s", html)
 	}
+	// BL1/BL5 (2026-09-08): the AllUnmatched table is a labelled scroll region.
+	if !strings.Contains(html, `<div class="overflow-x-auto" tabindex="0" role="region" aria-label="Unmatched exceptions">`) {
+		t.Errorf("BL5 guard: AllUnmatched table must be wrapped in a labelled scroll region, got: %s", html)
+	}
 	if !strings.Contains(html, "Tiny Coffee") {
 		t.Errorf("expected sub-threshold row in output (was previously hidden), got: %s", html)
 	}
@@ -130,6 +134,15 @@ func TestRenderMajorExpenses_UnmatchedBadgeAndDeletedPanel(t *testing.T) {
 	}
 	if !strings.Contains(html, `hx-delete="/major-expenses/deleted/gone"`) {
 		t.Errorf("expected discard form for archived id, got: %s", html)
+	}
+	// BL1/BL5 (2026-09-08): the Deleted panel's table lives in a keyboard-
+	// focusable, labelled scroll region and its row buttons meet the 24 px
+	// target size (text-body-sm px-3 py-1.5, not text-xs px-2 py-0.5).
+	if !strings.Contains(html, `<div class="overflow-x-auto" tabindex="0" role="region" aria-label="Deleted major expense definitions">`) {
+		t.Errorf("BL5 guard: deleted-definitions table must be wrapped in a labelled scroll region, got: %s", html)
+	}
+	if !strings.Contains(html, `class="text-body-sm px-3 py-1.5 rounded border border-positive`) || strings.Contains(html, `text-xs px-2 py-0.5`) {
+		t.Errorf("BL5 guard: Restore/Discard buttons must carry text-body-sm px-3 py-1.5, got: %s", html)
 	}
 }
 
@@ -326,6 +339,18 @@ func TestRenderMajorExpenses_WithEntriesAndExceptions(t *testing.T) {
 		"WindowDays":    30,
 		"TotalDeclared": 4800.0,
 	})
+	// BL1/BL5 (2026-09-08): every exceptions table is a labelled,
+	// keyboard-focusable scroll region (legacy UnknownLarge branch, new
+	// merchants, and the pre-existing anomalous-amount region).
+	for _, region := range []string{
+		`<div class="overflow-x-auto" tabindex="0" role="region" aria-label="Unmatched exceptions over threshold">`,
+		`<div class="overflow-x-auto" tabindex="0" role="region" aria-label="New merchant exceptions">`,
+		`<div class="overflow-x-auto" tabindex="0" role="region" aria-label="Matched but anomalous amount table">`,
+	} {
+		if !strings.Contains(html, region) {
+			t.Errorf("BL5 guard: missing scroll region %s in html=%s", region, html)
+		}
+	}
 	if !strings.Contains(html, "Rent") {
 		t.Errorf("expected expense name in output")
 	}

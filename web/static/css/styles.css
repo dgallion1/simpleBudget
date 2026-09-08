@@ -230,6 +230,7 @@ input:focus, select:focus {
    tab's selected underline and the chart controls' pressed fills. */
 [data-wf-tab]:focus-visible,
 [data-ins-tab]:focus-visible,
+[role="region"][tabindex="0"]:focus-visible, /* BL3: keyboard-focusable scroll regions, every page — the UA default ring is near-invisible on the dark card (ruling BL-2026-09-08b) */
 [data-wf-collapse-toggle]:focus-visible,
 [data-whatif-projection-card] [data-display-dollars]:focus-visible,
 [data-whatif-projection-card] [data-projection-compare-toggle]:focus-visible {

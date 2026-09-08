@@ -126,8 +126,14 @@ func buildFindings(ts *models.TransactionSet, p models.PeriodContext, flags []an
 			add(chosen, "price-creep", "Price creep", "Median of first three vs last three charges", &c)
 		}
 	}
+	// Largest absolute amount first (SV1): the review list exists to surface
+	// what matters most, and sign is irrelevant to how much a row deserves a
+	// look. Equal amounts keep the older deterministic order below.
 	sort.Slice(out, func(i, j int) bool {
 		a, b := out[i], out[j]
+		if av, bv := math.Abs(a.Transaction.Amount), math.Abs(b.Transaction.Amount); av != bv {
+			return av > bv
+		}
 		if !a.Transaction.Date.Equal(b.Transaction.Date) {
 			return a.Transaction.Date.After(b.Transaction.Date)
 		}

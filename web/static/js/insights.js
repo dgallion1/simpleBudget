@@ -106,6 +106,16 @@ function sortRecurringTable(column) {
 // Category trends table sorting
 let trendsSortState = { column: null, ascending: true };
 
+// TC1: the chart is a VIEW of the table -- trendsChartRaw holds the last
+// #chart-trends response exactly as the endpoint sent it (no markers:
+// attempt 2, ruling TC-2026-09-08b -- markers are theme-dependent, so
+// baking them in here and re-rendering this same object later replays a
+// stale theme). renderTrendsChart() re-derives the chart drawn from it,
+// markers included fresh for the CURRENT theme, every time the table's
+// visible rows change (default cap, toggle, sort, HTMX swap). Set in the
+// htmx:afterRequest handler below.
+let trendsChartRaw = null;
+
 function sortTrendsTable(column) {
     const table = document.getElementById('category-trends-table');
     if (!table) return;
@@ -159,6 +169,7 @@ function applyTrendsCap() {
     Array.from(tbody.querySelectorAll('tr')).forEach(function (row, i) {
         row.hidden = !expanded && i >= 12;
     });
+    renderTrendsChart();
 }
 
 function toggleTrendsCap(button) {
@@ -350,6 +361,88 @@ function insightChartMarkers() {
     return [{color: accent}, {color: prior, pattern: {shape: '/'}}];
 }
 
+// TC1: pure helpers, exposed on window.insightsTrends so a node:test can
+// exercise them without a browser. Neither ever changes the endpoint's
+// figures -- only which points of the already-fetched payload are drawn.
+
+// The data-category of every tbody tr that is not hidden, in DOM order.
+function visibleTrendCategories(table) {
+    if (!table) return [];
+    const tbody = table.querySelector('tbody');
+    if (!tbody) return [];
+    return Array.from(tbody.querySelectorAll('tr'))
+        .filter(function (row) { return !row.hidden; })
+        .map(function (row) { return row.dataset.category; });
+}
+
+// A deep-copied chart-data payload whose traces keep only the points whose
+// x is in categories, re-ordered to match categories (x/y together, and
+// any per-point marker colour array on a trace filtered in step with its
+// points). layout.height is recomputed for the new bar count. raw is
+// never mutated.
+function filterTrendTraces(raw, categories) {
+    const copy = JSON.parse(JSON.stringify(raw));
+    (copy.data || []).forEach(function (trace) {
+        const xs = trace.x || [];
+        const ys = trace.y || [];
+        const colorArr = trace.marker && Array.isArray(trace.marker.color) ? trace.marker.color : null;
+        const indexByCategory = {};
+        xs.forEach(function (cat, i) { indexByCategory[cat] = i; });
+        const newX = [], newY = [], newColor = colorArr ? [] : null;
+        categories.forEach(function (cat) {
+            if (!Object.prototype.hasOwnProperty.call(indexByCategory, cat)) return;
+            const i = indexByCategory[cat];
+            newX.push(xs[i]);
+            newY.push(ys[i]);
+            if (colorArr) newColor.push(colorArr[i]);
+        });
+        trace.x = newX;
+        trace.y = newY;
+        if (colorArr) trace.marker.color = newColor;
+    });
+    copy.layout = copy.layout || {};
+    copy.layout.height = Math.max(360, categories.length * 38 + 120);
+    return copy;
+}
+
+window.insightsTrends = {
+    visibleTrendCategories: visibleTrendCategories,
+    filterTrendTraces: filterTrendTraces
+};
+
+// Render #chart-trends filtered to the table's currently visible rows.
+// Called from the htmx:afterRequest handler below (a fresh fetch) and
+// from applyTrendsCap() (default cap, toggle, sort, and the htmx:afterSwap
+// that follows a date-range swap all route through applyTrendsCap). When
+// the table isn't in the document, falls back to every category in the
+// raw payload's own order -- same figures/order the endpoint returned.
+// Always goes through filterTrendTraces (which deep-copies) rather than
+// passing trendsChartRaw straight to renderChart: renderChart mutates its
+// argument in place for #chart-trends (swaps x/y for the horizontal-bar
+// layout), which would otherwise corrupt trendsChartRaw for later renders.
+//
+// TC1 attempt 2 (ruling TC-2026-09-08b): trendsChartRaw holds the endpoint
+// payload WITHOUT markers -- markers are applied here, to the filtered
+// copy, from the CURRENT theme every render. Applying them once at fetch
+// time (attempt 1) and re-rendering that stale-themed copy from
+// expand/collapse/sort after a theme toggle repainted bars in the old
+// theme (light accent on the dark card, 2.41:1).
+function renderTrendsChart() {
+    if (!trendsChartRaw) return;
+    const table = document.getElementById('category-trends-table');
+    const categories = table ? visibleTrendCategories(table) : trendsChartRaw.data[0].x;
+    const filtered = filterTrendTraces(trendsChartRaw, categories);
+    const markers = insightChartMarkers();
+    filtered.data.forEach(function (trace, i) { trace.marker = markers[i]; });
+    renderChart('chart-trends', filtered);
+}
+
+// TC1: restyle only ever touches marker, never x/y, so it cannot resurrect
+// bars filterTrendTraces already dropped from chart.data -- insightChartMarkers()
+// returns a single {color} per trace (no per-point array to keep in sync
+// with the filtered points), and Plotly.restyle re-applies that whole
+// marker object over whatever the chart currently has rendered (already
+// the filtered set).
 window.addEventListener('themechange', function () {
     const chart = document.getElementById('chart-trends');
     if (chart && chart.data && window.Plotly) {
@@ -362,11 +455,11 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
     const target = evt.detail.target;
     if (target && target.id === 'chart-trends') {
         try {
-            const data = JSON.parse(evt.detail.xhr.responseText);
-            const markers = insightChartMarkers();
-            data.data.forEach((trace, i) => { trace.marker = markers[i]; });
-            data.layout.height = Math.max(360, data.data[0].x.length * 38 + 120);
-            renderChart('chart-trends', data);
+            // Store exactly what the endpoint returned -- no markers applied
+            // here (attempt 2, ruling TC-2026-09-08b): renderTrendsChart()
+            // applies them fresh, for the theme active at render time.
+            trendsChartRaw = JSON.parse(evt.detail.xhr.responseText);
+            renderTrendsChart();
         } catch (e) {
             console.error('Error parsing chart data:', e);
         }

@@ -61,7 +61,7 @@
     </section>
     <section id="insights-findings" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="findings-heading">
         <h2 id="findings-heading" class="text-xl font-semibold text-gray-800 dark:text-gray-100">Review these transactions</h2>
-        <p class="text-base text-gray-700 dark:text-gray-300">{{len .Findings}} findings in the selected period. A transaction can have more than one finding type.</p>
+        <p class="text-base text-gray-700 dark:text-gray-300">{{len .Findings}} findings in the selected period, largest amount first. A transaction can have more than one finding type.</p>
         {{if .Findings}}
         <ul id="findings-preview" class="divide-y divide-gray-200 dark:divide-gray-700">{{range .Preview}}{{template "insights-finding" .}}{{end}}</ul>
         {{if .Remaining}}

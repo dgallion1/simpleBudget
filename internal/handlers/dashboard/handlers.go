@@ -1249,9 +1249,12 @@ func buildBudgetVsActualChartData(ts *models.TransactionSet, rangeStart, rangeEn
 				"yanchor":   "bottom",
 				"text":      fmt.Sprintf("Target $%.0f", combinedTarget),
 				"showarrow": false,
+				// BL4 (2026-09-08): no explicit colour — the annotation inherits
+				// layout.font, which charts.js themes (font.color) at render and
+				// on themechange, so the label meets 4.5:1 in both themes. 12 px
+				// is the U6 label floor.
 				"font": map[string]interface{}{
-					"color": "#6b7280",
-					"size":  11,
+					"size": 12,
 				},
 			},
 		},

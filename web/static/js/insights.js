@@ -346,7 +346,7 @@ applyTrendsCap();
 function insightChartMarkers() {
     const css = getComputedStyle(document.documentElement);
     const accent = 'rgb(' + css.getPropertyValue('--accent').trim().split(/\s+/).join(',') + ')';
-    const prior = document.documentElement.classList.contains('dark') ? '#9ca3af' : '#6b7280';
+    const prior = document.documentElement.classList.contains('dark') ? '#a8a29e' : '#78716c'; // BL4: stone-400 / stone-500
     return [{color: accent}, {color: prior, pattern: {shape: '/'}}];
 }
 

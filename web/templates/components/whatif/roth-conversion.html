@@ -45,7 +45,7 @@
                 <label for="roth-annual-amount" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Annual Conversion Amount</label>
                 <div class="mt-1 relative rounded-md shadow-sm">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <span class="text-gray-600 sm:text-sm">$</span>
+                        <span class="text-gray-600 dark:text-gray-300 sm:text-sm">$</span>
                     </div>
                     <input type="number" id="roth-annual-amount" name="annual_amount"
                         value="{{if .Settings.RothConversion}}{{printf "%.0f" .Settings.RothConversion.AnnualAmount}}{{else}}50000{{end}}"

@@ -58,7 +58,7 @@
                 <p class="text-body-sm text-gray-600 dark:text-gray-300 mb-2">{{$phase.Description}}</p>
                 <input type="hidden" name="phase_{{$i}}_name" value="{{$phase.Name}}">
                 <input type="hidden" name="phase_{{$i}}_description" value="{{$phase.Description}}">
-                <div class="flex items-center gap-3">
+                <div class="flex flex-wrap items-center gap-3">
                     {{if ne $i 0}}
                     <div class="flex items-center gap-1">
                         <label for="phase-{{$i}}-start-age" class="text-xs text-gray-600 dark:text-gray-300">Age</label>
@@ -67,13 +67,13 @@
                             class="w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-600 dark:text-gray-100 text-sm py-1">
                     </div>
                     {{end}}
-                    <div class="flex-1 flex items-center gap-2">
+                    <div class="flex-1 min-w-0 flex flex-wrap items-center gap-2">
                         <label for="phase-{{$i}}-multiplier" class="text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">Spending</label>
                         <input type="range" id="phase-{{$i}}-multiplier" name="phase_{{$i}}_multiplier"
                             value="{{printf "%.2f" $phase.Multiplier}}"
                             min="0.30" max="1.20" step="0.05"
                             data-quick-adjust-key="phase:{{$i}}:multiplier"
-                            class="flex-1 h-2 bg-gray-200 dark:bg-gray-500 rounded-lg appearance-none cursor-pointer"
+                            class="flex-1 min-w-[8rem] h-2 bg-gray-200 dark:bg-gray-500 rounded-lg appearance-none cursor-pointer"
                             oninput="updatePhaseSliderLabel(this)">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-200 w-10 text-right" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-percent">{{printf "%.0f" (mul $phase.Multiplier 100)}}%</span>
                         <span class="text-body-sm text-gray-600 dark:text-gray-300 w-20 text-right phase-dollar-label" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">{{formatDollars (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo</span>

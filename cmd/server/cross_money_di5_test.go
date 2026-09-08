@@ -77,13 +77,59 @@ func TestDI5SecondCrossMoney(t *testing.T) {
 					wants = map[string]int{"Selected period:": tc.spendC}
 				}
 				for label, want := range wants {
-					m := regexp.MustCompile("(?s)" + regexp.QuoteMeta(label) + `.*?(-?\$[0-9,]+\.[0-9]{2})`).FindStringSubmatch(body)
+					// RF2 (2026-09-07, ruling RF-2026-09-07b) added a
+					// #dashboard-lead sentence that also starts with the
+					// literal text "Recorded income" and renders BEFORE the
+					// Income tile. Anchor on the tile's own heading
+					// ("Recorded income</h2>") so this always captures the
+					// Income TILE's figure regardless of what the lead says,
+					// instead of whichever "Recorded income..." text happens
+					// to come first in the document.
+					anchor := label
+					if label == "Recorded income" {
+						anchor = "Recorded income</h2>"
+					}
+					m := regexp.MustCompile("(?s)" + regexp.QuoteMeta(anchor) + `.*?(-?\$[0-9,]+\.[0-9]{2})`).FindStringSubmatch(body)
 					if len(m) != 2 || m[1] != money(want) {
 						t.Fatalf("%s %s %v want %s", surface, label, m, money(want))
 					}
 				}
 				if path != "/insights" && tc.netC == 0 && (!strings.Contains(body, "Recorded income matches spending") || strings.Contains(body, "Recorded income above spending") || strings.Contains(body, "Spending not covered by recorded income")) {
 					t.Fatal("non-neutral displayed zero")
+				}
+				// RF2 cross-surface money oracle (ruling RF-2026-09-07b):
+				// #dashboard-lead's own money figure(s) must agree with the
+				// Cash-flow balance tile ON THE SAME PAGE -- both surfaces
+				// render from the SAME $flow.Balance, so they can never be
+				// allowed to drift apart. /insights (and the HX request,
+				// which also targets /insights) carries no #dashboard-lead.
+				if path != "/insights" {
+					leadMatch := regexp.MustCompile(`(?s)id="dashboard-lead"[^>]*>(.*?)</p>`).FindStringSubmatch(body)
+					if leadMatch == nil {
+						t.Fatalf("%s: expected #dashboard-lead in body", surface)
+					}
+					leadText := leadMatch[1]
+					cfMatch := regexp.MustCompile(`(?s)Cash-flow balance</h2>.*?(-?\$[0-9,]+\.[0-9]{2})`).FindStringSubmatch(body)
+					if cfMatch == nil {
+						t.Fatalf("%s: could not locate Cash-flow balance tile figure", surface)
+					}
+					cfFigure := strings.TrimPrefix(cfMatch[1], "-")
+					switch {
+					case strings.Contains(leadText, "did not cover spending by") || strings.Contains(leadText, "exceeded spending by"):
+						moneyMatch := regexp.MustCompile(`<span class="num">(\$[0-9,]+\.[0-9]{2})</span>\.`).FindStringSubmatch(leadText)
+						if moneyMatch == nil {
+							t.Fatalf("%s: could not find the balance money span in lead %q", surface, leadText)
+						}
+						if moneyMatch[1] != cfFigure {
+							t.Fatalf("%s: lead balance figure %s does not equal Cash-flow tile figure %s (sign-normalized); lead=%q", surface, moneyMatch[1], cfFigure, leadText)
+						}
+					case strings.Contains(leadText, "matched spending"):
+						if cfFigure != "$0.00" {
+							t.Fatalf("%s: lead says \"matched spending\" but Cash-flow tile shows %s, want $0.00", surface, cfFigure)
+						}
+					default:
+						t.Fatalf("%s: #dashboard-lead did not match any expected cash-flow phrase: %q", surface, leadText)
+					}
 				}
 			}
 			st, ct := mcp.NewInMemoryTransports()

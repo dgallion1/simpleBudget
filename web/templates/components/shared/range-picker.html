@@ -44,7 +44,7 @@
 {{$stacked := eq .Layout "stacked"}}
 {{if $stacked}}
 {{$group := ne .GroupInputs false}}
-{{if $group}}<div class="flex items-end gap-2">{{end}}
+{{if $group}}<div class="flex flex-wrap items-end gap-2">{{end}}
     <div{{if .StackedWrapClass}} class="{{.StackedWrapClass}}"{{end}}>
         <label for="{{.StartID}}" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
         <input type="date" id="{{.StartID}}" name="{{if .StartName}}{{.StartName}}{{else}}start{{end}}" value="{{.StartValue}}" min="{{.MinDate}}" max="{{.MaxDate}}"

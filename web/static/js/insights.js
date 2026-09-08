@@ -18,6 +18,8 @@ document.addEventListener('click', function (e) {
     if (step) { shiftInsightWindow(parseInt(step.dataset.step, 10)); return; }
     const preset = e.target.closest('#insights-date-filter .insight-preset-btn[data-preset]');
     if (preset) { setInsightPreset(preset.dataset.preset); return; }
+    var trendsToggle = e.target.closest('[data-trends-toggle]');
+    if (trendsToggle) { toggleTrendsCap(trendsToggle); return; }
     var sortEl = e.target.closest('[data-sort-fn]');
     if (sortEl) {
         var fn = sortEl.getAttribute('data-sort-fn');
@@ -139,6 +141,37 @@ function sortTrendsTable(column) {
 
     rows.forEach(row => tbody.appendChild(row));
     updateSortIcons('category-trends-table', column, trendsSortState.ascending);
+    applyTrendsCap();
+}
+
+// RF3: cap the rendered category-trends table to the largest 12 rows (in
+// current DOM order -- sorting re-appends rows before this runs, so
+// "largest 12" always means the top 12 of whatever the table is currently
+// sorted by). Server markup carries no `hidden` (point 16: JS off shows
+// every row); this only ever narrows what JS itself already broadened by
+// making the whole table interactive, so JS is what may also collapse it.
+function applyTrendsCap() {
+    const table = document.getElementById('category-trends-table');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    if (!tbody) return;
+    const expanded = table.dataset.expanded === 'true';
+    Array.from(tbody.querySelectorAll('tr')).forEach(function (row, i) {
+        row.hidden = !expanded && i >= 12;
+    });
+}
+
+function toggleTrendsCap(button) {
+    const table = document.getElementById('category-trends-table');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const total = tbody ? tbody.querySelectorAll('tr').length : 0;
+    const expanded = table.dataset.expanded === 'true';
+    const next = !expanded;
+    table.dataset.expanded = next ? 'true' : 'false';
+    button.setAttribute('aria-expanded', next ? 'true' : 'false');
+    button.textContent = next ? 'Show the largest 12' : ('Show all ' + total + ' categories');
+    applyTrendsCap();
 }
 
 function updateSortIcons(tableId, column, ascending) {
@@ -302,7 +335,12 @@ document.body.addEventListener('htmx:afterSwap', function (evt) {
     const next = insightFocusSelector && document.querySelector(insightFocusSelector);
     if (next) next.focus({preventScroll: true});
     insightFocusSelector = null;
+    applyTrendsCap();
 });
+
+// Init: the trends table is present in the server-rendered document by the
+// time this deferred script runs.
+applyTrendsCap();
 
 // Handle chart data responses
 function insightChartMarkers() {

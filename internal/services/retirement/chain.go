@@ -159,7 +159,15 @@ func rebaseRothConversion(config *models.RothConversionConfig, transitionYear in
 		return config
 	}
 	result := *config
-	if result.EndYear > 0 && result.EndYear <= transitionYear {
+	if config.PerYearOverrides != nil {
+		result.PerYearOverrides = make(map[int]float64)
+		for year, amount := range config.PerYearOverrides {
+			if year >= transitionYear {
+				result.PerYearOverrides[year-transitionYear] = amount
+			}
+		}
+	}
+	if result.EndYear > 0 && (result.EndYear < transitionYear || (result.EndYear == transitionYear && len(config.PerYearOverrides) == 0)) {
 		result.Enabled = false
 		return &result
 	}

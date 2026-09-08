@@ -102,9 +102,7 @@ func DeepCopy(cfg *models.WhatIfSettings) (*models.WhatIfSettings, error) {
 // Use Clone (not DeepCopy) whenever the copy is handed to a caller that will
 // read those fields WITHOUT first going through From. DeepCopy is only safe
 // when From re-derives them: From runs ComputeAges, so CurrentAge/SpouseAge
-// come back, but nothing re-derives RothConversion.PerYearOverrides — which
-// is why overrides.Apply copies via Clone, and why mcpsvc/plan re-attaches
-// the map after From's internal DeepCopy drops it again.
+// come back. Saved Roth schedules are JSON-visible and deep-copy normally.
 //
 // The set of carried fields is enforced by TestCloneCarriesEveryJSONOmittedField,
 // which reflects over models.WhatIfSettings rather than hard-coding a list, so
@@ -148,14 +146,4 @@ func carryJSONOmittedFields(src, dst *models.WhatIfSettings) {
 	dst.CurrentAge = src.CurrentAge
 	dst.SpouseAge = src.SpouseAge
 
-	if src.RothConversion != nil && src.RothConversion.PerYearOverrides != nil {
-		if dst.RothConversion == nil {
-			dst.RothConversion = &models.RothConversionConfig{}
-		}
-		overrides := make(map[int]float64, len(src.RothConversion.PerYearOverrides))
-		for year, amount := range src.RothConversion.PerYearOverrides {
-			overrides[year] = amount
-		}
-		dst.RothConversion.PerYearOverrides = overrides
-	}
 }

@@ -1,0 +1,45 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: RA1
+ATTEMPT: 1
+---
+FAILURES
+1. ACCESSIBILITY.md point 10; WCAG 4.1.3; SPEC RA1.5. internal/handlers/whatif/handlers_roth_recommendations.go:174 and web/static/js/whatif-roth-conversion.js:60-69. Keyboard Apply from /whatif navigates to same-path fragment #roth-recommendation-applied. After navigation/load and 1 second, #roth-conversion-status is empty, focus is not on #roth-conversion-heading (activeElement.id empty), and the fragment is still present. The success announcement/focus function runs only at script startup; a same-document fragment navigation does not invoke it. Thus the state-changing action does not announce its result or restore the intended focus. This finding rules on accessibility consequences of the traced browser behavior; application persistence remains the tests lane.
+Proof: `rtk proxy node /tmp/ra1-actions.cjs` (isolated Chromium, synthetic :8082 only) logged `apply { focus: "", status: "", hash: "#roth-recommendation-applied", schedule: false }`. Earlier independent /tmp/ra1-card.cjs trace reproduced the same result. Changed handler is new; `git diff master -- web/static/js/whatif-roth-conversion.js` adds lines 60-69; no pre-existing attribution applies.
+Relevant added code:
++ w.Header().Set("HX-Redirect", "/whatif#roth-recommendation-applied")
++ function announceApplied() {
++   if (window.location.hash !== "#roth-recommendation-applied") return;
++   ... status.textContent = "Roth plan and Social Security claim ages applied. The planner has been refreshed.";
++   document.getElementById("roth-conversion-heading")?.focus();
++ }
++ if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", announceApplied);
++ else announceApplied();
+
+AUTOMATED EVIDENCE
+`rtk proxy node /tmp/ra1-final-audit.cjs`: real server-rendered pages /dashboard /explorer /insights /major-expenses /whatif /accounts /transfers /filemanager, light and dark, axe-core 4.13.0 WCAG A/AA including 2.2. Results /tmp/ra1-final-axe.json, compared to /tmp/ra1-baseline-axe.json and master diff. Existing contrast findings across unchanged templates are observations, not RA1 blockers.
+`rtk proxy node /tmp/ra1-card.cjs` and subsequent final-CSS recheck: card axe ZERO violations at 1280 and 375 widths, both themes. Captured actual handler output (including recommendations) with real project stylesheet, not synthesized markup. /tmp/ra1-card-{1280,375}-{light,dark}.json/html/png.
+`rtk proxy /home/darrell/.npm/_npx/e003b6b07d062486/node_modules/.bin/axe file:///tmp/ra1-card-1280-light.html file:///tmp/ra1-card-1280-dark.html --include "#roth-conversion-card" --chrome-path /home/darrell/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome --chromedriver-path /tmp/ra1-chromedriver --chrome-options=--no-sandbox,--allow-file-access-from-files --dir /tmp --save ra1-cli.json --exit`: EXIT 0, ZERO violations both pages. Installed driver150 required --disable-build-check with installed Chromium151; no dependencies downloaded. Evidence /tmp/ra1-cli.json.
+
+MANUAL CONSTITUTION WALK
+1. All eight pages one h1, logical hierarchy, main/nav/header. New recommendation h3 correctly under Roth h2. Explorer footer absent pre-existing.
+2. New schedule tables proper column th scope; no layout tables added.
+3. Find/Apply/edit are native buttons, details is native disclosure, details link navigates.
+4. New fixed controls explicitly associated labels; hidden identity input needs no visible label.
+5. Error response role alert and tabindex -1; afterSwap targets it for focus by code trace. End-to-end stale interaction deferred because blocking Apply outcome found.
+6. Amount/year formats expressed by labels/help and currency symbol; no new placeholder-only instructions.
+7/12. New recommendation card text passes real-render axe in both themes. Existing control boundary styles inherited. New focus outline classes provided. No new chart.
+8. New states use explicit text; no color-only information.
+9. Keyboard Find focuses h3; keyboard details opens. Narrow card clientWidth=scrollWidth=335 at 375 viewport. Apply keyboard reachable but result focus FAIL above. Fixed edit function explicitly focuses annual input by code trace; not reached after Apply failure.
+10. FAIL above; generation h3 focus observed successful.
+11. No new chart; recommendations use dl and native tables.
+13. Money output uses existing formatMoney; no new bare-sign convention.
+14. No new dismissible banners.
+15. No new animation/motion; loading uses text.
+16. Revision handler clears recommendation nodes plus replaces progress text; no hidden stale counterpart added.
+17. No new modal.
+Hidden-text review: fieldset legend and Apply strategy/age suffix are meaningful accessible names, not junk or suppressed substantive content. No aria-hidden abuse introduced.
+
+OBSERVATIONS
+Full-site contrast warnings occur in markup byte-identical to master and captured baseline; counts vary with synthetic page content/transition timing. These are not task failures. Full-site final What-If has the same 40 light / 67 dark contrast-node counts as baseline before recommendations. Browser-derived global narrow overflow exists outside the card; new card itself fits exactly (335px scroll/client width). No production files modified; evidence only. Preview :8082 released to lead. Further success/fixed/stale interaction review required at corrected attempt.

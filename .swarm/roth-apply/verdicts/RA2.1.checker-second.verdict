@@ -1,0 +1,11 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: RA2
+ATTEMPT: 1
+---
+Both promoted probes preserve the independent assertions; inspected their complete bodies against original checker probes. Scope exactly two test files in RA2 manifest, no production change.
+RED: copied promoted ra1_sweep_ui_test.go into preserved attempt1 /tmp/budget2-ra1-second, then go test ./internal/handlers/whatif -run TestRA1AdversarialSweepRefresh -count=1 -v exited 1 for the intended defect: saved fixed 50000 but response has no redirect/card replacement; trigger={"whatif:revision":2}. Fixture successfully rendered original saved schedule and cleared saved overrides before failing the UI assertion; no harness failure.
+GREEN: /tmp/budget2-ra1-second2 go test ./internal/handlers/whatif -run "TestRA1Adversarial|TestRoth|TestFixedRoth|TestConversionSweepRejects|TestConversionSweepApply" -count=1 -v exited 0 including promoted sweep test.
+Historical parity: go test ./internal/services/retirement/analysis -run "TestRA1AdversarialBacktest|TestApplyRothFeedback|TestOptimizerCandidateSettings" -count=1 -v exited 0; promoted test reports 78 historical sequences match and compares entire analyses with reflect.DeepEqual, after materializing scored bracket-fill feedback and JSON roundtrip/preparation. Explicit nonzero sequence assertion prevents vacuous pass.
+SCOPE: test-only RA2 preservation and red/green acceptance. No live instance writes. Frozen cp -a copies retained .git. The sweep regression alone does not prove browser document replacement; RA1 separately tests that behavior.

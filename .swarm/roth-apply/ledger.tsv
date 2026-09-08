@@ -1,0 +1,2 @@
+RA1	3	tests,second,a11y	accepted	3	worker-coder	Concede a11y and second refresh defects; actual reload and sweep schedule refresh
+RA2	2	tests,second	accepted	1	worker-local	Promote second-checker sweep and historical parity probes

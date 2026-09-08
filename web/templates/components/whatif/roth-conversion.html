@@ -1,12 +1,13 @@
 {{/* Roth Conversion Strategy Card */}}
 {{/* Expects: .Settings with RothConversion configuration */}}
 {{define "whatif-roth-conversion"}}
-<div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+<div id="roth-conversion-card" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Roth Conversion Strategy</h2>
+        <h2 id="roth-conversion-heading" tabindex="-1" class="text-lg font-semibold text-gray-800 dark:text-gray-100 rounded focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent">Roth Conversion Strategy</h2>
         <span class="text-body-sm text-gray-500 dark:text-gray-400">Optional tax optimization</span>
     </div>
 
+    <p id="roth-conversion-status" role="status" aria-live="polite" class="mb-3 text-sm text-gray-700 dark:text-gray-200"></p>
     <form hx-post="/whatif/roth-conversion" hx-target="#whatif-results" hx-trigger="change delay:500ms"
         class="space-y-4">
 
@@ -24,6 +25,22 @@
         <!-- Conversion Settings (shown when enabled) -->
         <div id="roth-conversion-fields" class="{{if not (and .Settings.RothConversion .Settings.RothConversion.Enabled)}}hidden{{end}} space-y-4 pl-6 border-l-2 border-accent">
 
+            {{if and .Settings.RothConversion .Settings.RothConversion.PerYearOverrides}}
+            <div id="roth-saved-schedule">
+                <p class="text-sm font-medium text-gray-800 dark:text-gray-100">Saved year-by-year conversion plan</p>
+                <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">These are the amounts you applied. They stay fixed when assumptions change; find recommendations again to update the plan. Turning conversions off pauses this schedule and turning them back on resumes it.</p>
+                <details class="mt-2 text-sm text-gray-700 dark:text-gray-200">
+                    <summary class="cursor-pointer rounded focus:outline focus:outline-2 focus:outline-accent">Show saved conversion amounts</summary>
+                    <table class="mt-2 w-full"><thead><tr><th scope="col" class="text-left">Year from plan start</th><th scope="col" class="text-right">Conversion</th></tr></thead><tbody>
+                    {{range $year, $amount := .Settings.RothConversion.PerYearOverrides}}<tr><td>{{$year}}</td><td class="text-right">{{formatMoney $amount}}</td></tr>{{end}}
+                    </tbody></table>
+                </details>
+                <button type="button" onclick="editFixedRothConversion()" class="mt-3 px-3 py-2 rounded border border-gray-500 text-sm text-gray-700 dark:text-gray-200 focus:outline focus:outline-2 focus:outline-accent">Switch to fixed annual editing</button>
+                <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">The schedule is replaced when you change a fixed amount or year below.</p>
+            </div>
+            {{end}}
+            <fieldset id="roth-fixed-fields" class="space-y-4 {{if and .Settings.RothConversion .Settings.RothConversion.PerYearOverrides}}hidden{{end}}" {{if and .Settings.RothConversion .Settings.RothConversion.PerYearOverrides}}disabled{{end}}>
+            <legend class="sr-only">Fixed annual conversion</legend>
             <div>
                 <label for="roth-annual-amount" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Annual Conversion Amount</label>
                 <div class="mt-1 relative rounded-md shadow-sm">
@@ -59,6 +76,8 @@
                 </div>
             </div>
 
+            </fieldset>
+
             <!-- Info box about tax impact -->
             <div class="p-3 bg-warning-soft rounded-lg">
                 <p class="text-body-sm text-warning">
@@ -67,6 +86,12 @@
             </div>
         </div>
     </form>
+    <section id="roth-recommendations-controls" class="mt-4 pt-4 border-t border-gray-300 dark:border-gray-600" aria-label="Find Roth recommendations">
+        <p class="mb-3 text-sm text-gray-600 dark:text-gray-300">Compare Roth conversion plans together with Social Security claim ages using your saved plan.</p>
+        <button type="button" hx-post="/whatif/roth-recommendations" hx-target="#roth-recommendations-results" hx-swap="innerHTML" hx-disabled-elt="#roth-recommendations-controls button" class="px-3 py-2 rounded-md text-sm font-medium bg-accent-strong text-white hover:bg-accent-strong focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent disabled:opacity-60 disabled:cursor-wait">Find recommendations</button>
+        <p id="roth-recommendations-progress" role="status" aria-live="polite" class="mt-2 text-sm text-gray-600 dark:text-gray-300"></p>
+        <div id="roth-recommendations-results" class="mt-3"></div>
+    </section>
 </div>
 
 <script src="/static/js/whatif-roth-conversion.js" defer></script>

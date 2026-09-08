@@ -87,17 +87,6 @@ func cloneSettingsWithSSAndRoth(s *models.WhatIfSettings, primaryClaimAge, spous
 	cfg.RothConversion = rothStrategyToConfig(candidate, strat, feedback)
 	prepared := perturbAndPrepare(&cfg)
 
-	// PerYearOverrides is tagged json:"-" so prepare.From's JSON-based
-	// DeepCopy drops it. Re-attach the in-memory map onto the prepared
-	// snapshot. This intentionally mutates Settings() — the same kind
-	// of shallow violation the existing cloneSettingsWithClaimAges
-	// accepts — because the override map is constructed in-memory
-	// on each optimizer run and never persisted.
-	if cfg.RothConversion != nil && cfg.RothConversion.PerYearOverrides != nil {
-		if prepSettings := prepared.Settings(); prepSettings != nil && prepSettings.RothConversion != nil {
-			prepSettings.RothConversion.PerYearOverrides = cfg.RothConversion.PerYearOverrides
-		}
-	}
 	return prepared, true
 }
 
@@ -357,6 +346,9 @@ func currentRothStrategyFor(settings *models.WhatIfSettings) models.RothOptimize
 	if strat.EndAge <= strat.StartAge {
 		strat.EndAge = settings.CurrentAge + settings.ProjectionYears
 	}
+	if len(settings.RothConversion.PerYearOverrides) > 0 {
+		strat.Label = "Current saved year-by-year schedule"
+	}
 	return strat
 }
 
@@ -383,7 +375,7 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 	// the rest of the page shows for this scenario.
 	baselineProj := eng.Run(in)
 	baseline := projectionToCandidate(baselineProj, currentPrimary, currentSpouse, currentRoth)
-	baseline.PerYearConversions = strategyYearlyConversions(settings, currentRoth, nil)
+	baseline.PerYearConversions = savedRothConversions(settings)
 
 	pairs := topKSSPairs(ss, currentPrimary, currentSpouse, taxOptimizerTopSSPairs)
 	strategies := enumerateRothStrategies(settings)

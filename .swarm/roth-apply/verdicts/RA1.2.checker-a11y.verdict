@@ -1,0 +1,24 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: RA1
+ATTEMPT: 2
+---
+FAILURES
+1. ACCESSIBILITY.md points 10 and 16; WCAG 2.4.3, 4.1.3; SPEC RA1.5. web/static/js/whatif-roth-conversion.js:54-58. Find recommendations immediately after initial page load returns recommendations and focuses their h3. A delayed initial whatif-results response then dispatches whatif:revision for the same settings; the unconditional listener removes the focused recommendations and announces "The plan changed. Find recommendations again to use the latest settings." No user settings change occurred. This removes the keyboard focus target without sensible focus restoration and announces a settings change that did not occur.
+Observed via `rtk proxy node /tmp/ra1-race.cjs` against isolated synthetic server-final on :8082: at 12 seconds, events [recommendations afterSwap, whatif:revision, whatif-results afterSwap], forms=0, progress="The plan changed. Find recommendations again to use the latest settings." Read-only trace; no setting mutation in script. Preserve /tmp/ra1-race.cjs as reproduction. Ruling is on focus/announcement consequences of traced behavior; tests lane owns semantic revision and application correctness assertions.
+Attribution: `git diff master -- web/static/js/whatif-roth-conversion.js` introduces this listener; not pre-existing.
+Relevant added diff:
++ document.body.addEventListener("whatif:revision", function () {
++   const target = document.getElementById("roth-recommendations-results");
++   if (!target || !target.querySelector("form")) return;
++   target.replaceChildren();
++   progress("The plan changed. Find recommendations again to use the latest settings.");
++ });
+
+FIXED FROM ATTEMPT 1
+`rtk proxy node /tmp/ra1-actions.cjs` now logs Apply focus=roth-conversion-heading, exact success announcement, clean hash, after actual document load. Query-bearing redirect corrects initial failure. Keyboard details opens; card scrollWidth=clientWidth=335 at 375px viewport.
+`rtk proxy node /tmp/ra1-error.cjs` waits initial analysis, generates recommendations, injects invalid identity in synthetic form then keyboard Applies: role=alert receives focus, announces unavailable/expired and Nothing was saved with retry instructions, progress empty. No persistence mutation.
+
+OTHER COVERAGE / OBSERVATIONS
+Attempt1 card automated audit remains zero violations both themes/widths; no new rendered markup in attempt2 changes this. CSS regeneration pending at interruption, so final acceptance must re-run real-render audit after final CSS. Full-site baseline and actual-render captures are retained /tmp/ra1-baseline-axe.json and /tmp/ra1-final-axe.json; previous unchanged-template contrast observations remain nonblocking. Constitution1-4,6-9,11-15,17 unchanged from attempt1 evidence; 5 invalid-error focused/announced PASS;10/16 fail as above. No new motion, image, hidden-text abuse, or dialog introduced. Saved schedule/fixed-edit real browser path not yet covered because current synthetic fixture does not rank bracket fill; lead will seed purpose-built synthetic fixture for next attempt. Do not interpret that limitation as a PASS. No production files changed by checker. Preview released.

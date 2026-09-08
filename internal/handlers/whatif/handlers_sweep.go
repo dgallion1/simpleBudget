@@ -117,6 +117,7 @@ func candidateSettingsForConversionAmount(s *models.WhatIfSettings, amount float
 		roth = *s.RothConversion
 	}
 	roth.AnnualAmount = amount
+	roth.PerYearOverrides = nil
 	roth.Enabled = amount > 0
 	cfg.RothConversion = &roth
 	return &cfg
@@ -318,7 +319,7 @@ const conversionSweepApplySource = "conversion-sweep"
 // saveAndRecalc's save-then-render shape and its HX-Trigger revision
 // announcement, but the render tail is the sweep table rather than the
 // standard what-if results column.
-func saveAndRenderConversionSweep(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings) {
+func saveAndRenderConversionSweep(w http.ResponseWriter, r *http.Request, settings *models.WhatIfSettings, hadSchedule bool) {
 	expectedScenario := strings.TrimSpace(r.FormValue("expected_scenario"))
 	expectedRevision, parseErr := strconv.Atoi(r.FormValue("expected_revision"))
 	if expectedScenario == "" || parseErr != nil || expectedRevision < 0 {
@@ -333,6 +334,13 @@ func saveAndRenderConversionSweep(w http.ResponseWriter, r *http.Request, settin
 	}
 	if trigger, err := json.Marshal(map[string]int{"whatif:revision": revision}); err == nil {
 		w.Header().Set("HX-Trigger", string(trigger))
+	}
+
+	// The guarded save succeeded. A schedule-to-fixed change also needs fresh
+	// Roth controls, not just the sweep table, or the old schedule stays visible.
+	if hadSchedule {
+		redirectAfterRothChange(w, revision, "roth-fixed-applied")
+		return
 	}
 
 	rows, err := buildConversionSweepRows(settings)

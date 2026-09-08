@@ -286,6 +286,8 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 		settings.RothConversion = &models.RothConversionConfig{}
 	}
 
+	hadSchedule := len(settings.RothConversion.PerYearOverrides) > 0
+
 	// Parse enabled checkbox (unchecked means not present in form)
 	settings.RothConversion.Enabled = r.FormValue("enabled") == "on"
 
@@ -296,6 +298,7 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		settings.RothConversion.AnnualAmount = amount
+		settings.RothConversion.PerYearOverrides = nil
 	}
 
 	if startYear, err := parseFormInt(r, "start_year"); err == nil {
@@ -304,6 +307,7 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		settings.RothConversion.StartYear = startYear
+		settings.RothConversion.PerYearOverrides = nil
 	}
 
 	if endYear, err := parseFormInt(r, "end_year"); err == nil {
@@ -312,6 +316,7 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		settings.RothConversion.EndYear = endYear
+		settings.RothConversion.PerYearOverrides = nil
 	}
 	if settings.RothConversion.EndYear != 0 && settings.RothConversion.EndYear < settings.RothConversion.StartYear {
 		renderError(w, "End year cannot be earlier than start year", http.StatusBadRequest)
@@ -325,10 +330,20 @@ func handleWhatIfRothConversion(w http.ResponseWriter, r *http.Request) {
 	// applied row. The standalone form never sends apply_source, so this
 	// branch changes nothing for any other caller of this handler.
 	if r.FormValue("apply_source") == conversionSweepApplySource {
-		saveAndRenderConversionSweep(w, r, settings)
+		saveAndRenderConversionSweep(w, r, settings, hadSchedule)
 		return
 	}
 
+	// Replacing a saved schedule must also replace the card's schedule view.
+	if hadSchedule && len(settings.RothConversion.PerYearOverrides) == 0 {
+		revision, err := retirementMgr.SaveWithRevision(settings)
+		if err != nil {
+			renderError(w, "Failed to save fixed conversions: "+err.Error(), statusForMutationError(err))
+			return
+		}
+		redirectAfterRothChange(w, revision, "roth-fixed-applied")
+		return
+	}
 	// Save settings
 	saveAndRecalc(w, r, settings)
 }

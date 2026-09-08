@@ -49,7 +49,7 @@ func Apply(base *models.WhatIfSettings, o Overrides) (*models.WhatIfSettings, er
 	if err != nil {
 		return nil, fmt.Errorf("copy settings: %w", err)
 	}
-	// Clone owns the json:"-" carry (CurrentAge, SpouseAge, PerYearOverrides).
+	// Clone owns the json:"-" carry (CurrentAge, SpouseAge).
 
 	if o.MonthlyLivingExpenses != nil {
 		s.MonthlyLivingExpenses = *o.MonthlyLivingExpenses
@@ -70,6 +70,7 @@ func Apply(base *models.WhatIfSettings, o Overrides) (*models.WhatIfSettings, er
 		if s.RothConversion == nil {
 			s.RothConversion = &models.RothConversionConfig{}
 		}
+		s.RothConversion.PerYearOverrides = nil
 		if o.RothConversionAmount != nil {
 			s.RothConversion.AnnualAmount = *o.RothConversionAmount
 			s.RothConversion.Enabled = *o.RothConversionAmount > 0

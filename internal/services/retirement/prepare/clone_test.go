@@ -33,14 +33,13 @@ func TestCloneCarriesEveryJSONOmittedField(t *testing.T) {
 
 	// Lower-bound sanity check on the WALK itself, not on Clone: if the
 	// reflection ever silently stops descending, the per-field assertions
-	// below would all vacuously pass. These three are the json:"-" fields
+	// below would all vacuously pass. These two are the json:"-" fields
 	// reachable from WhatIfSettings as of this test's writing; the check is
 	// deliberately "contains", so new fields are welcome and still get their
 	// own assertion below.
 	for _, want := range []string{
 		"CurrentAge",
 		"SpouseAge",
-		"RothConversion.PerYearOverrides",
 	} {
 		if !containsPath(paths, want) {
 			t.Fatalf("reflection walk did not find known json:%q field %s; found %v",

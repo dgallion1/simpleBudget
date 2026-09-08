@@ -188,7 +188,7 @@
         {{end}}
     </details>
 
-    <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-2 caveat">Recommendations are read-only — edit your scenario manually to apply. Survivor-spouse filing-status changes are not modeled in Phase&nbsp;1.</p>
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-2 caveat">To apply a recommendation, use Find recommendations in the Roth Conversion Strategy card. Survivor-spouse filing-status changes are not modeled in Phase&nbsp;1.</p>
     {{end}}
     {{end}}
 </div>
@@ -204,7 +204,7 @@
          above (see the note there for why it is not on this button). */}}
     <button hx-post="/whatif/tax-optimize"
             hx-target="#tax-optimizer-panel"
-            hx-swap="innerHTML"
+            hx-swap="outerHTML"
             hx-indicator="#tax-optimizer-loading"
             hx-disabled-elt="this"
             class="inline-flex items-center gap-2 px-4 py-2 bg-accent-strong hover:bg-accent-strong disabled:opacity-60 disabled:cursor-wait text-white text-sm font-medium rounded-md transition-colors">

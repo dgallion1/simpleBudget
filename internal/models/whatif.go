@@ -1435,9 +1435,9 @@ type RothConversionConfig struct {
 	// current year, the engine uses that override amount instead of
 	// AnnualAmount. A zero value in the map suppresses the conversion for
 	// that year (used by bracket-fill when other income already fills the
-	// target bracket). Excluded from JSON serialization (`json:"-"`) — the
-	// Tax Optimizer constructs this in-memory on each run.
-	PerYearOverrides map[int]float64 `json:"-"`
+	// target bracket). Saved recommendations persist these exact amounts;
+	// fixed-amount editing clears them.
+	PerYearOverrides map[int]float64 `json:"per_year_overrides,omitempty"`
 }
 
 // BigTicketType represents whether an item is income or expense

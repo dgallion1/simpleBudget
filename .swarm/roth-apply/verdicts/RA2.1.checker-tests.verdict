@@ -1,0 +1,11 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: RA2
+ATTEMPT: 1
+---
+1. Durable sweep probe preserved: read internal/handlers/whatif/ra1_sweep_ui_test.go and ran go test -count=1 -v ./internal/handlers/whatif -run TestRA1AdversarialSweepRefresh in /tmp/budget2-ra1-primary-attempt2. PASS. Copied identical test into cp-a attempt1 tree /tmp/budget2-ra2-red and reran identical command: exit 1, "saved fixed 50000 but response has no redirect/card replacement". It asserts schedule fixture is rendered, storage overrides cleared, and response supplies redirect or card replacement. Real browser correctness is RA1 browser test scope.
+2. Historical persistence parity: read internal/services/retirement/analysis/ra1_adversarial_test.go and ran go test -count=1 -v ./internal/services/retirement/analysis -run TestRA1AdversarialBacktest. PASS, "78 historical sequences match". It compares complete nonempty HistoricalBacktest results for scored finalist versus serialized/reloaded selected settings. Mutation in scratch copy clearing cfg.RothConversion.PerYearOverrides only in SettingsForTaxOptimizerCandidate makes this test exit 1, "historical persisted schedule mismatch".
+3. Scope: manifest contains exactly internal/handlers/whatif/ra1_sweep_ui_test.go and internal/services/retirement/analysis/ra1_adversarial_test.go, both test-only additions. No RA2 production changes or critical globs touched. Other RA1 production changes are assigned foreign territory for this test-only task.
+LIMITATION/FINDING: Reverting the shared model JSON tag to json:"-" makes both historical comparison arms lose schedule through preparation, and this comparison still passes. Existing TestRothScheduleJSONRoundTrip fails that common-mode mutation; the standalone historical comparison does not establish serialization correctness by itself. This does not invalidate its demonstrated one-sided persisted-candidate regression assertion.
+Integration: build/vet/staticcheck passed; composite make check attempt2 fails RA1 generated CSS freshness before full tests. Independent full uncached go test ./... in progress, not claimed PASS here. RA2 package tests above PASS uncached. No source writes in real tree; only this verdict.

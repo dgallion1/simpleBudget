@@ -962,6 +962,8 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/sync/apply", handleWhatIfSyncApply)
 	r.Post("/whatif/montecarlo", handleWhatIfMonteCarlo)
 	r.Post("/whatif/roth-conversion", handleWhatIfRothConversion)
+	r.Post("/whatif/roth-recommendations", handleRothRecommendations)
+	r.Post("/whatif/roth-recommendations/apply", handleApplyRothRecommendation)
 	r.Post("/whatif/bigticket", handleWhatIfAddBigTicket)
 	r.Delete("/whatif/bigticket/{id}", handleWhatIfDeleteBigTicket)
 	r.Post("/whatif/bigticket/{id}/restore", handleWhatIfRestoreBigTicket)

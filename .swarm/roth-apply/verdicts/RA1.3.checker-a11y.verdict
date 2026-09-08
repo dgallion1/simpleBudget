@@ -1,0 +1,50 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: RA1
+ATTEMPT: 3
+---
+FAILURES
+None introduced by RA1 in final scoped accessibility review.
+
+REAL-RENDER AUTOMATED EVIDENCE
+1. rtk proxy env BUDGET2_TEST_URL=http://127.0.0.1:8082 PLAYWRIGHT_MODULE=/home/darrell/.npm/_npx/9833c18b2d85bc59/node_modules/playwright CHROMIUM_EXECUTABLE=/home/darrell/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome node internal/handlers/whatif/testdata/roth_apply_browser.cjs
+EXIT 0: PASS: recommendation and fixed-edit refresh, saved controls, announcements, focus, and clean URL.
+Exact final shipped script, after its fieldset predicate correction. Synthetic bracket fixture only; no live data or ports. Proves keyboard Apply fresh document, exact success text, heading focus, matching SS controls, saved schedule visible, fixed fields disabled, fixed-edit focus and 27000 saving/full refresh/status, clean URL; immediate Find survives equal/older/malformed revisions and initial polling with choices/focus retained.
+2. rtk proxy node /tmp/ra1-card-final3.cjs
+Actual server-generated recommendations (including bracket and saved-schedule state), real built CSS, 1280 and 375 widths, light and dark: ZERO axe-core WCAG A/AA violations in changed card. HTML/JSON/screenshots /tmp/ra1-card-{1280,375}-{light,dark}.{html,json,png}.
+3. rtk proxy /home/darrell/.npm/_npx/e003b6b07d062486/node_modules/.bin/axe file:///tmp/ra1-card-1280-light.html file:///tmp/ra1-card-1280-dark.html --include "#roth-conversion-card" --chrome-path /home/darrell/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome --chromedriver-path /tmp/ra1-chromedriver --chrome-options=--no-sandbox,--allow-file-access-from-files --dir /tmp --save ra1-cli-final3.json --exit
+EXIT 0: ZERO violations both actual handler-rendered captures, with real stylesheet loaded from synthetic server. /tmp/ra1-cli-final3.json. Existing ChromeDriver150 uses --disable-build-check against installed Chromium151; this compatibility override completed successfully.
+4. rtk proxy node /tmp/ra1-final-audit.cjs
+Final full-site real-page scan /dashboard /explorer /insights /major-expenses /whatif /accounts /transfers /filemanager, light/dark. /tmp/ra1-final-axe.json, compared to /tmp/ra1-baseline-axe.json and git diff master. Remaining full-site contrast findings are unchanged-template observations described below.
+5. rtk proxy node /tmp/ra1-race.cjs
+Original 12-second initial-Find reproduction now retains 5 forms and empty progress. Previous attempt2 destructive false announcement no longer occurs.
+6. rtk proxy node /tmp/ra1-error.cjs
+Invalid/expired identity response role=alert receives focus with explanatory Nothing was saved/retry text, progress cleared.
+7. Independent newer-revision browser trace (node -e, same Chromium/preview): while recommendation heading focused, dispatch revision shown+1; forms clear, focus moves to Find recommendations, polite progress tells user to regenerate. Computed focused-heading outline rgb(79,70,229) solid 2px.
+These browser observations establish accessibility consequences. Broader application semantics belong to tests lane. Lead oracle .swarm/roth-apply/tier3/RA1/oracle.3.log ends ORACLE PASS.
+
+NUMBERED CONSTITUTION / MANUAL REVIEW
+1 PASS: exactly one h1, logical heading hierarchy and main/nav/header on all eight pages; recommendation h3 under Roth h2. No new missing landmarks.
+2 PASS: schedule native tables have th scope=col; no new layout tables.
+3 PASS: Find/Apply/fixed-edit native buttons, native details, detailed-optimizer navigation link; no unfocusable click-only affordance.
+4 PASS: fixed input IDs explicitly associated labels; hidden server identity excluded from visible-input requirement.
+5 PASS: invalid/expired error role alert, tabindex -1 and focused after swap; clear recovery copy.
+6 PASS: visible currency/year instructions, no new placeholder-only formats.
+7 PASS scoped: new card real-render contrast clear in both themes, controls retain visible boundaries/outline. Focus outline confirmed computed 2px solid accent.
+8 PASS: statuses are text, no new color-only meaning.
+9 PASS: keyboard Find focuses h3, native disclosure opens by Enter, Apply keyboard activation, fixed editing focuses annual input. At375 card clientWidth=scrollWidth=335; new card itself fits narrow viewport.
+10 PASS: actual Apply and fixed edit announce explicit success and restore heading focus after full reload. Valid newer revision restores Find focus when removing focused content.
+11 PASS: no new charts; recommendations have dl metrics and schedule tables.
+12 PASS: light/dark card parity verified four real-browser scans and CLI captures. No chart theming changes.
+13 PASS: currency uses established formatter; no new sign-only semantic convention.
+14 PASS: no new dismissible banner.
+15 PASS: no new animation; request feedback is text. No motion-only feedback introduced.
+16 PASS: equal/older/malformed revision leaves visible choices and focus; newer revision clears visible/assistive content together and updates polite status. No hidden stale recommendation counterpart remains.
+17 PASS: no new modal.
+Hidden-text review PASS: sr-only legend and Apply strategy/age suffix are useful associated names, not junk. No substantive content aria-hidden abuse.
+
+OBSERVATIONS / ATTRIBUTION
+Existing full-site contrast warnings occur in unchanged template markup verified against git diff master; initial baseline already contains light What-If contrast findings and dark findings across multiple pages. Counts vary with synthetic contents and transition capture timing. Final light What-If40 matches baseline40; dark45 vs baseline67 after different synthetic fixture. No RA1 blocking contrast node in card. Explorer pre-existing missing footer remains unchanged; one h1/main/nav/header present. Global narrow page overflow originates outside card; card itself fits.
+Initial requested synthetic fixture did not rank bracket-fill; lead replaced only synthetic fixture with 2m/90%-deferred/35year/age60 scenario to cover saved schedule. Not a product defect. Initial Playwright fieldset.isDisabled assertion did not recognize disabled fieldset itself; shipped test now checks attribute and disabled input and passes. No production edits by this checker.
+Final screenshot /tmp/ra1-card-1280-dark.png. Preview :8082 released to lead. No main/demo access or data/settings changes.

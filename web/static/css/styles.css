@@ -128,9 +128,13 @@ html {
    it with no visible substitute. box-shadow is a real property and renders
    the equivalent 2px indigo ring on its own, independent of whether the
    Tailwind CDN build has loaded. */
-input:focus, select:focus {
+input:focus, select:focus, textarea:focus {
     outline: none;
-    box-shadow: 0 0 0 2px #6366f1;
+    /* BK1 (2026-09-08): the accent token, not a literal indigo-500 — in dark
+       mode indigo-500 measured 2.3:1 against the stone-700 input fill;
+       indigo-300 (the dark accent) clears 3:1 there and indigo-600 clears it
+       on a white input in light mode. */
+    box-shadow: 0 0 0 2px rgb(var(--accent));
 }
 
 /* Scrollbar styling */
@@ -286,4 +290,25 @@ input:focus, select:focus {
     .major-expenses-pin-check-header {
         transition: none;
     }
+}
+
+/* BK3 (2026-09-08, attempt 3 — ruling BK-2026-09-08e): fallback focus
+   indicator for every focusable control that carries no Tailwind ring
+   utility. Chromium's default `outline: auto` ring paints near-black in
+   both themes (1.48:1 on the dark card for the Major Expenses row toggles).
+   A single accent ring failed twice: --accent equals --accent-strong in
+   light mode, so on accent-filled controls (nav, primary buttons, active
+   presets) the ring vanished (1.00:1). This is the concentric two-tone
+   ring: a 2 px WHITE inner ring (box-shadow, flush with the element) and a
+   2 px ACCENT outer ring (outline, offset 2 px). Whatever the adjacent
+   colour — white card, dark card, indigo fill — one of the two contrasts
+   with it, which is what WCAG 1.4.11 measures. `:where()` keeps
+   specificity at zero, so any element's own `focus:outline-none` /
+   `focus-visible:ring-*` utilities (0,1,0) still win, and the :not()
+   excludes elements that already carry a ring utility so nothing gets two
+   indicators. Inputs/selects/textareas keep the box-shadow rule above. */
+:where(button, [role="button"], a[href], summary, [tabindex="0"]):where(:not([class*="focus-visible:ring"], [class*="focus:ring"])):focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px rgb(255 255 255);
 }

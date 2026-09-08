@@ -199,7 +199,7 @@
 <table id="major-expenses-list" class="w-full text-sm major-expenses-sortable" data-sort-groups="tbody">
     <thead class="text-xs text-gray-600 dark:text-gray-400">
         <tr>
-            <th scope="col" class="w-6"></th>
+            <th scope="col" class="w-6"><span class="sr-only">Details</span></th>
             <th scope="col" class="text-left py-1 px-1 font-normal cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" data-sort-key="name" data-sort-type="text" aria-sort="ascending">
                 <span class="inline-flex items-center gap-1">Name <span class="major-expenses-sort-indicator text-label opacity-60 w-2 inline-block">▲</span></span>
             </th>
@@ -232,7 +232,7 @@
         class="major-expense-item-row scroll-mt-4"
         data-search="{{.Expense.Name}}{{range .Expense.Keywords}} {{.}}{{end}}{{if .Expense.Notes}} {{.Expense.Notes}}{{end}}">
         <td class="py-1.5 px-1 align-middle">
-            <button type="button" class="major-expense-row-toggle text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            <button type="button" class="major-expense-row-toggle inline-flex h-6 w-6 items-center justify-center rounded text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                 aria-expanded="false" aria-controls="major-expense-detail-{{.Expense.ID}}"
                 aria-label="Details for {{.Expense.Name}}">
                 <svg class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -512,10 +512,10 @@
         {{range .ExpenseOptions}}<option value="{{.ID}}" title="{{.Label}}">{{.Label}}</option>{{end}}
     </select>
     <button type="button" id="major-expenses-bulk-pin-apply"
-        class="px-2 py-0.5 bg-warning-strong hover:bg-warning-strong text-white rounded text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+        class="px-3 py-1.5 bg-warning-strong hover:bg-warning-strong text-white rounded text-body-sm disabled:opacity-50 disabled:cursor-not-allowed"
         disabled>Apply</button>
     <button type="button" id="major-expenses-bulk-pin-clear"
-        class="major-expenses-bulk-pin-clear hidden px-2 py-0.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-100 rounded text-xs"
+        class="major-expenses-bulk-pin-clear hidden px-3 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-100 rounded text-body-sm"
         aria-label="Clear all selected exception checkboxes">Clear</button>
 </div>
 {{end}}

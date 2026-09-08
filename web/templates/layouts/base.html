@@ -73,19 +73,19 @@
                     </a>
                 </div>
 
-                <div class="hidden xl:flex items-center gap-6">
+                <div class="hidden xl:flex items-center gap-4">
                     <div class="flex items-center gap-2" role="group" aria-labelledby="nav-group-money">
-                        <span id="nav-group-money" class="text-label uppercase text-white/60">Money</span>
-                        <a href="{{withRange "/dashboard" .}}" {{if eq .ActiveTab "dashboard"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "dashboard"}}bg-white/20{{end}}">
+                        <span id="nav-group-money" class="hidden 2xl:inline text-label uppercase text-white/60">Money</span>
+                        <a href="{{withRange "/dashboard" .}}" {{if eq .ActiveTab "dashboard"}}aria-current="page"{{end}} class="px-2 py-2 rounded-md text-sm font-medium whitespace-nowrap hover:bg-white/10 transition-colors {{if eq .ActiveTab "dashboard"}}bg-white/20{{end}}">
                             Dashboard
                         </a>
-                        <a href="{{withRange "/explorer" .}}" {{if eq .ActiveTab "explorer"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "explorer"}}bg-white/20{{end}}">
+                        <a href="{{withRange "/explorer" .}}" {{if eq .ActiveTab "explorer"}}aria-current="page"{{end}} class="px-2 py-2 rounded-md text-sm font-medium whitespace-nowrap hover:bg-white/10 transition-colors {{if eq .ActiveTab "explorer"}}bg-white/20{{end}}">
                             Explorer
                         </a>
-                        <a href="{{withRange "/insights" .}}" {{if eq .ActiveTab "insights"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "insights"}}bg-white/20{{end}}">
+                        <a href="{{withRange "/insights" .}}" {{if eq .ActiveTab "insights"}}aria-current="page"{{end}} class="px-2 py-2 rounded-md text-sm font-medium whitespace-nowrap hover:bg-white/10 transition-colors {{if eq .ActiveTab "insights"}}bg-white/20{{end}}">
                             Insights
                         </a>
-                        <a href="{{withRange "/major-expenses" .}}" {{if eq .ActiveTab "major-expenses"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "major-expenses"}}bg-white/20{{end}}">
+                        <a href="{{withRange "/major-expenses" .}}" {{if eq .ActiveTab "major-expenses"}}aria-current="page"{{end}} class="px-2 py-2 rounded-md text-sm font-medium whitespace-nowrap hover:bg-white/10 transition-colors {{if eq .ActiveTab "major-expenses"}}bg-white/20{{end}}">
                             Major Expenses
                         </a>
                     </div>
@@ -93,8 +93,8 @@
                     <div class="h-6 w-px bg-white/20" aria-hidden="true"></div>
 
                     <div class="flex items-center gap-2" role="group" aria-labelledby="nav-group-plan">
-                        <span id="nav-group-plan" class="text-label uppercase text-white/60">Plan</span>
-                        <a href="/whatif" {{if eq .ActiveTab "whatif"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "whatif"}}bg-white/20{{end}}">
+                        <span id="nav-group-plan" class="hidden 2xl:inline text-label uppercase text-white/60">Plan</span>
+                        <a href="/whatif" {{if eq .ActiveTab "whatif"}}aria-current="page"{{end}} class="px-2 py-2 rounded-md text-sm font-medium whitespace-nowrap hover:bg-white/10 transition-colors {{if eq .ActiveTab "whatif"}}bg-white/20{{end}}">
                             What-If
                         </a>
                     </div>
@@ -102,18 +102,18 @@
                     <div class="h-6 w-px bg-white/20" aria-hidden="true"></div>
 
                     <div class="flex items-center gap-2" role="group" aria-labelledby="nav-group-setup">
-                        <span id="nav-group-setup" class="text-label uppercase text-white/60">Setup</span>
-                        <a href="/accounts" {{if eq .ActiveTab "accounts"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "accounts"}}bg-white/20{{end}}">
+                        <span id="nav-group-setup" class="hidden 2xl:inline text-label uppercase text-white/60">Setup</span>
+                        <a href="/accounts" {{if eq .ActiveTab "accounts"}}aria-current="page"{{end}} class="px-2 py-2 rounded-md text-sm font-medium whitespace-nowrap hover:bg-white/10 transition-colors {{if eq .ActiveTab "accounts"}}bg-white/20{{end}}">
                             Accounts
                         </a>
-                        <a href="/transfers" {{if eq .ActiveTab "transfers"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "transfers"}}bg-white/20{{end}}">
+                        <a href="/transfers" {{if eq .ActiveTab "transfers"}}aria-current="page"{{end}} class="px-2 py-2 rounded-md text-sm font-medium whitespace-nowrap hover:bg-white/10 transition-colors {{if eq .ActiveTab "transfers"}}bg-white/20{{end}}">
                             Transfers
                         </a>
-                        <a href="/filemanager" {{if eq .ActiveTab "filemanager"}}aria-current="page"{{end}} class="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "filemanager"}}bg-white/20{{end}}">
+                        <a href="/filemanager" {{if eq .ActiveTab "filemanager"}}aria-current="page"{{end}} class="px-2 py-2 rounded-md text-sm font-medium whitespace-nowrap hover:bg-white/10 transition-colors {{if eq .ActiveTab "filemanager"}}bg-white/20{{end}}">
                             File Manager
                         </a>
                         {{if .UnresolvedDuplicateCount}}
-                        <a href="/duplicates" {{if eq .ActiveTab "duplicates"}}aria-current="page"{{end}} class="relative px-3 py-2 rounded-md text-sm font-medium hover:bg-white/10 transition-colors {{if eq .ActiveTab "duplicates"}}bg-white/20{{end}}">
+                        <a href="/duplicates" {{if eq .ActiveTab "duplicates"}}aria-current="page"{{end}} class="relative px-2 py-2 rounded-md text-sm font-medium whitespace-nowrap hover:bg-white/10 transition-colors {{if eq .ActiveTab "duplicates"}}bg-white/20{{end}}">
                             Duplicates
                             <span class="ml-1 inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold rounded-full bg-warning-strong text-white">{{.UnresolvedDuplicateCount}}</span>
                         </a>

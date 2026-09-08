@@ -1,6 +1,4 @@
-{{define "insights-dollar-change"}}
-<span class="num">{{if gt .Amount 0.0}}+{{end}}{{formatMoney .Amount}} {{if gt .Amount 0.0}}increase{{else if lt .Amount 0.0}}decrease{{else}}no dollar change{{end}}</span>
-{{end}}
+{{define "insights-dollar-change"}}{{/* RF3: no leading/trailing text nodes -- callers embed this inline in exact-match sentences (e.g. #insights-lead). */}}<span class="num">{{if gt .Amount 0.0}}+{{end}}{{formatMoney .Amount}} {{if gt .Amount 0.0}}increase{{else if lt .Amount 0.0}}decrease{{else}}no dollar change{{end}}</span>{{end}}
 
 {{define "insights-change-cell"}}
 <span class="{{if eq .Direction "up"}}text-negative{{else if eq .Direction "down"}}text-positive{{else}}text-gray-600 dark:text-gray-400{{end}}">{{if eq .Kind "new"}}new{{else if eq .Kind "none"}}no change{{else if eq .Kind "dollar"}}dollar comparison{{else}}{{if gt .Percent 0.0}}+{{end}}{{printf "%.1f" .Percent}}%{{end}}</span>
@@ -12,15 +10,15 @@
         <a href="{{.URL}}" class="text-accent underline break-words">{{or .Transaction.DisplayName .Transaction.Description}}</a>
         <span class="num text-gray-800 dark:text-gray-100">Actual transaction: {{formatMoney .Transaction.Amount}} outflow</span>
     </div>
-    <p class="text-sm text-gray-600 dark:text-gray-400">{{.Transaction.Date.Format "2006-01-02"}} · {{.Transaction.Category}}{{if .Transaction.MajorExpenseName}} · Major Expense: {{.Transaction.MajorExpenseName}}{{end}}</p>
-    <p class="text-sm text-gray-700 dark:text-gray-300">{{.Label}} · {{.Evidence}}{{with .Creep}}: {{formatMoney .FirstAmount}} → {{formatMoney .CurrentAmount}} ({{printf "%.1f" .PctChange}}% increase), {{.FirstDate.Format "2006-01-02"}} to {{.LastDate.Format "2006-01-02"}}.{{end}}</p>
+    <p class="text-base text-gray-600 dark:text-gray-400">{{.Transaction.Date.Format "2006-01-02"}} · {{.Transaction.Category}}{{if .Transaction.MajorExpenseName}} · Major Expense: {{.Transaction.MajorExpenseName}}{{end}}</p>
+    <p class="text-base text-gray-700 dark:text-gray-300">{{.Label}} · {{.Evidence}}{{with .Creep}}: {{formatMoney .FirstAmount}} → {{formatMoney .CurrentAmount}} ({{printf "%.1f" .PctChange}}% increase), {{.FirstDate.Format "2006-01-02"}} to {{.LastDate.Format "2006-01-02"}}.{{end}}</p>
 </li>
 {{end}}
 
 {{define "insights-recurring-group"}}
 <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="recurring-{{.Group.ID}}">
-    <h3 id="recurring-{{.Group.ID}}" class="text-base font-semibold text-gray-800 dark:text-gray-100">{{.Group.Label}}</h3>
-    <p class="text-sm text-gray-700 dark:text-gray-300">{{len .Group.Rows}} retained series · Estimated monthly {{formatMoney .Group.Monthly}} · Estimated annual {{formatMoney .Group.Annual}}</p>
+    <h3 id="recurring-{{.Group.ID}}" class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{.Group.Label}}</h3>
+    <p class="text-base text-gray-700 dark:text-gray-300">{{len .Group.Rows}} retained series · Estimated monthly {{formatMoney .Group.Monthly}} · Estimated annual {{formatMoney .Group.Annual}}</p>
     {{if .Group.Rows}}
     {{$table := (dict "Rows" .Group.Rows "Period" $.Period "StartDate" $.StartDate "EndDate" $.EndDate "Label" .Group.Label)}}
     {{if eq .Group.ID "other"}}
@@ -76,8 +74,8 @@
         {{end}}
     </tr></thead>
     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-    {{range .CategoryTrends}}
-    <tr data-category="{{.Category}}" data-current="{{.CurrentAmount}}" data-previous="{{.PreviousAmount}}" data-change="{{.Change.Amount}}">
+    {{range $trendIdx, $trend := .CategoryTrends}}
+    <tr data-category="{{.Category}}" data-current="{{.CurrentAmount}}" data-previous="{{.PreviousAmount}}" data-change="{{.Change.Amount}}"{{if ge $trendIdx 12}} data-trend-overflow="1"{{end}}>
         <td class="p-3 text-sm"><a class="text-accent underline" href="/explorer?{{if index $.GroupIDs .Category}}majorExpense={{urlquery (index $.GroupIDs .Category)}}{{else}}category={{urlquery .Category}}{{end}}&amp;start={{$.Period.SelectedStart.Format "2006-01-02"}}&amp;end={{$.Period.SelectedEnd.Format "2006-01-02"}}&amp;type=Outflow">{{.Category}}</a></td>
         <td class="p-3 text-sm num text-gray-800 dark:text-gray-100">{{formatMoney .CurrentAmount}}</td>
         <td class="p-3 text-sm num text-gray-800 dark:text-gray-100">{{formatMoney .PreviousAmount}}</td>
@@ -87,6 +85,7 @@
     </tbody>
 </table>
 </div>
+{{if gt (len .CategoryTrends) 12}}<button type="button" data-trends-toggle aria-expanded="false" class="mt-2 text-base text-accent underline">Show all {{len .CategoryTrends}} categories</button>{{end}}
 {{end}}
 
 {{define "insights-recurring-partial"}}

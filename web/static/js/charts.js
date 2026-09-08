@@ -14,13 +14,16 @@ function isDarkMode() {
  */
 function getThemeColors() {
     const dark = isDarkMode();
+    // RF1 (retiree-first refresh, 2026-09-07): warm stone theme colors,
+    // matching the tailwind.config.js `gray` scale override (stone hex
+    // values) so charts re-theme in step with the rest of the app.
     return {
-        text: dark ? '#e5e7eb' : '#374151',
-        gridColor: dark ? '#374151' : '#e5e7eb',
+        text: dark ? '#e7e5e4' : '#44403c',
+        gridColor: dark ? '#44403c' : '#e7e5e4',
         backgroundColor: 'transparent',
-        hoverBg: dark ? '#1f2937' : '#ffffff',
-        hoverBorder: dark ? '#4b5563' : '#d1d5db',
-        hoverText: dark ? '#f3f4f6' : '#111827'
+        hoverBg: dark ? '#292524' : '#ffffff',
+        hoverBorder: dark ? '#57534e' : '#d6d3d1',
+        hoverText: dark ? '#f5f5f4' : '#1c1917'
     };
 }
 
@@ -262,9 +265,11 @@ function renderMajorExpenseBreakdown(items) {
         // -700 hover LIGHTENS the background under the focus-visible ring,
         // dropping ring-indigo-500 vs -700 to 2.31:1. -900 both darkens
         // (keeping a visible hover affordance distinct from the card's own
-        // -800) and clears the 3:1 floor: indigo-500 #6366f1 vs gray-900
-        // #111827 = 3.97:1. Light theme (hover:bg-gray-50, unchanged) stays
-        // at 4.27:1 hover / 4.47:1 non-hover against white.
+        // -800) and clears the 3:1 floor: RF1 warm-grey recompute (2026-09-07)
+        // — indigo-500 #6366f1 vs the new gray-900 (stone-900 #1c1917) =
+        // 3.92:1; against the card's own gray-800 (stone-800 #292524) =
+        // 3.40:1. Both still clear 3:1. Light theme (hover:bg-gray-50,
+        // unchanged) stays at 4.27:1 hover / 4.47:1 non-hover against white.
         row.className = 'flex justify-between gap-4 py-0.5 w-full text-left rounded hover:bg-gray-50 dark:hover:bg-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500';
         row.addEventListener('click', function() {
             triggerMajorExpenseDrilldown(it.name);
@@ -344,9 +349,11 @@ function renderMajorExpenseCredits(items) {
         // -700 hover LIGHTENS the background under the focus-visible ring,
         // dropping ring-indigo-500 vs -700 to 2.31:1. -900 both darkens
         // (keeping a visible hover affordance distinct from the card's own
-        // -800) and clears the 3:1 floor: indigo-500 #6366f1 vs gray-900
-        // #111827 = 3.97:1. Light theme (hover:bg-gray-50, unchanged) stays
-        // at 4.27:1 hover / 4.47:1 non-hover against white.
+        // -800) and clears the 3:1 floor: RF1 warm-grey recompute (2026-09-07)
+        // — indigo-500 #6366f1 vs the new gray-900 (stone-900 #1c1917) =
+        // 3.92:1; against the card's own gray-800 (stone-800 #292524) =
+        // 3.40:1. Both still clear 3:1. Light theme (hover:bg-gray-50,
+        // unchanged) stays at 4.27:1 hover / 4.47:1 non-hover against white.
         row.className = 'flex justify-between gap-4 py-0.5 w-full text-left rounded hover:bg-gray-50 dark:hover:bg-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500';
         row.addEventListener('click', function() {
             triggerMajorExpenseDrilldown(it.name);
@@ -683,7 +690,7 @@ function toggleGuardrailCompareOverlay(card, button) {
                 name: 'Without guardrails',
                 x: balanceTrace.x,
                 y: balanceTrace.y,
-                line: { color: '#9ca3af', width: 2, dash: 'dash' },
+                line: { color: '#a8a29e', width: 2, dash: 'dash' }, // RF1: stone-400
                 hoverinfo: 'x+y+name'
             };
             Plotly.addTraces(chart, overlay);

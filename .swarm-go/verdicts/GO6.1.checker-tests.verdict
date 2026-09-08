@@ -1,0 +1,9 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: GO6
+ATTEMPT: 1
+---
+1. Actual-service row coverage: read added assertions in internal/handlers/whatif/guardrail_optimizer_test.go lines234-246, then ran go test -count=1 -v ./internal/handlers/whatif -run TestGuardrailOptimizerPreviewThenExplicitApply in cp -a copy /tmp/go6-primary-check including .git. EXIT0: PASS budget2/internal/handlers/whatif 3.244s. Assertions iterate every returned row, require nonempty unique graph tokens, compare retained full candidate with actual response, and separate graph from Apply token. Existing selected recommendation requirement prevents empty fixture from vacuously passing; actual Apply is still exercised.
+2. Regression sensitivity: in separate /tmp/go6-primary-mutant, changed retained candidate ID to wrong-candidate in token retention. Same uncached test EXIT1, guardrail_optimizer_test.go:242 retained graph candidate differs from search result (3.583s). Test kills wrong retained candidate.
+3. Scope: git diff HEAD -- internal/handlers/whatif/guardrail_optimizer_test.go shows14 assertion lines only. GO6.1.files now additionally includes .swarm-go/probes/guardrail-graph-browser.cjs, a persisted second-checker browser probe. Its runtime execution is assigned to checker-second; this verdict covers Go assertions only. No production changes for GO6 and no critical paths. Existing GO5 work remains separately verified. Full composite/build already passed GO5 frozen production tree; per lead no duplicate full suite for test-only promotion.

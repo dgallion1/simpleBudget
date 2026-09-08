@@ -138,3 +138,16 @@ GO-R15 (a11y checker catch, GO3attempt2FAIL CONCEDED): noqualifying outcome plai
 ## Final verification record
 
 All tasks accepted, evidence verified, no unresolved flags. Final evidence is isolated in .swarm-go (set SWARM_DIR=.swarm-go with orchestration gate). First-attempt clean:2/4; second checker caught decimal qualification and a11y checker caught no-result announcement; both fixed and reverified. Full make check, go build ./..., and orchestration gate smoketests passed. GO3 scoped accessibility passed; preexisting disabled spending-phase contrast issues remain documented in its verdict. Preview uses synthetic data only.
+
+
+## GO5 — Select an optimizer option and view its graph (Tier 2)
+User request: I should be able to select one of them and see the graph results.
+Scope: add a read-only graph preview to every returned candidate, including below-target options and both baselines. Keep saved settings and Apply eligibility unchanged.
+Architecture: retain server-side candidate tokens separately from Apply authorization; validate request/manager/scenario/revision/fingerprint/expiry for graph access. Clone current validated settings, set the exact retained candidate config (including nil baseline), run the canonical engine with DefaultHooks and existing buildEngineInput, and reuse buildProjectionChartData. No simulation/search/financial formula changes.
+UI: each row has View graph. Show an inline portfolio projection near the comparison, clearly labeled selected policy, target status, and Preview — not saved. State this is the base projection, not a Monte Carlo success graph. Include today-dollar/nominal choice, Close preview, keyboard focus/status feedback, and an accessible numeric alternative. Preserve comparison results for selecting another option; input changes, cancellation and new search clear graph. Rapid selections must not paint stale responses. Errors announced without losing comparison rows.
+Acceptance: all returned rows can preview exact candidate settings; forged/expired/cancelled/stale/wrong-request tokens rejected; below-target preview cannot enable Apply; graph request never saves or changes revision; canonical output matches independent expected engine chart for selected config and dollar mode; browser switching updates graph and label together, handles errors/closing/invalidation; existing optimizer tests pass; accessible in both themes/narrow viewport.
+Verification: tests, second, a11y; manifest and verdicts in .swarm-go; gate check GO5 before acceptance. User request authorizes this bounded preview addition; no change to optimizer search or saved risk target.
+
+## GO6 — Retain real-search token regression (Tier 2)
+Test-only promotion of primary checker probe: every row returned by the actual optimizer has a distinct graph token retaining exactly that candidate, and graph tokens differ from Apply tokens. Extend existing real-service search test. No production edits. Checks: tests,second.
+GO6 also retains the second-checker browser probe in .swarm-go/probes/guardrail-graph-browser.cjs, with explicit synthetic GUARDRAIL_TEST_URL and optional runtime environment paths. It checks every graph token rejects Apply, mode switching, reordered Plotly completion, close while loading, error retention and input invalidation.

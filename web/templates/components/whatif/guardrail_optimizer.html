@@ -21,10 +21,56 @@
 const root=document.getElementById('guardrail-optimizer');
 if(!root || root.dataset.ready)return;root.dataset.ready='true';
 const form=root.querySelector('form'),target=root.querySelector('#guardrail-optimizer-target'),custom=root.querySelector('#guardrail-optimizer-custom'),wrap=root.querySelector('#guardrail-optimizer-custom-wrap'),run=root.querySelector('#guardrail-optimizer-run'),cancel=root.querySelector('#guardrail-optimizer-cancel'),status=root.querySelector('#guardrail-optimizer-status'),results=root.querySelector('#guardrail-optimizer-results');
+let graphController=null,graphGeneration=0,graphOrigin=null,graphPayload=null;
 let requestID='',controller=null,generation=0;
+function clearGraph(){
+ graphGeneration++;graphController?.abort();graphController=null;graphPayload=null;
+ const panel=root.querySelector('#guardrail-graph-preview');
+ if(panel){const plot=panel.querySelector('#guardrail-graph-plot');if(window.Plotly)Plotly.purge(plot);panel.hidden=true;panel.querySelector('#guardrail-graph-heading').textContent='';panel.querySelector('#guardrail-graph-summary').textContent='';panel.querySelector('#guardrail-graph-data').replaceChildren();}
+ root.querySelectorAll('[data-guardrail-graph]').forEach(button=>button.setAttribute('aria-pressed','false'));graphOrigin=null;
+}
+function policyName(c){return c.id==='current'?'Current guardrails':c.id==='no-guardrails'?'Guardrails disabled':((c.labels||[]).join(' · ')||'Alternative')+' '+c.id;}
+function graphTheme(payload){
+ const dark=document.documentElement.classList.contains('dark'),chart=structuredClone(payload.chart);
+ chart.data.forEach((trace,index)=>{const color=index===0?(dark?'#86efac':'#166534'):(dark?'#fcd34d':'#92400e');if(trace.line)trace.line.color=color;if(trace.marker)trace.marker.color=color;});
+ Object.assign(chart.layout,{autosize:true,height:340,paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:{color:dark?'#f3f4f6':'#1f2937'},margin:{l:70,r:20,t:55,b:95},legend:{orientation:'h',y:-0.25},transition:{duration:0}});
+ ['xaxis','yaxis'].forEach(axis=>Object.assign(chart.layout[axis],{gridcolor:dark?'#6b7280':'#9ca3af',automargin:true}));return chart;
+}
+function graphTable(payload){
+ const fragment=document.createDocumentFragment(),money=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}),units=payload.display_dollars==='real'?'today’s dollars':'nominal dollars';
+ payload.chart.data.forEach(trace=>{
+ const table=document.createElement('table');table.className='w-full text-sm text-left mt-3';
+ const caption=table.createCaption();caption.className='text-left font-medium';caption.textContent=trace.name+' — '+units;
+ const head=table.createTHead().insertRow();['Year','Portfolio balance',...(trace.text?['Event']:[])].forEach(label=>{const th=document.createElement('th');th.scope='col';th.className='p-2';th.textContent=label;head.append(th);});
+ const body=table.createTBody();trace.x.forEach((year,index)=>{const row=body.insertRow();[String(year),money.format(trace.y[index]),...(trace.text?[trace.text[index]]:[])].forEach(value=>{const cell=row.insertCell();cell.className='p-2';cell.textContent=value;});});fragment.append(table);
+ });return fragment;
+}
+async function showGraph(button,mode='real'){
+ graphController?.abort();const current=++graphGeneration,searchGeneration=generation;graphController=new AbortController();status.textContent='Loading selected policy graph…';
+ try{
+ const response=await fetch('/whatif/guardrails/optimize/graph',{method:'POST',body:new URLSearchParams({request_id:button.dataset.requestId,candidate:button.dataset.guardrailGraph,display_dollars:mode}),signal:graphController.signal});
+ const payload=await response.json();if(current!==graphGeneration||searchGeneration!==generation||!root.isConnected)return;
+ if(!response.ok)throw new Error(payload.error||'Graph could not load. Try again.');
+ const panel=root.querySelector('#guardrail-graph-preview'),oldPlot=panel.querySelector('#guardrail-graph-plot'),plot=oldPlot.cloneNode(false);const chart=graphTheme(payload);chart.layout.width=Math.max(280,results.clientWidth-26);
+ if(!window.Plotly)throw new Error('Chart library is unavailable. Reload the page and try again.');
+ await Plotly.newPlot(plot,chart.data,chart.layout,{responsive:true,displayModeBar:false,staticPlot:true});
+ if(current!==graphGeneration||searchGeneration!==generation||!root.isConnected)return;
+ Plotly.purge(oldPlot);oldPlot.replaceWith(plot);graphPayload=payload;graphOrigin=button;root.querySelectorAll('[data-guardrail-graph]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+ const heading=panel.querySelector('#guardrail-graph-heading');heading.textContent=policyName(payload.candidate)+' — portfolio projection';
+ const units=payload.display_dollars==='real'?'today’s dollars':'nominal dollars',values=payload.chart.data[0].y,last=values.length?values[values.length-1]:0;
+ panel.querySelector('#guardrail-graph-summary').textContent=(payload.candidate.qualifies?'Meets target':'Below target')+' · '+payload.success_text+'% chance of maintaining your minimum; target '+payload.target+'%. Base projection ending balance: '+new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(last)+' in '+units+'.';
+ panel.querySelector('#guardrail-graph-dollars').value=payload.display_dollars;panel.querySelector('#guardrail-graph-data').replaceChildren(graphTable(payload));panel.hidden=false;Plotly.Plots.resize(plot);
+ status.textContent='Graph loaded for '+policyName(payload.candidate)+', in '+units+'. Nothing was saved.';heading.focus();
+ }catch(error){if(current===graphGeneration&&searchGeneration===generation){status.textContent=error.message||'Graph could not load. Try again.';const panel=root.querySelector('#guardrail-graph-preview');if(panel&&graphPayload){panel.hidden=false;panel.querySelector('#guardrail-graph-dollars').value=graphPayload.display_dollars;}button.focus();}}
+ finally{if(current===graphGeneration)graphController=null;}
+}
+root.addEventListener('click',event=>{const button=event.target.closest('[data-guardrail-graph]');if(button){showGraph(button);return;}if(event.target.closest('#guardrail-graph-close')){const origin=graphOrigin;clearGraph();status.textContent='Graph preview closed. Nothing was saved.';origin?.focus();}});
+root.addEventListener('change',event=>{if(event.target.id==='guardrail-graph-dollars'&&graphOrigin)showGraph(graphOrigin,event.target.value);});
+new MutationObserver(()=>{const plot=root.querySelector('#guardrail-graph-plot');if(root.isConnected&&graphPayload&&plot){const chart=graphTheme(graphPayload);Plotly.react(plot,chart.data,chart.layout,{responsive:true,displayModeBar:false,staticPlot:true});}}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+
 function busy(value){run.disabled=value;cancel.disabled=!value;results.setAttribute('aria-busy',String(value));}
 function invalidate(message){
- generation++;if(controller)controller.abort();controller=null;
+ clearGraph();generation++;if(controller)controller.abort();controller=null;
  if(requestID){fetch('/whatif/guardrails/optimize/cancel',{method:'POST',body:new URLSearchParams({request_id:requestID}),keepalive:true}).catch(()=>{});requestID='';}
  results.replaceChildren();busy(false);status.textContent=message;
 }
@@ -74,7 +120,7 @@ if(new URLSearchParams(location.search).has('guardrail_applied')){
 <th scope="col" class="p-2">Chance of maintaining minimum</th>
 <th scope="col" class="p-2">Lifetime living spending (median)</th>
 <th scope="col" class="p-2">Worst annual cut</th>
-<th scope="col" class="p-2">Apply</th>
+<th scope="col" class="p-2">Actions</th>
 </tr></thead>
 <tbody>
 {{range .Rows}}{{$c:=.Candidate}}{{$m:=$c.Metrics}}
@@ -83,7 +129,7 @@ if(new URLSearchParams(location.search).has('guardrail_applied')){
 <td class="p-2"><strong class="block text-xl tabular-nums">{{printf "%.2f" $m.FloorSuccessPct}}%</strong><span>{{if $c.Qualifies}}Meets target{{else}}Below target{{end}}</span></td>
 <td class="p-2">{{formatMoney $m.MedianLifetimeFundedLivingReal}}</td>
 <td class="p-2">{{printf "%.2f" $m.P95WorstAnnualCutPct}}%</td>
-<td class="p-2">{{if .Token}}
+<td class="p-2"><button type="button" data-guardrail-graph="{{.GraphToken}}" data-request-id="{{$.RequestID}}" aria-label="View graph for guardrail policy {{$c.ID}}" aria-pressed="false" class="mb-2 rounded border border-gray-500 dark:border-gray-400 px-3 py-2 focus:outline focus:outline-2 focus:outline-accent">View graph</button>{{if .Token}}
 <form data-guardrail-apply hx-post="/whatif/guardrails/optimize/apply" hx-target="#guardrail-optimizer-results" hx-disabled-elt="button">
 <input type="hidden" name="request_id" value="{{$.RequestID}}"><input type="hidden" name="recommendation" value="{{.Token}}">
 <button type="submit" aria-label="Apply guardrail policy {{$c.ID}}" class="rounded bg-accent-strong text-white px-3 py-2 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent">Apply</button>
@@ -110,6 +156,14 @@ if(new URLSearchParams(location.search).has('guardrail_applied')){
 </tbody>
 </table>
 </div>
+<section id="guardrail-graph-preview" hidden aria-labelledby="guardrail-graph-heading" class="mt-4 rounded border border-gray-500 dark:border-gray-400 p-3">
+<h4 id="guardrail-graph-heading" tabindex="-1" class="font-semibold rounded focus:outline focus:outline-2 focus:outline-accent"></h4>
+<p id="guardrail-graph-summary" class="mt-2"></p>
+<p class="mt-2">Preview — not saved. This is the base portfolio projection under your plan assumptions, not a Monte Carlo success graph.</p>
+<div class="mt-3 flex flex-wrap gap-2 items-center"><label for="guardrail-graph-dollars">Graph dollars</label><select id="guardrail-graph-dollars" class="rounded border border-gray-500 dark:border-gray-400 bg-white dark:bg-gray-800 p-2 focus:outline focus:outline-2 focus:outline-accent"><option value="real">Today’s dollars</option><option value="nominal">Nominal dollars</option></select><button type="button" id="guardrail-graph-close" class="rounded border border-gray-500 dark:border-gray-400 px-3 py-2 focus:outline focus:outline-2 focus:outline-accent">Close preview</button></div>
+<div id="guardrail-graph-plot" class="w-full" role="img" aria-label="Selected policy portfolio projection; values in the following data tables"></div>
+<details class="mt-2"><summary class="cursor-pointer rounded py-2 focus:outline focus:outline-2 focus:outline-accent">Projection data and events</summary><div id="guardrail-graph-data" tabindex="0" role="region" aria-label="Projection values; scroll horizontally if needed" class="max-w-full overflow-x-auto"></div></details>
+</section>
 <p class="mt-2">Preview only. Apply saves the selected guardrails and refreshes your projection. Results expire after 15 minutes or when inputs or the plan change.</p>
 <details class="mt-3">
 <summary class="cursor-pointer rounded py-2 font-medium focus:outline focus:outline-2 focus:outline-accent">About these simulations</summary>

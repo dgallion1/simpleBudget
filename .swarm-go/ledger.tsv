@@ -3,3 +3,5 @@ GO1	3	tests,second	accepted	1	go1_engine	Shared financial floor and funding acco
 GO2	3	tests,second	accepted	2	go2_fix	Financial optimizer and simulated risk classification
 GO3	2	tests,a11y,second	accepted	3	go3_ui	User-visible money and risk controls
 GO4	2	tests,second	accepted	1	lead	Promote nonzero-first-depletion income-recovery checker probe
+GO5	2	tests,second,a11y	accepted	1	graph_worker	Read-only candidate projection and risk labels
+GO6	2	tests,second	accepted	1	lead	Promote primary checker actual-search token probe

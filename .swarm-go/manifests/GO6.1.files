@@ -1,0 +1,2 @@
+internal/handlers/whatif/guardrail_optimizer_test.go
+.swarm-go/probes/guardrail-graph-browser.cjs

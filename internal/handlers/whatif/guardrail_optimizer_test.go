@@ -231,6 +231,20 @@ func TestGuardrailOptimizerPreviewThenExplicitApply(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
+	seenGraphTokens := make(map[string]bool)
+	for _, row := range response.Rows {
+		if row.GraphToken == "" || seenGraphTokens[row.GraphToken] {
+			t.Fatal("returned row missing unique graph token")
+		}
+		seenGraphTokens[row.GraphToken] = true
+		retained, ok := guardrailPreviews.entries[response.RequestID].graphs[row.GraphToken]
+		if !ok || !reflect.DeepEqual(retained, row.Candidate) {
+			t.Fatal("retained graph candidate differs from search result")
+		}
+		if row.Token != "" && row.Token == row.GraphToken {
+			t.Fatal("graph token reused Apply token")
+		}
+	}
 	var selected guardrailOptimizerRow
 	for _, row := range response.Rows {
 		if row.Token != "" {

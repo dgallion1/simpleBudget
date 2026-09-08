@@ -28,6 +28,7 @@ type guardrailPreview struct {
 	cancel      context.CancelFunc
 	expires     time.Time
 	tokens      map[string]*models.GuardrailConfig
+	graphs      map[string]models.GuardrailOptimizerCandidate
 }
 
 var guardrailPreviews = struct {
@@ -36,8 +37,9 @@ var guardrailPreviews = struct {
 }{entries: make(map[string]*guardrailPreview)}
 
 type guardrailOptimizerRow struct {
-	Candidate models.GuardrailOptimizerCandidate
-	Token     string
+	Candidate  models.GuardrailOptimizerCandidate
+	Token      string
+	GraphToken string
 }
 
 func guardrailOptimizerError(w http.ResponseWriter, message string, status int) {
@@ -91,7 +93,7 @@ func handleGuardrailOptimizer(w http.ResponseWriter, r *http.Request) {
 	req := models.GuardrailOptimizerRequest{FloorMonthlyReal: floor, TargetSuccessPct: target}
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	entry := &guardrailPreview{manager: manager, scenario: scenario, revision: revision, fingerprint: sha256.Sum256(raw), request: req, cancel: cancel, expires: time.Now().Add(15 * time.Minute), tokens: make(map[string]*models.GuardrailConfig)}
+	entry := &guardrailPreview{manager: manager, scenario: scenario, revision: revision, fingerprint: sha256.Sum256(raw), request: req, cancel: cancel, expires: time.Now().Add(15 * time.Minute), tokens: make(map[string]*models.GuardrailConfig), graphs: make(map[string]models.GuardrailOptimizerCandidate)}
 	guardrailPreviews.Lock()
 	for key, p := range guardrailPreviews.entries {
 		if time.Now().After(p.expires) {
@@ -120,7 +122,19 @@ func handleGuardrailOptimizer(w http.ResponseWriter, r *http.Request) {
 	}
 	rows := make([]guardrailOptimizerRow, 0, len(result.Candidates))
 	for _, c := range result.Candidates {
-		row := guardrailOptimizerRow{Candidate: c}
+		var graphBytes [32]byte
+		if _, err := rand.Read(graphBytes[:]); err != nil {
+			delete(guardrailPreviews.entries, id)
+			guardrailOptimizerError(w, "Could not retain graph preview. Nothing was saved.", 500)
+			return
+		}
+		row := guardrailOptimizerRow{Candidate: c, GraphToken: hex.EncodeToString(graphBytes[:])}
+		retained := c
+		if c.Guardrails != nil {
+			cfg := *c.Guardrails
+			retained.Guardrails = &cfg
+		}
+		entry.graphs[row.GraphToken] = retained
 		if recommended[c.ID] && c.Qualifies && !c.Baseline && c.Guardrails != nil {
 			var bytes [32]byte
 			if _, err := rand.Read(bytes[:]); err != nil {

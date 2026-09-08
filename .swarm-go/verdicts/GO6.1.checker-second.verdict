@@ -1,0 +1,11 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: GO6
+ATTEMPT: 1
+---
+Read GO6 acceptance; verified in cp -a frozen copy /tmp/go6-second including .git. No production edits.
+rtk proxy go test ./internal/handlers/whatif -run TestGuardrailOptimizerPreviewThenExplicitApply -count=1: PASS 4.279s. Inspected assertions: real optimizer response rows must have nonempty unique graph tokens, exact retained candidate via reflect.DeepEqual, and graph token distinct from row Apply token; existing test requires nonempty applicable candidate and successful explicit Apply, avoiding empty-result vacuity.
+rtk proxy env GUARDRAIL_TEST_URL=http://localhost:18089 PLAYWRIGHT_MODULE=/home/darrell/.npm/_npx/e41f203b7505f1fb/node_modules/playwright CHROMIUM_PATH=/home/darrell/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome node .swarm-go/probes/guardrail-graph-browser.cjs: PASS. Synthetic fixture produced8 rows; every graph rendered and every graph-token Apply was409. Nominal mode, reordered asynchronous Plotly completion, coherent chart/table/heading, Close during paint, injected409 preserving prior graph, and floor-input invalidation passed.
+rtk proxy diff -u /tmp/go5-second-probe.js .swarm-go/probes/guardrail-graph-browser.cjs: differences limited to runtime/URL parameterization and explanatory comment. Probe behavior preserved.
+GO6 manifest is test-only; no new financial or search behavior. No in-scope findings.

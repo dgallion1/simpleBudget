@@ -1,0 +1,16 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: GO5
+ATTEMPT: 1
+---
+Scope: GO5 only, read-only selectable candidate graphs; frozen cp -a copy /tmp/go5-second including .git. No production edits. Checked GO5 contract and GUARDRAIL_OPTIMIZER_ACCESSIBILITY.md plus application ACCESSIBILITY points 1-17.
+Commands and observations:
+- rtk proxy go test ./internal/handlers/whatif -run TestGuardrail(Graph|Optimizer) -count=1: PASS (8.432s). Read actual assertions: exact canonical chart output for selected/current/nil policy in real and nominal modes; serialized settings and revision unchanged; forged, expired, cancelled, wrong request, manager, scenario, revision, fingerprint rejected. Existing optimizer flow tests pass.
+- rtk proxy go test -race ./internal/handlers/whatif -run TestGuardrailGraph -count=1: PASS (1.250s).
+- rtk proxy go build -o /tmp/go5-second-server ./cmd/server: PASS. Server on 18089 with synthetic /tmp/go5-ui-fixture-data.
+- rtk proxy node /tmp/go5-second-probe.js: PASS, real Chromium/Playwright. Actual optimizer produced 8 rows. Enumerated every returned graph token (including below-target candidates and current/disabled baselines), all graph responses 200 with chart values; posting each graph token to Apply returned409. Graph authorization did not confer save permission.
+- Browser selected nominal dollars then returned to another policy; rendered summary units matched response. Delayed the first Plotly.newPlot completion 1000ms, selected another candidate, and let old paint finish last: latest candidate retained aria-pressed, policy heading and graph ownership. Compared every displayed portfolio table currency value against the corresponding Plotly y value through en-US currency rendering; all matched.
+- Closed during delayed paint; preview remained hidden after completion. Injected graph409 response: error announced, comparison buttons preserved and prior selected policy/graph retained consistently. Editing optimizer floor removed graph and comparison (ACCESSIBILITY16 and GO5 invalidation).
+- Inspected all changed production surfaces via working-tree diff and untracked manifest: route, retention, graph handler, result template. No search/simulation/financial formulas changed. Server clones exact retained config including nil, validates settings fingerprint/revision/scenario before engine, uses DefaultHooks and canonical chart builder. Qualification comes from retained candidate on both table and graph, not recomputed from rounded display.
+No in-scope defect reproduced. Accessibility specialist owns full themes/narrow/contrast audit; this verdict covers adversarial data, authorization, async state coherence, and preservation.

@@ -1,0 +1,10 @@
+internal/models/whatif.go
+internal/models/guardrail_optimizer.go
+internal/models/guardrail_simulation.go
+internal/models/guardrail_floor_test.go
+internal/services/retirement/analysis/monte_carlo.go
+internal/services/retirement/analysis/floor_outcomes.go
+internal/services/retirement/analysis/guardrail_optimizer.go
+internal/services/retirement/analysis/guardrail_simulation.go
+internal/services/retirement/analysis/guardrail_simulation_test.go
+internal/services/retirement/analysis/guardrail_optimizer_test.go

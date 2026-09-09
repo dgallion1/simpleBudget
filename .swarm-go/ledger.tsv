@@ -5,3 +5,6 @@ GO3	2	tests,a11y,second	accepted	3	go3_ui	User-visible money and risk controls
 GO4	2	tests,second	accepted	1	lead	Promote nonzero-first-depletion income-recovery checker probe
 GO5	2	tests,second,a11y	accepted	1	graph_worker	Read-only candidate projection and risk labels
 GO6	2	tests,second	accepted	1	lead	Promote primary checker actual-search token probe
+GO7	3	tests,second	accepted	1	range_worker	Observed financial simulation bands
+GO8	2	tests,second,a11y	accepted	2	range_ui	Simulation preview charts and money labels
+GO9	2	tests	accepted	1	lead	Test-only promotion of held-out replay evidence

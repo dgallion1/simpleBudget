@@ -25,12 +25,13 @@ type GuardrailOptimizerResult struct {
 // GuardrailOptimizerCandidate contains a policy plus independently measured
 // outcomes. Baselines are comparison-only, even when they qualify.
 type GuardrailOptimizerCandidate struct {
-	ID         string                    `json:"id"`
-	Labels     []string                  `json:"labels"`
-	Guardrails *GuardrailConfig          `json:"guardrails"`
-	Metrics    GuardrailOptimizerMetrics `json:"metrics"`
-	Qualifies  bool                      `json:"qualifies"`
-	Baseline   bool                      `json:"baseline"`
+	SimulationYears []GuardrailSimulationYear `json:"simulation_years,omitempty"`
+	ID              string                    `json:"id"`
+	Labels          []string                  `json:"labels"`
+	Guardrails      *GuardrailConfig          `json:"guardrails"`
+	Metrics         GuardrailOptimizerMetrics `json:"metrics"`
+	Qualifies       bool                      `json:"qualifies"`
+	Baseline        bool                      `json:"baseline"`
 }
 
 // GuardrailOptimizerMetrics uses funded living in today's dollars, never

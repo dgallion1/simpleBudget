@@ -1,0 +1,15 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: GO8
+ATTEMPT: 2
+---
+Independent frozen cp -a copy /tmp/go82-primary; scoped attempt2 cached retheme/responsiveness correction. Numbered criteria extend GO8.1 primary evidence.
+1. Simulation rendering/fidelity and all modes: expanded node internal/handlers/whatif/testdata/guardrail_ranges_browser.cjs PASS: simulation values, bands, counts, both modes, base case, zeros, unavailable, stale paint, close, errors, theme, narrow viewport, invalidation. Real Chromium+Plotly; retained payload synthetic. Assertions read: exact plotted arrays, rendered $1,200.00, Paths700, missing vs zero distinction, current policy/labels and retained mode on error.
+2. Correct retheme when requests fail/expire: same harness sets fail=true after displaying B, focuses dollar control, changes theme, waits for #93c5fd, asserts unchanged request count and focus. PASS. Pending graph retheme checks #1e40af and no extra request; delayed response/Plotly races still PASS. This directly addresses prior a11y defect.
+3. Responsive chart internal SVG: same harness resizes375px then asserts each SVG bounding width <= plot width+1. PASS. Full accessibility remains separate checker-a11y responsibility.
+4. Regression sensitivity: /tmp/go82-primary-mutant retains expanded harness but replaces production template with attempt1 version. Identical command exits1 at line45: waitForFunction Timeout30000ms on old chart never becoming dark-theme color while fetch fails. Correct feature passes; prior defect fails for expected condition.
+5. Endpoint and no mutation/security regressions: go test -count=1 ./internal/handlers/whatif -run "TestGuardrailGraph|TestGuardrailOptimizer" -> ok 3.790s, includes retained exact payload and both dollar modes, invalid token/stale/expiry/cancel, below-target Apply rejection and unchanged settings. Endpoint production bytes unchanged since attempt1 mutation-verified fidelity test.
+6. Build/assets: make css-verify -> tailwind.css is up to date; go build ./... exit0. Prior full env GOFLAGS=-count=1 make check passed; no full rerun per scoped attempt2 (backend unchanged).
+7. Scope: byte comparison across cumulative GO8.2 manifest against first frozen copy outputs only template and testdata/guardrail_ranges_browser.cjs; PASS attempt2 scoped template and regression only. GO9 test-only promotion separately verified, GO7 unchanged.
+Browser environment: PLAYWRIGHT_MODULE=/home/darrell/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright; CHROMIUM_PATH=/home/darrell/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell; PLOTLY_PATH=/tmp/lifetime-baseline-data/cache/plotly.min.js. Harness executes native JS/rendering and range/matchMedia behavior, but synthetic fetch is separate from Go endpoint evidence. No production edits or git actions by verifier.

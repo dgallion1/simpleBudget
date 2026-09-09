@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 )
 
@@ -34,7 +35,7 @@ func TestGuardrailFloorJSONRoundtrip(t *testing.T) {
 	if err = json.Unmarshal(raw, &restored); err != nil {
 		t.Fatal(err)
 	}
-	if restored.FloorOutcome == nil || *restored.FloorOutcome != *result.FloorOutcome {
+	if restored.FloorOutcome == nil || !reflect.DeepEqual(restored.FloorOutcome, result.FloorOutcome) {
 		t.Fatal(string(raw))
 	}
 }

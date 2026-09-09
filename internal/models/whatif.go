@@ -1265,12 +1265,13 @@ type MonteCarloGuardrailImpact struct {
 
 // MonteCarloFloorOutcome measures funded living in today's dollars over the full horizon.
 type MonteCarloFloorOutcome struct {
-	FloorFailed           bool    `json:"floor_failed"`
-	TotalFundedLivingReal float64 `json:"total_funded_living_real"`
-	WorstAnnualCutPct     float64 `json:"worst_annual_cut_pct"`
-	AnnualCutCount        int     `json:"annual_cut_count"`
-	MonthsObserved        int     `json:"months_observed"`
-	FinalBalanceReal      float64 `json:"final_balance_real"`
+	Years                 []GuardrailPathYear `json:"years,omitempty"`
+	FloorFailed           bool                `json:"floor_failed"`
+	TotalFundedLivingReal float64             `json:"total_funded_living_real"`
+	WorstAnnualCutPct     float64             `json:"worst_annual_cut_pct"`
+	AnnualCutCount        int                 `json:"annual_cut_count"`
+	MonthsObserved        int                 `json:"months_observed"`
+	FinalBalanceReal      float64             `json:"final_balance_real"`
 }
 
 // MonteCarloResult represents a single simulation run outcome.

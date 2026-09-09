@@ -1,0 +1,10 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: GO9
+ATTEMPT: 1
+---
+1. Permanent every-candidate held-out replay: copied only new test into frozen /tmp/go78-primary (no concurrent UI copy). go test -count=1 ./internal/services/retirement/analysis -run ^TestGuardrailSimulationHeldOutReplayEveryCandidate$ -v -> PASS (0.59s). Read assertions: actual10-year OptimizeGuardrails, rebuild each returned policy, replay exact ValidationSeed/ValidationRuns, DeepEqual both summarized years and metrics, require stochastic policy differences.
+2. Mutation sensitivity: scratch /tmp/go9-primary-mutant changed evaluate runner seed from baseSeed to baseSeed+1. Same focused command exits1: candidate grid-20-5-15-10-150 differs from held-out replay. Proves new test detects incorrect validation provenance.
+3. Test-only scope: manifest contains only internal/services/retirement/analysis/guardrail_simulation_validation_test.go. Byte comparison of every GO7 manifest file against frozen verified snapshot -> PASS all unchanged. GO8 UI work is concurrent separately scoped. Composite make check and build previously passed unchanged backend at GO7; no redundant full run for test-only promotion.
+No production writes or git actions by verifier.

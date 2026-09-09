@@ -1,0 +1,19 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: GO8
+ATTEMPT: 2
+---
+FAILURES: None introduced by GO8 remaining.
+
+Actual final-render evidence:
+rtk proxy node /tmp/go8-extra.cjs — exit0. Original counterexample rerun on rebuilt18090 actual optimizer output: light graph loaded, graph endpoint intercepted to return expired error, toggle dark. THEMEERROR dark:true,color:#93c5fd,font:#f3f4f6; focus remains guardrail-graph-heading; status remains Graph loaded...Nothing was saved. Cached local retheming fixes point7/12/WCAG1.4.3/1.4.11 failure. Source diff master confirms local Plotly.react from retained payload rather than network-dependent re-theme.
+Same trace RESIZE viewport375,plotWidth271,svgWidth271; RESELECT same271/271. Previously330/271 and280/271. No page horizontal overflow now:375/375. ResizeObserver plus responsive SVG resolves noted resize concern.
+rtk proxy node /tmp/go8-a11y.cjs — exit0. Actual optimizer99percent result; keyboard Enter graph focuses heading, Tab reaches Graph view/Graph dollars/Close/disclosure in order; disclosure keyboard opens numeric tables. Close restores invoking button, aria-pressedfalse, hides/clears numeric region. Changed floor invalidates preview and announces. Nominal mode updates captions. Theme focus outlines2px visible accent. Live scoped axe zero violations both themes. /tmp/go8-a11y-report.json and /tmp/go8-a11y-{light,dark,width375,width640}.png updated with final output.
+Actual rendered page bytes /tmp/go8-render-{light,dark}.html converted to static snapshots only by removing scripts and adding18090baseURL, retaining real generated HTML/SVG/table and real built stylesheet. Required axe CLI:
+rtk proxy npx --offline --prefix /home/darrell/.npm/_npx/9e5e191565a58cca @axe-core/cli file:///tmp/go8-audit-light.html file:///tmp/go8-audit-dark.html --include #guardrail-optimizer --chrome-path /home/darrell/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome --chrome-options=--no-sandbox --dir /tmp --save go8-cli-axe-attempt2.json --exit
+Exit0, zero violations both pages. /tmp/go8-cli-axe-attempt2.json.
+
+Constitution review: points1–3 oneh1/logicalh2h3h4/native semantics; 4–6,18–19 visible labeled units/selects and unchanged validation; 7–8,12 theme colors plus textual target labels and dashed floor reference;9–10,20,22 keyboard/focus/live result handling verified;11 adjacent captioned tables carry P10/P50/P90/Paths/year and realfloor, text explains pointwise range/annualaverage/wholehorizonfloor;13 nonnegative money with units;14 no new banner;15 duration0 and auto scroll/reducedmotion context;16 close clears all accessible state;17 no modal;21,23 tables scope=col, confined keyboard-scroll container and375/640reflow. Hidden-text manual review no new abuse; named roleimg charts refer to data tables, no bitmap alt changes. Traced UI behavior used to judge accessibility consequences; no financial arithmetic verdict from this lane.
+
+OBSERVATIONS: Prior whole-site unchanged legacy contrast findings stand from /tmp/go8-site-a11y.json (dashboard/explorer/insights/major-expenses/whatif/transfers/filemanager; accounts clean boththemes). These paths byte-unchanged outside GO8 template per git diff master. Disabled spendingphase contrast remains out of scope. Prior full-site review and unchanged manual points retained from attempt1; no new fullapp audit necessary for narrow template/harness fix. No source edits or git changes made by checker.

@@ -61,5 +61,5 @@ func handleGuardrailOptimizerGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mode := normalizeDisplayDollars(r.PostForm.Get("display_dollars"))
-	_ = json.NewEncoder(w).Encode(map[string]any{"candidate": candidate, "success_text": fmt.Sprintf("%.2f", candidate.Metrics.FloorSuccessPct), "target": p.request.TargetSuccessPct, "display_dollars": mode, "chart": buildProjectionChartData(&clone, projection, mode)})
+	_ = json.NewEncoder(w).Encode(map[string]any{"candidate": candidate, "success_text": fmt.Sprintf("%.2f", candidate.Metrics.FloorSuccessPct), "target": p.request.TargetSuccessPct, "floor_monthly_real": p.request.FloorMonthlyReal, "validation_seed": fmt.Sprint(p.validationSeed), "validation_runs": p.validationRuns, "display_dollars": mode, "chart": buildProjectionChartData(&clone, projection, mode)})
 }

@@ -1,0 +1,14 @@
+=== RUN   TestGO7OraclePercentiles
+--- PASS: TestGO7OraclePercentiles (0.00s)
+=== RUN   TestGO7OracleCaptureParity
+--- PASS: TestGO7OracleCaptureParity (0.00s)
+=== RUN   TestGO7OracleHeldOutConsumers
+--- PASS: TestGO7OracleHeldOutConsumers (0.31s)
+=== RUN   TestGO7OracleAnnualNominalAndCPI
+--- PASS: TestGO7OracleAnnualNominalAndCPI (0.00s)
+PASS
+ok  	budget2/internal/services/retirement/analysis	0.315s
+ok  	budget2/internal/services/retirement/analysis	(cached)
+ok  	budget2/internal/services/retirement/engine	(cached)
+ok  	budget2/internal/models	(cached)
+ORACLE PASS

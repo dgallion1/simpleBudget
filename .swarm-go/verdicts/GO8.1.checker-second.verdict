@@ -1,0 +1,11 @@
+VERDICT: FAIL
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: GO8
+ATTEMPT: 1
+---
+Scope: new simulation preview charts, retained data provenance, async behavior and both themes. Frozen copy /tmp/budget2-ranges-second. No production edits.
+PASS: go test ./internal/handlers/whatif -run TestGuardrail(Graph|Simulation|Optimizer) -count=1. Retained graph endpoint returns exact stored bands and seed, preserves target/classification, rejects forged/stale tokens and leaves settings unchanged.
+PASS: real Chromium/Plotly internal/handlers/whatif/testdata/guardrail_ranges_browser.cjs verifies all basis/view modes, source values, year contributor counts, zeros/unavailable, same-base/different-bands fixture, reordered Plotly completions, close/error/invalidation. Additional second-browser.cjs probe reverses fetch completion ignoring abort and tests failed nominal switch rollback; PASS.
+FAIL: GO8 both-themes criterion and ACCESSIBILITY.md point12 require charts re-theme. Independent reproduction second-expired-theme.cjs keeps synthetic graph endpoint expired after successfully displaying a light chart, then toggles dark. Actual trace remains #1e40af instead of #93c5fd; assertion fails at line44 with exact observed color. No data mutation. This failure is in new GO8 simulation surface. Theme observer currently fetches again; endpoint error preserves old light graph. Re-theming the retained payload locally repairs the dependency and must preserve values/focus. Probe is at /tmp/budget2-ranges-second/second-expired-theme.cjs. Command environment PLAYWRIGHT_MODULE=/home/darrell/.npm/_npx/e41f203b7505f1fb/node_modules/playwright CHROMIUM_PATH=/home/darrell/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome PLOTLY_PATH=/tmp/go3-ui-fixture-data/cache/plotly.min.js node second-expired-theme.cjs.
+The independent a11y lane also identified this defect; this verdict rests on my own executed counterexample. No claim about unrelated legacy UI.

@@ -1,0 +1,24 @@
+=== RUN   TestGO7OraclePercentiles
+    go7_acceptance_external_test.go:41: got 0.0000000000 want 20.0000000000
+--- FAIL: TestGO7OraclePercentiles (0.00s)
+=== RUN   TestGO7OracleCaptureParity
+--- PASS: TestGO7OracleCaptureParity (0.00s)
+=== RUN   TestGO7OracleHeldOutConsumers
+--- PASS: TestGO7OracleHeldOutConsumers (0.31s)
+FAIL
+FAIL	budget2/internal/services/retirement/analysis	0.318s
+FAIL
+
+EXTENDED NOMINAL CAPTURE MUTANT
+=== RUN   TestGO7OraclePercentiles
+--- PASS: TestGO7OraclePercentiles (0.00s)
+=== RUN   TestGO7OracleCaptureParity
+--- PASS: TestGO7OracleCaptureParity (0.00s)
+=== RUN   TestGO7OracleHeldOutConsumers
+--- PASS: TestGO7OracleHeldOutConsumers (0.30s)
+=== RUN   TestGO7OracleAnnualNominalAndCPI
+    go7_acceptance_external_test.go:203: got 1000.0000000000 want 1054.1271858270
+--- FAIL: TestGO7OracleAnnualNominalAndCPI (0.00s)
+FAIL
+FAIL	budget2/internal/services/retirement/analysis	0.308s
+FAIL

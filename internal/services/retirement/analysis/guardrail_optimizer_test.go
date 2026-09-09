@@ -36,6 +36,7 @@ func TestGuardrailOptimizerRealRunnerMatchesScenarioDraws(t *testing.T) {
 	master := rand.New(rand.NewSource(417))
 	cfg := DefaultMonteCarloConfig()
 	cfg.MinMonthlySpendingReal = 7500
+	cfg.CaptureSpendingYears = true
 	for i, row := range rows {
 		expected := RunSingleMonteCarloSimulation(in, rand.New(rand.NewSource(master.Int63())), cfg)
 		if !reflect.DeepEqual(row, expected) {

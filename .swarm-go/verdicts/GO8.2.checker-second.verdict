@@ -1,0 +1,12 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: GO8
+ATTEMPT: 2
+---
+Scope: GO8 simulation preview, with attempt2 delta limited to optimizer template and permanent browser regression. Independent frozen cp -a tree /tmp/budget2-ranges-second-v2; no production edits.
+Executed go test ./internal/handlers/whatif -run TestGuardrail(Graph|Simulation|Optimizer) -count=1: PASS (4.429s). Retained source fidelity, seed precision, target/classification, all-token protections and no-settings mutation remain covered by relevant tests.
+Executed actual Chromium with Plotly via env PLAYWRIGHT_MODULE=/home/darrell/.npm/_npx/e41f203b7505f1fb/node_modules/playwright CHROMIUM_PATH=/home/darrell/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome PLOTLY_PATH=/tmp/go3-ui-fixture-data/cache/plotly.min.js node internal/handlers/whatif/testdata/guardrail_ranges_browser.cjs: PASS.
+Original FAIL repaired: after successful light graph and synthetic endpoint expiry, dark toggle produces #93c5fd trace, sends zero requests and preserves focused dollar control. ACCESSIBILITY point12 is now met for this counterexample. Narrow viewport resize verifies SVG does not exceed plot width. Both value bases, base view, zero/absent capture, contributor counts and exact chart/table values still pass.
+Adversarial async scenarios pass: reorder Plotly completion; ignore aborted fetch and reverse response completion; close mid-render; endpoint error preserves prior choice; failed nominal switch restores real selector/data; toggle theme during pending render reconciles to latest theme without extra request. No page errors.
+No in-scope defect established. GO7 backend result remains unchanged; no repeated full suite required for this scoped UI revision. Permanent harness includes the previous second-checker fetch-order and rollback probes.

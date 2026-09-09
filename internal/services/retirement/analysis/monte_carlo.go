@@ -16,6 +16,8 @@ import (
 type MonteCarloConfig struct {
 	// Observation only: never changes the policy. Positive values observe the full horizon.
 	MinMonthlySpendingReal float64
+	// Capture complete annual observations only when a positive floor is observed.
+	CaptureSpendingYears bool
 	// Market dynamics
 	ReturnVolatility float64 // Annual return standard deviation (e.g., 15 for 15%)
 	CrashProbability float64 // Annual probability of a crash (e.g., 0.05 for 5%)
@@ -464,6 +466,9 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 		out := st.StepMonth(m, mcReturns)
 		if floorTracker != nil {
 			floorTracker.observe(out.FundedLivingExpenses, st.CumulativeInflation)
+			if config.CaptureSpendingYears {
+				floorTracker.captureYear(out.FundedLivingExpenses, out.TotalBalance, st.CumulativeInflation)
+			}
 		}
 		guardrailImpact.observe(out.LivingExpenses, out.GuardrailMultiplier, st.CumulativeInflation)
 		guardrailImpact.observeFundingGap(out.Result.Shortfall)

@@ -21,12 +21,12 @@
 const root=document.getElementById('guardrail-optimizer');
 if(!root || root.dataset.ready)return;root.dataset.ready='true';
 const form=root.querySelector('form'),target=root.querySelector('#guardrail-optimizer-target'),custom=root.querySelector('#guardrail-optimizer-custom'),wrap=root.querySelector('#guardrail-optimizer-custom-wrap'),run=root.querySelector('#guardrail-optimizer-run'),cancel=root.querySelector('#guardrail-optimizer-cancel'),status=root.querySelector('#guardrail-optimizer-status'),results=root.querySelector('#guardrail-optimizer-results');
-let graphController=null,graphGeneration=0,graphOrigin=null,graphPayload=null;
+let graphController=null,graphGeneration=0,graphOrigin=null,graphPayload=null,graphThemeRevision=0;
 let requestID='',controller=null,generation=0;
 function clearGraph(){
  graphGeneration++;graphController?.abort();graphController=null;graphPayload=null;
  const panel=root.querySelector('#guardrail-graph-preview');
- if(panel){const plot=panel.querySelector('#guardrail-graph-plot');if(window.Plotly)Plotly.purge(plot);panel.hidden=true;panel.querySelector('#guardrail-graph-heading').textContent='';panel.querySelector('#guardrail-graph-summary').textContent='';panel.querySelector('#guardrail-graph-data').replaceChildren();}
+ if(panel){panel.querySelectorAll('[data-policy-plot]').forEach(plot=>{if(window.Plotly)Plotly.purge(plot);});panel.hidden=true;panel.querySelector('#guardrail-graph-heading').textContent='';panel.querySelector('#guardrail-graph-summary').textContent='';panel.querySelector('#guardrail-graph-note').textContent='';panel.querySelector('#guardrail-graph-data').replaceChildren();}
  root.querySelectorAll('[data-guardrail-graph]').forEach(button=>button.setAttribute('aria-pressed','false'));graphOrigin=null;
 }
 function policyName(c){return c.id==='current'?'Current guardrails':c.id==='no-guardrails'?'Guardrails disabled':((c.labels||[]).join(' · ')||'Alternative')+' '+c.id;}
@@ -45,28 +45,61 @@ function graphTable(payload){
  const body=table.createTBody();trace.x.forEach((year,index)=>{const row=body.insertRow();[String(year),money.format(trace.y[index]),...(trace.text?[trace.text[index]]:[])].forEach(value=>{const cell=row.insertCell();cell.className='p-2';cell.textContent=value;});});fragment.append(table);
  });return fragment;
 }
-async function showGraph(button,mode='real'){
+function simulationChart(payload,measure){
+ const years=payload.candidate.simulation_years||[],basis=payload.display_dollars==='real'?'real':'nominal',key=measure+'_'+basis;
+ const dark=document.documentElement.classList.contains('dark'),color=dark?'#93c5fd':'#1e40af',x=years.map(y=>y.year),money=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
+ const trace=(p,name)=>({x,y:years.map(y=>y[key][p]),text:years.map(y=>money.format(y[key][p])),name,type:'scatter',mode:'lines',line:{color,width:p==='p50'?3:1.5},hovertemplate:'Year %{x}: %{text}<extra>'+name+'</extra>'});
+ const lower=trace('p10','P10'),upper=trace('p90','P90');upper.fill='tonexty';upper.fillcolor=dark?'rgba(147,197,253,0.25)':'rgba(30,64,175,0.18)';
+ const data=[lower,upper,trace('p50','Median (P50)')];
+ if(measure==='living'&&basis==='real')data.push({x,y:x.map(()=>payload.floor_monthly_real),name:'Selected minimum',type:'scatter',mode:'lines',line:{color:dark?'#fcd34d':'#92400e',dash:'dash',width:2}});
+ return {data,layout:{title:{text:measure==='living'?'Funded living spending<br>Monthly average within each year':'Portfolio balance — year-end'},autosize:true,height:430,paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:{color:dark?'#f3f4f6':'#1f2937'},margin:{l:75,r:20,t:75,b:150},legend:{orientation:'h',y:-0.4},xaxis:{title:{text:'Projection year'},dtick:x.length<=5?1:5,automargin:true,gridcolor:dark?'#6b7280':'#9ca3af'},yaxis:{title:{text:basis==='real'?'Today’s dollars':'Nominal dollars'},rangemode:'tozero',tickprefix:'$',automargin:true,gridcolor:dark?'#6b7280':'#9ca3af'},transition:{duration:0}}};
+}
+function simulationTable(payload){
+ const fragment=document.createDocumentFragment(),basis=payload.display_dollars==='real'?'real':'nominal',money=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
+ ['living','portfolio'].forEach(measure=>{
+ const table=document.createElement('table');table.className='w-full text-sm text-left mt-3';
+ table.createCaption().textContent=(measure==='living'?'Funded monthly living spending (annual average)':'Year-end portfolio')+' — '+(basis==='real'?'today’s dollars':'nominal dollars');
+ const head=table.createTHead().insertRow();['Year','Paths','P10','Median (P50)','P90',...(measure==='living'&&basis==='real'?['Selected minimum']:[])].forEach(label=>{const th=document.createElement('th');th.scope='col';th.className='p-2';th.textContent=label;head.append(th);});
+ const body=table.createTBody();(payload.candidate.simulation_years||[]).forEach(year=>{const row=body.insertRow();[year.year,year.paths,...['p10','p50','p90'].map(p=>money.format(year[measure+'_'+basis][p])),...(measure==='living'&&basis==='real'?[money.format(payload.floor_monthly_real)]:[])].forEach(value=>{const cell=row.insertCell();cell.className='p-2';cell.textContent=value;});});fragment.append(table);
+ });return fragment;
+}
+async function showGraph(button,mode='real',kind='simulation'){
  graphController?.abort();const current=++graphGeneration,searchGeneration=generation;graphController=new AbortController();status.textContent='Loading selected policy graph…';
+ const fresh=()=>current===graphGeneration&&searchGeneration===generation&&root.isConnected;
+ const pending=[];
  try{
  const response=await fetch('/whatif/guardrails/optimize/graph',{method:'POST',body:new URLSearchParams({request_id:button.dataset.requestId,candidate:button.dataset.guardrailGraph,display_dollars:mode}),signal:graphController.signal});
- const payload=await response.json();if(current!==graphGeneration||searchGeneration!==generation||!root.isConnected)return;
+ const payload=await response.json();if(!fresh())return;
  if(!response.ok)throw new Error(payload.error||'Graph could not load. Try again.');
- const panel=root.querySelector('#guardrail-graph-preview'),oldPlot=panel.querySelector('#guardrail-graph-plot'),plot=oldPlot.cloneNode(false);const chart=graphTheme(payload);chart.layout.width=Math.max(280,results.clientWidth-26);
+ payload.view_kind=kind;
+ const panel=root.querySelector('#guardrail-graph-preview'),hasYears=(payload.candidate.simulation_years||[]).length>0;
  if(!window.Plotly)throw new Error('Chart library is unavailable. Reload the page and try again.');
- await Plotly.newPlot(plot,chart.data,chart.layout,{responsive:true,displayModeBar:false,staticPlot:true});
- if(current!==graphGeneration||searchGeneration!==generation||!root.isConnected)return;
- Plotly.purge(oldPlot);oldPlot.replaceWith(plot);graphPayload=payload;graphOrigin=button;root.querySelectorAll('[data-guardrail-graph]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
- const heading=panel.querySelector('#guardrail-graph-heading');heading.textContent=policyName(payload.candidate)+' — portfolio projection';
- const units=payload.display_dollars==='real'?'today’s dollars':'nominal dollars',values=payload.chart.data[0].y,last=values.length?values[values.length-1]:0;
- panel.querySelector('#guardrail-graph-summary').textContent=(payload.candidate.qualifies?'Meets target':'Below target')+' · '+payload.success_text+'% chance of maintaining your minimum; target '+payload.target+'%. Base projection ending balance: '+new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(last)+' in '+units+'.';
- panel.querySelector('#guardrail-graph-dollars').value=payload.display_dollars;panel.querySelector('#guardrail-graph-data').replaceChildren(graphTable(payload));panel.hidden=false;Plotly.Plots.resize(plot);
- status.textContent='Graph loaded for '+policyName(payload.candidate)+', in '+units+'. Nothing was saved.';heading.focus();
- }catch(error){if(current===graphGeneration&&searchGeneration===generation){status.textContent=error.message||'Graph could not load. Try again.';const panel=root.querySelector('#guardrail-graph-preview');if(panel&&graphPayload){panel.hidden=false;panel.querySelector('#guardrail-graph-dollars').value=graphPayload.display_dollars;}button.focus();}}
- finally{if(current===graphGeneration)graphController=null;}
+ for(const [id,measure] of [['guardrail-graph-living','living'],['guardrail-graph-plot','portfolio']]){
+ const old=panel.querySelector('#'+id),plot=old.cloneNode(false),visible=kind==='base'?measure==='portfolio':hasYears;
+ plot.hidden=!visible;pending.push({old,plot});
+ if(visible){const chart=kind==='base'?graphTheme(payload):simulationChart(payload,measure);plot.style.width=Math.max(1,results.clientWidth-26)+'px';await Plotly.newPlot(plot,chart.data,chart.layout,{responsive:true,displayModeBar:false,staticPlot:true});}
+ if(!fresh())return;
+ }
+ let themed=-1;while(themed!==graphThemeRevision){themed=graphThemeRevision;await Promise.all(pending.filter(({plot})=>!plot.hidden).map(({plot},index)=>{const chart=kind==='base'?graphTheme(payload):simulationChart(payload,index===0?'living':'portfolio');return Plotly.react(plot,chart.data,chart.layout,{responsive:true,displayModeBar:false,staticPlot:true});}));if(!fresh())return;}
+ pending.forEach(({old,plot})=>{Plotly.purge(old);plot.style.width='100%';old.replaceWith(plot);});graphPayload=payload;graphOrigin=button;root.querySelectorAll('[data-guardrail-graph]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+ const heading=panel.querySelector('#guardrail-graph-heading');heading.textContent=policyName(payload.candidate)+' — '+(kind==='base'?'base-case portfolio projection':'simulated spending and portfolio');
+ const units=payload.display_dollars==='real'?'today’s dollars':'nominal dollars';
+ panel.querySelector('#guardrail-graph-summary').textContent=(payload.candidate.qualifies?'Meets target':'Below target')+' · '+payload.success_text+'% chance of maintaining your minimum; target '+payload.target+'%. Values in '+units+'.';
+ panel.querySelector('#guardrail-graph-note').textContent=kind==='base'?'One base-case projection under your plan assumptions. This is not the simulation range; policies may have identical base cases.':!hasYears?'Simulated ranges are unavailable for this result. You can still inspect its base case.':'Living spending is the average funded monthly amount within each year. An average above your minimum can still include a month below it; the chance above checks every month. Paths counts the futures contributing to each year, including zero balances. Later counts can fall as modeled lifetimes end; ended futures are not filled in. These are the same '+payload.validation_runs+' validation futures used for the result (seed '+payload.validation_seed+').';
+ panel.querySelector('#guardrail-graph-dollars').value=payload.display_dollars;panel.querySelector('#guardrail-graph-kind').value=kind;panel.querySelector('#guardrail-graph-data').replaceChildren(kind==='base'?graphTable(payload):simulationTable(payload));panel.hidden=false;
+ pending.forEach(({plot})=>{if(!plot.hidden)Plotly.Plots.resize(plot);});
+ status.textContent='Graph loaded for '+policyName(payload.candidate)+', in '+units+'. Nothing was saved.';heading.focus({preventScroll:true});heading.scrollIntoView({block:'start',behavior:'auto'});
+ }catch(error){if(fresh()){status.textContent=error.message||'Graph could not load. Try again.';const panel=root.querySelector('#guardrail-graph-preview');if(panel&&graphPayload){panel.hidden=false;panel.querySelector('#guardrail-graph-dollars').value=graphPayload.display_dollars;panel.querySelector('#guardrail-graph-kind').value=graphPayload.view_kind;}button.focus();}}
+ finally{pending.forEach(({plot})=>{if(!plot.isConnected&&window.Plotly)Plotly.purge(plot);});if(current===graphGeneration)graphController=null;}
 }
 root.addEventListener('click',event=>{const button=event.target.closest('[data-guardrail-graph]');if(button){showGraph(button);return;}if(event.target.closest('#guardrail-graph-close')){const origin=graphOrigin;clearGraph();status.textContent='Graph preview closed. Nothing was saved.';origin?.focus();}});
-root.addEventListener('change',event=>{if(event.target.id==='guardrail-graph-dollars'&&graphOrigin)showGraph(graphOrigin,event.target.value);});
-new MutationObserver(()=>{const plot=root.querySelector('#guardrail-graph-plot');if(root.isConnected&&graphPayload&&plot){const chart=graphTheme(graphPayload);Plotly.react(plot,chart.data,chart.layout,{responsive:true,displayModeBar:false,staticPlot:true});}}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+root.addEventListener('change',event=>{if(['guardrail-graph-dollars','guardrail-graph-kind'].includes(event.target.id)&&graphOrigin)showGraph(graphOrigin,root.querySelector('#guardrail-graph-dollars').value,root.querySelector('#guardrail-graph-kind').value);});
+function refreshGraphAppearance(){
+ if(!root.isConnected||!graphPayload||!window.Plotly)return;
+ root.querySelectorAll('[data-policy-plot]').forEach(plot=>{if(plot.hidden||!plot.data)return;const chart=graphPayload.view_kind==='base'?graphTheme(graphPayload):simulationChart(graphPayload,plot.id==='guardrail-graph-living'?'living':'portfolio');Plotly.react(plot,chart.data,chart.layout,{responsive:true,displayModeBar:false,staticPlot:true});});
+}
+new MutationObserver(()=>{graphThemeRevision++;refreshGraphAppearance();}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+new ResizeObserver(()=>{if(root.isConnected&&graphPayload&&window.Plotly)root.querySelectorAll('[data-policy-plot]').forEach(plot=>{if(!plot.hidden&&plot.data)Plotly.Plots.resize(plot);});}).observe(results);
 
 function busy(value){run.disabled=value;cancel.disabled=!value;results.setAttribute('aria-busy',String(value));}
 function invalidate(message){
@@ -159,10 +192,11 @@ if(new URLSearchParams(location.search).has('guardrail_applied')){
 <section id="guardrail-graph-preview" hidden aria-labelledby="guardrail-graph-heading" class="mt-4 rounded border border-gray-500 dark:border-gray-400 p-3">
 <h4 id="guardrail-graph-heading" tabindex="-1" class="font-semibold rounded focus:outline focus:outline-2 focus:outline-accent"></h4>
 <p id="guardrail-graph-summary" class="mt-2"></p>
-<p class="mt-2">Preview — not saved. This is the base portfolio projection under your plan assumptions, not a Monte Carlo success graph.</p>
-<div class="mt-3 flex flex-wrap gap-2 items-center"><label for="guardrail-graph-dollars">Graph dollars</label><select id="guardrail-graph-dollars" class="rounded border border-gray-500 dark:border-gray-400 bg-white dark:bg-gray-800 p-2 focus:outline focus:outline-2 focus:outline-accent"><option value="real">Today’s dollars</option><option value="nominal">Nominal dollars</option></select><button type="button" id="guardrail-graph-close" class="rounded border border-gray-500 dark:border-gray-400 px-3 py-2 focus:outline focus:outline-2 focus:outline-accent">Close preview</button></div>
-<div id="guardrail-graph-plot" class="w-full" role="img" aria-label="Selected policy portfolio projection; values in the following data tables"></div>
-<details class="mt-2"><summary class="cursor-pointer rounded py-2 focus:outline focus:outline-2 focus:outline-accent">Projection data and events</summary><div id="guardrail-graph-data" tabindex="0" role="region" aria-label="Projection values; scroll horizontally if needed" class="max-w-full overflow-x-auto"></div></details>
+<p class="mt-2">Preview — not saved. Simulated ranges show the median (P50) and middle 80% (P10–P90) at each year. They are not guaranteed bounds or a single future. The base case is available separately.</p>
+<div class="mt-3 flex flex-wrap gap-2 items-center"><label for="guardrail-graph-kind">Graph view</label><select id="guardrail-graph-kind" class="rounded border border-gray-500 dark:border-gray-400 bg-white dark:bg-gray-800 p-2 focus:outline focus:outline-2 focus:outline-accent"><option value="simulation">Simulated ranges</option><option value="base">Base case</option></select><label for="guardrail-graph-dollars">Graph dollars</label><select id="guardrail-graph-dollars" class="rounded border border-gray-500 dark:border-gray-400 bg-white dark:bg-gray-800 p-2 focus:outline focus:outline-2 focus:outline-accent"><option value="real">Today’s dollars</option><option value="nominal">Nominal dollars</option></select><button type="button" id="guardrail-graph-close" class="rounded border border-gray-500 dark:border-gray-400 px-3 py-2 focus:outline focus:outline-2 focus:outline-accent">Close preview</button></div>
+<div id="guardrail-graph-living" data-policy-plot class="w-full" role="img" aria-label="Simulated funded living spending; values in the following data tables"></div><div id="guardrail-graph-plot" data-policy-plot class="w-full" role="img" aria-label="Selected policy portfolio projection; values in the following data tables"></div>
+<p id="guardrail-graph-note" class="mt-3"></p>
+<details class="mt-2"><summary class="cursor-pointer rounded py-2 focus:outline focus:outline-2 focus:outline-accent">Chart values, yearly path counts, and events</summary><div id="guardrail-graph-data" tabindex="0" role="region" aria-label="Projection values; scroll horizontally if needed" class="max-w-full overflow-x-auto"></div></details>
 </section>
 <p class="mt-2">Preview only. Apply saves the selected guardrails and refreshes your projection. Results expire after 15 minutes or when inputs or the plan change.</p>
 <details class="mt-3">

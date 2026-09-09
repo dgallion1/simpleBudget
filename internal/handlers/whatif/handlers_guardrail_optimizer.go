@@ -20,15 +20,17 @@ import (
 )
 
 type guardrailPreview struct {
-	manager     *retirement.SettingsManager
-	scenario    string
-	revision    int
-	fingerprint [32]byte
-	request     models.GuardrailOptimizerRequest
-	cancel      context.CancelFunc
-	expires     time.Time
-	tokens      map[string]*models.GuardrailConfig
-	graphs      map[string]models.GuardrailOptimizerCandidate
+	validationSeed int64
+	validationRuns int
+	manager        *retirement.SettingsManager
+	scenario       string
+	revision       int
+	fingerprint    [32]byte
+	request        models.GuardrailOptimizerRequest
+	cancel         context.CancelFunc
+	expires        time.Time
+	tokens         map[string]*models.GuardrailConfig
+	graphs         map[string]models.GuardrailOptimizerCandidate
 }
 
 var guardrailPreviews = struct {
@@ -116,6 +118,8 @@ func handleGuardrailOptimizer(w http.ResponseWriter, r *http.Request) {
 		guardrailOptimizerError(w, "Search cancelled or could not complete. Nothing was saved.", 409)
 		return
 	}
+	entry.validationSeed = result.ValidationSeed
+	entry.validationRuns = result.ValidationRuns
 	recommended := make(map[string]bool)
 	for _, key := range result.Recommendations {
 		recommended[key] = true

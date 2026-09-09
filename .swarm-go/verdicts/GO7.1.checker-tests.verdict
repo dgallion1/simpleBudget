@@ -1,0 +1,14 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: GO7
+ATTEMPT: 1
+---
+Independent frozen cp -a copy: /tmp/go78-primary (includes .git). Scope criteria numbered from GO7 block in GUARDRAIL_OPTIMIZER_SPEC.md.
+1. Opt-in capture preserves floor/legacy metrics and seeded draws: bash .swarm-go/tier3/GO7/accept.sh -> TestGO7OracleCaptureParity PASS; seeded capture enabled/disabled full result DeepEqual after removing Years, zero and positive assets, no-floor opt-in absent.
+2. Complete years, actual funded spending, monthly cent/CPI accounting and ending balances: same oracle -> TestGO7OracleAnnualNominalAndCPI PASS, independent RNG replay nominal annual mean and each year-end CPI ratio; CaptureParity sums years to floor total, zero paths retained.
+3. Independent interpolated P10/P50/P90, varying horizons/counts, invalid annual values and nil compatibility: same oracle -> TestGO7OraclePercentiles PASS. New permanent test assertions read. Scratch mutant changes P10 quantile .1 to 0; go test -count=1 ./internal/services/retirement/analysis -run TestGuardrailSimulationYearsIndependentMeasuresAndEndedPaths -v exits1: independent percentile ordering P10:0 (expected4). Thus permanent test rejects incorrect quantile.
+4. Same held-out validation rows and seed, both baselines, real runner opt-in/reproducibility: oracle -> TestGO7OracleHeldOutConsumers PASS, final ORACLE PASS. Fake runner encodes sample count/seed; real seeded runner repeat equality and actual one-year OptimizeGuardrails checked.
+5. Existing consumer compatibility: bash .swarm-go/tier3/GO1/accept.sh and GO2/accept.sh both ORACLE PASS, including canonical/backtest/legacy, exact qualification and custom runner. env GOFLAGS=-count=1 make check -> all checks passed (vet, staticcheck, govulncheck, css-verify, full uncached suite); go build ./... exit0. No reachable vulnerabilities; dependency scan notes uncalled vulnerabilities only.
+6. Scope: git diff HEAD plus untracked-file list reconciled programmatically with GO7/GO8 manifests and lead spec/run evidence; Unauthorized changed paths: []; critical analysis/model modifications owned GO7 Tier3. GO8 handler/template changes treated declared concurrent territory.
+Limits: bounded seeded acceptance fixtures, not exhaustive proof of all plans. UI rendering belongs GO8 and separate accessibility review. No production files modified by verifier.

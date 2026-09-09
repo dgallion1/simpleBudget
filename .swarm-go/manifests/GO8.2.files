@@ -1,0 +1,5 @@
+internal/handlers/whatif/handlers_guardrail_optimizer.go
+internal/handlers/whatif/handlers_guardrail_graph.go
+internal/handlers/whatif/guardrail_ranges_test.go
+internal/handlers/whatif/testdata/guardrail_ranges_browser.cjs
+web/templates/components/whatif/guardrail_optimizer.html

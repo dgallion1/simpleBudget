@@ -10,6 +10,7 @@ import (
 // legacy depletion. Incomplete trailing years contribute spending, not cuts.
 type floorOutcomeTracker struct {
 	floor                                        float64
+	captureRealCents, captureNominal             float64
 	outcome                                      models.MonteCarloFloorOutcome
 	annualCents, previousAnnualCents, totalCents float64
 }
@@ -41,4 +42,20 @@ func (t *floorOutcomeTracker) result(balance, cpi float64) *models.MonteCarloFlo
 	out.TotalFundedLivingReal = t.totalCents / 100
 	out.FinalBalanceReal = balance / cpi
 	return &out
+}
+
+// captureYear follows observe so MonthsObserved identifies complete years.
+func (t *floorOutcomeTracker) captureYear(funded, balance, cpi float64) {
+	t.captureRealCents += math.Round(engine.RoundLivingCents(funded/cpi) * 100)
+	t.captureNominal += funded
+	if t.outcome.MonthsObserved%12 != 0 {
+		return
+	}
+	balance = math.Max(0, balance)
+	t.outcome.Years = append(t.outcome.Years, models.GuardrailPathYear{
+		Year:       t.outcome.MonthsObserved / 12,
+		LivingReal: t.captureRealCents / 100 / 12, LivingNominal: t.captureNominal / 12,
+		PortfolioReal: balance / cpi, PortfolioNominal: balance,
+	})
+	t.captureRealCents, t.captureNominal = 0, 0
 }

@@ -91,6 +91,12 @@ func optimizeGuardrailsWithRunner(ctx context.Context, in engine.Input, req mode
 		if err != nil {
 			return err
 		}
+		if baseSeed == validationSeed {
+			candidate.SimulationYears, err = SummarizeGuardrailSimulationYears(rows)
+			if err != nil {
+				return err
+			}
+		}
 		candidate.Qualifies = guardrailOptimizerQualifies(candidate.Metrics, req.TargetSuccessPct)
 		return nil
 	}
@@ -328,6 +334,7 @@ func runGuardrailOptimizerScenarios(ctx context.Context, in engine.Input, seed i
 	}
 	config := DefaultMonteCarloConfig()
 	config.MinMonthlySpendingReal = floor
+	config.CaptureSpendingYears = true
 	master := rand.New(rand.NewSource(seed))
 	seeds := make([]int64, runs)
 	for i := range seeds {

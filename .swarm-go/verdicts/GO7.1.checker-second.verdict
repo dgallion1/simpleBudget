@@ -1,0 +1,11 @@
+VERDICT: PASS
+CHECKER: checker-second
+FAMILY: adversarial
+TASK: GO7
+ATTEMPT: 1
+---
+Scope: GO7 simulated annual capture and held-out aggregation only; no search improvement or production edits.
+Independent frozen cp -a copy: /tmp/budget2-ranges-second, retaining .git and working tree changes.
+Executed bash .swarm-go/tier3/GO7/accept.sh: ORACLE PASS. Explicit interpolation fixtures cover independently ordered measures, zero contributors, variable horizons, invalid/mixed capture. Seeded capture toggling preserves every pre-existing result field; annual monthly real-cent totals and nominal CPI arithmetic reconcile. Relevant complete analysis/engine/models regressions pass.
+Executed go test ./internal/services/retirement/analysis -run TestSecondHeldOutReplayEveryCandidate -count=1 -v: PASS (0.58s). Additional adversarial probe reruns EVERY final actual candidate including both baselines with retained validation seed/runs and exact policy, independently summarizes outputs, and asserts deep equality with both returned SimulationYears and Metrics. Same fixture confirms policies produce distinct stochastic bands. Probe retained at /tmp/budget2-ranges-second/internal/services/retirement/analysis/second_ranges_test.go for mandatory promotion by lead.
+No in-scope defect established. Production capture does not consume RNG; opt-in remains gated by positive-floor observer. Nil capture compatibility remains intentional.

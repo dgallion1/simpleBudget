@@ -42,6 +42,30 @@ type guardrailOptimizerRow struct {
 	Candidate  models.GuardrailOptimizerCandidate
 	Token      string
 	GraphToken string
+	// PlanDesignBelowTarget is true when this row's "Below target" outcome
+	// is explained by the plan's OWN spending-phase schedule dropping below
+	// the requested minimum (see guardrailPlanFloorNotice), not by simulated
+	// market risk. Always false when the row already Qualifies.
+	PlanDesignBelowTarget bool
+}
+
+// guardrailPlanFloorNotice explains that the plan's own spending-phase
+// schedule (independent of any guardrail policy) plans living spending
+// below the requested minimum in some future year. Amount/Year/Phase are
+// exactly analysis.LowestPlannedLivingReal's return values for the
+// canonical base projection; Amount is already real (today's) dollars,
+// cent-rounded. Nil (absent from page data) when the plan's own lowest
+// planned living spending meets or exceeds the requested floor, or when no
+// base projection is available.
+//
+// Deliberately unexported but same-package (whatif): handleWhatIf in
+// handlers.go can construct this identically for the "GuardrailPlanFloor"
+// page-data field that drives the floor-field hint — see the doc comment
+// on that field's intended wiring in NOTES / the task record.
+type guardrailPlanFloorNotice struct {
+	Amount float64
+	Year   int
+	Phase  string
 }
 
 func guardrailOptimizerError(w http.ResponseWriter, message string, status int) {
@@ -86,6 +110,18 @@ func handleGuardrailOptimizer(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		guardrailOptimizerError(w, "Could not prepare the plan.", 500)
 		return
+	}
+	in.Hooks = retirement.DefaultHooks()
+	// The canonical base projection for this request: PlannedLivingExpenses
+	// is documented as the pre-guardrail-multiplier request, so this figure
+	// is the plan's own spending-phase schedule and does not depend on which
+	// candidate's guardrail config later gets attached to a clone of `in` --
+	// running it once here, before the per-candidate search, is enough.
+	// getEngine().Run is a single deterministic pass (cheap; the optimizer's
+	// own cost is the 64 search + 1000 validation Monte Carlo runs below).
+	var floorNotice *guardrailPlanFloorNotice
+	if lowest, lowestYear, lowestPhase, ok := analysis.LowestPlannedLivingReal(getEngine().Run(in)); ok && floor > lowest {
+		floorNotice = &guardrailPlanFloorNotice{Amount: lowest, Year: lowestYear, Phase: lowestPhase}
 	}
 	raw, err := json.Marshal(settings)
 	if err != nil {
@@ -133,6 +169,9 @@ func handleGuardrailOptimizer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		row := guardrailOptimizerRow{Candidate: c, GraphToken: hex.EncodeToString(graphBytes[:])}
+		if floorNotice != nil && !c.Qualifies && (c.Guardrails == nil || !c.Guardrails.Enabled || c.Guardrails.MinMonthlySpendingReal < floor) {
+			row.PlanDesignBelowTarget = true
+		}
 		retained := c
 		if c.Guardrails != nil {
 			cfg := *c.Guardrails
@@ -152,7 +191,7 @@ func handleGuardrailOptimizer(w http.ResponseWriter, r *http.Request) {
 		}
 		rows = append(rows, row)
 	}
-	data := map[string]any{"Optimizer": result, "Rows": rows, "RequestID": id, "Target": strconv.FormatFloat(target, 'f', -1, 64)}
+	data := map[string]any{"Optimizer": result, "Rows": rows, "RequestID": id, "Target": strconv.FormatFloat(target, 'f', -1, 64), "PlanFloor": floorNotice}
 	w.Header().Set("Cache-Control", "no-store")
 	if renderer != nil {
 		if err := renderer.RenderPartial(w, "whatif-guardrail-optimizer-results", data); err != nil {

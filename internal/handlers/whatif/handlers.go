@@ -35,6 +35,9 @@ import (
 	"budget2/internal/services/retirement/completeness"
 	"budget2/internal/services/retirement/engine"
 	"budget2/internal/services/retirement/prepare"
+	// Aliased: handleWhatIf's own analysis variable (*models.WhatIfAnalysis)
+	// shadows this package name in that function's scope.
+	retanalysis "budget2/internal/services/retirement/analysis"
 	"budget2/internal/templates"
 )
 
@@ -418,6 +421,10 @@ func buildResultsPartialData(settings *models.WhatIfSettings, analysis *models.W
 	if retirementMgr != nil {
 		activeFilename = retirementMgr.ActiveFilename()
 	}
+	var projection *models.ProjectionResult
+	if analysis != nil {
+		projection = analysis.Projection
+	}
 	return map[string]interface{}{
 		"Settings":                settings,
 		"Analysis":                analysis,
@@ -425,6 +432,8 @@ func buildResultsPartialData(settings *models.WhatIfSettings, analysis *models.W
 		"ActiveFilename":          activeFilename,
 		"Findings":                findings,
 		"LivingExpensesPhaseNote": buildLivingExpensesPhaseNote(settings),
+		"GuardrailChartSummary":   buildGuardrailChartSummary(settings, projection),
+		"GuardrailAnchors":        buildGuardrailAnchors(settings, projection),
 	}
 }
 
@@ -529,6 +538,126 @@ func guardrailEventHoverText(e models.GuardrailEvent) string {
 		text += fmt.Sprintf("<br>%s/mo → %s/mo", templates.FormatMoney(e.MonthlySpendingBefore), templates.FormatMoney(e.MonthlySpendingAfter))
 	}
 	return text
+}
+
+// GuardrailChartSummary is the rendered guardrail-trigger summary shown
+// under the projection chart (GV2). EventsLine and NextLine are plain text,
+// pre-composed in Go rather than template arithmetic, so tests can assert on
+// the rendered strings. Percentages and money mirror the Guardrail Events
+// list's own arithmetic exactly (see the "whatif-guardrail-events" block in
+// web/templates/components/whatif/guardrails.html and guardrailEventHoverText
+// above) so the two surfaces never disagree about the same event.
+type GuardrailChartSummary struct {
+	EventsLine string // e.g. "1 cut (year 35: -10%, $13,821/mo -> $12,439/mo)." or "no cuts or raises in this projection."
+	NextLine   string // e.g. "Next cut if the balance falls below $1,720,000; next raise if it rises above $2,880,000 (future dollars; today: $1,290,000 / $2,160,000)."
+}
+
+// pluralSuffix returns "" for n == 1, "s" otherwise.
+func pluralSuffix(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
+// buildGuardrailChartSummary returns nil when guardrails are disabled or the
+// projection has no yearly summaries (nothing to report thresholds from).
+// Otherwise it reports every GuardrailEvent (using the SAME single-year
+// percentage arithmetic as the Guardrail Events list) plus the next
+// cut/raise trigger levels, read from the LAST YearlySummary — the one
+// source of truth for those thresholds (SPEC.md ss3: one source per figure).
+func buildGuardrailChartSummary(settings *models.WhatIfSettings, projection *models.ProjectionResult) *GuardrailChartSummary {
+	if settings == nil || settings.Guardrails == nil || !settings.Guardrails.Enabled {
+		return nil
+	}
+	if projection == nil || len(projection.YearlySummaries) == 0 {
+		return nil
+	}
+
+	cuts, raises := 0, 0
+	details := make([]string, 0, len(projection.GuardrailEvents))
+	for _, e := range projection.GuardrailEvents {
+		sign := "-"
+		var pct float64
+		hasPct := e.PreviousMultiplier > 0
+		if e.Type == "cut" {
+			cuts++
+			if hasPct {
+				pct = (e.PreviousMultiplier - e.Multiplier) / e.PreviousMultiplier * 100
+			}
+		} else {
+			raises++
+			sign = "+"
+			if hasPct {
+				pct = (e.Multiplier - e.PreviousMultiplier) / e.PreviousMultiplier * 100
+			}
+		}
+		detail := fmt.Sprintf("year %d", e.Year)
+		if hasPct {
+			detail += fmt.Sprintf(": %s%.0f%%", sign, pct)
+		}
+		if e.MonthlySpendingBefore > 0 && e.MonthlySpendingAfter > 0 {
+			detail += fmt.Sprintf(", %s/mo → %s/mo", templates.FormatMoney(e.MonthlySpendingBefore), templates.FormatMoney(e.MonthlySpendingAfter))
+		}
+		details = append(details, detail)
+	}
+
+	var eventsLine string
+	if cuts == 0 && raises == 0 {
+		eventsLine = "no cuts or raises in this projection."
+	} else {
+		counts := make([]string, 0, 2)
+		if cuts > 0 {
+			counts = append(counts, fmt.Sprintf("%d cut%s", cuts, pluralSuffix(cuts)))
+		}
+		if raises > 0 {
+			counts = append(counts, fmt.Sprintf("%d raise%s", raises, pluralSuffix(raises)))
+		}
+		eventsLine = strings.Join(counts, ", ") + " (" + strings.Join(details, "; ") + ")."
+	}
+
+	last := projection.YearlySummaries[len(projection.YearlySummaries)-1]
+	todayCut, todayRaise := last.GuardrailCutTrigger, last.GuardrailRaiseTrigger
+	if last.CumulativeInflation > 0 {
+		todayCut /= last.CumulativeInflation
+		todayRaise /= last.CumulativeInflation
+	}
+	nextLine := fmt.Sprintf("Next cut if the balance falls below %s; next raise if it rises above %s (future dollars; today: %s / %s).",
+		templates.FormatMoney(last.GuardrailCutTrigger), templates.FormatMoney(last.GuardrailRaiseTrigger),
+		templates.FormatMoney(todayCut), templates.FormatMoney(todayRaise))
+
+	return &GuardrailChartSummary{EventsLine: eventsLine, NextLine: nextLine}
+}
+
+// GuardrailAnchors is the settings-card "Today" dollar anchors for the
+// guardrail floor/ceiling (GV4): the year-0 GuardrailCutTrigger/
+// GuardrailRaiseTrigger from the engine's ProjectionYearSummary, copied
+// verbatim (SPEC.md ss3: one source per figure — never recomputed from
+// percentages here). At year 0 these equal the starting portfolio x
+// (1 - FloorDropPct/100) and x (1 + CeilingRisePct/100); templates format
+// them with formatMoney.
+type GuardrailAnchors struct {
+	CutBelow   float64
+	RaiseAbove float64
+}
+
+// buildGuardrailAnchors returns nil unless guardrails are enabled and the
+// projection's year-0 summary carries both triggers > 0 (no base
+// projection, or an engine that has not computed them yet, means the
+// settings-card anchor lines must be absent rather than show "$0.00" — see
+// "whatif-guardrail-anchors" in guardrails.html).
+func buildGuardrailAnchors(settings *models.WhatIfSettings, projection *models.ProjectionResult) *GuardrailAnchors {
+	if settings == nil || settings.Guardrails == nil || !settings.Guardrails.Enabled {
+		return nil
+	}
+	if projection == nil || len(projection.YearlySummaries) == 0 {
+		return nil
+	}
+	year0 := projection.YearlySummaries[0]
+	if year0.GuardrailCutTrigger <= 0 || year0.GuardrailRaiseTrigger <= 0 {
+		return nil
+	}
+	return &GuardrailAnchors{CutBelow: year0.GuardrailCutTrigger, RaiseAbove: year0.GuardrailRaiseTrigger}
 }
 
 func humanizeScenarioFilename(filename string) string {
@@ -697,6 +826,135 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 		})
 	}
 
+	// Guardrail trigger lines + living-budget panel (GV2). Built server-side
+	// so every consumer of buildProjectionChartData (the Overview chart, the
+	// no-guardrails overlay, and the optimizer base-case preview) shares
+	// identical traces. Gated on the SAME condition the summary line below
+	// uses, plus having months/yearly-summaries to plot.
+	guardrailsEnabled := settings != nil && settings.Guardrails != nil && settings.Guardrails.Enabled &&
+		len(projection.YearlySummaries) > 0 && len(projection.Months) > 0
+
+	var afterGuardrailsY []float64
+	if guardrailsEnabled {
+		lastMonthIdx := len(projection.Months) - 1
+		n := len(projection.YearlySummaries)
+
+		cutX := make([]float64, 0, n+1)
+		cutY := make([]float64, 0, n+1)
+		cutText := make([]string, 0, n+1)
+		raiseX := make([]float64, 0, n+1)
+		raiseY := make([]float64, 0, n+1)
+		raiseText := make([]string, 0, n+1)
+		for i, ys := range projection.YearlySummaries {
+			divisor := 1.0
+			if displayDollars == "real" {
+				idx := (i+1)*12 - 1
+				if idx > lastMonthIdx {
+					idx = lastMonthIdx
+				}
+				divisor = projection.Months[idx].CumulativeInflation
+			}
+			cy := ys.GuardrailCutTrigger / divisor
+			ry := ys.GuardrailRaiseTrigger / divisor
+			cutX = append(cutX, float64(i))
+			cutY = append(cutY, cy)
+			cutText = append(cutText, fmt.Sprintf("Cut if balance ≤ %s at the year %d check", templates.FormatMoney(cy), i+1))
+			raiseX = append(raiseX, float64(i))
+			raiseY = append(raiseY, ry)
+			raiseText = append(raiseText, fmt.Sprintf("Raise if balance ≥ %s at the year %d check", templates.FormatMoney(ry), i+1))
+		}
+		// Extend the final step to the end of the chart.
+		finalX := projection.Months[lastMonthIdx].Year
+		cutX = append(cutX, finalX)
+		cutY = append(cutY, cutY[len(cutY)-1])
+		cutText = append(cutText, cutText[len(cutText)-1])
+		raiseX = append(raiseX, finalX)
+		raiseY = append(raiseY, raiseY[len(raiseY)-1])
+		raiseText = append(raiseText, raiseText[len(raiseText)-1])
+
+		traces = append(traces, map[string]interface{}{
+			"type":      "scatter",
+			"mode":      "lines",
+			"name":      "Cut trigger",
+			"x":         cutX,
+			"y":         cutY,
+			"text":      cutText,
+			"hoverinfo": "text",
+			// meta.tone keys the client-side theme palette (charts.js
+			// getTonePalette/applyTonePalette) — never the trace name/index.
+			// Colour here is the LIGHT-theme default; ≥3:1 against white
+			// (GV2 attempt 2, ruling GV-2026-09-09d).
+			"meta": map[string]interface{}{"tone": "negative"},
+			"line": map[string]interface{}{
+				"color": "#dc2626",
+				"shape": "hv",
+				"dash":  "dash",
+				"width": 1.5,
+			},
+		})
+		traces = append(traces, map[string]interface{}{
+			"type":      "scatter",
+			"mode":      "lines",
+			"name":      "Raise trigger",
+			"x":         raiseX,
+			"y":         raiseY,
+			"text":      raiseText,
+			"hoverinfo": "text",
+			"meta":      map[string]interface{}{"tone": "positive"},
+			"line": map[string]interface{}{
+				"color": "#15803d",
+				"shape": "hv",
+				"dash":  "dash",
+				"width": 1.5,
+			},
+		})
+
+		plannedX := make([]float64, len(projection.Months))
+		plannedY := make([]float64, len(projection.Months))
+		afterX := make([]float64, len(projection.Months))
+		afterGuardrailsY = make([]float64, len(projection.Months))
+		for i, mo := range projection.Months {
+			divisor := 1.0
+			if displayDollars == "real" {
+				divisor = mo.CumulativeInflation
+			}
+			plannedX[i] = mo.Year
+			plannedY[i] = mo.PlannedLivingExpenses / divisor
+			afterX[i] = mo.Year
+			afterGuardrailsY[i] = mo.AdjustedLivingExpenses / divisor
+		}
+
+		traces = append(traces, map[string]interface{}{
+			"type":  "scatter",
+			"mode":  "lines",
+			"name":  "Planned",
+			"x":     plannedX,
+			"y":     plannedY,
+			"yaxis": "y2",
+			"meta":  map[string]interface{}{"tone": "planned"},
+			"line": map[string]interface{}{
+				"color": "#57534e",
+				"width": 1.5,
+				"dash":  "dot",
+			},
+			"hoverinfo": "y",
+		})
+		traces = append(traces, map[string]interface{}{
+			"type":  "scatter",
+			"mode":  "lines",
+			"name":  "After guardrails",
+			"x":     afterX,
+			"y":     afterGuardrailsY,
+			"yaxis": "y2",
+			"meta":  map[string]interface{}{"tone": "after"},
+			"line": map[string]interface{}{
+				"color": "#1d4ed8",
+				"width": 2,
+			},
+			"hoverinfo": "y",
+		})
+	}
+
 	if len(projection.GuardrailEvents) > 0 {
 		gEvents := projection.GuardrailEvents
 		guardrailX := make([]float64, 0, len(gEvents))
@@ -704,25 +962,40 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 		guardrailText := make([]string, 0, len(gEvents))
 		guardrailSymbol := make([]string, 0, len(gEvents))
 		guardrailColor := make([]string, 0, len(gEvents))
+		guardrailTones := make([]string, 0, len(gEvents))
 		for _, ge := range gEvents {
 			x := float64(ge.Year)
-			y := projectionValueAtYear(projection, x, displayDollars)
-			if y <= 0 {
-				y = maxBalance * 0.05
+			var y float64
+			if guardrailsEnabled {
+				monthIdx := ge.Year * 12
+				if monthIdx < 0 {
+					monthIdx = 0
+				}
+				if monthIdx >= len(afterGuardrailsY) {
+					monthIdx = len(afterGuardrailsY) - 1
+				}
+				y = afterGuardrailsY[monthIdx]
+			} else {
+				y = projectionValueAtYear(projection, x, displayDollars)
+				if y <= 0 {
+					y = maxBalance * 0.05
+				}
 			}
 			guardrailX = append(guardrailX, x)
 			guardrailY = append(guardrailY, y)
 			guardrailText = append(guardrailText, guardrailEventHoverText(ge))
 			if ge.Type == "cut" {
 				guardrailSymbol = append(guardrailSymbol, "triangle-down")
-				guardrailColor = append(guardrailColor, "#ef4444")
+				guardrailColor = append(guardrailColor, "#dc2626")
+				guardrailTones = append(guardrailTones, "negative")
 			} else {
 				guardrailSymbol = append(guardrailSymbol, "triangle-up")
-				guardrailColor = append(guardrailColor, "#22c55e")
+				guardrailColor = append(guardrailColor, "#15803d")
+				guardrailTones = append(guardrailTones, "positive")
 			}
 		}
 
-		traces = append(traces, map[string]interface{}{
+		guardrailTrace := map[string]interface{}{
 			"type":      "scatter",
 			"mode":      "markers",
 			"name":      "Guardrail cuts / raises",
@@ -730,6 +1003,11 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 			"y":         guardrailY,
 			"text":      guardrailText,
 			"hoverinfo": "text",
+			// One marker trace, one point per event in GuardrailEvents order
+			// (the GM-run/oracle contract — do NOT split it). meta.tones is
+			// parallel to x/y/marker.color, per point, and is what the
+			// client keys its theme restyle on.
+			"meta": map[string]interface{}{"tones": guardrailTones},
 			"marker": map[string]interface{}{
 				"symbol": guardrailSymbol,
 				"color":  guardrailColor,
@@ -740,7 +1018,11 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 				},
 			},
 			"cliponaxis": false,
-		})
+		}
+		if guardrailsEnabled {
+			guardrailTrace["yaxis"] = "y2"
+		}
+		traces = append(traces, guardrailTrace)
 	}
 
 	dtick := 5
@@ -766,21 +1048,48 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 		yaxis["range"] = []float64{0, maxBalance * 1.18}
 	}
 
-	return map[string]interface{}{
-		"data": traces,
-		"layout": map[string]interface{}{
-			"title": title,
-			"xaxis": map[string]interface{}{
-				"title":    "Years",
-				"tickmode": "linear",
-				"tick0":    0,
-				"dtick":    dtick,
-			},
-			"yaxis": yaxis,
-			"legend": map[string]interface{}{
-				"orientation": "h",
-			},
+	layout := map[string]interface{}{
+		"title": title,
+		"xaxis": map[string]interface{}{
+			"title":    "Years",
+			"tickmode": "linear",
+			"tick0":    0,
+			"dtick":    dtick,
 		},
+		"yaxis": yaxis,
+		"legend": map[string]interface{}{
+			"orientation": "h",
+		},
+	}
+	if guardrailsEnabled {
+		// The two-panel guardrail chart needs more vertical room than the
+		// single-panel balance chart; a fixed height keeps the panel split
+		// stable across theme toggles and tab activation (see charts.js
+		// themedLayoutUpdate / renderChart, which re-applies this layout).
+		// Set ONLY when guardrails are enabled (GV2 attempt 2): with
+		// guardrails off there is one panel and no height key, restoring
+		// the pre-GV2 single-panel size.
+		layout["height"] = 520
+		yaxis["domain"] = []float64{0.42, 1}
+		budgetAxisTitle := "Living budget ($/mo)"
+		if displayDollars == "real" {
+			budgetAxisTitle = "Living budget ($/mo, today's dollars)"
+		}
+		layout["yaxis2"] = map[string]interface{}{
+			// anchor "x" (not the default "x2") so this panel shares the
+			// SAME x-axis as the balance panel above it — the standard
+			// Plotly domain-split-subplot recipe. Without it Plotly looks
+			// for a nonexistent x2 axis instead of stacking under x.
+			"anchor":     "x",
+			"domain":     []float64{0, 0.30},
+			"title":      budgetAxisTitle,
+			"tickformat": "$,.0f",
+		}
+	}
+
+	return map[string]interface{}{
+		"data":   traces,
+		"layout": layout,
 	}
 }
 
@@ -1013,6 +1322,16 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 
 	findings := completeness.Check(settings)
 
+	// GuardrailPlanFloor is unconditional (unlike the optimizer results
+	// notice, which only fires when a specific requested floor exceeds this
+	// figure): it always reports the plan's own lowest planned living
+	// spending when a base projection is available, for the floor-field
+	// hint in whatif-guardrail-optimizer. See analysis.LowestPlannedLivingReal.
+	var guardrailPlanFloor *guardrailPlanFloorNotice
+	if amount, year, phase, ok := retanalysis.LowestPlannedLivingReal(analysis.Projection); ok {
+		guardrailPlanFloor = &guardrailPlanFloorNotice{Amount: amount, Year: year, Phase: phase}
+	}
+
 	pageData := map[string]interface{}{
 		"Title":                   "What-If Analysis",
 		"ActiveTab":               "whatif",
@@ -1026,6 +1345,9 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		"AnalysisPending":         pendingHash != "",
 		"AsyncHash":               pendingHash,
 		"LivingExpensesPhaseNote": buildLivingExpensesPhaseNote(settings),
+		"GuardrailChartSummary":   buildGuardrailChartSummary(settings, analysis.Projection),
+		"GuardrailAnchors":        buildGuardrailAnchors(settings, analysis.Projection),
+		"GuardrailPlanFloor":      guardrailPlanFloor,
 	}
 
 	templates.AttachDuplicateCount(pageData, loader)

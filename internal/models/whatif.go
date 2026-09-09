@@ -999,6 +999,17 @@ type ProjectionYearSummary struct {
 	PlannedExpenses     float64 `json:"planned_expenses,omitempty"` // Total expenses for the year as if no guardrail multiplier were applied; accumulates alongside Expenses in the projection loop
 	GuardrailMultiplier float64 `json:"guardrail_multiplier"`       // Multiplier in effect at year-end (1.0 if disabled); not omitempty so 0 vs 1 stays unambiguous
 
+	// Guardrail trigger levels (GV2), captured from engine.GuardrailState at
+	// every month once the year-boundary Evaluate has run and constant for
+	// the whole year. Zero/omitted when guardrails are disabled. See
+	// engine.GuardrailState.Evaluate for the peak/baseline update rules this
+	// mirrors — these fields never recompute the guardrail semantics, only
+	// expose the state Evaluate already produced.
+	GuardrailPeak         float64 `json:"guardrail_peak,omitempty"`          // GuardrailState.PeakPortfolio
+	GuardrailBaseline     float64 `json:"guardrail_baseline,omitempty"`      // GuardrailState.InitialPortfolio
+	GuardrailCutTrigger   float64 `json:"guardrail_cut_trigger,omitempty"`   // GuardrailPeak x (1 - FloorDropPct/100)
+	GuardrailRaiseTrigger float64 `json:"guardrail_raise_trigger,omitempty"` // GuardrailBaseline x (1 + CeilingRisePct/100)
+
 	// Roth 5-year rule: taxable Roth earnings withdrawn before the clock matures.
 	TaxableRothEarnings float64 `json:"taxable_roth_earnings,omitempty"`
 

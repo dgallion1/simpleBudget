@@ -405,9 +405,24 @@ function filterTrendTraces(raw, categories) {
     return copy;
 }
 
+// A themed, filtered copy of raw ready for renderChart: filterTrendTraces's
+// deep copy (raw itself is never touched) with markers[i] assigned to trace
+// i's marker. A trace at or beyond markers.length keeps whatever marker the
+// filtered copy already carries (filterTrendTraces preserves each trace's
+// original marker unless it filters a per-point colour array). Never mutates
+// raw, markers, or the trace objects inside them.
+function themedTrendPayload(raw, categories, markers) {
+    const filtered = filterTrendTraces(raw, categories);
+    filtered.data.forEach(function (trace, i) {
+        if (i < markers.length) trace.marker = markers[i];
+    });
+    return filtered;
+}
+
 window.insightsTrends = {
     visibleTrendCategories: visibleTrendCategories,
-    filterTrendTraces: filterTrendTraces
+    filterTrendTraces: filterTrendTraces,
+    themedTrendPayload: themedTrendPayload
 };
 
 // Render #chart-trends filtered to the table's currently visible rows.
@@ -431,24 +446,28 @@ function renderTrendsChart() {
     if (!trendsChartRaw) return;
     const table = document.getElementById('category-trends-table');
     const categories = table ? visibleTrendCategories(table) : trendsChartRaw.data[0].x;
-    const filtered = filterTrendTraces(trendsChartRaw, categories);
-    const markers = insightChartMarkers();
-    filtered.data.forEach(function (trace, i) { trace.marker = markers[i]; });
-    renderChart('chart-trends', filtered);
+    renderChart('chart-trends', themedTrendPayload(trendsChartRaw, categories, insightChartMarkers()));
 }
 
-// TC1: restyle only ever touches marker, never x/y, so it cannot resurrect
-// bars filterTrendTraces already dropped from chart.data -- insightChartMarkers()
-// returns a single {color} per trace (no per-point array to keep in sync
-// with the filtered points), and Plotly.restyle re-applies that whole
-// marker object over whatever the chart currently has rendered (already
-// the filtered set).
+// TH1: a full re-render through renderTrendsChart() -- the same path every
+// other repaint uses (fetch, cap toggle, sort, tab activation) -- rather
+// than the narrow Plotly.restyle(marker) this used to do. Restyling only
+// marker survived on its own, but not combined with a tab switch away and
+// back first: activateInsightsTab() calls Plotly.Plots.resize() on
+// #chart-trends whenever another Insights tab goes active, and Plotly's
+// resize of a chart whose layout never pins an explicit height (only the
+// deliberately-computed one filterTrendTraces set at last render) drops
+// layout.height back to Plotly's own default, so the container collapses to
+// this page's 300px CSS min-height. charts.js's generic themechange handler
+// (see themedLayoutUpdate above) only relayouts colors for every
+// `[id^="chart-"]` element -- it never re-asserts height -- so nothing after
+// resize put layout.height back before the next theme toggle. Going through
+// renderTrendsChart() instead of restyle sidesteps that: it always derives
+// layout.height fresh from the table's current visible-row count, exactly
+// like any other repaint, so a theme toggle can never inherit a height a
+// resize already cleared.
 window.addEventListener('themechange', function () {
-    const chart = document.getElementById('chart-trends');
-    if (chart && chart.data && window.Plotly) {
-        const markers = insightChartMarkers();
-        Plotly.restyle(chart, {marker: markers});
-    }
+    renderTrendsChart();
 });
 
 document.body.addEventListener('htmx:afterRequest', function(evt) {
@@ -493,8 +512,17 @@ document.body.addEventListener('htmx:afterRequest', function(evt) {
         if (persist) {
             try { window.localStorage.setItem(INSIGHTS_TAB_KEY, key); } catch (e) {}
         }
+        // TH1: prefer a full re-render through the same path every other
+        // repaint uses -- it recomputes layout.height from the table's
+        // current visible-row count, so returning to this tab can't inherit
+        // a stale or missing height. Only fall back to a bare resize (no
+        // trendsChartRaw fetched yet, e.g. this tab has never been shown) --
+        // Plotly.Plots.resize is still correct there since there's no data
+        // to re-derive height from.
         var chart = document.getElementById('chart-trends');
-        if (chart && chart.data && window.Plotly) {
+        if (trendsChartRaw) {
+            renderTrendsChart();
+        } else if (chart && chart.data && window.Plotly) {
             try { window.Plotly.Plots.resize(chart); } catch (e) { /* not yet rendered */ }
         }
     }

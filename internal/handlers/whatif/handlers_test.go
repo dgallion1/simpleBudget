@@ -545,8 +545,11 @@ func TestBuildProjectionChartData_GuardrailMarkers_CutAndRaise(t *testing.T) {
 	if !ok || len(colors) != 2 {
 		t.Fatalf("expected 2 colors, got %#v", marker["color"])
 	}
-	if colors[0] != "#ef4444" || colors[1] != "#22c55e" {
-		t.Fatalf("expected colors [#ef4444, #22c55e], got %v", colors)
+	// GV2 attempt 2 (ruling GV-2026-09-09d): the raise-marker color moved
+	// from #22c55e (2.28:1 on white, a11y FAIL) to #15803d (>=3:1); cut
+	// moved from #ef4444 to #dc2626 for the same reason.
+	if colors[0] != "#dc2626" || colors[1] != "#15803d" {
+		t.Fatalf("expected colors [#dc2626, #15803d], got %v", colors)
 	}
 	if marker["size"] != 11 {
 		t.Fatalf("expected marker size 11, got %v", marker["size"])

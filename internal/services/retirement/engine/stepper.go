@@ -123,6 +123,16 @@ type MonthOutcome struct {
 	// multiplier this month.
 	GuardrailEvent *models.GuardrailEvent
 
+	// GuardrailPeak/GuardrailBaseline mirror GuardrailState.PeakPortfolio and
+	// InitialPortfolio as of the most recent year-boundary Evaluate;
+	// GuardrailCutTrigger/GuardrailRaiseTrigger are derived from them using
+	// the ACTIVE settings' Guardrails config (so a scenario-chain transition
+	// is honoured). All four are zero when guardrails are disabled (GV2).
+	GuardrailPeak         float64
+	GuardrailBaseline     float64
+	GuardrailCutTrigger   float64
+	GuardrailRaiseTrigger float64
+
 	RothConversion             float64
 	AllowTaxDeferredWithdrawal bool
 	TotalBalance               float64
@@ -305,8 +315,13 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 	}
 
 	activeMultiplier := 1.0
+	var guardrailPeak, guardrailBaseline, guardrailCutTrigger, guardrailRaiseTrigger float64
 	if st.Guardrails != nil {
 		activeMultiplier = st.Guardrails.Multiplier()
+		guardrailPeak = st.Guardrails.PeakPortfolio
+		guardrailBaseline = st.Guardrails.InitialPortfolio
+		guardrailCutTrigger = guardrailPeak * (1 - s.Guardrails.FloorDropPct/100)
+		guardrailRaiseTrigger = guardrailBaseline * (1 + s.Guardrails.CeilingRisePct/100)
 	}
 	adjustedLivingExpenses, activeMultiplier := floorAdjustedLiving(s, st.CurrentLivingExpenses, activeMultiplier, st.CumulativeInflation)
 
@@ -416,6 +431,10 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 		Healthcare:                 activeHealthcare,
 		GuardrailMultiplier:        activeMultiplier,
 		GuardrailEvent:             guardrailEvent,
+		GuardrailPeak:              guardrailPeak,
+		GuardrailBaseline:          guardrailBaseline,
+		GuardrailCutTrigger:        guardrailCutTrigger,
+		GuardrailRaiseTrigger:      guardrailRaiseTrigger,
 		RothConversion:             rothConversionThisMonth,
 		AllowTaxDeferredWithdrawal: allowTaxDeferredWithdrawal,
 		TotalBalance:               st.TaxDeferredBalance + st.RothBalance + st.TaxableAccount.MarketValue,

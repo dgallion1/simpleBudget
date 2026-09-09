@@ -127,6 +127,13 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		currentYearSummary.PlannedExpenses += out.PlannedExpenses
 		currentYearSummary.Withdrawals += cashFlow.ActualWithdrawal
 		currentYearSummary.TaxableRothEarnings += monthResult.TaxableRothEarnings
+		// Guardrail trigger levels are constant within a year (Evaluate only
+		// runs at month 0), so the last month's assignment wins and matches
+		// every earlier month's (GV2).
+		currentYearSummary.GuardrailPeak = out.GuardrailPeak
+		currentYearSummary.GuardrailBaseline = out.GuardrailBaseline
+		currentYearSummary.GuardrailCutTrigger = out.GuardrailCutTrigger
+		currentYearSummary.GuardrailRaiseTrigger = out.GuardrailRaiseTrigger
 
 		totalBalance := out.TotalBalance
 		depleted := false

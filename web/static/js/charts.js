@@ -30,6 +30,54 @@ function getThemeColors() {
 const CHART_FONT_FAMILY = 'system-ui, -apple-system, sans-serif';
 
 /**
+ * Theme-aware trace-tone palette for the guardrail projection chart (GV2
+ * attempt 2, ruling GV-2026-09-09d). Every tone meets >=3:1 contrast
+ * against the card background in its theme (measured against #ffffff in
+ * light and #292524 — the card's dark:bg-gray-800 — in dark; see
+ * gv2_chart_test.go's contrastRatio helper for the numeric proof). Applied
+ * to traces by meta.tone/meta.tones, never by trace name or index, so it
+ * survives trace reordering.
+ * @returns {object} { negative, positive, planned, after }
+ */
+function getTonePalette() {
+    return isDarkMode() ? {
+        negative: '#f87171',
+        positive: '#4ade80',
+        planned: '#d6d3d1',
+        after: '#93c5fd'
+    } : {
+        negative: '#dc2626',
+        positive: '#15803d',
+        planned: '#57534e',
+        after: '#1d4ed8'
+    };
+}
+
+/**
+ * Apply the tone palette to a server chart's traces in place, keyed by each
+ * trace's meta.tone (single-color line/marker traces) or meta.tones (an
+ * array, one tone per point — the guardrail markers trace). Traces without
+ * a meta.tone/tones are left untouched.
+ * @param {Array<object>} traces - chartData.data
+ * @param {object} palette - Result of getTonePalette()
+ */
+function applyTonePalette(traces, palette) {
+    (traces || []).forEach(function(trace) {
+        if (!trace || !trace.meta) return;
+        if (trace.meta.tone && palette[trace.meta.tone]) {
+            const color = palette[trace.meta.tone];
+            if (trace.line) trace.line.color = color;
+            if (trace.marker) trace.marker.color = color;
+        } else if (Array.isArray(trace.meta.tones)) {
+            const colors = trace.meta.tones.map(function(tone) {
+                return palette[tone] || (trace.marker && trace.marker.color);
+            });
+            if (trace.marker) trace.marker.color = colors;
+        }
+    });
+}
+
+/**
  * Axis layout keys present on a layout-like object: the primary xaxis/yaxis
  * pair plus any subplot axes (xaxis2, yaxis2, ...). Works on a server chart
  * layout at creation time and on a rendered element's _fullLayout at
@@ -143,6 +191,11 @@ function renderChart(containerId, chartData) {
             return;
         }
     }
+
+    // Theme-aware trace tones (GV2 attempt 2): applied before newPlot so the
+    // initial render already carries the correct-theme colors, keyed by
+    // each trace's meta.tone/meta.tones rather than name/index.
+    applyTonePalette(data.data, getTonePalette());
 
     const serverLayout = data.layout || {};
 
@@ -616,6 +669,7 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
 // Re-render all charts when theme changes
 window.addEventListener('themechange', function() {
     const colors = getThemeColors();
+    const tonePalette = getTonePalette();
     // Re-render all chart containers
     document.querySelectorAll('[id^="chart-"]').forEach(function(el) {
         // Plotly marks a rendered chart by attaching _fullLayout to the element
@@ -631,6 +685,32 @@ window.addEventListener('themechange', function() {
                 Plotly.relayout(el.id, themedLayoutUpdate(colors, layoutAxisKeys(el._fullLayout)));
             } catch (e) {
                 console.warn('Theme relayout failed for chart', el.id, e);
+            }
+            // Tone-aware trace colors (GV2 attempt 2): restyle line/marker
+            // colors on any trace carrying a meta.tone/meta.tones, keyed by
+            // tone name — never by trace name or index — so it survives
+            // trace reordering and applies only to traces that opt in.
+            if (Array.isArray(el.data)) {
+                el.data.forEach(function(trace, idx) {
+                    if (!trace || !trace.meta) return;
+                    try {
+                        if (trace.meta.tone && tonePalette[trace.meta.tone]) {
+                            const color = tonePalette[trace.meta.tone];
+                            if (trace.line) {
+                                Plotly.restyle(el.id, { 'line.color': [color] }, [idx]);
+                            } else if (trace.marker) {
+                                Plotly.restyle(el.id, { 'marker.color': [color] }, [idx]);
+                            }
+                        } else if (Array.isArray(trace.meta.tones)) {
+                            const colorArray = trace.meta.tones.map(function(tone) {
+                                return tonePalette[tone] || (trace.marker && trace.marker.color);
+                            });
+                            Plotly.restyle(el.id, { 'marker.color': [colorArray] }, [idx]);
+                        }
+                    } catch (e) {
+                        console.warn('Tone restyle failed for chart', el.id, 'trace', idx, e);
+                    }
+                });
             }
         }
     });

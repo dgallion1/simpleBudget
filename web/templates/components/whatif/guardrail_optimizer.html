@@ -3,8 +3,16 @@
 <h3 id="guardrail-optimizer-heading" tabindex="-1" class="font-semibold rounded focus:outline focus:outline-2 focus:outline-accent">Optimize guardrails</h3>
 <form id="guardrail-optimizer-form" class="mt-3 space-y-3">
 <div><label for="guardrail-optimizer-floor" class="block font-medium">Minimum monthly living spending (today's dollars, required)</label>
-<input id="guardrail-optimizer-floor" name="floor_monthly_real" type="number" min="0.01" step="0.01" required value="7500" aria-describedby="guardrail-optimizer-floor-help guardrail-optimizer-status" class="mt-1 w-full rounded border border-gray-500 dark:border-gray-400 bg-white dark:bg-gray-800 p-2 focus:outline focus:outline-2 focus:outline-accent">
-<p id="guardrail-optimizer-floor-help" class="mt-1 text-gray-600 dark:text-gray-300">Editable; increases with inflation. Applies to Monthly Living Expenses only. Healthcare, taxes, and other expenses are additional obligations. Cannot exceed starting monthly living expenses.</p></div>
+<input id="guardrail-optimizer-floor" name="floor_monthly_real" type="number" min="0.01" step="0.01" required value="7500" aria-describedby="guardrail-optimizer-floor-help guardrail-optimizer-status{{if .GuardrailPlanFloor}} guardrail-optimizer-floor-plan-note{{end}}" class="mt-1 w-full rounded border border-gray-500 dark:border-gray-400 bg-white dark:bg-gray-800 p-2 focus:outline focus:outline-2 focus:outline-accent">
+<p id="guardrail-optimizer-floor-help" class="mt-1 text-gray-600 dark:text-gray-300">Editable; increases with inflation. Applies to Monthly Living Expenses only. Healthcare, taxes, and other expenses are additional obligations. Cannot exceed starting monthly living expenses.</p>
+{{/* Renders only once page data carries GuardrailPlanFloor (a
+     {Amount float64; Year int; Phase string} value); handleWhatIf populates
+     it unconditionally from analysis.LowestPlannedLivingReal whenever a base
+     projection is available. Absent (nil) page data -- e.g. a caller that
+     doesn't set this key, as in some tests -- renders nothing here, and the
+     floor input's aria-describedby above omits this note's id accordingly. */}}
+{{with .GuardrailPlanFloor}}<p id="guardrail-optimizer-floor-plan-note" class="mt-1 text-gray-600 dark:text-gray-300">Your plan's lowest planned living spending is {{formatMoney .Amount}}/mo in today's dollars{{if .Phase}} ({{.Phase}}, year {{.Year}}){{else}} (year {{.Year}}){{end}}. A minimum above that is missed by design in every future without an absolute floor.</p>{{end}}
+</div>
 <div><label for="guardrail-optimizer-target" class="block font-medium">Chance of maintaining my minimum spending (required)</label>
 <select id="guardrail-optimizer-target" required aria-describedby="guardrail-optimizer-target-help guardrail-optimizer-status" class="mt-1 w-full rounded border border-gray-500 dark:border-gray-400 bg-white dark:bg-gray-800 p-2 focus:outline focus:outline-2 focus:outline-accent">
 <option value="">Choose a target</option><option value="90">90%</option><option value="95">95%</option><option value="99">99%</option><option value="custom">Custom</option>
@@ -31,17 +39,30 @@ function clearGraph(){
 }
 function policyName(c){return c.id==='current'?'Current guardrails':c.id==='no-guardrails'?'Guardrails disabled':((c.labels||[]).join(' · ')||'Alternative')+' '+c.id;}
 function graphTheme(payload){
+ // GV2 attempt 3 (ruling GV-2026-09-09m): buildProjectionChartData's
+ // guardrail-trigger/budget-panel traces carry meta.tone/meta.tones exactly
+ // like the main projection chart, so this preview themes them through the
+ // SAME shared palette (charts.js getTonePalette/applyTonePalette) instead
+ // of the old index-based two-color scheme. Traces WITHOUT meta ("Portfolio
+ // Balance", "Key events") keep the original index-based green/amber
+ // treatment untouched.
  const dark=document.documentElement.classList.contains('dark'),chart=structuredClone(payload.chart);
- chart.data.forEach((trace,index)=>{const color=index===0?(dark?'#86efac':'#166534'):(dark?'#fcd34d':'#92400e');if(trace.line)trace.line.color=color;if(trace.marker)trace.marker.color=color;});
- Object.assign(chart.layout,{autosize:true,height:340,paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:{color:dark?'#f3f4f6':'#1f2937'},margin:{l:70,r:20,t:55,b:95},legend:{orientation:'h',y:-0.25},transition:{duration:0}});
- ['xaxis','yaxis'].forEach(axis=>Object.assign(chart.layout[axis],{gridcolor:dark?'#6b7280':'#9ca3af',automargin:true}));return chart;
+ applyTonePalette(chart.data,getTonePalette());
+ chart.data.forEach((trace,index)=>{if(trace.meta)return;const color=index===0?(dark?'#86efac':'#166534'):(dark?'#fcd34d':'#92400e');if(trace.line)trace.line.color=color;if(trace.marker)trace.marker.color=color;});
+ const hasBudgetPanel=!!chart.layout.yaxis2;
+ Object.assign(chart.layout,{autosize:true,height:hasBudgetPanel?520:340,paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:{color:dark?'#f3f4f6':'#1f2937'},margin:{l:70,r:20,t:55,b:hasBudgetPanel?110:95},legend:{orientation:'h',y:hasBudgetPanel?-0.18:-0.25},transition:{duration:0}});
+ (hasBudgetPanel?['xaxis','yaxis','yaxis2']:['xaxis','yaxis']).forEach(axis=>Object.assign(chart.layout[axis],{gridcolor:dark?'#6b7280':'#9ca3af',automargin:true}));return chart;
 }
 function graphTable(payload){
  const fragment=document.createDocumentFragment(),money=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}),units=payload.display_dollars==='real'?'today’s dollars':'nominal dollars';
  payload.chart.data.forEach(trace=>{
  const table=document.createElement('table');table.className='w-full text-sm text-left mt-3';
  const caption=table.createCaption();caption.className='text-left font-medium';caption.textContent=trace.name+' — '+units;
- const head=table.createTHead().insertRow();['Year','Portfolio balance',...(trace.text?['Event']:[])].forEach(label=>{const th=document.createElement('th');th.scope='col';th.className='p-2';th.textContent=label;head.append(th);});
+ // GV2 attempt 3: budget-panel traces (yaxis "y2") are monthly living
+ // budget figures, not portfolio balance; label the value column per axis
+ // rather than a hard-coded "Portfolio balance" for every trace.
+ const valueLabel=trace.yaxis==='y2'?'Monthly living budget':'Portfolio balance';
+ const head=table.createTHead().insertRow();['Year',valueLabel,...(trace.text?['Event']:[])].forEach(label=>{const th=document.createElement('th');th.scope='col';th.className='p-2';th.textContent=label;head.append(th);});
  const body=table.createTBody();trace.x.forEach((year,index)=>{const row=body.insertRow();[String(year),money.format(trace.y[index]),...(trace.text?[trace.text[index]]:[])].forEach(value=>{const cell=row.insertCell();cell.className='p-2';cell.textContent=value;});});fragment.append(table);
  });return fragment;
 }
@@ -117,7 +138,7 @@ form.addEventListener('submit',async event=>{
  invalidate('Searching simulated futures. This may take a few minutes. Nothing is saved until Apply.');
  requestID=crypto.randomUUID();controller=new AbortController();const current=++generation;
  const body=new URLSearchParams(new FormData(form));body.set('target_success_pct',chance);body.set('request_id',requestID);busy(true);
- try{const response=await fetch('/whatif/guardrails/optimize',{method:'POST',body,signal:controller.signal});const markup=await response.text();if(current!==generation)return;results.innerHTML=markup;htmx.process(results);const outcome=results.querySelector('[data-guardrail-outcome]');status.textContent=response.ok?(outcome?.textContent.trim()||'Search complete. Review the preview before applying.'):results.textContent.trim();results.querySelector('[tabindex="-1"]')?.focus();}
+ try{const response=await fetch('/whatif/guardrails/optimize',{method:'POST',body,signal:controller.signal});const markup=await response.text();if(current!==generation)return;results.innerHTML=markup;htmx.process(results);const outcome=results.querySelector('[data-guardrail-outcome]'),planFloorNotice=results.querySelector('[data-guardrail-plan-floor-notice]'),outcomeText=[outcome?.textContent.trim(),planFloorNotice?.textContent.trim()].filter(Boolean).join(' ');status.textContent=response.ok?(outcomeText||'Search complete. Review the preview before applying.'):results.textContent.trim();results.querySelector('[tabindex="-1"]')?.focus();}
  catch(error){if(current===generation){status.textContent='Search could not complete. Run again. Nothing was saved.';run.focus();}}
  finally{if(current===generation){controller=null;busy(false);}}
 });
@@ -143,6 +164,14 @@ if(new URLSearchParams(location.search).has('guardrail_applied')){
 
 {{define "whatif-guardrail-optimizer-results"}}
 <h4 data-guardrail-outcome="" tabindex="-1" class="font-semibold rounded focus:outline focus:outline-2 focus:outline-accent">{{if .Optimizer.Recommendations}}Options meet your minimum-spending target{{else}}No options met your minimum-spending target{{end}}</h4>
+{{/* Adjacent to (not inside) the outcome heading above: the heading's own
+     text is asserted verbatim by TestGuardrailOptimizerOutcomeHasMeaningfulFocusTarget,
+     so this cannot be nested inside it. The status logic in the script below
+     reads both this element and the heading together for the aria-live
+     announcement. */}}
+{{with .PlanFloor}}
+<p data-guardrail-plan-floor-notice class="mt-2 rounded-md bg-warning-soft text-warning p-3">Your plan itself schedules living spending down to {{formatMoney .Amount}}/mo from year {{.Year}}{{if .Phase}} ({{.Phase}}){{end}}. Policies without an absolute floor at or above your minimum are counted as missing it in every such future for that reason — not because of market risk. Lower your minimum to {{formatMoney .Amount}} or below to compare policies on market risk alone.</p>
+{{end}}
 <p class="mt-2">Your target: <strong>{{.Target}}%</strong> chance of maintaining your minimum every month throughout retirement. These are simulation estimates, not guarantees.</p>
 {{if not .Optimizer.Recommendations}}<p class="mt-2 font-semibold">Your minimum and target were not relaxed.</p>{{end}}
 <div tabindex="0" role="region" aria-label="Guardrail comparison; scroll horizontally for all measures" class="mt-3 max-w-full overflow-x-auto rounded focus:outline focus:outline-2 focus:outline-accent">
@@ -159,9 +188,10 @@ if(new URLSearchParams(location.search).has('guardrail_applied')){
 {{range .Rows}}{{$c:=.Candidate}}{{$m:=$c.Metrics}}
 <tr class="border-t border-gray-400 dark:border-gray-500 align-top">
 <th scope="row" class="p-2">{{template "whatif-guardrail-optimizer-policy-name" $c}}</th>
-<td class="p-2"><strong class="block text-xl tabular-nums">{{printf "%.2f" $m.FloorSuccessPct}}%</strong><span>{{if $c.Qualifies}}Meets target{{else}}Below target{{end}}</span></td>
+<td class="p-2"><strong class="block text-xl tabular-nums">{{printf "%.2f" $m.FloorSuccessPct}}%</strong><span>{{if $c.Qualifies}}Meets target{{else if and .PlanDesignBelowTarget $.PlanFloor}}Below target — planned spending is below your minimum from year {{$.PlanFloor.Year}}{{else}}Below target{{end}}</span></td>
 <td class="p-2">{{formatMoney $m.MedianLifetimeFundedLivingReal}}</td>
-<td class="p-2">{{printf "%.2f" $m.P95WorstAnnualCutPct}}%</td>
+{{$cut:=printf "%.2f" $m.P95WorstAnnualCutPct}}
+<td class="p-2">{{$cut}}%{{if eq $cut "100.00"}} (no funded living spending for a full year in at least 5% of futures — usually portfolio depletion; see Portfolio depletion below){{end}}</td>
 <td class="p-2"><button type="button" data-guardrail-graph="{{.GraphToken}}" data-request-id="{{$.RequestID}}" aria-label="View graph for guardrail policy {{$c.ID}}" aria-pressed="false" class="mb-2 rounded border border-gray-500 dark:border-gray-400 px-3 py-2 focus:outline focus:outline-2 focus:outline-accent">View graph</button>{{if .Token}}
 <form data-guardrail-apply hx-post="/whatif/guardrails/optimize/apply" hx-target="#guardrail-optimizer-results" hx-disabled-elt="button">
 <input type="hidden" name="request_id" value="{{$.RequestID}}"><input type="hidden" name="recommendation" value="{{.Token}}">

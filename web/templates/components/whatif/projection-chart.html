@@ -32,11 +32,16 @@
             {{end}}
         </div>
     </div>
-    <div id="chart-projection" class="chart-container" data-chart-url="/whatif/chart/projection?display_dollars=nominal">
+    <div id="chart-projection" class="chart-container{{if and .Settings.Guardrails .Settings.Guardrails.Enabled}} chart-container-tall{{end}}" data-chart-url="/whatif/chart/projection?display_dollars=nominal">
         <div class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
             Loading chart...
         </div>
     </div>
+    {{if .GuardrailChartSummary}}
+    <p id="projection-guardrail-summary" class="mt-2 text-body-sm text-gray-600 dark:text-gray-300">
+        Guardrails: {{.GuardrailChartSummary.EventsLine}} {{.GuardrailChartSummary.NextLine}} See Guardrail Events on the Risk tab.
+    </p>
+    {{end}}
     {{with .Analysis.ProjectionExplainability}}
     <div class="mt-4 space-y-3">
         <div class="space-y-1 text-body-sm text-gray-600 dark:text-gray-300">

@@ -1,9 +1,9 @@
 {{/* Spending Guardrails Card */}}
 {{define "whatif-guardrails"}}
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Drop/rise guardrails (simple)</h2>
-    <p class="text-body-sm text-gray-600 dark:text-gray-400 mb-3">These rules adjust your living-expense budget. Healthcare, property tax, and other expense lines are not automatically cut. An optional real-dollar floor sets a minimum living-expense request; it does not guarantee funding.</p>
-    <p class="text-body-sm text-gray-500 dark:text-gray-400 mb-3">Cuts the living-expense budget when the portfolio drops from peak; raises it when the portfolio rises above baseline. This is a simplified guardrail — not the four-rule Guyton-Klinger (2006) model.</p>
+    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Spending guardrails</h2>
+    <p class="text-body-sm text-gray-600 dark:text-gray-400 mb-3">These rules adjust your living-expense budget. Healthcare, property tax, and other expense lines are not automatically cut. An optional real-dollar floor sets a minimum living-expense request; it does not guarantee funding. This is a simplified guardrail — not the four-rule Guyton-Klinger (2006) model.</p>
+    <p class="text-body-sm text-gray-500 dark:text-gray-400 mb-3">Cuts the living-expense budget when the portfolio drops from peak; raises it when the portfolio rises above baseline.</p>
 
     <form hx-post="/whatif/guardrails" hx-target="#whatif-results" class="space-y-3">
         <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
@@ -55,6 +55,8 @@
                 </div>
             </div>
 
+            <div id="whatif-guardrail-anchors">{{template "whatif-guardrail-anchors" .}}</div>
+
             <div class="grid grid-cols-2 gap-2">
                 <div>
                     <label for="min-spending-pct-input" class="block text-xs text-gray-600 dark:text-gray-400">Min spending %</label>
@@ -83,6 +85,20 @@
     </form>
     {{template "whatif-guardrail-optimizer" .}}
 </div>
+{{end}}
+
+{{/* GV4: "Today" dollar anchors for the floor/ceiling triggers, read from
+     the year-0 GuardrailCutTrigger/GuardrailRaiseTrigger (SPEC.md ss3 -- one
+     source per figure, never recomputed from percentages here). Absent
+     (not "$0.00") until GuardrailAnchors is non-nil: no base projection, or
+     guardrails disabled. Rendered inside the guardrails card AND, via the
+     matching #whatif-guardrail-anchors OOB element in whatif.html, on
+     every results refresh so the figures never go stale. */}}
+{{define "whatif-guardrail-anchors"}}
+{{if .GuardrailAnchors}}
+<p class="text-body-sm text-negative">Next yearly check: cut if the portfolio falls below {{formatMoney .GuardrailAnchors.CutBelow}}</p>
+<p class="text-body-sm text-positive">Next yearly check: raise if it rises above {{formatMoney .GuardrailAnchors.RaiseAbove}}</p>
+{{end}}
 {{end}}
 
 {{/* Guardrail Events in Results */}}

@@ -87,6 +87,18 @@ html {
     min-height: 300px;
 }
 
+/* GV2: the guardrail-triggers + living-budget two-panel projection chart
+   sets layout.height ~520px server-side (see buildProjectionChartData);
+   the container needs matching room so the panel split never clips.
+   Layered on top of .chart-container, not a replacement, so every other
+   chart keeps the 300px default. Uses the container's own #chart-projection
+   id (one class selector alone would tie in specificity with the
+   `.chart-container { min-height: 300px }` rule in base.html's inline
+   <style> block, which is later in source order and would otherwise win). */
+#chart-projection.chart-container-tall {
+    min-height: 540px;
+}
+
 /* Loading states */
 .loading {
     opacity: 0.6;

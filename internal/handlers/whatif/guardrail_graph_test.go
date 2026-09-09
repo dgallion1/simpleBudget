@@ -71,6 +71,17 @@ func TestGuardrailGraphExactPolicyAndNoMutation(t *testing.T) {
 				if !reflect.DeepEqual(got.Chart, expected) || !reflect.DeepEqual(got.Candidate, candidate) || got.Mode != mode {
 					t.Fatal("graph differs from canonical retained policy")
 				}
+				// GV2 criterion 5: the base-case preview shares
+				// buildProjectionChartData, so a guardrails-enabled candidate
+				// must show the trigger/budget-panel traces and a
+				// guardrails-disabled candidate (the no-guardrails baseline)
+				// must show none of them.
+				wantGuardrailTraces := cfg != nil && cfg.Enabled
+				for _, name := range []string{"Cut trigger", "Raise trigger", "Planned", "After guardrails"} {
+					if gv2GraphHasTrace(got.Chart, name) != wantGuardrailTraces {
+						t.Fatalf("policy %s (guardrails enabled=%v): trace %q present=%v, want %v", policy, wantGuardrailTraces, name, !wantGuardrailTraces, wantGuardrailTraces)
+					}
+				}
 				after, afterRev, _ := rm.LoadContextWithRevision(context.Background())
 				afterRaw, _ := json.Marshal(after)
 				if string(afterRaw) != string(raw) || afterRev != revision {
@@ -151,4 +162,21 @@ func TestGuardrailGraphEveryRowHasIndependentAction(t *testing.T) {
 	if strings.Contains(w.Body.String(), ">Apply</button>") {
 		t.Fatal("graph made below-target/baseline applicable")
 	}
+}
+
+// gv2GraphHasTrace reports whether a decoded chart JSON (map[string]any, as
+// produced by http.ResponseWriter round-tripping buildProjectionChartData
+// through encoding/json) has a trace with the given "name".
+func gv2GraphHasTrace(chart map[string]any, name string) bool {
+	data, _ := chart["data"].([]any)
+	for _, raw := range data {
+		trace, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if n, _ := trace["name"].(string); n == name {
+			return true
+		}
+	}
+	return false
 }

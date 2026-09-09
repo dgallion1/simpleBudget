@@ -340,7 +340,7 @@ ifeq ($(OS),Windows_NT)
 else
 	$(MKDIR) web/static/vendor
 endif
-	curl -L https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js -o web/static/vendor/htmx.min.js
+	curl -fL https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js -o web/static/vendor/htmx.min.js
 	curl -L https://cdn.plot.ly/plotly-2.35.2.min.js -o web/static/vendor/plotly.min.js
 
 # Validate a running server

@@ -1,0 +1,624 @@
+[
+  {
+    "theme": "light",
+    "tabs": [
+      {
+        "tag": "A",
+        "text": "simpleBudget",
+        "outline": "rgb(79, 70, 229) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "Dashboard",
+        "outline": "rgb(79, 70, 229) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "Explorer",
+        "outline": "rgb(79, 70, 229) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "Insights",
+        "outline": "rgb(79, 70, 229) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "Major Expenses",
+        "outline": "rgb(79, 70, 229) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "What-If",
+        "outline": "rgb(79, 70, 229) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "Accounts",
+        "outline": "rgb(79, 70, 229) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "Transfers",
+        "outline": "rgb(79, 70, 229) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "File Manager",
+        "outline": "rgb(79, 70, 229) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "",
+        "outline": "rgb(79, 70, 229) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "SELECT",
+        "text": "Current Plan",
+        "outline": "rgb(41, 37, 36) none 3px",
+        "shadow": "rgb(79, 70, 229) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "New",
+        "outline": "rgb(79, 70, 229) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      }
+    ],
+    "details": {
+      "dark": false,
+      "headings": [
+        [
+          "H1",
+          "What-If Analysis"
+        ],
+        [
+          "H2",
+          "Portfolio & Expenses"
+        ],
+        [
+          "H2",
+          "Income Sources"
+        ],
+        [
+          "H2",
+          "Healthcare Costs"
+        ],
+        [
+          "H2",
+          "Big Ticket Items"
+        ],
+        [
+          "H2",
+          "One-Time Expenses"
+        ],
+        [
+          "H2",
+          "Additional Expenses"
+        ],
+        [
+          "H2",
+          "Rate Assumptions"
+        ],
+        [
+          "H2",
+          "Retirement Spending Phases"
+        ],
+        [
+          "H3",
+          "Spending Trajectory"
+        ],
+        [
+          "H2",
+          "Drop/rise guardrails (simple)"
+        ],
+        [
+          "H3",
+          "Optimize guardrails"
+        ],
+        [
+          "H2",
+          "Roth Conversion Strategy"
+        ],
+        [
+          "H2",
+          "Scenario Chain"
+        ],
+        [
+          "H2",
+          "SS Claiming Age Optimizer"
+        ],
+        [
+          "H2",
+          "Funds run out in Jun 2054"
+        ],
+        [
+          "H2",
+          "Simulated lifestyle outcomes"
+        ],
+        [
+          "H3",
+          "Among runs with cuts · 1000 / 1000 runs (100.0%)"
+        ],
+        [
+          "H2",
+          "Portfolio Longevity"
+        ],
+        [
+          "H2",
+          "Monthly Expenses Today"
+        ],
+        [
+          "H2",
+          "Approximate failure thresholds"
+        ],
+        [
+          "H2",
+          "Monthly Budget Analysis"
+        ],
+        [
+          "H3",
+          "Current (Today)"
+        ],
+        [
+          "H3",
+          "At Year 0\n            · Age 65"
+        ],
+        [
+          "H2",
+          "Present Value Analysis"
+        ],
+        [
+          "H2",
+          "Yearly Income by Source"
+        ],
+        [
+          "H2",
+          "Year-by-Year Projection"
+        ],
+        [
+          "H2",
+          "Sensitivity Analysis"
+        ],
+        [
+          "H2",
+          "Monte Carlo Simulation"
+        ],
+        [
+          "H3",
+          "Final Balance Distribution"
+        ],
+        [
+          "H3",
+          "Sequence Risk Analysis"
+        ],
+        [
+          "H2",
+          "Historical Backtesting"
+        ],
+        [
+          "H3",
+          "Worst Starting Years"
+        ],
+        [
+          "H3",
+          "Best Starting Years"
+        ],
+        [
+          "H2",
+          "Guardrail Events"
+        ],
+        [
+          "H2",
+          "Income Taxes"
+        ],
+        [
+          "H2",
+          "Required Minimum Distributions (RMD)"
+        ],
+        [
+          "H2",
+          "Tax Optimizer"
+        ],
+        [
+          "H2",
+          "Conversion Sweep"
+        ]
+      ],
+      "images": [],
+      "indicators": [
+        {
+          "text": "\n                \n                    \n                    \n                    \n                    \n                \n            ",
+          "display": "none",
+          "visibility": "hidden",
+          "transition": "all"
+        },
+        {
+          "text": "\n                \n                    \n                    \n                    \n                    \n                \n            ",
+          "display": "none",
+          "visibility": "hidden",
+          "transition": "all"
+        },
+        {
+          "text": "\n            \n                \n                \n            \n        ",
+          "display": "none",
+          "visibility": "hidden",
+          "transition": "all"
+        },
+        {
+          "text": "\n                \n                    \n                    \n                \n            ",
+          "display": "none",
+          "visibility": "hidden",
+          "transition": "all"
+        }
+      ],
+      "hidden": [
+        {
+          "tag": "DIV",
+          "text": ""
+        },
+        {
+          "tag": "DIV",
+          "text": ""
+        },
+        {
+          "tag": "INPUT",
+          "text": ""
+        },
+        {
+          "tag": "LEGEND",
+          "text": "Fixed annual conversion"
+        },
+        {
+          "tag": "svg",
+          "text": ""
+        },
+        {
+          "tag": "SPAN",
+          "text": "lifetime cost"
+        },
+        {
+          "tag": "SPAN",
+          "text": ""
+        },
+        {
+          "tag": "SPAN",
+          "text": ""
+        },
+        {
+          "tag": "DIV",
+          "text": ""
+        },
+        {
+          "tag": "svg",
+          "text": ""
+        },
+        {
+          "tag": "svg",
+          "text": ""
+        }
+      ]
+    }
+  },
+  {
+    "theme": "dark",
+    "tabs": [
+      {
+        "tag": "A",
+        "text": "simpleBudget",
+        "outline": "rgb(165, 180, 252) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "Dashboard",
+        "outline": "rgb(165, 180, 252) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "Explorer",
+        "outline": "rgb(165, 180, 252) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "Insights",
+        "outline": "rgb(165, 180, 252) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "Major Expenses",
+        "outline": "rgb(165, 180, 252) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "What-If",
+        "outline": "rgb(165, 180, 252) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "Accounts",
+        "outline": "rgb(165, 180, 252) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "Transfers",
+        "outline": "rgb(165, 180, 252) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "A",
+        "text": "File Manager",
+        "outline": "rgb(165, 180, 252) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "",
+        "outline": "rgb(165, 180, 252) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "SELECT",
+        "text": "Current Plan",
+        "outline": "rgb(245, 245, 244) none 3px",
+        "shadow": "rgb(165, 180, 252) 0px 0px 0px 2px"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "New",
+        "outline": "rgb(165, 180, 252) solid 2px",
+        "shadow": "rgb(255, 255, 255) 0px 0px 0px 2px"
+      }
+    ],
+    "details": {
+      "dark": true,
+      "headings": [
+        [
+          "H1",
+          "What-If Analysis"
+        ],
+        [
+          "H2",
+          "Portfolio & Expenses"
+        ],
+        [
+          "H2",
+          "Income Sources"
+        ],
+        [
+          "H2",
+          "Healthcare Costs"
+        ],
+        [
+          "H2",
+          "Big Ticket Items"
+        ],
+        [
+          "H2",
+          "One-Time Expenses"
+        ],
+        [
+          "H2",
+          "Additional Expenses"
+        ],
+        [
+          "H2",
+          "Rate Assumptions"
+        ],
+        [
+          "H2",
+          "Retirement Spending Phases"
+        ],
+        [
+          "H3",
+          "Spending Trajectory"
+        ],
+        [
+          "H2",
+          "Drop/rise guardrails (simple)"
+        ],
+        [
+          "H3",
+          "Optimize guardrails"
+        ],
+        [
+          "H2",
+          "Roth Conversion Strategy"
+        ],
+        [
+          "H2",
+          "Scenario Chain"
+        ],
+        [
+          "H2",
+          "SS Claiming Age Optimizer"
+        ],
+        [
+          "H2",
+          "Funds run out in Jun 2054"
+        ],
+        [
+          "H2",
+          "Simulated lifestyle outcomes"
+        ],
+        [
+          "H3",
+          "Among runs with cuts · 1000 / 1000 runs (100.0%)"
+        ],
+        [
+          "H2",
+          "Portfolio Longevity"
+        ],
+        [
+          "H2",
+          "Monthly Expenses Today"
+        ],
+        [
+          "H2",
+          "Approximate failure thresholds"
+        ],
+        [
+          "H2",
+          "Monthly Budget Analysis"
+        ],
+        [
+          "H3",
+          "Current (Today)"
+        ],
+        [
+          "H3",
+          "At Year 0\n            · Age 65"
+        ],
+        [
+          "H2",
+          "Present Value Analysis"
+        ],
+        [
+          "H2",
+          "Yearly Income by Source"
+        ],
+        [
+          "H2",
+          "Year-by-Year Projection"
+        ],
+        [
+          "H2",
+          "Sensitivity Analysis"
+        ],
+        [
+          "H2",
+          "Monte Carlo Simulation"
+        ],
+        [
+          "H3",
+          "Final Balance Distribution"
+        ],
+        [
+          "H3",
+          "Sequence Risk Analysis"
+        ],
+        [
+          "H2",
+          "Historical Backtesting"
+        ],
+        [
+          "H3",
+          "Worst Starting Years"
+        ],
+        [
+          "H3",
+          "Best Starting Years"
+        ],
+        [
+          "H2",
+          "Guardrail Events"
+        ],
+        [
+          "H2",
+          "Income Taxes"
+        ],
+        [
+          "H2",
+          "Required Minimum Distributions (RMD)"
+        ],
+        [
+          "H2",
+          "Tax Optimizer"
+        ],
+        [
+          "H2",
+          "Conversion Sweep"
+        ]
+      ],
+      "images": [],
+      "indicators": [
+        {
+          "text": "\n                \n                    \n                    \n                    \n                    \n                \n            ",
+          "display": "none",
+          "visibility": "hidden",
+          "transition": "all"
+        },
+        {
+          "text": "\n                \n                    \n                    \n                    \n                    \n                \n            ",
+          "display": "none",
+          "visibility": "hidden",
+          "transition": "all"
+        },
+        {
+          "text": "\n            \n                \n                \n            \n        ",
+          "display": "none",
+          "visibility": "hidden",
+          "transition": "all"
+        },
+        {
+          "text": "\n                \n                    \n                    \n                \n            ",
+          "display": "none",
+          "visibility": "hidden",
+          "transition": "all"
+        }
+      ],
+      "hidden": [
+        {
+          "tag": "DIV",
+          "text": ""
+        },
+        {
+          "tag": "DIV",
+          "text": ""
+        },
+        {
+          "tag": "INPUT",
+          "text": ""
+        },
+        {
+          "tag": "LEGEND",
+          "text": "Fixed annual conversion"
+        },
+        {
+          "tag": "svg",
+          "text": ""
+        },
+        {
+          "tag": "SPAN",
+          "text": "lifetime cost"
+        },
+        {
+          "tag": "SPAN",
+          "text": ""
+        },
+        {
+          "tag": "SPAN",
+          "text": ""
+        },
+        {
+          "tag": "DIV",
+          "text": ""
+        },
+        {
+          "tag": "svg",
+          "text": ""
+        },
+        {
+          "tag": "svg",
+          "text": ""
+        }
+      ]
+    }
+  }
+]

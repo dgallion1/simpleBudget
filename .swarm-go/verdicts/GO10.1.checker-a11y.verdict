@@ -1,0 +1,32 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: GO10
+ATTEMPT: 1
+---
+Scope: dependency-only accessibility regression review; no new templates or CSS. Read ACCESSIBILITY.md1–17 and GUARDRAIL_OPTIMIZER_ACCESSIBILITY.md18–23 and GO10 specification. No project code edited.
+
+Commands/evidence:
+- git diff master --name-only and git diff master -- Makefile web/static/vendor/htmx.min.js: production changes exclusively downloader pin and official library.
+- rtk proxy node .swarm-go/probes/GO10-a11y.cjs: real app18091 renders /, /accounts, /transfers, /filemanager, /duplicates, /whatif in light/dark. Runtime version2.0.10 on all12 renders. First5 routes zero axe violations both themes. Whatif40 contrast nodes each theme.
+- git show master:web/static/vendor/htmx.min.js > /tmp/GO10-htmx-baseline.js; BASELINE=1 node .swarm-go/probes/GO10-a11y.cjs: intercepted baseline2.0.4, same routes/themes. Same40 contrast elements in whatif and zero elsewhere. Five light selectors have equivalent reordered class selectors; same elements/ratios. JSON retained.
+- node /home/darrell/.npm/_npx/e003b6b07d062486/node_modules/@axe-core/cli/dist/src/bin/cli.js file:///tmp/GO10-light.html file:///tmp/GO10-dark.html --chrome-path /home/darrell/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome --chrome-options=--no-sandbox,--allow-file-access-from-files --save /tmp/GO10-axe-cli.json --timeout30 (actual invocation timeout 30): CLI completed both actual rendered DOM dumps loading real app stylesheet through baseURL, same40 contrast nodes. Retained GO10-axe-cli.json. These are actual template renders, not source or reconstructed markup.
+- node .swarm-go/probes/GO10-manual.cjs: retained keyboard/render inspection, both themes verified actual dark class false/true. First12 tab stops follow header/nav/plan control order; visible two-tone outline/shadow. No keyboard trap observed. This is bounded regression sampling, not assertion that every legacy interaction has been executed.
+- Primary lane's retained GO10-browser.cjs trace reviewed: real settings POST200 HX-Request:true followed whatif-results swap; cancellation204 produces Search cancelled. Nothing was saved.; restores enabled run button and focus there; accounts navigation/back passes. Accessibility consequences: sensible focus restoration, single polite status, disabled state exposed by native buttons. Execution of state-changing page JS belongs to primary lane; I inspected its trace and matching markup.
+
+Explicit manual constitution review:
+1 landmarks main/nav/header/footer and singleh1 present in actual routes; whatif heading sequence h1/h2/h3 logical.
+2–3 semantic table/buttons/links unchanged; axe semantic scan clean.
+4–6,18–19 optimizer visible linked labels, units, required native controls and described status/custom validation retained.
+7–8,12,23 contrast tested both actual themes; optimizer controls/risk wording unaffected; known dimmed legacy phase cards below threshold in both library versions. No new color-only meaning.
+9–10,20,22 keyboard sample visible focus plus primary cancel/swap trace support no dependency regression; status role polite and aria-busy unchanged.
+11,13,21 charts/data alternatives/currency/table contract unchanged by dependency; no new numerical or chart content.
+14,16 dismissal parity: primary cancellation trace resets disabled state and focus with matching visible/announced message. Hidden-node inspection found decorative blank separators/SVG and useful fieldset legend/cost text, no newly injected junk or hidden meaningful content.
+15 reduced-motion context inspected: idle indicators display:none and visibility:hidden; no new motion-only feedback. Existing template swap opacity transition remains baseline-native. New HTMX indicator fade is200ms and redundant to visible status, not continuous motion or sole feedback.
+17 dialog markup unchanged and no newly introduced overlay.
+
+FAILURES: none introduced by GO10.
+OBSERVATIONS:
+- PRE-EXISTING ACCESSIBILITY7/12, WCAG1.4.3: web/templates/components/whatif/spending-phases.html:30 uses opacity-50 on disabled phase configuration;40 axe contrast hits in each theme. Proven with baseline2.0.4 interception and git diff master -- web/templates web/static/css (empty). Do not classify as new dependency defects.
+- Base template swap transition web/templates/layouts/base.html:52 remains unchanged; no reduced-motion refinement introduced here.
+- Bounded full-site scan covers six actual top-level routes and synthetic empty content, not all populated dataset/modal states. No production8080 data touched.

@@ -1,0 +1,806 @@
+[
+  {
+    "theme": "light",
+    "route": "/",
+    "status": 200,
+    "version": "2.0.10",
+    "h1": 1,
+    "landmarks": [
+      [
+        "main",
+        1
+      ],
+      [
+        "nav",
+        1
+      ],
+      [
+        "header",
+        1
+      ],
+      [
+        "footer",
+        1
+      ]
+    ],
+    "violations": []
+  },
+  {
+    "theme": "light",
+    "route": "/accounts",
+    "status": 200,
+    "version": "2.0.10",
+    "h1": 1,
+    "landmarks": [
+      [
+        "main",
+        1
+      ],
+      [
+        "nav",
+        1
+      ],
+      [
+        "header",
+        1
+      ],
+      [
+        "footer",
+        1
+      ]
+    ],
+    "violations": []
+  },
+  {
+    "theme": "light",
+    "route": "/transfers",
+    "status": 200,
+    "version": "2.0.10",
+    "h1": 1,
+    "landmarks": [
+      [
+        "main",
+        1
+      ],
+      [
+        "nav",
+        1
+      ],
+      [
+        "header",
+        2
+      ],
+      [
+        "footer",
+        1
+      ]
+    ],
+    "violations": []
+  },
+  {
+    "theme": "light",
+    "route": "/filemanager",
+    "status": 200,
+    "version": "2.0.10",
+    "h1": 1,
+    "landmarks": [
+      [
+        "main",
+        1
+      ],
+      [
+        "nav",
+        1
+      ],
+      [
+        "header",
+        1
+      ],
+      [
+        "footer",
+        1
+      ]
+    ],
+    "violations": []
+  },
+  {
+    "theme": "light",
+    "route": "/duplicates",
+    "status": 200,
+    "version": "2.0.10",
+    "h1": 1,
+    "landmarks": [
+      [
+        "main",
+        1
+      ],
+      [
+        "nav",
+        1
+      ],
+      [
+        "header",
+        2
+      ],
+      [
+        "footer",
+        1
+      ]
+    ],
+    "violations": []
+  },
+  {
+    "theme": "light",
+    "route": "/whatif",
+    "status": 200,
+    "version": "2.0.10",
+    "h1": 1,
+    "landmarks": [
+      [
+        "main",
+        1
+      ],
+      [
+        "nav",
+        1
+      ],
+      [
+        "header",
+        1
+      ],
+      [
+        "footer",
+        1
+      ]
+    ],
+    "violations": [
+      {
+        "id": "color-contrast",
+        "nodes": [
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(2) > .mb-1.justify-between.items-center > .dark\\:text-gray-200.text-gray-700.font-medium"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.56 (foreground color: #a2a09e, background color: #fdfdfc, font size: 12.8pt (17px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(2) > .mb-1.justify-between.items-center > .gap-2.items-center.flex > .text-xs"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(2) > .mb-2"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-0-multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-10[data-quick-adjust-display=\"phase:0:multiplier\"][data-quick-adjust-display-format=\"phase-percent\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.56 (foreground color: #a2a09e, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:0:multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(3) > .mb-1.justify-between.items-center > .dark\\:text-gray-200.text-gray-700.font-medium"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.56 (foreground color: #a2a09e, background color: #fdfdfc, font size: 12.8pt (17px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(3) > .mb-1.justify-between.items-center > .gap-2.items-center.flex > .text-xs:nth-child(1)"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(3) > .mb-2"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-1-start-age\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#phase-1-start-age"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.94 (foreground color: #808080, background color: #ffffff, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-1-multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-10[data-quick-adjust-display=\"phase:1:multiplier\"][data-quick-adjust-display-format=\"phase-percent\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.56 (foreground color: #a2a09e, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:1:multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(4) > .mb-1.justify-between.items-center > .dark\\:text-gray-200.text-gray-700.font-medium"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.56 (foreground color: #a2a09e, background color: #fdfdfc, font size: 12.8pt (17px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(4) > .mb-1.justify-between.items-center > .gap-2.items-center.flex > .text-xs:nth-child(1)"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#phases-form > .bg-gray-50.p-3.rounded-lg:nth-child(4) > .mb-2"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-2-start-age\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#phase-2-start-age"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.94 (foreground color: #808080, background color: #ffffff, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-2-multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-10[data-quick-adjust-display=\"phase:2:multiplier\"][data-quick-adjust-display-format=\"phase-percent\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.56 (foreground color: #a2a09e, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:2:multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(5) > .mb-1.justify-between.items-center > .dark\\:text-gray-200.text-gray-700.font-medium"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.56 (foreground color: #a2a09e, background color: #fdfdfc, font size: 12.8pt (17px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(5) > .mb-1.justify-between.items-center > .gap-2.items-center.flex > .text-xs:nth-child(1)"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(5) > .mb-2"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-3-start-age\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#phase-3-start-age"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.94 (foreground color: #808080, background color: #ffffff, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-3-multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-10[data-quick-adjust-display=\"phase:3:multiplier\"][data-quick-adjust-display-format=\"phase-percent\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.56 (foreground color: #a2a09e, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:3:multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(6) > .mb-1.justify-between.items-center > .dark\\:text-gray-200.text-gray-700.font-medium"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.56 (foreground color: #a2a09e, background color: #fdfdfc, font size: 12.8pt (17px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(6) > .mb-1.justify-between.items-center > .gap-2.items-center.flex > .text-xs:nth-child(1)"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(6) > .mb-2"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-4-start-age\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#phase-4-start-age"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.94 (foreground color: #808080, background color: #ffffff, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-4-multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-10[data-quick-adjust-display=\"phase:4:multiplier\"][data-quick-adjust-display-format=\"phase-percent\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.56 (foreground color: #a2a09e, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:4:multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.3 (foreground color: #aba9a7, background color: #fdfdfc, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "button[hx-post=\"/whatif/spending-phases/add\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.29 (foreground color: #a7a3f2, background color: #ffffff, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".hover\\:text-gray-700"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.34 (foreground color: #aba9a7, background color: #ffffff, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "theme": "dark",
+    "route": "/",
+    "status": 200,
+    "version": "2.0.10",
+    "h1": 1,
+    "landmarks": [
+      [
+        "main",
+        1
+      ],
+      [
+        "nav",
+        1
+      ],
+      [
+        "header",
+        1
+      ],
+      [
+        "footer",
+        1
+      ]
+    ],
+    "violations": []
+  },
+  {
+    "theme": "dark",
+    "route": "/accounts",
+    "status": 200,
+    "version": "2.0.10",
+    "h1": 1,
+    "landmarks": [
+      [
+        "main",
+        1
+      ],
+      [
+        "nav",
+        1
+      ],
+      [
+        "header",
+        1
+      ],
+      [
+        "footer",
+        1
+      ]
+    ],
+    "violations": []
+  },
+  {
+    "theme": "dark",
+    "route": "/transfers",
+    "status": 200,
+    "version": "2.0.10",
+    "h1": 1,
+    "landmarks": [
+      [
+        "main",
+        1
+      ],
+      [
+        "nav",
+        1
+      ],
+      [
+        "header",
+        2
+      ],
+      [
+        "footer",
+        1
+      ]
+    ],
+    "violations": []
+  },
+  {
+    "theme": "dark",
+    "route": "/filemanager",
+    "status": 200,
+    "version": "2.0.10",
+    "h1": 1,
+    "landmarks": [
+      [
+        "main",
+        1
+      ],
+      [
+        "nav",
+        1
+      ],
+      [
+        "header",
+        1
+      ],
+      [
+        "footer",
+        1
+      ]
+    ],
+    "violations": []
+  },
+  {
+    "theme": "dark",
+    "route": "/duplicates",
+    "status": 200,
+    "version": "2.0.10",
+    "h1": 1,
+    "landmarks": [
+      [
+        "main",
+        1
+      ],
+      [
+        "nav",
+        1
+      ],
+      [
+        "header",
+        2
+      ],
+      [
+        "footer",
+        1
+      ]
+    ],
+    "violations": []
+  },
+  {
+    "theme": "dark",
+    "route": "/whatif",
+    "status": 200,
+    "version": "2.0.10",
+    "h1": 1,
+    "landmarks": [
+      [
+        "main",
+        1
+      ],
+      [
+        "nav",
+        1
+      ],
+      [
+        "header",
+        1
+      ],
+      [
+        "footer",
+        1
+      ]
+    ],
+    "violations": [
+      {
+        "id": "color-contrast",
+        "nodes": [
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(2) > .mb-1.justify-between.items-center > .text-gray-700.font-medium.dark\\:text-gray-200"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.41 (foreground color: #888584, background color: #373330, font size: 12.8pt (17px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(2) > .mb-1.justify-between.items-center > .gap-2.items-center.flex > .text-xs"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(2) > .mb-2"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-0-multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-10[data-quick-adjust-display=\"phase:0:multiplier\"][data-quick-adjust-display-format=\"phase-percent\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.41 (foreground color: #888584, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:0:multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(3) > .mb-1.justify-between.items-center > .text-gray-700.font-medium.dark\\:text-gray-200"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.41 (foreground color: #888584, background color: #373330, font size: 12.8pt (17px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(3) > .mb-1.justify-between.items-center > .gap-2.items-center.flex > .text-xs:nth-child(1)"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(3) > .mb-2"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-1-start-age\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#phase-1-start-age"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.3 (foreground color: #8f8d8c, background color: #403c39, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-1-multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-10[data-quick-adjust-display=\"phase:1:multiplier\"][data-quick-adjust-display-format=\"phase-percent\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.41 (foreground color: #888584, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:1:multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(4) > .mb-1.justify-between.items-center > .text-gray-700.font-medium.dark\\:text-gray-200"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.41 (foreground color: #888584, background color: #373330, font size: 12.8pt (17px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(4) > .mb-1.justify-between.items-center > .gap-2.items-center.flex > .text-xs:nth-child(1)"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#phases-form > .bg-gray-50.p-3.rounded-lg:nth-child(4) > .mb-2"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-2-start-age\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#phase-2-start-age"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.3 (foreground color: #8f8d8c, background color: #403c39, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-2-multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-10[data-quick-adjust-display=\"phase:2:multiplier\"][data-quick-adjust-display-format=\"phase-percent\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.41 (foreground color: #888584, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:2:multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(5) > .mb-1.justify-between.items-center > .text-gray-700.font-medium.dark\\:text-gray-200"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.41 (foreground color: #888584, background color: #373330, font size: 12.8pt (17px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(5) > .mb-1.justify-between.items-center > .gap-2.items-center.flex > .text-xs:nth-child(1)"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(5) > .mb-2"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-3-start-age\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#phase-3-start-age"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.3 (foreground color: #8f8d8c, background color: #403c39, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-3-multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-10[data-quick-adjust-display=\"phase:3:multiplier\"][data-quick-adjust-display-format=\"phase-percent\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.41 (foreground color: #888584, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:3:multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(6) > .mb-1.justify-between.items-center > .text-gray-700.font-medium.dark\\:text-gray-200"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.41 (foreground color: #888584, background color: #373330, font size: 12.8pt (17px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(6) > .mb-1.justify-between.items-center > .gap-2.items-center.flex > .text-xs:nth-child(1)"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".bg-gray-50.p-3.rounded-lg:nth-child(6) > .mb-2"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-4-start-age\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "#phase-4-start-age"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.3 (foreground color: #8f8d8c, background color: #403c39, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "label[for=\"phase-4-multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 9.6pt (12.75px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-10[data-quick-adjust-display=\"phase:4:multiplier\"][data-quick-adjust-display-format=\"phase-percent\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.41 (foreground color: #888584, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".w-20.phase-dollar-label[data-quick-adjust-display=\"phase:4:multiplier\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.03 (foreground color: #807c7b, background color: #373330, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              "button[hx-post=\"/whatif/spending-phases/add\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3 (foreground color: #676d90, background color: #292524, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          },
+          {
+            "target": [
+              ".hover\\:text-gray-700"
+            ],
+            "summary": "Fix any of the following:\n  Element has insufficient color contrast of 2.59 (foreground color: #696461, background color: #292524, font size: 11.2pt (14.875px), font weight: normal). Expected contrast ratio of 4.5:1"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,13 @@
+VERDICT: PASS
+CHECKER: checker-tests
+FAMILY: anthropic
+TASK: GO10
+ATTEMPT: 1
+---
+All commands ran in cp -a scratch /tmp/go10-primary-copy; browser addressed isolated synthetic app http://localhost:18091. No personal data or shared product files edited.
+1. Official dependency/version and download recipe: rtk proxy curl -fL https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js -o /tmp/go10-official-htmx.min.js succeeded. rtk proxy sha256sum /tmp/go10-official-htmx.min.js web/static/vendor/htmx.min.js produced identical 71ea67185bfa8c98c39d31717c6fce5d852370fcdfd129db4543774d3145c0de. git diff HEAD -- Makefile shows sole recipe change to curl -fL https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js. No custom library changes.
+2. Full quality/build: rtk proxy env GOFLAGS=-count=1 make check exited0, last line "✓ all checks passed": vet, staticcheck, govulncheck no reachable vulnerabilities, CSS "tailwind.css is up to date", every Go package uncached PASS. rtk proxy go build ./... exited0.
+3. Real browser HTMX compatibility: rtk proxy node .swarm-go/probes/GO10-browser.cjs exited0 with PASS runtime HTMX 2.0.10; PASS actual HTMX settings POST HTTP200 HX-Request:true and whatif-results swap; PASS saved synthetic form survives reload; PASS actual optimizer request/cancel endpoint, status, disabled restoration and run focus; PASS actual navigation accounts and browser back; PASS zero page errors. Probe uses actual Chromium and server, no mocked requests in positive run. Optimizer cancellation is app fetch behavior, while settings request/swap is HTMX; navigation is real anchor/back. This checks representative actual flows, not every app workflow.
+4. Test evidence calibration: no product tests required/added under maintenance brief. Retained browser probe assertions read and executed. Negative calibration using env HTMX_OVERRIDE=/tmp/go10-old-htmx.js node .swarm-go/probes/GO10-browser.cjs served HEAD asset in scratch browser only; exited1 with actual2.0.4 !== expected2.0.10. Positive rerun passed. Initial harness incorrectly expected cancel200; corrected to documented handler StatusNoContent204 and reran. No product defect.
+5. Scope: rtk proxy git diff HEAD --stat and git status --short show only Makefile/vendor production changes and authorized spec/ledger/manifest/probe evidence. Manifest production paths match. critical.globs retirement engine/analysis/models patterns are untouched. Existing master changes remain in HEAD. Accessibility lane owns full audit.
+FINDINGS: govulncheck reports imported-but-uncalled vulnerabilities; no reachable vulnerability. No in-scope defect found.

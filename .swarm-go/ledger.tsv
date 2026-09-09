@@ -8,3 +8,4 @@ GO6	2	tests,second	accepted	1	lead	Promote primary checker actual-search token p
 GO7	3	tests,second	accepted	1	range_worker	Observed financial simulation bands
 GO8	2	tests,second,a11y	accepted	2	range_ui	Simulation preview charts and money labels
 GO9	2	tests	accepted	1	lead	Test-only promotion of held-out replay evidence
+GO10	2	tests,a11y	accepted	1	lead	Reviewed upstream dependency update; no financial logic change

@@ -174,3 +174,69 @@ test('filterTrendTraces: 41-category full set -> height 1678 (41*38+120, matches
     assert.equal(result.data[0].x.length, 41);
     assert.equal(result.layout.height, 1678);
 });
+
+// A raw payload with NO marker property on either trace at all -- unlike
+// fixture5/fixtureN above, whose 'marker' keys stand in for the endpoint's
+// own per-point colour arrays and are unrelated to theming. themedTrendPayload
+// is the function that first attaches a marker for rendering; starting from
+// a raw with none makes "raw picked up a marker" and "raw didn't" unambiguous.
+function fixtureNoMarker(categories) {
+    return {
+        period: {},
+        data: [
+            {type: 'bar', name: 'Current', x: categories.slice(), y: categories.map((_, i) => i * 10)},
+            {type: 'bar', name: 'Prior', x: categories.slice(), y: categories.map((_, i) => i)}
+        ],
+        layout: {barmode: 'group'}
+    };
+}
+
+// TH1: themedTrendPayload composes filterTrendTraces with per-trace markers
+// for a full repaint (the fix for the theme-toggle-after-tab-switch height
+// collapse -- see the TH1 comment in insights.js above the themechange
+// listener). It exposes no new filtering behaviour of its own; these cases
+// pin the marker assignment and the two things it must never do: mutate raw,
+// or leave a marker on raw's own traces.
+test('exposes themedTrendPayload on window.insightsTrends', () => {
+    assert.equal(typeof trends.themedTrendPayload, 'function');
+});
+
+test('themedTrendPayload: 5-category payload (two traces, x/y, no markers), 3-of-5 subset reordered -> filtered x/y, height 360, markers[i] applied to trace i', () => {
+    const raw = fixtureNoMarker(['A', 'B', 'C', 'D', 'E']);
+    const before = JSON.parse(JSON.stringify(raw));
+    const markers = [{color: '#111'}, {color: '#222', pattern: {shape: '/'}}];
+
+    const result = trends.themedTrendPayload(raw, ['C', 'A', 'D'], markers);
+
+    assert.deepEqual(result.data[0].x, ['C', 'A', 'D']);
+    assert.deepEqual(result.data[0].y, [20, 0, 30]);
+    assert.deepEqual(result.data[1].x, ['C', 'A', 'D']);
+    assert.deepEqual(result.data[1].y, [2, 0, 3]);
+    assert.equal(result.layout.height, 360);
+
+    assert.deepEqual(result.data[0].marker, markers[0]);
+    assert.deepEqual(result.data[1].marker, markers[1]);
+
+    // raw deep-equals its pre-call snapshot, and no raw trace picked up a
+    // marker property from this call.
+    assert.deepEqual(raw, before);
+    for (let i = 0; i < raw.data.length; i++) {
+        assert.ok(!('marker' in raw.data[i]));
+    }
+});
+
+test('themedTrendPayload: 12-category payload with all 12 -> height 576', () => {
+    const categories = Array.from({length: 12}, (_, i) => 'Cat' + i);
+    const raw = fixtureNoMarker(categories);
+    const markers = [{color: '#111'}, {color: '#222', pattern: {shape: '/'}}];
+
+    const result = trends.themedTrendPayload(raw, categories, markers);
+
+    assert.deepEqual(result.data[0].x, categories);
+    assert.equal(result.layout.height, 576);
+    assert.deepEqual(result.data[0].marker, markers[0]);
+    assert.deepEqual(result.data[1].marker, markers[1]);
+    for (let i = 0; i < raw.data.length; i++) {
+        assert.ok(!('marker' in raw.data[i]));
+    }
+});

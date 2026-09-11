@@ -565,6 +565,7 @@ func TestUpdateSettingsWithPersons_HappyPath(t *testing.T) {
 	}
 
 	updates := map[string]interface{}{
+		"use_current_month":       false, // This test exercises a fixed future start date.
 		"portfolio_value":         750000.0,
 		"monthly_living_expenses": 4500.0,
 		"projection_years":        25,

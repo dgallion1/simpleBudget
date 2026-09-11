@@ -536,6 +536,7 @@ func TestRevision_DoesNotBumpOnCacheMissLoad(t *testing.T) {
 		"portfolio_value": 500000,
 		"monthly_living_expenses": 4000,
 		"monthly_healthcare": 0,
+		"use_current_month": false,
 		"start_date": "2024-01",
 		"current_age": 62
 	}`)

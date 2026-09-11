@@ -285,6 +285,74 @@ func inferHealthcarePersonLink(settings *models.WhatIfSettings, name string) str
 	return matchID
 }
 
+var placeholderPersonNames = map[string]bool{
+	"you":     true,
+	"spouse":  true,
+	"user":    true,
+	"primary": true,
+}
+
+func isPlaceholderPersonName(name string) bool {
+	return placeholderPersonNames[normalizePersonName(name)]
+}
+
+// inferPositionalHealthcareLinks links healthcare entries to persons by
+// position when name-based inference (inferHealthcarePersonLink) could not
+// resolve them: unlinked plans commonly save healthcare entries in the same
+// order as persons, under names entered separately. Linking is
+// all-or-nothing: it only proceeds when the count of still-unlinked
+// healthcare entries equals the count of still-unlinked persons, and every
+// resulting pair's healthcare CurrentAge exactly matches the person's age at
+// originalStartDate (the start date as saved on disk, before
+// resolveCurrentMonth advances it). If any pair disagrees, none are linked.
+// When a linked person's Name is a placeholder ("you", "spouse", "user",
+// "primary") and the healthcare entry has a real name, the person adopts
+// the healthcare entry's name so the household keeps the user's own names.
+func inferPositionalHealthcareLinks(settings *models.WhatIfSettings, originalStartDate string) bool {
+	linkedPersonIDs := make(map[string]bool)
+	for _, hc := range settings.HealthcarePersons {
+		if hc.PersonID != "" {
+			linkedPersonIDs[hc.PersonID] = true
+		}
+	}
+
+	var unlinkedHealthcare []int
+	for i, hc := range settings.HealthcarePersons {
+		if hc.PersonID == "" {
+			unlinkedHealthcare = append(unlinkedHealthcare, i)
+		}
+	}
+
+	var unlinkedPersons []int
+	for i, person := range settings.Persons {
+		if !linkedPersonIDs[person.ID] {
+			unlinkedPersons = append(unlinkedPersons, i)
+		}
+	}
+
+	if len(unlinkedHealthcare) == 0 || len(unlinkedHealthcare) != len(unlinkedPersons) {
+		return false
+	}
+
+	for k, hcIdx := range unlinkedHealthcare {
+		hc := settings.HealthcarePersons[hcIdx]
+		person := settings.Persons[unlinkedPersons[k]]
+		age, err := models.DeriveAgeAtStartDate(originalStartDate, person.BirthMonth)
+		if err != nil || age != hc.CurrentAge {
+			return false
+		}
+	}
+
+	for k, hcIdx := range unlinkedHealthcare {
+		personIdx := unlinkedPersons[k]
+		settings.HealthcarePersons[hcIdx].PersonID = settings.Persons[personIdx].ID
+		if isPlaceholderPersonName(settings.Persons[personIdx].Name) && !isPlaceholderPersonName(settings.HealthcarePersons[hcIdx].Name) {
+			settings.Persons[personIdx].Name = settings.HealthcarePersons[hcIdx].Name
+		}
+	}
+	return true
+}
+
 func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields map[string]json.RawMessage) (bool, error) {
 	initializeLoadedSettings(settings, rawFields)
 
@@ -294,6 +362,13 @@ func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields ma
 	var startChanged bool
 	settings.StartDate, startChanged = normalizeStartDate(settings.StartDate)
 	changed = changed || startChanged
+
+	// originalStartDate is the start date as saved in the file (after only
+	// the normalizeStartDate defaulting above), captured before
+	// resolveCurrentMonth advances settings.StartDate to the current month.
+	// Positional healthcare-link inference below age-checks against this
+	// date, mirroring how legacy ages are migrated against it.
+	originalStartDate := settings.StartDate
 
 	if len(settings.Persons) == 0 {
 		primaryAge := legacy.CurrentAge
@@ -364,6 +439,10 @@ func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields ma
 			continue
 		}
 		settings.HealthcarePersons[i].PersonID = personID
+		changed = true
+	}
+
+	if inferPositionalHealthcareLinks(settings, originalStartDate) {
 		changed = true
 	}
 

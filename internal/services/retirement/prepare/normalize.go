@@ -34,6 +34,7 @@ func ComputeAges(s *models.WhatIfSettings) {
 			continue
 		}
 		s.HealthcarePersons[i].Name = person.Name
+		s.HealthcarePersons[i].BirthMonth = person.BirthMonth
 		if age, err := models.DeriveAgeAtStartDate(s.StartDate, person.BirthMonth); err == nil {
 			s.HealthcarePersons[i].CurrentAge = age
 		}

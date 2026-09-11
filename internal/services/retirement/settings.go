@@ -285,6 +285,74 @@ func inferHealthcarePersonLink(settings *models.WhatIfSettings, name string) str
 	return matchID
 }
 
+var placeholderPersonNames = map[string]bool{
+	"you":     true,
+	"spouse":  true,
+	"user":    true,
+	"primary": true,
+}
+
+func isPlaceholderPersonName(name string) bool {
+	return placeholderPersonNames[normalizePersonName(name)]
+}
+
+// inferPositionalHealthcareLinks links healthcare entries to persons by
+// position when name-based inference (inferHealthcarePersonLink) could not
+// resolve them: unlinked plans commonly save healthcare entries in the same
+// order as persons, under names entered separately. Linking is
+// all-or-nothing: it only proceeds when the count of still-unlinked
+// healthcare entries equals the count of still-unlinked persons, and every
+// resulting pair's healthcare CurrentAge exactly matches the person's age at
+// originalStartDate (the start date as saved on disk, before
+// resolveCurrentMonth advances it). If any pair disagrees, none are linked.
+// When a linked person's Name is a placeholder ("you", "spouse", "user",
+// "primary") and the healthcare entry has a real name, the person adopts
+// the healthcare entry's name so the household keeps the user's own names.
+func inferPositionalHealthcareLinks(settings *models.WhatIfSettings, originalStartDate string) bool {
+	linkedPersonIDs := make(map[string]bool)
+	for _, hc := range settings.HealthcarePersons {
+		if hc.PersonID != "" {
+			linkedPersonIDs[hc.PersonID] = true
+		}
+	}
+
+	var unlinkedHealthcare []int
+	for i, hc := range settings.HealthcarePersons {
+		if hc.PersonID == "" {
+			unlinkedHealthcare = append(unlinkedHealthcare, i)
+		}
+	}
+
+	var unlinkedPersons []int
+	for i, person := range settings.Persons {
+		if !linkedPersonIDs[person.ID] {
+			unlinkedPersons = append(unlinkedPersons, i)
+		}
+	}
+
+	if len(unlinkedHealthcare) == 0 || len(unlinkedHealthcare) != len(unlinkedPersons) {
+		return false
+	}
+
+	for k, hcIdx := range unlinkedHealthcare {
+		hc := settings.HealthcarePersons[hcIdx]
+		person := settings.Persons[unlinkedPersons[k]]
+		age, err := models.DeriveAgeAtStartDate(originalStartDate, person.BirthMonth)
+		if err != nil || age != hc.CurrentAge {
+			return false
+		}
+	}
+
+	for k, hcIdx := range unlinkedHealthcare {
+		personIdx := unlinkedPersons[k]
+		settings.HealthcarePersons[hcIdx].PersonID = settings.Persons[personIdx].ID
+		if isPlaceholderPersonName(settings.Persons[personIdx].Name) && !isPlaceholderPersonName(settings.HealthcarePersons[hcIdx].Name) {
+			settings.Persons[personIdx].Name = settings.HealthcarePersons[hcIdx].Name
+		}
+	}
+	return true
+}
+
 func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields map[string]json.RawMessage) (bool, error) {
 	initializeLoadedSettings(settings, rawFields)
 
@@ -294,6 +362,13 @@ func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields ma
 	var startChanged bool
 	settings.StartDate, startChanged = normalizeStartDate(settings.StartDate)
 	changed = changed || startChanged
+
+	// originalStartDate is the start date as saved in the file (after only
+	// the normalizeStartDate defaulting above), captured before
+	// resolveCurrentMonth advances settings.StartDate to the current month.
+	// Positional healthcare-link inference below age-checks against this
+	// date, mirroring how legacy ages are migrated against it.
+	originalStartDate := settings.StartDate
 
 	if len(settings.Persons) == 0 {
 		primaryAge := legacy.CurrentAge
@@ -317,6 +392,14 @@ func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields ma
 		}
 		changed = true
 	}
+
+	// Existing saved plans advance automatically unless explicitly set to a fixed date.
+	// Migrate legacy ages against their original date before advancing it.
+	if _, present := rawFields["use_current_month"]; !present {
+		settings.UseCurrentMonth = true
+		changed = true
+	}
+	resolveCurrentMonth(settings, time.Now())
 
 	// First pass: derive ages so the healthcare migration below can read
 	// settings.CurrentAge to pick ACA vs Medicare coverage.
@@ -356,6 +439,10 @@ func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields ma
 			continue
 		}
 		settings.HealthcarePersons[i].PersonID = personID
+		changed = true
+	}
+
+	if inferPositionalHealthcareLinks(settings, originalStartDate) {
 		changed = true
 	}
 
@@ -454,7 +541,7 @@ func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSetti
 	// Return cache if available
 	if sm.cache != nil {
 		defer sm.mu.RUnlock()
-		return prepare.Clone(sm.cache)
+		return cloneForCurrentMonth(sm.cache)
 	}
 	sm.mu.RUnlock()
 
@@ -467,7 +554,7 @@ func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSetti
 	// deterministic test: the private-copy guards cover the other two return
 	// points and this one is the same one-line copy.
 	if sm.cache != nil {
-		return prepare.Clone(sm.cache)
+		return cloneForCurrentMonth(sm.cache)
 	}
 
 	settings, err := sm.loadInternalContext(ctx)
@@ -479,7 +566,7 @@ func (sm *SettingsManager) LoadContext(ctx context.Context) (*models.WhatIfSetti
 	// cached object is the one nothing may mutate, so it must not be the one
 	// the caller receives.
 	sm.cache = settings
-	return prepare.Clone(settings)
+	return cloneForCurrentMonth(settings)
 }
 
 // LoadContextWithRevision is LoadContext plus the revision the returned
@@ -505,7 +592,7 @@ func (sm *SettingsManager) LoadContextWithRevision(ctx context.Context) (*models
 	sm.mu.RLock()
 	if sm.cache != nil {
 		rev := sm.revision
-		cloned, err := prepare.Clone(sm.cache)
+		cloned, err := cloneForCurrentMonth(sm.cache)
 		sm.mu.RUnlock()
 		return cloned, rev, err
 	}
@@ -517,7 +604,7 @@ func (sm *SettingsManager) LoadContextWithRevision(ctx context.Context) (*models
 	// Double-check cache after acquiring write lock; see LoadContext's own
 	// double-check for why this branch has no deterministic test.
 	if sm.cache != nil {
-		cloned, err := prepare.Clone(sm.cache)
+		cloned, err := cloneForCurrentMonth(sm.cache)
 		return cloned, sm.revision, err
 	}
 
@@ -527,7 +614,7 @@ func (sm *SettingsManager) LoadContextWithRevision(ctx context.Context) (*models
 	}
 
 	sm.cache = settings
-	cloned, err := prepare.Clone(settings)
+	cloned, err := cloneForCurrentMonth(settings)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -661,8 +748,10 @@ func (sm *SettingsManager) loadInternalContext(ctx context.Context) (*models.Wha
 
 	// Check if file exists (a missing DEFAULT file still means defaults)
 	if _, err := sm.store.Stat(path); os.IsNotExist(err) {
-		// Return defaults (caller should save if needed)
-		return models.DefaultWhatIfSettings(), nil
+		// New interactive plans follow the current month.
+		settings := models.DefaultWhatIfSettings()
+		settings.UseCurrentMonth = true
+		return settings, nil
 	}
 
 	// Read file (storage handles decryption)
@@ -877,6 +966,7 @@ func (sm *SettingsManager) saveInternalAndBump(settings *models.WhatIfSettings) 
 
 // saveInternal writes settings without acquiring lock (caller must hold lock)
 func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
+	resolveCurrentMonth(settings, time.Now())
 	prepare.NormalizePhaseAgeReference(settings)
 	if err := prepare.ValidatePersons(settings); err != nil {
 		return err
@@ -1339,6 +1429,9 @@ func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interfac
 }
 
 func (sm *SettingsManager) applySettingsUpdates(settings *models.WhatIfSettings, updates map[string]interface{}) {
+	if v, ok := updates["use_current_month"].(bool); ok {
+		settings.UseCurrentMonth = v
+	}
 	if v, ok := updates["portfolio_value"].(float64); ok {
 		settings.PortfolioValue = v
 	}

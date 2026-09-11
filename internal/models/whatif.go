@@ -97,7 +97,9 @@ type WhatIfSettings struct {
 	// cliff cannot be located.
 	ACA       *ACAConfig `json:"aca,omitempty"`
 	StartDate string     `json:"start_date"`
-	Persons   []Person   `json:"persons"`
+	// UseCurrentMonth resolves StartDate on load; explicit false keeps a fixed scenario date.
+	UseCurrentMonth bool     `json:"use_current_month"`
+	Persons         []Person `json:"persons"`
 
 	// RMD Settings
 	CurrentAge         int     `json:"-"`                             // User's current age (derived working state)

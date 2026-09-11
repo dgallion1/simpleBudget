@@ -51,10 +51,23 @@ func TestGuardrailOptimizerCardAndResultsRender(t *testing.T) {
 	if err := renderer.RenderPartial(w, "whatif-guardrails", map[string]any{"Settings": s}); err != nil {
 		t.Fatal(err)
 	}
+	card := w.Body.String()
+	if spending, manual := strings.Index(card, "How much can I spend?"), strings.Index(card, "Adjust spending rules manually"); spending < 0 || manual < 0 || spending >= manual {
+		t.Fatal("spending decision must precede the disclosed manual controls")
+	}
+	for _, want := range []string{`name="min_monthly_spending_real"`, `min="0" max="100"`} {
+		if !strings.Contains(card, want) {
+			t.Errorf("manual controls missing %q", want)
+		}
+	}
+	w = httptest.NewRecorder()
+	if err := renderer.RenderPartial(w, "whatif-guardrail-optimizer", map[string]any{"Settings": s}); err != nil {
+		t.Fatal(err)
+	}
 	if value := guardrailTestAttribute(guardrailTestElement(t, w.Body.String(), "id", "guardrail-optimizer-floor"), "value"); value != "7500" {
 		t.Fatalf("optimizer default floor = %q, want 7500", value)
 	}
-	for _, want := range []string{`<option value="">Choose a target</option>`, "90%", "95%", "99%", "Custom", "Healthcare, taxes", "Chance of maintaining my minimum spending", "Run optimizer", "Cancel search", `name="min_monthly_spending_real"`, `min="0" max="100"`} {
+	for _, want := range []string{`<option value="">Choose a target</option>`, "90%", "95%", "99%", "Custom", "Healthcare, taxes", "Chance of maintaining my minimum spending", "Run optimizer", "Cancel search"} {
 		if !strings.Contains(w.Body.String(), want) {
 			t.Errorf("missing %q", want)
 		}

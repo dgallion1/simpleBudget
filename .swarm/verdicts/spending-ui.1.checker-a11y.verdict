@@ -1,0 +1,58 @@
+VERDICT: FAIL
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: spending-ui
+ATTEMPT: 1
+---
+Automated real-render evidence: handler-produced Task 5 form/results bytes plus the real built Tailwind/styles, Plotly, shared chart helpers, and production controller were captured as light and dark pages. Required `npx @axe-core/cli` WCAG 2 A/AA, 2.1 A/AA and 2.2 AA audit: 0 violations on both. Live axe: 0 both. Actual copied-data `/whatif` through official start/stop, changed manual disclosure open: 0 scoped axe violations light/dark, one H1 and header/nav/main present, no page errors. Automated results do not override the following manual failures.
+
+FAILURES
+
+F1 — ACCESSIBILITY.md #6 / WCAG 2.2 3.3.2, web/templates/components/whatif/spending_optimizer.html:39-53 and web/static/js/whatif-spending-optimizer.js:57-62. Enabling “Add a temporary monthly amount” makes amount and stop-month inputs required, but neither visible label/help says required. Users discover the new requirement only after submission.
+
+Unified introduced diff:
+@@ new web/templates/components/whatif/spending_optimizer.html:39-53
++<label for="spending-boost-amount" ...>Extra each month (today's dollars)</label>
++<input id="spending-boost-amount" ... aria-describedby="spending-boost-help spending-optimizer-status">
++<label for="spending-boost-stop" ...>First month without extra spending</label>
++<input id="spending-boost-stop" ... aria-describedby="spending-boost-help spending-boost-boundary spending-optimizer-status">
++<p id="spending-boost-help" ...>The stop month is the first calendar month without the extra amount. Plan range: ...</p>
+@@ new web/static/js/whatif-spending-optimizer.js:57-62
++const enabled = boostEnabled.checked;
++boostAmount.disabled = !enabled;
++boostStop.disabled = !enabled;
++boostAmount.required = enabled;
++boostStop.required = enabled;
+
+F2 — ACCESSIBILITY.md #6 / WCAG 2.2 3.3.2, web/templates/components/whatif/spending_optimizer.html:68-71. “Lowest base budget,” “Highest base budget,” and “Budget step” have no visible or associated instruction stating dollars/today's dollars. Their placeholders only say “Automatic.”
+
+Unified introduced diff:
+@@ new web/templates/components/whatif/spending_optimizer.html:68-71
++<label for="spending-search-min" ...>Lowest base budget</label><input id="spending-search-min" ... placeholder="Automatic" ...>
++<label for="spending-search-max" ...>Highest base budget</label><input id="spending-search-max" ... placeholder="Automatic" ...>
++<label for="spending-search-step" ...>Budget step</label><input id="spending-search-step" ... placeholder="Automatic" ...>
+
+F3 — ACCESSIBILITY.md #7 and #12 / WCAG 2.2 1.4.11, web/static/js/whatif-spending-optimizer.js:226-236,253-254. Real Plotly `.gridlayer path` strokes measure 1.49:1 (`#d6d3d1` on white) in light and 1.99:1 (`#57534e` on gray-800) in dark, below the constitution's explicit 3:1 chart-stroke floor. Data strokes pass (sampled minimum 6.70:1 light, 8.41:1 dark).
+
+Unified introduced diff:
+@@ new web/static/js/whatif-spending-optimizer.js:226-254
++grid: dark ? '#57534e' : '#d6d3d1',
+...
++xaxis: {title: {text: 'Plan year'}, gridcolor: colors.grid, ...},
++yaxis: {title: {text: yTitle}, gridcolor: colors.grid, ...},
+
+PASS EVIDENCE
+
+- #1: actual full page has one H1, logical H1→H2→H3→H4→H5 hierarchy, and header/nav/main.
+- #2-5: scoped headers/native controls; every input/select labeled; missing minimum focused on native invalid submit; server/apply errors use described polite status and relevant focus.
+- #8-11, #13: meaning has text; keyboard focus indicators visible; close returns to exact Inspect invoker; chart summaries and tables are adjacent; spending P10/P50/P90/minimum and all eight timeline series match table values; monetary semantics use labels plus dollar formatting.
+- #15: zero-duration Plotly transitions and reduced-motion context.
+- #16: input invalidation leaves zero result children, aria-busy false, zero aria-pressed graph controls, cleared graph/table, and one matching live message.
+- #14/#17: no applicable new banner/modal.
+- 375 px: document equals viewport, chart 347.5 px inside 375 px panel, wide tables scroll within their named regions.
+
+OBSERVATIONS
+
+- The responsive page's visual results-before-settings order versus DOM settings-before-results order is byte-identical to master (`web/templates/pages/whatif.html:68-127`); pre-existing, not a Task 5 failure. Task 5's component-local focus order follows its visual order.
+- The only scoped aria-hidden text is the decorative `$` prefix; visible/programmatic help still states today's dollars. No hidden-text abuse or screen-reader-only junk found.
+- Full evidence: `.superpowers/sdd/2026-09-10-spending-first-optimizer/task-5-a11y-review.md` and `task-5-a11y-artifacts/`.

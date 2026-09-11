@@ -1,0 +1,9 @@
+internal/models/spending_optimizer.go
+internal/models/whatif.go
+internal/services/retirement/analysis/monte_carlo.go
+internal/services/retirement/analysis/spending_experience.go
+internal/services/retirement/analysis/spending_experience_test.go
+internal/services/retirement/analysis/spending_risk.go
+internal/services/retirement/analysis/spending_risk_test.go
+.superpowers/sdd/2026-09-10-spending-first-optimizer/task-2-report.md
+.swarm/manifests/spending-risk.1.files

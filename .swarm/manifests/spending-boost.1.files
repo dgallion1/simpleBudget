@@ -1,0 +1,15 @@
+internal/models/living_spending_boost.go
+internal/models/living_spending_boost_test.go
+internal/models/whatif.go
+internal/services/retirement/prepare/prepare.go
+internal/services/retirement/prepare/living_spending_boost_test.go
+internal/services/retirement/engine/spending_boost.go
+internal/services/retirement/engine/spending_boost_test.go
+internal/services/retirement/engine/expense.go
+internal/services/retirement/engine/stepper.go
+internal/services/retirement/analysis/spending_boost_test.go
+internal/services/retirement/living_spending_boost_test.go
+.superpowers/sdd/2026-09-10-spending-first-optimizer/task-0-impact.txt
+.superpowers/sdd/2026-09-10-spending-first-optimizer/task-0-verification.txt
+.superpowers/sdd/2026-09-10-spending-first-optimizer/task-0-report.md
+.swarm/manifests/spending-boost.1.files

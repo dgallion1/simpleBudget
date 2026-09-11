@@ -14,6 +14,7 @@ package prepare
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"testing"
 
 	"budget2/internal/models"
@@ -47,6 +48,9 @@ func (p PreparedSettings) IsZero() bool {
 func From(cfg *models.WhatIfSettings) (PreparedSettings, error) {
 	if cfg == nil {
 		return PreparedSettings{}, fmt.Errorf("prepare.From: nil settings")
+	}
+	if err := validateLivingSpendingBoost(cfg.LivingSpendingBoost); err != nil {
+		return PreparedSettings{}, fmt.Errorf("prepare.From: validate: %w", err)
 	}
 	clone, err := DeepCopy(cfg)
 	if err != nil {
@@ -146,4 +150,20 @@ func carryJSONOmittedFields(src, dst *models.WhatIfSettings) {
 	dst.CurrentAge = src.CurrentAge
 	dst.SpouseAge = src.SpouseAge
 
+}
+
+// Saved schedules may already be expired or end beyond the modeled horizon.
+// Active-request timing constraints belong to the optimizer request boundary.
+func validateLivingSpendingBoost(boost *models.LivingSpendingBoost) error {
+	if boost == nil {
+		return nil
+	}
+	amount := boost.MonthlyReal
+	if math.IsNaN(amount) || math.IsInf(amount, 0) || amount <= 0 || math.IsInf(amount*100, 0) || math.Round(amount*100)/100 != amount {
+		return fmt.Errorf("living_spending_boost.monthly_real must be finite, positive, and in whole cents")
+	}
+	if _, err := models.ParseYearMonth(boost.StopMonth); err != nil {
+		return fmt.Errorf("living_spending_boost.stop_month: %w", err)
+	}
+	return nil
 }

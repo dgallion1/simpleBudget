@@ -8,6 +8,7 @@ import (
 
 	"budget2/internal/models"
 	"budget2/internal/services/retirement"
+	"budget2/internal/services/retirement/analysis"
 )
 
 // guardrailPlanFloorFixture mirrors the brief's live-plan scenario: a
@@ -395,16 +396,13 @@ func TestGuardrailOptimizerWorstAnnualCutSaturationExplained(t *testing.T) {
 	}
 }
 
-// TestHandleWhatIfGuardrailPlanFloorHint_Present is GV3 item 1's end-to-end
-// wiring test: with a phase-decline fixture (reusing guardrailPlanFloorFixture,
-// whose No-Go phase plans 5000/mo in year 1), the full /whatif page must
-// render the floor-field hint under #guardrail-optimizer-floor with the
-// exact figure/year/phase, and the field's aria-describedby must reference
-// the hint paragraph's id.
+// Keep the legacy hint's calculated figure/year/phase and accessibility
+// contract on its retained partial. The full page now exposes the Spending
+// First input, whose minimum remains an explicit user choice.
 func TestHandleWhatIfGuardrailPlanFloorHint_Present(t *testing.T) {
 	rm, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
-	guardrailPlanFloorFixture(t, rm)
+	settings := guardrailPlanFloorFixture(t, rm)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/whatif", nil)
@@ -413,6 +411,22 @@ func TestHandleWhatIfGuardrailPlanFloorHint_Present(t *testing.T) {
 		t.Fatalf("status %d", w.Code)
 	}
 	body := w.Body.String()
+	if !strings.Contains(body, `id="spending-minimum"`) || !strings.Contains(body, `aria-describedby="spending-minimum-help spending-minimum-rule spending-minimum-note spending-optimizer-status"`) || !strings.Contains(body, "Required. Enter today's dollars; the minimum increases with inflation.") || !strings.Contains(body, "Healthcare, taxes, and other separately entered expenses are additional.") {
+		t.Fatal("full page lost explicit minimum and associated inflation/obligation instructions")
+	}
+	in, _, err := buildEngineInput(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	amount, year, phase, ok := analysis.LowestPlannedLivingReal(getEngine().Run(in))
+	if !ok {
+		t.Fatal("fixture has no calculated planned floor")
+	}
+	w = httptest.NewRecorder()
+	if err := renderer.RenderPartial(w, "whatif-guardrail-optimizer", map[string]any{"GuardrailPlanFloor": &guardrailPlanFloorNotice{Amount: amount, Year: year, Phase: phase}}); err != nil {
+		t.Fatal(err)
+	}
+	body = w.Body.String()
 
 	want := "Your plan's lowest planned living spending is $5,000.00/mo in today's dollars (No-Go, year 1). A minimum above that is missed by design in every future without an absolute floor."
 	if !strings.Contains(body, want) {

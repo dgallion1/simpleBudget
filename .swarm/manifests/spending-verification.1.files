@@ -1,0 +1,8 @@
+internal/services/retirement/analysis/spending_optimizer_integration_test.go
+internal/services/retirement/analysis/spending_optimizer_test.go
+internal/handlers/whatif/spending_integration_test.go
+internal/handlers/whatif/testdata/spending_optimizer_live_browser.cjs
+docs/superpowers/plans/2026-09-10-spending-first-optimizer-verification.md
+internal/handlers/whatif/guardrail_plan_floor_test.go
+web/static/js/whatif-spending-optimizer.js
+internal/handlers/whatif/testdata/spending_timeline_layout_browser.cjs

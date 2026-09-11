@@ -82,10 +82,11 @@ type WhatIfSettings struct {
 	PortfolioValue float64 `json:"portfolio_value"` // Current portfolio value
 
 	// Expenses
-	MonthlyLivingExpenses float64 `json:"monthly_living_expenses"` // Base monthly expenses
-	MonthlyHealthcare     float64 `json:"monthly_healthcare"`      // Monthly healthcare costs (legacy)
-	HealthcareStartYears  int     `json:"healthcare_start_years"`  // Years until healthcare starts (legacy)
-	MonthlyPropertyTax    float64 `json:"monthly_property_tax"`    // Monthly property tax on primary residence
+	LivingSpendingBoost   *LivingSpendingBoost `json:"living_spending_boost,omitempty"`
+	MonthlyLivingExpenses float64              `json:"monthly_living_expenses"` // Base monthly expenses
+	MonthlyHealthcare     float64              `json:"monthly_healthcare"`      // Monthly healthcare costs (legacy)
+	HealthcareStartYears  int                  `json:"healthcare_start_years"`  // Years until healthcare starts (legacy)
+	MonthlyPropertyTax    float64              `json:"monthly_property_tax"`    // Monthly property tax on primary residence
 
 	// Multi-person healthcare model
 	HealthcarePersons []HealthcarePerson `json:"healthcare_persons,omitempty"`
@@ -1288,6 +1289,7 @@ type MonteCarloFloorOutcome struct {
 // MonteCarloResult represents a single simulation run outcome.
 type MonteCarloResult struct {
 	FloorOutcome    *MonteCarloFloorOutcome    `json:"floor_outcome,omitempty"`
+	SpendingOutcome *SpendingPathOutcome       `json:"spending_outcome,omitempty"`
 	FinalBalance    float64                    `json:"final_balance"`
 	DepletionYear   float64                    `json:"depletion_year"` // 0 if survives
 	Survives        bool                       `json:"survives"`

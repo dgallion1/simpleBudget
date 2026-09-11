@@ -32,6 +32,7 @@ func spendingFixture(t *testing.T) (*retirement.SettingsManager, *models.WhatIfS
 	if e != nil {
 		t.Fatal(e)
 	}
+	s.UseCurrentMonth = false // fixtures pin a start date; see current-month migration
 	s.StartDate = "2026-09"
 	s.ProjectionYears = 12
 	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, 65)

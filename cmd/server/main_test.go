@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -17,18 +18,30 @@ import (
 	"budget2/internal/version"
 )
 
-// setupTestServer initializes dependencies with test data and returns a test server
+// setupTestServer initializes dependencies with test data and returns a test
+// server. It copies the testdata/ fixture tree into a throwaway t.TempDir()
+// rather than pointing at the repo-tracked testdata/ directly (formerly via
+// testutil.TestDataDir()): a mere Load can migrate a legacy-shaped fixture
+// and write it back (see settings.go's normalizeLoadedWhatIfSettings), and
+// any test that saves through a handler writes for real. Either would dirty
+// the tracked fixture. This is the same isolation
+// gv2_tone_contrast_browser_test.go's setupIsolatedTestServer already used
+// for its own write path; unified here so every cmd/server test gets it.
 func setupTestServer(t *testing.T) *testutil.TestServer {
 	t.Helper()
 
-	// Create test config pointing to testdata
 	root := testutil.ProjectRoot()
+	isolatedData := filepath.Join(t.TempDir(), "testdata")
+	if out, err := exec.Command("cp", "-r", filepath.Join(root, "testdata"), isolatedData).CombinedOutput(); err != nil {
+		t.Fatalf("copy testdata fixture to isolated dir: %v\n%s", err, out)
+	}
+
 	cfg := &config.Config{
 		ListenAddr:         ":0",
 		Debug:              true,
-		DataDirectory:      testutil.TestDataDir(),
-		UploadsDirectory:   testutil.TestDataDir() + "/uploads",
-		SettingsDirectory:  testutil.TestDataDir() + "/settings",
+		DataDirectory:      isolatedData,
+		UploadsDirectory:   isolatedData + "/uploads",
+		SettingsDirectory:  isolatedData + "/settings",
 		TemplatesDirectory: root + "/web/templates",
 		StaticDirectory:    root + "/web/static",
 		BackupDir:          t.TempDir(),

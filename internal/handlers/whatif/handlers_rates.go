@@ -31,6 +31,9 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updates := make(map[string]interface{})
+	if hasPersons {
+		updates["use_current_month"] = r.FormValue("use_current_month") == "true"
+	}
 	if msg := applySettingsFormSpec(r, updates); msg != "" {
 		renderError(w, msg, http.StatusBadRequest)
 		return

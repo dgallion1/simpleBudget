@@ -58,6 +58,14 @@ type ProjectedSSEntry struct {
 // income streams (primary + spouse where applicable). Returns nil
 // when the optimizer is inactive.
 func ProjectedSSEntries(s *models.WhatIfSettings) []ProjectedSSEntry {
+	return projectedSSEntriesInto(s, nil)
+}
+
+// projectedSSEntriesInto is ProjectedSSEntries appending onto buf. The
+// engine's monthly income hook passes a stack array so the per-month call
+// allocates nothing; with a nil buf it behaves exactly like
+// ProjectedSSEntries.
+func projectedSSEntriesInto(s *models.WhatIfSettings, buf []ProjectedSSEntry) []ProjectedSSEntry {
 	if !socialSecurityProjectionActive(s) {
 		return nil
 	}
@@ -107,14 +115,14 @@ func ProjectedSSEntries(s *models.WhatIfSettings) []ProjectedSSEntry {
 		}
 	}
 
-	entries := []ProjectedSSEntry{{
+	entries := append(buf, ProjectedSSEntry{
 		Label:           "Your Social Security",
 		MonthlyAmount:   primaryBase,
 		ClaimAge:        ss.ClaimAge,
 		StartMonth:      claimStartMonth(s.CurrentAge, ss.ClaimAge),
 		AlreadyClaiming: alreadyClaiming,
 		SpousalTopUp:    primaryTopUp,
-	}}
+	})
 	if projectSpouse {
 		entries = append(entries, ProjectedSSEntry{
 			Label:           "Spouse Social Security",
@@ -129,7 +137,10 @@ func ProjectedSSEntries(s *models.WhatIfSettings) []ProjectedSSEntry {
 }
 
 func projectedSocialSecurityIncome(s *models.WhatIfSettings, month int) float64 {
-	entries := ProjectedSSEntries(s)
+	// Called every simulated month; the stack buffer keeps this hook
+	// allocation-free (it was 65% of all bytes the optimizers allocated).
+	var buf [2]ProjectedSSEntry
+	entries := projectedSSEntriesInto(s, buf[:0])
 	if len(entries) == 0 {
 		return 0
 	}

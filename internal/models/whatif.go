@@ -228,11 +228,38 @@ func ParseYearMonth(value string) (time.Time, error) {
 	if strings.TrimSpace(value) == "" {
 		return time.Time{}, fmt.Errorf("month is required")
 	}
-	t, err := time.Parse(yearMonthLayout, value)
-	if err != nil {
+	year, month, ok := ParseYearMonthParts(value)
+	if !ok {
 		return time.Time{}, fmt.Errorf("invalid month %q", value)
 	}
-	return t, nil
+	return time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC), nil
+}
+
+// ParseYearMonthParts parses a "YYYY-MM" string without allocating and
+// returns its calendar year and month. It accepts exactly what
+// time.Parse(yearMonthLayout, value) accepts — four ASCII digits, a hyphen,
+// two ASCII digits naming a month 1–12, and nothing else — so it is a
+// drop-in for that call. The projection loop reaches its callers every
+// simulated month with strings that never change (birth months, the plan
+// start date), and time.Parse there was 13% of engine CPU.
+func ParseYearMonthParts(value string) (year, month int, ok bool) {
+	if len(value) != 7 || value[4] != '-' {
+		return 0, 0, false
+	}
+	for i := 0; i < 7; i++ {
+		if i == 4 {
+			continue
+		}
+		if value[i] < '0' || value[i] > '9' {
+			return 0, 0, false
+		}
+	}
+	year = int(value[0]-'0')*1000 + int(value[1]-'0')*100 + int(value[2]-'0')*10 + int(value[3]-'0')
+	month = int(value[5]-'0')*10 + int(value[6]-'0')
+	if month < 1 || month > 12 {
+		return 0, 0, false
+	}
+	return year, month, true
 }
 
 // BirthMonthForAge returns the "YYYY-MM" birth month that would produce

@@ -2,6 +2,9 @@ package engine
 
 import (
 	"fmt"
+	"math"
+	"sync"
+	"sync/atomic"
 
 	"budget2/internal/models"
 )
@@ -171,7 +174,64 @@ func (tc *TaxCalculator) ResolveTaxYear(calendarYear, month int) (ResolvedTaxYea
 		}, nil
 	}
 
+	return tc.projectedYear(calendarYear), nil
+}
+
+// projectedYearKey identifies a projected federal tax year. The figures are
+// a pure function of the assumed inflation rate and the calendar year over
+// the immutable statutory table (InflationFactor reads nothing else from the
+// calculator), so that pair is the whole identity.
+type projectedYearKey struct {
+	inflationRate float64
+	baseYear      int // the statutory year the projection extrapolates from
+	year          int
+}
+
+// projectedYears memoises projected records process-wide.
+//
+// Every projection month resolves its tax year three times (brackets,
+// LTCG brackets, standard deduction), and a fresh TaxCalculator is built at
+// every year boundary, so a per-calculator cache would still rebuild the
+// four scaled maps hundreds of times per simulation. Rebuilding them on
+// every call allocated ~32 GB over one tax-optimizer run and made the
+// runtime allocator's locks — not the GC — the reason the engine scaled
+// only 2.3x from 1 to 32 cores. Statutory years already hand out the shared
+// table's maps directly and nothing mutates a resolved record, so sharing
+// projected ones the same way is equally safe.
+//
+// The map is swapped for an empty one past projectedYearsCap entries: keys
+// are user-entered rates (plus sensitivity perturbations) times ~40 years,
+// so growth is slow, but a long-lived server should not hoard every rate it
+// has ever seen. A concurrent reader of the old map simply misses and
+// recomputes.
+var (
+	projectedYears      atomic.Pointer[sync.Map]
+	projectedYearsCount atomic.Int64
+)
+
+const projectedYearsCap = 8192
+
+func init() { resetProjectedYears() }
+
+// resetProjectedYears drops every memoised projection.
+func resetProjectedYears() {
+	projectedYearsCount.Store(0)
+	projectedYears.Store(&sync.Map{})
+}
+
+// projectedYear returns the latest statutory record scaled to calendarYear
+// by the calculator's inflation assumption, memoised by (rate, year).
+func (tc *TaxCalculator) projectedYear(calendarYear int) ResolvedTaxYear {
 	base := federalTaxYears[len(federalTaxYears)-1]
+	key := projectedYearKey{inflationRate: tc.InflationRate, baseYear: base.Year, year: calendarYear}
+	cacheable := !math.IsNaN(tc.InflationRate) // NaN never equals itself: every lookup would miss and insert
+	cache := projectedYears.Load()
+	if cacheable {
+		if v, ok := cache.Load(key); ok {
+			return *v.(*ResolvedTaxYear)
+		}
+	}
+
 	factor := tc.InflationFactor(calendarYear - base.Year)
 	projected := base
 	projected.Year = calendarYear
@@ -179,13 +239,19 @@ func (tc *TaxCalculator) ResolveTaxYear(calendarYear, month int) (ResolvedTaxYea
 	projected.LongTermGainBrackets = scaleBracketSets(base.LongTermGainBrackets, factor)
 	projected.StandardDeduction = scaleAmounts(base.StandardDeduction, factor)
 	projected.AdditionalDeductionAge65 = scaleAmounts(base.AdditionalDeductionAge65, factor)
-
-	return ResolvedTaxYear{
+	resolved := &ResolvedTaxYear{
 		Record:          projected,
 		Basis:           BasisProjected,
 		DerivedFromYear: base.Year,
 		InflationFactor: factor,
-	}, nil
+	}
+
+	if cacheable {
+		if _, loaded := cache.LoadOrStore(key, resolved); !loaded && projectedYearsCount.Add(1) > projectedYearsCap {
+			resetProjectedYears()
+		}
+	}
+	return *resolved
 }
 
 // scaleAmounts multiplies every dollar figure by factor.

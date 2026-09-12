@@ -294,7 +294,7 @@ func TestSpendingIntegrationActiveCancellationLatency(t *testing.T) {
 		if !errors.Is(e, context.Canceled) {
 			t.Fatal(e)
 		}
-		t.Logf("active 35y search cancellation=%s workers<=%d", time.Since(start), min(8, runtime.GOMAXPROCS(0)))
+		t.Logf("active 35y search cancellation=%s workers<=%d", time.Since(start), runtime.GOMAXPROCS(0))
 	case <-time.After(2 * time.Second):
 		t.Fatal("active cancellation exceeded 2 seconds")
 	}
@@ -333,7 +333,7 @@ func BenchmarkSpendingIntegrationHorizons(b *testing.B) {
 				b.ReportMetric(float64(paths), "paths/op")
 				b.ReportMetric(float64(calls), "evaluations/op")
 				b.ReportMetric(float64(len(result.Candidates)), "final-candidates/op")
-				b.Logf("master=%d selection=%d final=%d workers=%d grid_positions=%d range=%.2f..%.2f step=%.2f samples=%d/%d/%d observed_horizon=%d..%d", result.SearchSeed, result.SelectionSeed, result.ValidationSeed, min(8, runtime.GOMAXPROCS(0)), len(grid), result.EffectiveMinMonthlyReal, result.EffectiveMaxMonthlyReal, result.ResolutionMonthlyReal, result.SearchRuns, result.SelectionRuns, result.ValidationRuns, lo, hi)
+				b.Logf("master=%d selection=%d final=%d workers=%d grid_positions=%d range=%.2f..%.2f step=%.2f samples=%d/%d/%d observed_horizon=%d..%d", result.SearchSeed, result.SelectionSeed, result.ValidationSeed, runtime.GOMAXPROCS(0), len(grid), result.EffectiveMinMonthlyReal, result.EffectiveMaxMonthlyReal, result.ResolutionMonthlyReal, result.SearchRuns, result.SelectionRuns, result.ValidationRuns, lo, hi)
 			}
 		})
 	}

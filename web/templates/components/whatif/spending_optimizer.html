@@ -22,8 +22,16 @@
                     class="block w-full rounded-md border border-gray-500 bg-white py-2 pl-7 pr-3 shadow-sm focus:border-accent focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400 dark:bg-gray-700 dark:text-gray-100">
             </div>
             <p id="spending-minimum-help" class="mt-1 text-gray-600 dark:text-gray-300">Required. Enter today's dollars; the minimum increases with inflation. Include basic living costs and a fun allowance. Healthcare, taxes, and other separately entered expenses are additional.</p>
-            <p id="spending-minimum-rule" class="mt-1 font-medium">Recommendations must fund this minimum in every checked future.</p>
+            <p id="spending-minimum-rule" class="mt-1 font-medium">Recommendations must fund this minimum in all but an acceptable share of checked futures.</p>
             <p id="spending-minimum-note" class="mt-1 text-gray-600 dark:text-gray-300">{{if $form.MinimumAboveCurrent}}Your saved minimum is above the current starting budget. The search will evaluate higher budgets.{{end}}</p>
+        </div>
+
+        <div>
+            <label for="spending-shortfall" class="block font-medium">Acceptable shortfall (% of checked futures)</label>
+            <input id="spending-shortfall" name="max_shortfall_pct" type="number" min="0" max="99.9" step="0.1" value="5"
+                inputmode="decimal" aria-describedby="spending-shortfall-help spending-optimizer-status"
+                class="mt-1 block w-full rounded-md border border-gray-500 bg-white p-2 shadow-sm focus:border-accent focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400 dark:bg-gray-700 dark:text-gray-100 sm:w-40">
+            <p id="spending-shortfall-help" class="mt-1 text-gray-600 dark:text-gray-300">At 5%, a budget qualifies when at most 5 of every 100 simulated futures fall below your minimum in any month. Shown the same way as the funding-shortfall line in Simulated lifestyle outcomes. Enter 0 to require every checked future. This is a simulation rule, not a guarantee.</p>
         </div>
 
         <details id="spending-boost-details" class="rounded-md border border-gray-300 p-3 dark:border-gray-600" {{if $form.BoostEnabled}}open{{end}}>

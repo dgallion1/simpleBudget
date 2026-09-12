@@ -6,6 +6,7 @@ package analysis
 import (
 	"fmt"
 	"math"
+	"runtime"
 	"sort"
 
 	"budget2/internal/models"
@@ -313,6 +314,37 @@ func scoreCandidate(eng *engine.Engine, in engine.Input, primaryClaim, spouseCla
 	return cand
 }
 
+// candidateFailed reports whether scoreCandidate gave up on a candidate
+// (its sentinel is EndingPortfolioReal == -MaxFloat64).
+func candidateFailed(c models.TaxOptimizerCandidate) bool {
+	return c.EndingPortfolioReal == -math.MaxFloat64
+}
+
+// candidateResult is one fixed slot of the scoring fan-out: the candidate
+// plus whether its projection succeeded.
+type candidateResult struct {
+	cand models.TaxOptimizerCandidate
+	ok   bool
+}
+
+// scoreCandidates scores every (pair, strategy) combination across NumCPU
+// workers and returns the results in the same pairs-outer / strategies-inner
+// order a sequential loop would produce, one slot per combination (failed
+// projections keep their slot with ok=false). The deterministic scoring
+// phase is ~135 independent engine runs, so on a many-core box this is the
+// single biggest wall-clock win in the optimizer; the order guarantee keeps
+// the later sort.SliceStable tie-breaking identical to the sequential loop.
+func scoreCandidates(eng *engine.Engine, in engine.Input, pairs []ssPair, strategies []models.RothOptimizerStrategy) []candidateResult {
+	perPair := len(strategies)
+	out := make([]candidateResult, len(pairs)*perPair)
+	ParallelIndexed(len(out), runtime.NumCPU(), func(i int) {
+		p, strat := pairs[i/perPair], strategies[i%perPair]
+		cand := scoreCandidate(eng, in, p.Primary, p.Spouse, strat)
+		out[i] = candidateResult{cand: cand, ok: !candidateFailed(cand)}
+	})
+	return out
+}
+
 // TaxOptimizer runs the Tax Optimizer and returns a recommendation.
 // Always synchronous. Eligibility is gated; ineligible scenarios
 // return a non-nil result with Eligible=false and IneligibleReason set.
@@ -385,15 +417,13 @@ func TaxOptimizerWithSeed(eng *engine.Engine, in engine.Input, ss *models.SSPort
 	// least one), scored stays empty and the result has an empty Top
 	// slice. The handler should treat that as "no candidates evaluated"
 	// rather than a failure.
-	scored := make([]models.TaxOptimizerCandidate, 0, len(pairs)*len(strategies))
-	for _, p := range pairs {
-		for _, strat := range strategies {
-			cand := scoreCandidate(eng, in, p.Primary, p.Spouse, strat)
-			if cand.EndingPortfolioReal == -math.MaxFloat64 {
-				continue // drop failed projections from Top
-			}
-			scored = append(scored, cand)
+	slots := scoreCandidates(eng, in, pairs, strategies)
+	scored := make([]models.TaxOptimizerCandidate, 0, len(slots))
+	for _, slot := range slots {
+		if !slot.ok {
+			continue // drop failed projections from Top
 		}
+		scored = append(scored, slot.cand)
 	}
 
 	sort.SliceStable(scored, func(i, j int) bool {

@@ -165,6 +165,7 @@
 {{define "whatif-results"}}
 {{if .AnalysisPending}}
 <div id="whatif-async-loader"
+     data-busy-quiet
      hx-get="/whatif/results-full?hash={{.AsyncHash}}"
      hx-trigger="load"
      hx-target="#whatif-results"

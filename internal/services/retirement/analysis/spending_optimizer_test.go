@@ -48,30 +48,145 @@ func spendingSearchRows(in engine.Input, r models.SpendingOptimizerRequest, n in
 }
 func TestSpendingCandidateQualificationUsesCounts(t *testing.T) {
 	c := models.SpendingCandidate{Kind: "flexible", Metrics: &models.SpendingRiskMetrics{Runs: 1000}}
-	if !spendingCandidateQualifies(c) {
+	if !spendingCandidateQualifies(c, 0) {
 		t.Fatal("zero failures rejected")
 	}
 	c.Metrics.FloorShortfallPaths = 1
-	if spendingCandidateQualifies(c) {
+	if spendingCandidateQualifies(c, 0) {
 		t.Fatal("floor failure accepted")
 	}
 	c.Metrics.FloorShortfallPaths = 0
 	c.Metrics.UnpaidObligationPaths = 1
-	if spendingCandidateQualifies(c) {
+	if spendingCandidateQualifies(c, 0) {
 		t.Fatal("unpaid obligations accepted")
 	}
 	c.Metrics.UnpaidObligationPaths = 0
 	c.Metrics.CutPaths = 1
-	if !spendingCandidateQualifies(c) {
+	if !spendingCandidateQualifies(c, 0) {
 		t.Fatal("flexible cuts rejected")
 	}
 	c.Kind = "planned"
-	if spendingCandidateQualifies(c) {
+	if spendingCandidateQualifies(c, 0) {
 		t.Fatal("planned cuts accepted")
 	}
 	c.Metrics = nil
-	if spendingCandidateQualifies(c) {
+	if spendingCandidateQualifies(c, 0) {
 		t.Fatal("missing evidence accepted")
+	}
+}
+func TestSpendingCandidateQualificationAcceptsBoundedShortfall(t *testing.T) {
+	// The inclusive boundary uses the same unrounded count-derived rate the
+	// results display, so exactly 5.0% qualifies at a 5% allowance.
+	c := models.SpendingCandidate{Kind: "flexible", Metrics: &models.SpendingRiskMetrics{Runs: 1000, FloorShortfallPaths: 50, UnpaidObligationPaths: 20, CutPaths: 900}}
+	if !spendingCandidateQualifies(c, 5) {
+		t.Fatal("5.0% shortfall rejected at a 5% allowance")
+	}
+	c.Metrics.FloorShortfallPaths = 51
+	if spendingCandidateQualifies(c, 5) {
+		t.Fatal("5.1% shortfall accepted at a 5% allowance")
+	}
+	c.Metrics.FloorShortfallPaths = 10
+	c.Metrics.UnpaidObligationPaths = 51
+	if spendingCandidateQualifies(c, 5) {
+		t.Fatal("unpaid obligations above the allowance accepted")
+	}
+	c.Metrics.UnpaidObligationPaths = 0
+	c.Kind = "planned"
+	if spendingCandidateQualifies(c, 5) {
+		t.Fatal("planned cuts above the allowance accepted")
+	}
+	c.Metrics.CutPaths = 50
+	if !spendingCandidateQualifies(c, 5) {
+		t.Fatal("planned cuts within the allowance rejected")
+	}
+	c.Metrics.Runs = 0
+	if spendingCandidateQualifies(c, 5) {
+		t.Fatal("no runs accepted")
+	}
+}
+func TestSpendingGuardrailPoliciesFineGrid(t *testing.T) {
+	current := &models.GuardrailConfig{Enabled: false, FloorDropPct: 5, FloorCutPct: 2, CeilingRisePct: 10, CeilingRaisePct: 2, MinSpendingPct: 75, MaxSpendingPct: 120, MinMonthlySpendingReal: 1}
+	policies := spendingGuardrailPolicies(current, 6000)
+	// 3 drops × 3 cuts × 3 rises × 3 raises × 2 caps, plus the saved rules.
+	if len(policies) != 163 {
+		t.Fatalf("policies = %d, want 163", len(policies))
+	}
+	seen := map[models.GuardrailConfig]string{}
+	for _, p := range policies {
+		if p.Guardrails == nil || !p.Guardrails.Enabled || p.Guardrails.MinMonthlySpendingReal != 6000 {
+			t.Fatalf("policy %s must be enabled at the requested floor: %+v", p.ID, p.Guardrails)
+		}
+		if _, dup := seen[*p.Guardrails]; dup {
+			t.Fatalf("duplicate policy %s", p.ID)
+		}
+		seen[*p.Guardrails] = p.ID
+	}
+	fine := models.GuardrailConfig{Enabled: true, FloorDropPct: 5, FloorCutPct: 2, CeilingRisePct: 10, CeilingRaisePct: 2, MaxSpendingPct: 120, MinMonthlySpendingReal: 6000}
+	if _, ok := seen[fine]; !ok {
+		t.Fatal("fine 5%/2% policy missing from the grid")
+	}
+	saved := fine
+	saved.MinSpendingPct = 75
+	if id := seen[saved]; id != "current-floor" {
+		t.Fatalf("saved rules must be tested verbatim with the floor applied: %q", id)
+	}
+	if got := len(guardrailOptimizerPolicies(current, 6000)); got != 33 {
+		t.Fatalf("guardrail optimizer grid changed: %d", got)
+	}
+}
+func TestSpendingOptimizerAcceptableShortfallQualifies(t *testing.T) {
+	in := engineInput(t, models.DefaultWhatIfSettings())
+	req := spendingSearchRequest()
+	req.SearchMaxMonthlyReal = 9000
+	req.MaxShortfallPct = 5
+	runner := func(ctx context.Context, c engine.Input, seed int64, n int, r models.SpendingOptimizerRequest) ([]models.MonteCarloResult, error) {
+		start := engine.LivingExpensesAtMonth(c.Prepared.Settings(), 0)
+		rows := spendingSearchRows(c, r, n, start, false)
+		// Exactly 5% of futures fall below the minimum at $8,000; 6% at $9,000.
+		failing := 0
+		switch start {
+		case 8000:
+			failing = n * 5 / 100
+		case 9000:
+			failing = n * 6 / 100
+		}
+		bad := spendingSearchRows(c, r, max(failing, 1), 6000, true)
+		copy(rows, bad[:failing])
+		return rows, nil
+	}
+	got, err := optimizeSpendingWithRunner(context.Background(), in, req, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaders := map[string]float64{}
+	for _, c := range got.Candidates {
+		if c.Baseline {
+			continue
+		}
+		if c.Qualifies != (c.StartingMonthlyLivingReal <= 8000) {
+			t.Fatalf("%s at %v qualifies=%v shortfall=%d/%d", c.ID, c.StartingMonthlyLivingReal, c.Qualifies, c.Metrics.FloorShortfallPaths, c.Metrics.Runs)
+		}
+		for _, id := range got.RecommendationIDs {
+			if c.ID == id {
+				leaders[c.Kind] = c.StartingMonthlyLivingReal
+			}
+		}
+	}
+	if leaders["planned"] != 8000 || leaders["flexible"] != 8000 {
+		t.Fatalf("leaders %v", leaders)
+	}
+	if got.Request.MaxShortfallPct != 5 {
+		t.Fatal("allowance not echoed")
+	}
+	req.MaxShortfallPct = 0
+	strict, err := optimizeSpendingWithRunner(context.Background(), in, req, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range strict.Candidates {
+		if !c.Baseline && c.Qualifies != (c.StartingMonthlyLivingReal == 7000) {
+			t.Fatalf("strict %s qualifies=%v", c.ID, c.Qualifies)
+		}
 	}
 }
 func TestSpendingOptimizerFrontierStagesAndBaseline(t *testing.T) {
@@ -166,7 +281,7 @@ func TestSpendingOptimizerFrontierStagesAndBaseline(t *testing.T) {
 			t.Fatal("unknown stage")
 		}
 	}
-	if len(policies) < 33 || selection != 18 || final != 19 {
+	if len(policies) < 163 || selection != 18 || final != 19 {
 		t.Fatalf("policies=%d selection=%d final=%d", len(policies), selection, final)
 	}
 	if got.EvaluatedCandidates != len(records) {
@@ -260,7 +375,7 @@ func TestSpendingOptimizerFinalChangesEitherStatus(t *testing.T) {
 func TestSpendingOptimizerRequestValidationAndDefaults(t *testing.T) {
 	in := engineInput(t, models.DefaultWhatIfSettings())
 	base := spendingSearchRequest()
-	cases := map[string]func(*models.SpendingOptimizerRequest){"floor": func(r *models.SpendingOptimizerRequest) { r.FloorMonthlyReal = .001 }, "nan": func(r *models.SpendingOptimizerRequest) { r.SearchMinMonthlyReal = math.NaN() }, "infinite": func(r *models.SpendingOptimizerRequest) { r.SearchMaxMonthlyReal = math.Inf(1) }, "reverse": func(r *models.SpendingOptimizerRequest) { r.SearchMaxMonthlyReal = 6000 }, "below floor": func(r *models.SpendingOptimizerRequest) { r.SearchMinMonthlyReal = 6000 }, "negative step": func(r *models.SpendingOptimizerRequest) { r.SearchStepMonthlyReal = -1 }, "too fine": func(r *models.SpendingOptimizerRequest) { r.SearchStepMonthlyReal = .01 }, "years": func(r *models.SpendingOptimizerRequest) { r.NearTermYears = 11 }, "expired boost": func(r *models.SpendingOptimizerRequest) {
+	cases := map[string]func(*models.SpendingOptimizerRequest){"floor": func(r *models.SpendingOptimizerRequest) { r.FloorMonthlyReal = .001 }, "nan": func(r *models.SpendingOptimizerRequest) { r.SearchMinMonthlyReal = math.NaN() }, "infinite": func(r *models.SpendingOptimizerRequest) { r.SearchMaxMonthlyReal = math.Inf(1) }, "reverse": func(r *models.SpendingOptimizerRequest) { r.SearchMaxMonthlyReal = 6000 }, "below floor": func(r *models.SpendingOptimizerRequest) { r.SearchMinMonthlyReal = 6000 }, "negative step": func(r *models.SpendingOptimizerRequest) { r.SearchStepMonthlyReal = -1 }, "too fine": func(r *models.SpendingOptimizerRequest) { r.SearchStepMonthlyReal = .01 }, "years": func(r *models.SpendingOptimizerRequest) { r.NearTermYears = 11 }, "shortfall negative": func(r *models.SpendingOptimizerRequest) { r.MaxShortfallPct = -1 }, "shortfall full": func(r *models.SpendingOptimizerRequest) { r.MaxShortfallPct = 100 }, "shortfall nan": func(r *models.SpendingOptimizerRequest) { r.MaxShortfallPct = math.NaN() }, "expired boost": func(r *models.SpendingOptimizerRequest) {
 		r.LivingSpendingBoost = &models.LivingSpendingBoost{MonthlyReal: 500, StopMonth: "2000-01"}
 	}, "fractional boost": func(r *models.SpendingOptimizerRequest) {
 		r.LivingSpendingBoost = &models.LivingSpendingBoost{MonthlyReal: 500.001, StopMonth: "2100-01"}

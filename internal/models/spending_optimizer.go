@@ -23,8 +23,12 @@ type SpendingPathOutcome struct {
 }
 
 // SpendingOptimizerRequest defines the user's minimum and bounded living-budget search.
+// MaxShortfallPct is the largest share of checked futures (0–100, exclusive of
+// 100) that may fall below the minimum for a budget to qualify; 0 requires
+// every future to fund it.
 type SpendingOptimizerRequest struct {
 	FloorMonthlyReal      float64              `json:"floor_monthly_real"`
+	MaxShortfallPct       float64              `json:"max_shortfall_pct"`
 	NearTermYears         int                  `json:"near_term_years"`
 	LivingSpendingBoost   *LivingSpendingBoost `json:"living_spending_boost"`
 	SearchMinMonthlyReal  float64              `json:"search_min_monthly_real"`

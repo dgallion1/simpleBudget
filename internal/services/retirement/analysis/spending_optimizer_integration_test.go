@@ -70,7 +70,7 @@ func TestSpendingIntegrationIncomeOnlyAccounting(t *testing.T) {
 				t.Fatal(err)
 			}
 			for kind, want := range map[string]bool{"planned": tc.planned, "flexible": tc.flexible} {
-				if spendingCandidateQualifies(models.SpendingCandidate{Kind: kind, Metrics: metrics}) != want {
+				if spendingCandidateQualifies(models.SpendingCandidate{Kind: kind, Metrics: metrics}, 0) != want {
 					t.Fatalf("%s qualification", kind)
 				}
 			}
@@ -102,7 +102,7 @@ func TestSpendingIntegrationOneCentFinalMonth(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if m.FloorShortfallPaths != 1 || spendingCandidateQualifies(models.SpendingCandidate{Kind: "flexible", Metrics: m}) {
+	if m.FloorShortfallPaths != 1 || spendingCandidateQualifies(models.SpendingCandidate{Kind: "flexible", Metrics: m}, 0) {
 		t.Fatalf("one failed cent/path accepted: %+v", m)
 	}
 }

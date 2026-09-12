@@ -39,7 +39,10 @@ func runSpendingScenarios(ctx context.Context, in engine.Input, seed int64, runs
 	completed := make([]bool, runs)
 	jobs := make(chan int)
 	var workers sync.WaitGroup
-	for w := 0; w < min(8, runtime.GOMAXPROCS(0), runs); w++ {
+	// One worker per available core. The design spec sized this at eight
+	// pending a scaling measurement; measured, the cap pinned the search at
+	// ~760% CPU on a 32-core box (6.2s -> 3.7s uncapped).
+	for w := 0; w < min(runtime.GOMAXPROCS(0), runs); w++ {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()

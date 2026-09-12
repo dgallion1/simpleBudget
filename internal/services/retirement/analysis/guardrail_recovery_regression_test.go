@@ -3,6 +3,7 @@ package analysis
 import (
 	"budget2/internal/models"
 	"context"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -53,8 +54,9 @@ func TestGuardrailRecoveryRunnerFundsIncomeAndBoundsConcurrency(t *testing.T) {
 			t.Fatalf("income/full horizon invalid: %+v", r.FloorOutcome)
 		}
 	}
-	if peak.Load() < 1 || peak.Load() > 4 {
-		t.Fatalf("concurrency %d", peak.Load())
+	// The runner bounds workers at min(GOMAXPROCS, runs); 12 runs here.
+	if bound := int64(min(runtime.GOMAXPROCS(0), 12)); peak.Load() < 1 || peak.Load() > bound {
+		t.Fatalf("concurrency %d exceeds worker bound %d", peak.Load(), bound)
 	}
 	t.Logf("12 actual paths income-funded through full horizon; peak concurrent hooks=%d", peak.Load())
 	in.Hooks.ProjectedSocialSecurityIncome = func(*models.WhatIfSettings, int) float64 { return 0 }

@@ -82,7 +82,7 @@ func TestSpendingRunnerCancellationAndWorkerBound(t *testing.T) {
 	if !errors.Is(err, context.Canceled) || rows != nil {
 		t.Fatalf("partial cancellation %d %v", len(rows), err)
 	}
-	limit := int32(min(8, runtime.GOMAXPROCS(0)))
+	limit := int32(runtime.GOMAXPROCS(0))
 	if peak.Load() > limit {
 		t.Fatalf("workers %d > %d", peak.Load(), limit)
 	}
@@ -135,7 +135,7 @@ func BenchmarkSpendingOptimizer(b *testing.B) {
 		b.ReportMetric(float64(paths), "paths/op")
 		b.ReportMetric(float64(calls), "evaluations/op")
 		b.ReportMetric(float64(len(result.Candidates)), "final-candidates/op")
-		b.Logf("master=%d selection=%d validation=%d workers=%d search=%d selection/final=%d/%d grid=$%.2f..$%.2f step=$%.2f horizon=%d..%d", result.SearchSeed, result.SelectionSeed, result.ValidationSeed, min(8, runtime.GOMAXPROCS(0)), result.SearchRuns, result.SelectionRuns, result.ValidationRuns, result.EffectiveMinMonthlyReal, result.EffectiveMaxMonthlyReal, result.ResolutionMonthlyReal, result.HorizonMinYears, result.HorizonMaxYears)
+		b.Logf("master=%d selection=%d validation=%d workers=%d search=%d selection/final=%d/%d grid=$%.2f..$%.2f step=$%.2f horizon=%d..%d", result.SearchSeed, result.SelectionSeed, result.ValidationSeed, runtime.GOMAXPROCS(0), result.SearchRuns, result.SelectionRuns, result.ValidationRuns, result.EffectiveMinMonthlyReal, result.EffectiveMaxMonthlyReal, result.ResolutionMonthlyReal, result.HorizonMinYears, result.HorizonMaxYears)
 	}
 }
 func BenchmarkSpendingScenarioWorkers(b *testing.B) {
@@ -208,7 +208,7 @@ func TestSpendingRunnerObservesActualScenarioEvents(t *testing.T) {
 	}
 }
 
-func TestSpendingRunnerWorkerBoundAtOneAndEight(t *testing.T) {
+func TestSpendingRunnerWorkerBoundAtGOMAXPROCS(t *testing.T) {
 	for _, procs := range []int{1, 8, 16} {
 		t.Run(fmt.Sprintf("gomaxprocs-%d", procs), func(t *testing.T) {
 			old := runtime.GOMAXPROCS(procs)
@@ -232,7 +232,7 @@ func TestSpendingRunnerWorkerBoundAtOneAndEight(t *testing.T) {
 			if _, err := runSpendingScenarios(context.Background(), in, 42, 16, spendingSearchRequest()); err != nil {
 				t.Fatal(err)
 			}
-			if peak.Load() > int32(min(8, procs)) || peak.Load() == 0 {
+			if peak.Load() > int32(procs) || peak.Load() == 0 {
 				t.Fatalf("observed hook concurrency %d", peak.Load())
 			}
 		})

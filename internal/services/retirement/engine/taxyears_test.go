@@ -25,7 +25,11 @@ func withFederalTaxYears(t *testing.T, records []TaxYearRecord) {
 	t.Helper()
 	original := federalTaxYears
 	federalTaxYears = records
-	t.Cleanup(func() { federalTaxYears = original })
+	resetProjectedYears() // projections memoised from the old table must not survive the swap
+	t.Cleanup(func() {
+		federalTaxYears = original
+		resetProjectedYears()
+	})
 }
 
 func TestResolveTaxYear_StatutoryYear(t *testing.T) {

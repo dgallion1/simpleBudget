@@ -10,7 +10,7 @@ const html=root.replace('<div id="guardrail-optimizer-results" class="mt-3" aria
 (async()=>{
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:650,height:850}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.setContent('<html><body class="bg-white dark:bg-gray-900">'+html+'</body></html>');await page.addStyleTag({path:'web/static/css/tailwind.css'});await page.addScriptTag({path:process.env.PLOTLY_PATH});
+ await page.setContent('<html><body class="bg-white dark:bg-gray-900">'+html+'</body></html>');await page.addStyleTag({path:'web/static/css/tailwind.css'});await page.addScriptTag({path:process.env.PLOTLY_PATH});await page.addScriptTag({path:'web/static/js/charts.js'});
  await page.evaluate(()=>{
  window.htmx={process(){}};window.delay=0;window.fail=false;window.requests=0;
  window.fetch=async(url,options)=>{

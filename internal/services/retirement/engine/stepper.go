@@ -113,8 +113,8 @@ type MonthOutcome struct {
 	// the guardrail adjustment.
 	TotalExpenses   float64
 	PlannedExpenses float64
-	// LivingExpenses is the pre-guardrail base living expense used this
-	// month; Healthcare the month's healthcare cost (after any multiplier).
+	// LivingExpenses is the pre-guardrail planned living expense, including any
+	// timed boost; Healthcare is the month's cost (after any multiplier).
 	LivingExpenses float64
 	Healthcare     float64
 
@@ -183,7 +183,7 @@ func NewProjectionState(in Input) *ProjectionState {
 	if st.RothFirstFundedYear == 0 && s.RothPercent > 0 {
 		st.RothFirstFundedYear = ParseStartYear(s.StartDate)
 	}
-	st.CurrentLivingExpenses = livingExpensesAtMonth(s, 0)
+	st.CurrentLivingExpenses = baseLivingExpensesAtMonth(s, 0)
 	st.CurrentPhaseName = phaseNameOrNoPhaseSentinel(s.GetSpendingPhaseNameAt(s.GetPhaseReferenceAge(0)))
 	if s.Guardrails != nil && s.Guardrails.Enabled {
 		st.Guardrails = NewGuardrailState(s.PortfolioValue)
@@ -287,6 +287,10 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 		}
 	}
 
+	// Chain settings change the schedule, but its date is always on the original
+	// projection calendar. Keep the temporary boost out of evolving base state.
+	plannedLivingExpenses := st.CurrentLivingExpenses + LivingSpendingBoostAtMonth(s.LivingSpendingBoost, projectionCalendarMonth(st.primary.StartDate, m), st.CumulativeInflation)
+
 	// Evaluate spending guardrails at year boundaries.
 	var guardrailEvent *models.GuardrailEvent
 	if st.Guardrails != nil && monthInYear == 0 {
@@ -294,8 +298,8 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 		prevMult := st.Guardrails.Multiplier()
 		st.Guardrails.Evaluate(s.Guardrails, totalPortfolio)
 		newMult := st.Guardrails.Multiplier()
-		before, beforeMult := floorAdjustedLiving(s, st.CurrentLivingExpenses, prevMult, st.CumulativeInflation)
-		after, afterMult := floorAdjustedLiving(s, st.CurrentLivingExpenses, newMult, st.CumulativeInflation)
+		before, beforeMult := floorAdjustedLiving(s, plannedLivingExpenses, prevMult, st.CumulativeInflation)
+		after, afterMult := floorAdjustedLiving(s, plannedLivingExpenses, newMult, st.CumulativeInflation)
 		if newMult != prevMult && RoundLivingCents(before) != RoundLivingCents(after) {
 			eventType := "cut"
 			if newMult > prevMult {
@@ -323,13 +327,13 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 		guardrailCutTrigger = guardrailPeak * (1 - s.Guardrails.FloorDropPct/100)
 		guardrailRaiseTrigger = guardrailBaseline * (1 + s.Guardrails.CeilingRisePct/100)
 	}
-	adjustedLivingExpenses, activeMultiplier := floorAdjustedLiving(s, st.CurrentLivingExpenses, activeMultiplier, st.CumulativeInflation)
+	adjustedLivingExpenses, activeMultiplier := floorAdjustedLiving(s, plannedLivingExpenses, activeMultiplier, st.CumulativeInflation)
 
 	// Expense assembly. ExpenseSources are not subject to guardrail cuts —
 	// planned and adjusted stay in sync for them.
 	activeHealthcare := s.GetTotalHealthcareCost(m) * p.HealthcareMultiplier
 	propertyTax := PropertyTaxAtMonth(s, m)
-	plannedTotalExpenses := st.CurrentLivingExpenses + activeHealthcare + propertyTax + bigTicketExpenseThisMonth + oneTimeExpenseThisMonth
+	plannedTotalExpenses := plannedLivingExpenses + activeHealthcare + propertyTax + bigTicketExpenseThisMonth + oneTimeExpenseThisMonth
 	totalExpenses := adjustedLivingExpenses + activeHealthcare + propertyTax + bigTicketExpenseThisMonth + oneTimeExpenseThisMonth
 
 	for _, source := range s.ExpenseSources {
@@ -425,7 +429,7 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 		Income:                     incomeBreakdown,
 		TotalExpenses:              totalExpenses + monthResult.IRMAAExpense,
 		PlannedExpenses:            plannedTotalExpenses + monthResult.IRMAAExpense,
-		LivingExpenses:             st.CurrentLivingExpenses,
+		LivingExpenses:             plannedLivingExpenses,
 		AdjustedLivingExpenses:     adjustedLivingExpenses,
 		FundedLivingExpenses:       FundedLiving(adjustedLivingExpenses, monthResult.Shortfall),
 		Healthcare:                 activeHealthcare,

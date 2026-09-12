@@ -1,0 +1,8 @@
+internal/handlers/whatif/handlers.go
+internal/handlers/whatif/handlers_spending_optimizer.go
+internal/handlers/whatif/spending_optimizer_test.go
+internal/handlers/whatif/handlers_spending_graph.go
+internal/handlers/whatif/spending_graph_test.go
+internal/services/retirement/analysis/spending_request.go
+.superpowers/sdd/2026-09-10-spending-first-optimizer/task-4-report.md
+.swarm/manifests/spending-previews.1.files

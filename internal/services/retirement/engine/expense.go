@@ -11,10 +11,14 @@ type ExpenseBreakdown struct {
 	Total         float64 // Total = Essential + Discretionary
 }
 
-// livingExpensesAtMonth is the engine-local mirror of the retirement
-// package's calculateLivingExpensesAtMonth. Copied during the migration
-// window so this package has no import cycle back to retirement.
+// livingExpensesAtMonth returns planned living before guardrails and the floor.
 func livingExpensesAtMonth(s *models.WhatIfSettings, month int) float64 {
+	return baseLivingExpensesAtMonth(s, month) + LivingSpendingBoostAtMonth(s.LivingSpendingBoost, projectionCalendarMonth(s.StartDate, month), compoundedFactorFromPercent(s.InflationRate, float64(month)))
+}
+
+// baseLivingExpensesAtMonth excludes the boost so state initialization cannot
+// accumulate a temporary amount into the evolving base expenses.
+func baseLivingExpensesAtMonth(s *models.WhatIfSettings, month int) float64 {
 	years := month / 12
 	phaseAge := s.GetPhaseReferenceAge(years)
 	monthsElapsed := float64(month)
@@ -123,4 +127,3 @@ func CalculateExpenseBreakdown(s *models.WhatIfSettings, month int) ExpenseBreak
 		Total:         essential + discretionary,
 	}
 }
-

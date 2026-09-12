@@ -1,0 +1,92 @@
+{{define "whatif-spending-optimizer"}}
+{{$form := .SpendingOptimizerForm}}
+<section id="spending-optimizer" aria-labelledby="spending-optimizer-heading"
+    data-current-starting="{{$form.CurrentStartingMonthlyReal}}"
+    data-plan-start="{{$form.StartMonth}}"
+    data-plan-end="{{$form.ExpectedEndMonth}}"
+    class="text-sm text-gray-800 dark:text-gray-100">
+    <h3 id="spending-optimizer-heading" tabindex="-1" class="text-base font-semibold rounded focus:outline focus:outline-2 focus:outline-accent">How much can I spend?</h3>
+    <p class="mt-1 text-gray-600 dark:text-gray-300">Compare monthly living budgets against your comfortable minimum across checked futures. Previewing does not change your plan.</p>
+    {{if .SpendingAppliedAnnouncement}}<p role="status" class="mt-3 rounded-md bg-positive-soft p-3 text-positive">{{.SpendingAppliedAnnouncement}}</p>{{end}}
+    {{if $form.Chained}}
+    <p role="alert" class="mt-3 rounded-md bg-warning-soft p-3 text-warning">Spending comparisons are unavailable for chained scenarios. Open an individual scenario to compare options.</p>
+    {{else}}
+    <form id="spending-optimizer-form" class="mt-4 space-y-4">
+        <div>
+            <label for="spending-minimum" class="block font-medium">Minimum comfortable monthly living budget</label>
+            <div class="relative mt-1">
+                <span aria-hidden="true" class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500 dark:text-gray-300">$</span>
+                <input id="spending-minimum" name="floor_monthly_real" type="number" min="0.01" step="0.01" required
+                    value="{{with $form.FloorMonthlyReal}}{{printf "%.2f" .}}{{end}}"
+                    inputmode="decimal" aria-describedby="spending-minimum-help spending-minimum-rule spending-minimum-note spending-optimizer-status"
+                    class="block w-full rounded-md border border-gray-500 bg-white py-2 pl-7 pr-3 shadow-sm focus:border-accent focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400 dark:bg-gray-700 dark:text-gray-100">
+            </div>
+            <p id="spending-minimum-help" class="mt-1 text-gray-600 dark:text-gray-300">Required. Enter today's dollars; the minimum increases with inflation. Include basic living costs and a fun allowance. Healthcare, taxes, and other separately entered expenses are additional.</p>
+            <p id="spending-minimum-rule" class="mt-1 font-medium">Recommendations must fund this minimum in every checked future.</p>
+            <p id="spending-minimum-note" class="mt-1 text-gray-600 dark:text-gray-300">{{if $form.MinimumAboveCurrent}}Your saved minimum is above the current starting budget. The search will evaluate higher budgets.{{end}}</p>
+        </div>
+
+        <details id="spending-boost-details" class="rounded-md border border-gray-300 p-3 dark:border-gray-600" {{if $form.BoostEnabled}}open{{end}}>
+            <summary class="cursor-pointer rounded font-medium focus:outline focus:outline-2 focus:outline-accent">Extra spending early</summary>
+            <div class="mt-3 space-y-3">
+                <label class="flex items-start gap-2">
+                    <input id="spending-boost-enabled" name="boost_enabled" type="checkbox" value="on" {{if $form.BoostEnabled}}checked{{end}}
+                        class="mt-0.5 rounded border-gray-400 text-accent focus:ring-accent dark:border-gray-500 dark:bg-gray-700">
+                    <span><span class="block font-medium">Add a temporary monthly amount</span><span class="block text-gray-600 dark:text-gray-300">This remains cuttable living spending and does not become a protected obligation.</span></span>
+                </label>
+                <div id="spending-boost-fields" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                        <label for="spending-boost-amount" class="block text-xs font-medium">Extra each month (today's dollars)</label>
+                        <input id="spending-boost-amount" name="boost_monthly_real" type="number" min="0.01" step="0.01" inputmode="decimal"
+                            value="{{with $form.BoostMonthlyReal}}{{printf "%.2f" .}}{{end}}" {{if not $form.BoostEnabled}}disabled{{end}}
+                            aria-describedby="spending-boost-required spending-boost-help spending-optimizer-status"
+                            class="mt-1 block w-full rounded-md border border-gray-500 bg-white p-2 focus:outline focus:outline-2 focus:outline-accent disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-400 dark:bg-gray-700 dark:text-gray-100">
+                    </div>
+                    <div>
+                        <label for="spending-boost-stop" class="block text-xs font-medium">First month without extra spending</label>
+                        <input id="spending-boost-stop" name="boost_stop_month" type="month" min="{{$form.BoostStopMinimum}}"
+                            value="{{$form.BoostStopMonth}}" {{if not $form.BoostEnabled}}disabled{{end}}
+                            aria-describedby="spending-boost-required spending-boost-help spending-boost-boundary spending-optimizer-status"
+                            class="mt-1 block w-full rounded-md border border-gray-500 bg-white p-2 focus:outline focus:outline-2 focus:outline-accent disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-400 dark:bg-gray-700 dark:text-gray-100">
+                    </div>
+                </div>
+                <p id="spending-boost-required" class="font-medium" {{if not $form.BoostEnabled}}hidden{{end}}>When enabled, both extra-spending fields are required.</p>
+                <p id="spending-boost-help" class="text-gray-600 dark:text-gray-300">The stop month is the first calendar month without the extra amount. Plan range: {{$form.StartMonth}} through {{$form.ExpectedEndMonth}}.</p>
+                <p id="spending-boost-boundary" class="text-gray-600 dark:text-gray-300">{{if $form.BoostExpired}}This saved schedule has already ended and is inactive. Disable it or choose a future stop month before comparing.{{else if $form.BoostOutsideHorizon}}The saved boost ends outside the modeled horizon, so its expiry will not appear in the modeled results.{{else if $form.BoostActive}}The current starting budget includes this active extra amount.{{end}}</p>
+            </div>
+        </details>
+
+        <details class="rounded-md border border-gray-300 p-3 dark:border-gray-600">
+            <summary class="cursor-pointer rounded font-medium focus:outline focus:outline-2 focus:outline-accent">Advanced search settings</summary>
+            <div class="mt-3 space-y-3">
+                <div>
+                    <label for="spending-near-term-years" class="block text-xs font-medium">Near-term scoring horizon (years)</label>
+                    <input id="spending-near-term-years" name="near_term_years" type="number" min="1" max="10" step="1" placeholder="Automatic: {{$form.NearTermYears}}"
+                        aria-describedby="spending-near-term-help spending-optimizer-status"
+                        class="mt-1 block w-full rounded-md border border-gray-500 bg-white p-2 focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400 dark:bg-gray-700 dark:text-gray-100">
+                    <p id="spending-near-term-help" class="mt-1 text-gray-600 dark:text-gray-300">Ranks options by funded living in the first five years by default. This scoring window is separate from the boost stop month and full modeled horizon.</p>
+                </div>
+                <div class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div><label for="spending-search-min" class="block text-xs font-medium">Lowest starting monthly living budget</label><input id="spending-search-min" name="search_min_monthly_real" type="number" min="0.01" step="0.01" placeholder="Automatic" aria-describedby="spending-search-money-help" class="mt-1 block w-full min-w-0 rounded-md border border-gray-500 bg-white p-2 focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400 dark:bg-gray-700 dark:text-gray-100"></div>
+                    <div><label for="spending-search-max" class="block text-xs font-medium">Highest starting monthly living budget</label><input id="spending-search-max" name="search_max_monthly_real" type="number" min="0.01" step="0.01" placeholder="Automatic" aria-describedby="spending-search-money-help" class="mt-1 block w-full min-w-0 rounded-md border border-gray-500 bg-white p-2 focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400 dark:bg-gray-700 dark:text-gray-100"></div>
+                    <div><label for="spending-search-step" class="block text-xs font-medium">Starting monthly living step</label><input id="spending-search-step" name="search_step_monthly_real" type="number" min="0.01" step="0.01" placeholder="Automatic" aria-describedby="spending-search-money-help" class="mt-1 block w-full min-w-0 rounded-md border border-gray-500 bg-white p-2 focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400 dark:bg-gray-700 dark:text-gray-100"></div>
+                </div>
+                <p id="spending-search-money-help" class="text-gray-600 dark:text-gray-300">Starting monthly living range and step are today's US dollars per month. Starting living includes active spending phases and any enabled extra amount.</p>
+            </div>
+        </details>
+
+        <div id="spending-effective-range" class="rounded-md bg-gray-100 p-3 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+            <span class="font-medium">Effective starting monthly living range:</span>
+            <span data-spending-range>Enter your minimum to see the exact server-checked range and step.</span>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <button id="spending-optimizer-run" type="submit" class="rounded-md bg-accent-strong px-4 py-2 font-medium text-white focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent disabled:cursor-wait disabled:opacity-60">Compare spending options</button>
+            <button id="spending-optimizer-cancel" type="button" disabled class="rounded-md border border-gray-500 px-4 py-2 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-400">Cancel comparison</button>
+        </div>
+    </form>
+    <p id="spending-optimizer-status" role="status" aria-live="polite" aria-atomic="true" class="mt-3 min-h-5"></p>
+    <div id="spending-optimizer-results" class="mt-4 min-w-0" aria-busy="false"></div>
+    {{end}}
+</section>
+<script src="/static/js/whatif-spending-optimizer.js" defer></script>
+{{end}}

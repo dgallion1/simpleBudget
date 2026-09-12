@@ -1,0 +1,31 @@
+VERDICT: PASS
+CHECKER: checker-a11y
+FAMILY: anthropic
+TASK: spending-ui
+ATTEMPT: 2
+---
+Scoped Fix 1 re-review against ACCESSIBILITY.md and WCAG 2.2 AA. Original attempt-1 FAIL evidence remains preserved.
+
+ORIGINAL BLOCKERS
+
+F1 ADDRESSED — ACCESSIBILITY #6 / WCAG 3.3.2. `spending_optimizer.html:39-54` plus JS `:62-68`: enabling the boost makes the visible text “When enabled, both extra-spending fields are required” appear while amount and stop are required; both controls' aria-describedby include `spending-boost-required`. Disabling hides the instruction together with clearing required.
+
+F2 ADDRESSED — ACCESSIBILITY #6 / WCAG 3.3.2. `spending_optimizer.html:69-75`: all three advanced labels now identify starting monthly living, and each input references shared visible help stating “today's US dollars per month” and the phase/extra-amount basis.
+
+F3 ADDRESSED — ACCESSIBILITY #7/#12 / WCAG 1.4.11. `whatif-spending-optimizer.js:239-267`: real Plotly grid strokes measure 4.83:1 light and 6.01:1 dark, both above 3:1. Data strokes remain >=6.70:1 light and >=8.41:1 dark.
+
+NEW MONTHLY TABLE — PASS
+
+`whatif-spending-optimizer.js:352-405`: visible today's-dollar caption; ten scoped column headers; direct `funding_timeline.months` rows; annual same-value plot table and event table retained. It is inside the named keyboard-focusable `#spending-graph-data` overflow region. At 375px the document equals viewport; region client/scroll widths 348/1341 show contained scrolling. Updated live axe and required axe CLI: zero violations light and dark.
+
+HTMX CLEANUP/REINIT — PASS
+
+Traced `whatif-spending-optimizer.js:584-641`: root/ancestor cleanup advances generations, clears timer, aborts search/Apply/prepare/graph, cancels retained preview, purges graph/table/pressed state, disconnects Mutation/Resize observers, and removes every root-specific global listener. Replacement retains one global initializer plus per-root data guard. Supplied focused executed lifecycle oracle confirms no late old result, observer disconnect/abort/cancel/purge, one initialized replacement and one prepare after one edit. Thus removed visible and assistive state stay in parity under point 16; no duplicate live region persists.
+
+EVIDENCE
+
+- Fresh retained real-render probe: zero page errors; live axe 0/0; F1/F2 associations observed; grid 4.83/6.01; chart/table parity, focus, invalidation, reduced motion and 375px containment green.
+- Fresh required axe CLI over actual handler-produced updated light/dark renders with real built stylesheet: 0 violations both. `task-5-a11y-artifacts/axe-cli-fix-1.json`.
+- Full scoped report: `.superpowers/sdd/2026-09-10-spending-first-optimizer/task-5-fix-1-a11y-review.md`.
+
+INTRODUCED ISSUES: none.

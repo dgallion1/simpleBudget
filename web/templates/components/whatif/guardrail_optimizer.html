@@ -4,7 +4,7 @@
 <form id="guardrail-optimizer-form" class="mt-3 space-y-3">
 <div><label for="guardrail-optimizer-floor" class="block font-medium">Minimum monthly living spending (today's dollars, required)</label>
 <input id="guardrail-optimizer-floor" name="floor_monthly_real" type="number" min="0.01" step="0.01" required value="7500" aria-describedby="guardrail-optimizer-floor-help guardrail-optimizer-status{{if .GuardrailPlanFloor}} guardrail-optimizer-floor-plan-note{{end}}" class="mt-1 w-full rounded border border-gray-500 dark:border-gray-400 bg-white dark:bg-gray-800 p-2 focus:outline focus:outline-2 focus:outline-accent">
-<p id="guardrail-optimizer-floor-help" class="mt-1 text-gray-600 dark:text-gray-300">Editable; increases with inflation. Applies to Monthly Living Expenses only. Healthcare, taxes, and other expenses are additional obligations. Cannot exceed starting monthly living expenses.</p>
+<p id="guardrail-optimizer-floor-help" class="mt-1 text-gray-600 dark:text-gray-300">Editable; increases with inflation. Applies to Monthly Living Expenses only. Healthcare, taxes, and other expenses are additional obligations.</p>
 {{/* Renders only once page data carries GuardrailPlanFloor (a
      {Amount float64; Year int; Phase string} value); handleWhatIf populates
      it unconditionally from analysis.LowestPlannedLivingReal whenever a base

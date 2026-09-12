@@ -16,6 +16,9 @@ import (
 type MonteCarloConfig struct {
 	// Observation only: never changes the policy. Positive values observe the full horizon.
 	MinMonthlySpendingReal float64
+	// SpendingExperienceYears captures this many complete near-term years while
+	// observing the full path. Zero preserves the legacy result exactly.
+	SpendingExperienceYears int
 	// Capture complete annual observations only when a positive floor is observed.
 	CaptureSpendingYears bool
 	// Market dynamics
@@ -376,6 +379,10 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 	if config.MinMonthlySpendingReal > 0 {
 		floorTracker = &floorOutcomeTracker{floor: config.MinMonthlySpendingReal}
 	}
+	var spendingTracker *spendingExperienceTracker
+	if config.SpendingExperienceYears > 0 && config.MinMonthlySpendingReal > 0 {
+		spendingTracker = newSpendingExperienceTracker(config.MinMonthlySpendingReal, config.SpendingExperienceYears)
+	}
 
 	// Annual variation multipliers (redrawn at year boundaries) and
 	// current-month shock expenses.
@@ -483,6 +490,13 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 			depleted = true
 			depletionYear = float64(m) / 12
 		}
+		if spendingTracker != nil {
+			spendingTracker.observe(spendingMonthObservation{
+				Planned: out.LivingExpenses, Adjusted: out.AdjustedLivingExpenses,
+				Funded: out.FundedLivingExpenses, Shortfall: out.Result.Shortfall,
+				CPI: st.CumulativeInflation, Depleted: depleted,
+			})
+		}
 	}
 
 	finalBalance := st.TaxDeferredBalance + st.RothBalance + st.TaxableAccount.MarketValue
@@ -494,6 +508,7 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 	return models.MonteCarloResult{
 		FinalBalance:    finalBalance,
 		FloorOutcome:    floorTracker.result(finalBalance, st.CumulativeInflation),
+		SpendingOutcome: spendingTracker.result(),
 		DepletionYear:   depletionYear,
 		Survives:        !depleted,
 		TotalIRMAA:      totalIRMAA,

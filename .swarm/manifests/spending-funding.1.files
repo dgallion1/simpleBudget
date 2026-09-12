@@ -1,0 +1,7 @@
+internal/models/spending_optimizer.go
+internal/services/retirement/analysis/spending_funding.go
+internal/services/retirement/analysis/spending_funding_test.go
+internal/handlers/whatif/handlers_spending_graph.go
+internal/handlers/whatif/spending_graph_test.go
+.superpowers/sdd/2026-09-10-spending-first-optimizer/task-4a-report.md
+.swarm/manifests/spending-funding.1.files

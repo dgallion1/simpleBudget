@@ -1296,6 +1296,11 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/guardrails/optimize/cancel", handleCancelGuardrailOptimizer)
 	r.Post("/whatif/guardrails/optimize/apply", handleApplyGuardrailOptimizer)
 	r.Post("/whatif/guardrails/optimize/graph", handleGuardrailOptimizerGraph)
+	r.Post("/whatif/spending/optimize/prepare", handlePrepareSpendingOptimizer)
+	r.Post("/whatif/spending/optimize", handleSpendingOptimizer)
+	r.Post("/whatif/spending/optimize/cancel", handleCancelSpendingOptimizer)
+	r.Post("/whatif/spending/optimize/apply", handleApplySpendingOptimizer)
+	r.Post("/whatif/spending/optimize/graph", handleSpendingOptimizerGraph)
 	r.Post("/whatif/tax-optimize", handleWhatIfTaxOptimize)
 	r.Post("/whatif/conversion-sweep", handleWhatIfConversionSweep)
 }
@@ -1333,21 +1338,23 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pageData := map[string]interface{}{
-		"Title":                   "What-If Analysis",
-		"ActiveTab":               "whatif",
-		"Settings":                settings,
-		"Analysis":                analysis,
-		"Verdict":                 BuildVerdict(analysis, settings),
-		"Scenarios":               scenarios,
-		"ActiveScenario":          activeScenario,
-		"ActiveFilename":          activeFilename,
-		"Findings":                findings,
-		"AnalysisPending":         pendingHash != "",
-		"AsyncHash":               pendingHash,
-		"LivingExpensesPhaseNote": buildLivingExpensesPhaseNote(settings),
-		"GuardrailChartSummary":   buildGuardrailChartSummary(settings, analysis.Projection),
-		"GuardrailAnchors":        buildGuardrailAnchors(settings, analysis.Projection),
-		"GuardrailPlanFloor":      guardrailPlanFloor,
+		"Title":                       "What-If Analysis",
+		"ActiveTab":                   "whatif",
+		"Settings":                    settings,
+		"Analysis":                    analysis,
+		"Verdict":                     BuildVerdict(analysis, settings),
+		"Scenarios":                   scenarios,
+		"ActiveScenario":              activeScenario,
+		"ActiveFilename":              activeFilename,
+		"Findings":                    findings,
+		"AnalysisPending":             pendingHash != "",
+		"AsyncHash":                   pendingHash,
+		"LivingExpensesPhaseNote":     buildLivingExpensesPhaseNote(settings),
+		"GuardrailChartSummary":       buildGuardrailChartSummary(settings, analysis.Projection),
+		"GuardrailAnchors":            buildGuardrailAnchors(settings, analysis.Projection),
+		"GuardrailPlanFloor":          guardrailPlanFloor,
+		"SpendingOptimizerForm":       spendingOptimizerFormData(settings, analysis.Projection),
+		"SpendingAppliedAnnouncement": spendingAppliedAnnouncement(r, settings),
 	}
 
 	templates.AttachDuplicateCount(pageData, loader)

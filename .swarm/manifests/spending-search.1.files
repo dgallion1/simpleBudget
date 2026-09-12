@@ -1,0 +1,7 @@
+internal/models/spending_optimizer.go
+internal/services/retirement/analysis/spending_optimizer.go
+internal/services/retirement/analysis/spending_optimizer_test.go
+internal/services/retirement/analysis/spending_optimizer_runner.go
+internal/services/retirement/analysis/spending_optimizer_runner_test.go
+.superpowers/sdd/2026-09-10-spending-first-optimizer/task-3-report.md
+.swarm/manifests/spending-search.1.files

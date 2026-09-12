@@ -32,55 +32,18 @@ import (
 	"strings"
 	"testing"
 
-	"budget2/internal/config"
-	"budget2/internal/services/storage"
 	"budget2/internal/testutil"
 )
 
-// setupIsolatedTestServer is setupTestServer's isolation-hardened sibling:
-// it copies the testdata/ fixture tree into a throwaway t.TempDir() and
-// points every directory in config.Config at that copy, so a test that
-// actually SAVES something (this file's seedGuardrailFixture writes
-// guardrails settings via the real endpoint, and the Plotly CDN mirror
-// handler caches a file under DataDirectory/cache) can never touch the
-// repo-tracked testdata/ fixture every other cmd/server test shares.
-// setupTestServer's plain testutil.TestDataDir() is fine for read-only
-// tests; a 2026-09-09 incident (an earlier draft of this test, running
-// against the shared fixture) persisted guardrails.enabled=true straight
-// into the committed testdata/settings/whatif.json and left a stray
-// testdata/cache/ directory — both had to be reverted by hand. Never
-// reuse setupTestServer for a test that writes.
+// setupIsolatedTestServer is now identical to setupTestServer: both copy the
+// testdata/ fixture tree into a throwaway t.TempDir() (unified 2026-09-12,
+// CM1 task 3, so every cmd/server test gets the isolation this file
+// originally added just for its own write path — see setupTestServer's own
+// doc comment in main_test.go for why a plain Load can also write). Kept as
+// a distinct name so this file's callers keep documenting their write
+// intent.
 func setupIsolatedTestServer(t *testing.T) *testutil.TestServer {
-	t.Helper()
-
-	root := testutil.ProjectRoot()
-	isolatedData := filepath.Join(t.TempDir(), "testdata")
-	if out, err := exec.Command("cp", "-r", filepath.Join(root, "testdata"), isolatedData).CombinedOutput(); err != nil {
-		t.Fatalf("copy testdata fixture to isolated dir: %v\n%s", err, out)
-	}
-
-	cfg := &config.Config{
-		ListenAddr:         ":0",
-		Debug:              true,
-		DataDirectory:      isolatedData,
-		UploadsDirectory:   isolatedData + "/uploads",
-		SettingsDirectory:  isolatedData + "/settings",
-		TemplatesDirectory: root + "/web/templates",
-		StaticDirectory:    root + "/web/static",
-		BackupDir:          t.TempDir(),
-	}
-
-	var err error
-	store, err = storage.New(cfg.DataDirectory)
-	if err != nil {
-		t.Fatalf("storage.New: %v", err)
-	}
-	if err := SetupDependencies(cfg); err != nil {
-		t.Fatalf("SetupDependencies: %v", err)
-	}
-
-	router := SetupRouter()
-	return testutil.NewTestServer(t, router)
+	return setupTestServer(t)
 }
 
 // seedGuardrailFixture enables guardrails on the isolated test server's

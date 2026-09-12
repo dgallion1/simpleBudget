@@ -301,10 +301,17 @@ func isPlaceholderPersonName(name string) bool {
 // resolve them: unlinked plans commonly save healthcare entries in the same
 // order as persons, under names entered separately. Linking is
 // all-or-nothing: it only proceeds when the count of still-unlinked
-// healthcare entries equals the count of still-unlinked persons, and every
+// healthcare entries equals the count of still-unlinked persons, every
 // resulting pair's healthcare CurrentAge exactly matches the person's age at
 // originalStartDate (the start date as saved on disk, before
-// resolveCurrentMonth advances it). If any pair disagrees, none are linked.
+// resolveCurrentMonth advances it), AND every pair is name-compatible: the
+// person's Name must be a placeholder OR normalizePersonName(person.Name)
+// must equal normalizePersonName(hc.Name). Without that guard, two
+// differently-named real people (e.g. persons "Robert"/"Susan" and
+// healthcare entries "Bob"/"Sue") whose ages happen to match would be linked
+// on position alone, and the name-sync below would overwrite the
+// user-editable healthcare names. If any pair disagrees on age or name, none
+// are linked.
 // When a linked person's Name is a placeholder ("you", "spouse", "user",
 // "primary") and the healthcare entry has a real name, the person adopts
 // the healthcare entry's name so the household keeps the user's own names.
@@ -339,6 +346,9 @@ func inferPositionalHealthcareLinks(settings *models.WhatIfSettings, originalSta
 		person := settings.Persons[unlinkedPersons[k]]
 		age, err := models.DeriveAgeAtStartDate(originalStartDate, person.BirthMonth)
 		if err != nil || age != hc.CurrentAge {
+			return false
+		}
+		if !isPlaceholderPersonName(person.Name) && normalizePersonName(person.Name) != normalizePersonName(hc.Name) {
 			return false
 		}
 	}
@@ -395,9 +405,16 @@ func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields ma
 
 	// Existing saved plans advance automatically unless explicitly set to a fixed date.
 	// Migrate legacy ages against their original date before advancing it.
+	//
+	// An absent key alone is not a "real" migration worth a write-back: it
+	// means UseCurrentMonth=true in memory (so resolveCurrentMonth below still
+	// advances StartDate for this load and every load after it), but nothing
+	// on disk needs correcting just because the key was never saved. Do not
+	// set changed here: this branch used to
+	// force a save on every legacy plan's first load, even when nothing else
+	// migrated, dirtying testdata/settings/whatif.json on every test run.
 	if _, present := rawFields["use_current_month"]; !present {
 		settings.UseCurrentMonth = true
-		changed = true
 	}
 	resolveCurrentMonth(settings, time.Now())
 

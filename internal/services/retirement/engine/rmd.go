@@ -51,11 +51,10 @@ func earliestPersonBirthYear(s *models.WhatIfSettings) (int, bool) {
 		if p == nil || p.BirthMonth == "" {
 			continue
 		}
-		t, err := time.Parse("2006-01", p.BirthMonth)
-		if err != nil {
+		y, _, ok := models.ParseYearMonthParts(p.BirthMonth)
+		if !ok {
 			continue
 		}
-		y := t.Year()
 		if !found || y < earliest {
 			earliest = y
 			found = true
@@ -161,11 +160,13 @@ func ParseStartYear(startDate string) int {
 	if startDate == "" {
 		return time.Now().Year()
 	}
-	t, err := time.Parse("2006-01", startDate)
-	if err != nil {
+	// Reached from the stepper every simulated month with the same string;
+	// ParseYearMonthParts is the allocation-free time.Parse equivalent.
+	year, _, ok := models.ParseYearMonthParts(startDate)
+	if !ok {
 		return time.Now().Year()
 	}
-	return t.Year()
+	return year
 }
 
 // uniformLifetimeTable contains IRS Uniform Lifetime Table factors.
@@ -259,11 +260,10 @@ func latestPersonBirthYear(s *models.WhatIfSettings) (int, bool) {
 		if p == nil || p.BirthMonth == "" {
 			continue
 		}
-		t, err := time.Parse("2006-01", p.BirthMonth)
-		if err != nil {
+		y, _, ok := models.ParseYearMonthParts(p.BirthMonth)
+		if !ok {
 			continue
 		}
-		y := t.Year()
 		if !found || y > latest {
 			latest = y
 			found = true

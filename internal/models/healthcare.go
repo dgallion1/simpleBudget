@@ -2,7 +2,6 @@ package models
 
 import (
 	"math"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -242,12 +241,11 @@ func (hp *HealthcarePerson) CoverageAt(month int, startDate string) CoverageType
 // fallback.
 func (hp *HealthcarePerson) monthsUntilAge(age int, startDate string) int {
 	if hp.BirthMonth != "" && startDate != "" {
-		birth, err := time.Parse("2006-01", hp.BirthMonth)
-		if err == nil {
-			start, err2 := time.Parse("2006-01", startDate)
-			if err2 == nil {
-				targetDate := birth.AddDate(age, 0, 0)
-				months := (targetDate.Year()-start.Year())*12 + int(targetDate.Month()) - int(start.Month())
+		// Called from every monthly cost lookup; ParseYearMonthParts is
+		// the allocation-free equivalent of time.Parse("2006-01", …).
+		if birthYear, birthMonth, ok := ParseYearMonthParts(hp.BirthMonth); ok {
+			if startYear, startMonth, ok := ParseYearMonthParts(startDate); ok {
+				months := (birthYear+age-startYear)*12 + birthMonth - startMonth
 				if months < 0 {
 					return 0
 				}

@@ -2,7 +2,7 @@
   "mcpServers": {
     "budget2": {
       "type": "http",
-      "url": "http://localhost:8080/mcp"
+      "url": "${BUDGET2_MCP_URL:-http://localhost:8080/mcp}"
     }
   }
 }

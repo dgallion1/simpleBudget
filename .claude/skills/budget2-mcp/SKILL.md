@@ -30,7 +30,13 @@ cheaper to read than to rediscover.
 - **The tools come from the running server.** If they are missing from the
   session, the server was not listening when the session started. Nothing you
   can do fixes that from here: the user must start `budget2` and start a new
-  session. Say so plainly instead of hunting for the tools.
+  session. Say so plainly instead of hunting for the tools. On the user's
+  workstation the server runs as a systemd user service (`budget2.service`,
+  see the README's MCP section); if the tools are missing, the first thing
+  to suggest is `systemctl --user status budget2`. Do not diagnose sandbox
+  network isolation — the session's shell can reach `localhost:8080`
+  directly, and the MCP handshake is done by the desktop app at session
+  start, not from inside the session.
 - **When a tool fails for no visible reason, call `get_status` first.** A
   locked encrypted store makes every ledger-reading tool fail, and
   `get_status` is the only tool that still answers. It reports where the data

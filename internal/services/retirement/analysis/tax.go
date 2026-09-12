@@ -68,6 +68,12 @@ func constantsBasis(s *models.WhatIfSettings, startYear, years int) *models.TaxC
 }
 
 func BuildTax(proj *models.ProjectionResult, in engine.Input) *models.TaxAnalysis {
+	if in.Prepared.Settings().Lifetime != nil {
+		return nil
+	}
+	if proj != nil && proj.CalculationError != "" {
+		return nil
+	}
 	if proj == nil || len(proj.Months) == 0 {
 		return nil
 	}

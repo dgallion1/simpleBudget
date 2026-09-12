@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"math"
 
 	"budget2/internal/models"
@@ -270,6 +271,7 @@ func ExecutePortfolioCashFlowWithTaxableState(neededFromPortfolio, monthlyRMD fl
 // projection month: cash-flow effects, growth, taxable-income
 // components, taxes/IRMAA paid, and the converged tax snapshot.
 type TaxAwarePortfolioMonthResult struct {
+	Converged                        bool
 	OneTimeIncome                    OneTimeExpenseIncome
 	Shortfall                        float64
 	TaxesPaid                        float64
@@ -465,6 +467,7 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 		finalSnapshot = recalculatedSnapshot
 
 		if math.Abs(recalculatedSnapshot.MonthlyTax-taxesPaid) < 0.01 && math.Abs(recalculatedSnapshot.MonthlyIRMAA-irmaaExpense) < 0.01 {
+			result.Converged = true
 			taxesPaid = recalculatedSnapshot.MonthlyTax
 			irmaaExpense = recalculatedSnapshot.MonthlyIRMAA
 			break
@@ -478,4 +481,28 @@ func ExecuteTaxAwarePortfolioMonth(in PortfolioMonthInput) TaxAwarePortfolioMont
 	result.IRMAAExpense = irmaaExpense
 	result.TaxSnapshot = finalSnapshot
 	return result
+}
+
+// executeTaxSettlement coordinates fixed-point trials. Each callback receives
+// a tax guess and must evaluate from the same opening state. Strict callers
+// fail instead of committing the last unconverged candidate; legacy callers
+// retain their existing best-effort wrapper behavior.
+func executeTaxSettlement(maxIterations int, strict bool, trial func(taxGuess, irmaaGuess float64) (ProjectedTaxSnapshot, float64, error)) (ProjectedTaxSnapshot, error) {
+	taxGuess, irmaaGuess := 0.0, 0.0
+	var last ProjectedTaxSnapshot
+	for i := 0; i < maxIterations; i++ {
+		next, settlementTax, err := trial(taxGuess, irmaaGuess)
+		if err != nil {
+			return ProjectedTaxSnapshot{}, err
+		}
+		last = next
+		if math.Abs(settlementTax-taxGuess) < 0.01 && math.Abs(next.MonthlyIRMAA-irmaaGuess) < 0.01 {
+			return next, nil
+		}
+		taxGuess, irmaaGuess = settlementTax, next.MonthlyIRMAA
+	}
+	if strict {
+		return ProjectedTaxSnapshot{}, fmt.Errorf("tax settlement did not converge in %d iterations", maxIterations)
+	}
+	return last, nil
 }

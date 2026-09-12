@@ -545,3 +545,13 @@ func abs(f float64) float64 {
 func ptr(f float64) *float64  { return &f }
 func ptrInt(i int) *int       { return &i }
 func strPtr(s string) *string { return &s }
+
+func TestLifetimeRejectsRothConversionOverrideWithoutLegalAccounts(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.Lifetime = &models.LifetimeSettings{Version: 1}
+	amount := 1000.0
+	_, err := Apply(s, Overrides{RothConversionAmount: &amount})
+	if err == nil || !strings.Contains(err.Error(), "lifetime") {
+		t.Fatalf("err=%v", err)
+	}
+}

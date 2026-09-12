@@ -55,7 +55,7 @@ func trajectoryPhaseName(s *models.WhatIfSettings, year int) string {
 // come straight from the projection months (today's dollars via each month's
 // CumulativeInflation); nothing is re-simulated.
 func buildSpendingTrajectoryRows(s *models.WhatIfSettings, projection *models.ProjectionResult) []trajectoryRow {
-	if s == nil || projection == nil || len(projection.Months) == 0 {
+	if s == nil || projection == nil || projection.CalculationError != "" || len(projection.Months) == 0 {
 		return nil
 	}
 
@@ -178,6 +178,10 @@ func handleWhatIfSpendingTrajectory(w http.ResponseWriter, r *http.Request) {
 	analysis, _, err := analysisFastOrCached(settings)
 	if err != nil {
 		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if analysis.CalculationError != "" {
+		renderError(w, "Calculation failed: "+analysis.CalculationError, http.StatusUnprocessableEntity)
 		return
 	}
 

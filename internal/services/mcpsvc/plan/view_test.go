@@ -172,3 +172,21 @@ func TestShapeAnalysis_NilSectionsDoNotPanic(t *testing.T) {
 		t.Errorf("FinalBalance = %v, want 0 when Projection is nil", v2.Headline.FinalBalance)
 	}
 }
+
+func TestShapeAnalysisCalculationErrorSuppressesHeadlines(t *testing.T) {
+	a := &models.WhatIfAnalysis{CalculationError: "failed", Settings: &models.WhatIfSettings{PortfolioValue: 999}, Projection: &models.ProjectionResult{FinalBalance: 888, Survives: true}}
+	got := ShapeAnalysis(a, true)
+	if got.CalculationError != "failed" {
+		t.Fatalf("error=%q", got.CalculationError)
+	}
+	if got.Headline.PortfolioValue != 0 || got.Headline.FinalBalance != 0 || got.Budget != nil || len(got.Years) != 0 {
+		t.Fatalf("stale fields=%+v", got)
+	}
+}
+func TestShapeAnalysisLifetimeUsesAccountOpeningAndCanonicalYears(t *testing.T) {
+	a := &models.WhatIfAnalysis{Settings: &models.WhatIfSettings{PortfolioValue: 999, ProjectionYears: 1, Lifetime: &models.LifetimeSettings{Version: 1, Accounts: []models.LifetimeAccount{{OpeningValue: 40}, {OpeningValue: 60}}}}, Projection: &models.ProjectionResult{LifetimeYearSummaries: []models.LifetimeYearSummary{{Year: 2026, Available: true, ExternalIncome: 120, EmployeeContributions: 12, EmployerContributions: 6, Consumption: 80, TaxLiability: 10, TaxPayments: 8, UnpaidTax: 2, ReserveGap: 3}}}}
+	got := ShapeAnalysis(a, false)
+	if got.Headline.PortfolioValue != 100 || len(got.Years) != 1 || got.Years[0].ExternalIncome != 120 || got.Years[0].TaxPayments != 8 {
+		t.Fatalf("view=%+v", got)
+	}
+}

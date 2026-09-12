@@ -44,6 +44,9 @@ func Apply(base *models.WhatIfSettings, o Overrides) (*models.WhatIfSettings, er
 	if err := o.validate(); err != nil {
 		return nil, err
 	}
+	if base.Lifetime != nil && (o.RothConversionAmount != nil || o.RothConversionStart != nil || o.RothConversionEnd != nil) {
+		return nil, &ValidationError{Err: fmt.Errorf("lifetime Roth conversion overrides require explicit legal source and destination account identities and are not supported")}
+	}
 
 	s, err := prepare.Clone(base)
 	if err != nil {

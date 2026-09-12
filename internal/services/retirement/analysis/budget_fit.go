@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"strings"
 
 	"budget2/internal/models"
+	"budget2/internal/moneyfmt"
 	"budget2/internal/services/retirement/engine"
 )
 
@@ -17,15 +17,7 @@ import (
 // which itself formats with "%.2f"; deriving cents any other way can
 // disagree with that rendering at floating-point ties (Ruling 2026-08-29b).
 func centsFromDecimalString(v float64) int64 {
-	negative := v < 0
-	s := fmt.Sprintf("%.2f", math.Abs(v))
-	parts := strings.SplitN(s, ".", 2)
-	whole, _ := strconv.ParseInt(parts[0], 10, 64)
-	frac, _ := strconv.ParseInt(parts[1], 10, 64)
-	cents := whole*100 + frac
-	if negative {
-		cents = -cents
-	}
+	cents, _ := moneyfmt.Cents(v)
 	return cents
 }
 
@@ -38,7 +30,24 @@ func centsFromDecimalString(v float64) int64 {
 // would otherwise be ignored. Pass nil to fall back to the closed-form
 // compound-growth estimate.
 func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFitAnalysis {
+	if proj != nil && proj.CalculationError != "" {
+		return nil
+	}
 	s := in.Prepared.Settings()
+	if s.Lifetime != nil && proj != nil && len(proj.Months) > 0 && proj.Months[0].Lifetime != nil {
+		m := proj.Months[0].Lifetime
+		spendable := math.Max(0, m.ExternalIncome-m.EmployeeContributions)
+		gap := m.ConsumptionAssessed + m.TaxLiability - spendable
+		assets := 0.0
+		for _, a := range m.Accounts {
+			assets += a.Opening
+		}
+		rate := 0.0
+		if gap > 0 && assets > 0 {
+			rate = gap * 12 / assets * 100
+		}
+		return &models.BudgetFitAnalysis{MonthlyExpenses: m.ConsumptionAssessed, MonthlyIncome: spendable, GrossIncome: m.ExternalIncome, NetIncome: spendable - m.TaxLiability, MonthlyTaxes: m.TaxLiability, MonthlyIRMAA: m.IRMAAAssessed, MonthlyGap: gap, AnnualGap: gap * 12, RequiredRate: rate}
+	}
 
 	estimateTaxSnapshot := func(targetMonth int, taxableCashFlow engine.TaxableGrowthResult, monthlyRMD float64, rothConversion float64, assumedIRMALookbackMAGI *float64) engine.ProjectedTaxSnapshot {
 		targetYear := targetMonth / 12

@@ -17,22 +17,21 @@
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
                 {{range .Analysis.Sensitivity}}
+                {{if .CalculationError}}
+                <tr><th scope="row" class="p-3 text-left text-gray-800 dark:text-gray-200">{{.Scenario.Name}}</th><td colspan="4" class="p-3 text-gray-600 dark:text-gray-300">Unavailable: {{.CalculationError}}</td></tr>
+                {{else}}
                 <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td class="p-3 text-gray-800 dark:text-gray-200">{{.Scenario.Name}}</td>
+                    <th scope="row" class="p-3 text-left font-normal text-gray-800 dark:text-gray-200">{{.Scenario.Name}}</th>
                     <td class="p-3 text-center text-gray-600 dark:text-gray-300">{{.Scenario.Change}}</td>
                     <td class="p-3 text-right {{if .Survives}}text-positive{{else}}text-negative{{end}}">
-                        {{if .Survives}}
-                        Survives
-                        {{else}}
-                        {{printf "%.1f" (deref .LongevityYears)}} yrs
-                        {{end}}
+                        {{if .Survives}}Survives{{else}}{{printf "%.1f" (deref .LongevityYears)}} yrs{{end}}
                     </td>
                     <td class="p-3 text-right dark:text-gray-300">{{formatMoney .FinalBalance}}</td>
-                    <td
-                        class="p-3 text-center {{if gt .ScoreChange 0}}text-positive{{else if lt .ScoreChange 0}}text-negative{{else}}text-gray-600 dark:text-gray-300{{end}}">
+                    <td class="p-3 text-center {{if gt .ScoreChange 0}}text-positive{{else if lt .ScoreChange 0}}text-negative{{else}}text-gray-600 dark:text-gray-300{{end}}">
                         {{if gt .ScoreChange 0}}+{{end}}{{.ScoreChange}}
                     </td>
                 </tr>
+                {{end}}
                 {{end}}
             </tbody>
         </table>

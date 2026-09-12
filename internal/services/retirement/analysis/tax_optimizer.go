@@ -35,6 +35,9 @@ func taxOptimizerEligible(s *models.WhatIfSettings) (bool, string) {
 	if s == nil {
 		return false, "No scenario loaded."
 	}
+	if s.Lifetime != nil {
+		return false, "Tax optimization is unavailable for lifetime accounts because conversion source and destination legal identities are required."
+	}
 	if s.TaxConfig == nil || s.TaxConfig.FilingStatus == "" {
 		return false, "Set tax filing status to enable optimization."
 	}

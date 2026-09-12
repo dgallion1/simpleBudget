@@ -687,3 +687,37 @@ func TestHandleWhatIfSyncApply_ConcurrentSameScenarioEditNotLost(t *testing.T) {
 		}
 	}
 }
+
+func TestDashboardSyncRejectedForLifetimeWithoutMutation(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	settings, err := rm.LoadContext(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.Lifetime = validLifetimeFixture(settings)
+	beforeExpenses := settings.MonthlyLivingExpenses
+	if err := rm.Save(settings); err != nil {
+		t.Fatal(err)
+	}
+
+	preview := httptest.NewRecorder()
+	handleWhatIfSync(preview, httptest.NewRequest("POST", "/whatif/sync", nil))
+	if preview.Code != http.StatusUnprocessableEntity || !strings.Contains(preview.Body.String(), "unavailable while Lifetime accounts are active") {
+		t.Fatalf("preview status/body = %d %q", preview.Code, preview.Body.String())
+	}
+
+	apply := httptest.NewRecorder()
+	handleWhatIfSyncApply(apply, syncApplyRequest(rm.ActiveFilename(), "unused", "0"))
+	if apply.Code != http.StatusUnprocessableEntity || !strings.Contains(apply.Body.String(), "unavailable while Lifetime accounts are active") {
+		t.Fatalf("apply status/body = %d %q", apply.Code, apply.Body.String())
+	}
+	after, err := rm.LoadContext(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.MonthlyLivingExpenses != beforeExpenses || after.Lifetime == nil {
+		t.Fatalf("rejected sync mutated settings: before expenses %.2f after %+v", beforeExpenses, after)
+	}
+}

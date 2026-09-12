@@ -372,6 +372,9 @@ func normalizeLoadedWhatIfSettings(settings *models.WhatIfSettings, rawFields ma
 		return changed, err
 	}
 
+	if err := prepare.ValidateLifetime(settings); err != nil {
+		return changed, err
+	}
 	return changed, nil
 }
 
@@ -880,6 +883,9 @@ func (sm *SettingsManager) saveInternal(settings *models.WhatIfSettings) error {
 	prepare.NormalizePhaseAgeReference(settings)
 	if err := prepare.ValidatePersons(settings); err != nil {
 		return err
+	}
+	if err := prepare.ValidateLifetime(settings); err != nil {
+		return &ScenarioValidationError{Err: err}
 	}
 	prepare.ComputeAges(settings)
 

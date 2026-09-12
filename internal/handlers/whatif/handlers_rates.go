@@ -18,6 +18,21 @@ func handleWhatIfSettings(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	for _, field := range []string{"portfolio_value", "tax_deferred_percent", "roth_percent", "stock_percent", "cash_percent", "tax_deferred_stock_percent", "tax_deferred_cash_percent", "roth_stock_percent", "roth_cash_percent", "taxable_stock_percent", "taxable_cash_percent"} {
+		if !r.Form.Has(field) {
+			continue
+		}
+		current, loadErr := retirementMgr.LoadContext(r.Context())
+		if loadErr != nil {
+			renderError(w, "Failed to load settings: "+loadErr.Error(), http.StatusInternalServerError)
+			return
+		}
+		if current.Lifetime != nil {
+			renderError(w, "Lifetime accounts control portfolio balances and allocations; edit the lifetime plan instead", http.StatusBadRequest)
+			return
+		}
+		break
+	}
 
 	startDate, persons, hasPersons, err := parsePersonsForm(r)
 	if err != nil {

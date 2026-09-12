@@ -126,6 +126,11 @@ func MonteCarloWithResults(eng *engine.Engine, in engine.Input, runs int, seed i
 // this is the aggregation every SS cell (baseline and grid) uses — paying
 // for the adaptive sub-run per cell would discard its entire output.
 func aggregateMonteCarloStats(results []models.MonteCarloResult) *models.MonteCarloAnalysis {
+	for _, r := range results {
+		if r.CalculationError != "" {
+			return &models.MonteCarloAnalysis{CalculationError: r.CalculationError}
+		}
+	}
 	stats, balances := monteCarloCoreStats(results)
 	return &models.MonteCarloAnalysis{
 		Stats:        stats,
@@ -138,6 +143,11 @@ func aggregateMonteCarloStats(results []models.MonteCarloResult) *models.MonteCa
 // Split out of MonteCarlo so a results subset can be aggregated with
 // byte-identical math.
 func aggregateMonteCarlo(in engine.Input, results []models.MonteCarloResult) *models.MonteCarloAnalysis {
+	for _, r := range results {
+		if r.CalculationError != "" {
+			return &models.MonteCarloAnalysis{CalculationError: r.CalculationError}
+		}
+	}
 	runs := len(results)
 	s := in.Prepared.Settings()
 	config := DefaultMonteCarloConfig()
@@ -352,6 +362,9 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 
 	// Vary projection length for longevity risk
 	projectionYears := s.ProjectionYears
+	if in.MonthReturnsOverride != nil {
+		config = &MonteCarloConfig{}
+	}
 	if config.LongevityVariation > 0 {
 		variation := rng.Intn(config.LongevityVariation*2+1) - config.LongevityVariation
 		projectionYears = max(10, s.ProjectionYears+variation)
@@ -368,6 +381,7 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 	lastCrashYear := -999 // Track for recovery boost
 	var totalIRMAA float64
 	var guardrailImpact guardrailImpactTracker
+	var lifetimeDiagnostics models.LifetimeDiagnostics
 
 	// Annual variation multipliers (redrawn at year boundaries) and
 	// current-month shock expenses.
@@ -442,6 +456,7 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 			TaxDeferredMonthly:      math.Pow(1+tdReturn/100, 1.0/12) - 1,
 			RothMonthly:             math.Pow(1+rothReturnRate/100, 1.0/12) - 1,
 			TaxableAnnualPercent:    taxReturn,
+			AssetClassMonthly:       &engine.AssetClassMonthReturns{Stock: math.Pow(1+stockReturn/100, 1.0/12) - 1, Bond: math.Pow(1+bondReturn/100, 1.0/12) - 1, Cash: math.Pow(1+cashReturn/100, 1.0/12) - 1},
 			InflationAnnual:         s.InflationRate / 100 * inflationVar,
 			NetInflationAnnual:      (s.InflationRate - s.SpendingDeclineRate) / 100 * inflationVar,
 			HealthcareMultiplier:    healthcareVariation,
@@ -455,7 +470,15 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 			break
 		}
 
-		out := st.StepMonth(m, mcReturns)
+		returns := mcReturns
+		if in.MonthReturnsOverride != nil {
+			returns = in.MonthReturnsOverride
+		}
+		out := st.StepMonth(m, returns)
+		if out.Err != nil {
+			return models.MonteCarloResult{CalculationError: out.Err.Error()}
+		}
+		engine.AccumulateLifetimeDiagnostics(&lifetimeDiagnostics, out.Lifetime)
 		guardrailImpact.observe(out.LivingExpenses, out.GuardrailMultiplier, st.CumulativeInflation)
 		guardrailImpact.observeFundingGap(out.Result.Shortfall)
 		totalIRMAA += out.Result.IRMAAExpense
@@ -477,20 +500,25 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 	}
 	observedGuardrailImpact := guardrailImpact.result()
 
+	var captured *models.LifetimeDiagnostics
+	if in.CaptureLifetimeDiagnostics {
+		captured = st.CaptureLifetimeDiagnostics(lifetimeDiagnostics)
+	}
 	return models.MonteCarloResult{
-		FinalBalance:    finalBalance,
-		DepletionYear:   depletionYear,
-		Survives:        !depleted,
-		TotalIRMAA:      totalIRMAA,
-		MarketCrashes:   crashTiming.TotalCrashes,
-		SpendingShocks:  spendingShocks,
-		HealthShocks:    healthShocks,
-		ProjectionYears: projectionYears,
-		GuardrailImpact: &observedGuardrailImpact,
-		EarlyCrashes:    crashTiming.EarlyCrashes,
-		MidCrashes:      crashTiming.MidCrashes,
-		LateCrashes:     crashTiming.LateCrashes,
-		FirstCrashYear:  crashTiming.FirstCrashYear,
+		LifetimeDiagnostics: captured,
+		FinalBalance:        finalBalance,
+		DepletionYear:       depletionYear,
+		Survives:            !depleted,
+		TotalIRMAA:          totalIRMAA,
+		MarketCrashes:       crashTiming.TotalCrashes,
+		SpendingShocks:      spendingShocks,
+		HealthShocks:        healthShocks,
+		ProjectionYears:     projectionYears,
+		GuardrailImpact:     &observedGuardrailImpact,
+		EarlyCrashes:        crashTiming.EarlyCrashes,
+		MidCrashes:          crashTiming.MidCrashes,
+		LateCrashes:         crashTiming.LateCrashes,
+		FirstCrashYear:      crashTiming.FirstCrashYear,
 	}
 }
 

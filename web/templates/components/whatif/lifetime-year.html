@@ -1,0 +1,46 @@
+{{define "whatif-lifetime-year"}}
+{{if and .Settings.Lifetime .Analysis.Projection}}
+{{with .Analysis.Projection.LifetimeYearSummaries}}
+<section class="rounded-lg bg-white p-4 text-gray-800 shadow dark:bg-gray-800 dark:text-gray-100" aria-labelledby="lifetime-year-title">
+  <h2 id="lifetime-year-title" class="text-lg font-semibold">Lifetime plan annual explanation</h2>
+  <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Committed account activity in nominal US dollars. Employee allocations and transfers move money within the household and are shown separately from spendable cash.</p>
+  <label for="lifetime-year-select" class="mt-4 block text-sm font-medium text-gray-700 dark:text-gray-200">Selected calendar year</label>
+  <select id="lifetime-year-select" class="mt-1 min-h-11 rounded-md border border-gray-300 bg-white px-3 text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" aria-controls="lifetime-year-details">
+    {{range .}}<option value="{{.Year}}">{{.Year}} {{if .PartialYear}}(months {{.FirstMonth}}–{{.LastMonth}}, partial){{else}}(full year){{end}}</option>{{end}}
+  </select>
+  <p id="lifetime-year-status" class="sr-only" role="status" aria-live="polite"></p>
+  <div id="lifetime-year-details" class="mt-4 space-y-6">
+  {{range $idx, $year := .}}
+    <section data-lifetime-year-panel="{{.Year}}" {{if $idx}}hidden{{end}} aria-labelledby="lifetime-year-{{.Year}}"><h3 id="lifetime-year-{{.Year}}" class="font-semibold">{{.Year}} {{if .PartialYear}}partial year: months {{.FirstMonth}}–{{.LastMonth}}{{else}}full year{{end}}</h3>
+      {{if not .Available}}
+      <p class="mt-2 text-gray-600 dark:text-gray-300" role="status">Annual explanation unavailable: {{.UnavailableReason}}</p>
+      {{else}}
+      <div class="mt-2 relative overflow-x-auto rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" tabindex="0" role="region" aria-labelledby="lifetime-household-{{.Year}}"><table class="w-full text-sm text-gray-800 dark:text-gray-100"><caption id="lifetime-household-{{.Year}}" class="sr-only">Household reconciliation for {{.Year}}</caption><thead><tr><th scope="col" class="p-2 text-left">Household fact</th><th scope="col" class="p-2 text-right">Amount</th></tr></thead><tbody>
+        <tr><th scope="row" class="p-2 text-left font-normal">Opening household wealth</th><td class="p-2 text-right tabular-nums">{{formatMoney .OpeningWealth}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">External gross income</th><td class="p-2 text-right tabular-nums">{{formatMoney .ExternalIncome}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">Employee allocation</th><td class="p-2 text-right tabular-nums">{{formatMoney .EmployeeContributions}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">Employer additions</th><td class="p-2 text-right tabular-nums">{{formatMoney .EmployerContributions}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">Investment return</th><td class="p-2 text-right tabular-nums">{{formatMoney .InvestmentReturn}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">Consumption paid</th><td class="p-2 text-right tabular-nums">{{formatMoney .Consumption}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">Consumption assessed</th><td class="p-2 text-right tabular-nums">{{formatMoney .ConsumptionAssessed}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">Tax liability</th><td class="p-2 text-right tabular-nums">{{formatMoney .TaxLiability}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">Actual taxes paid</th><td class="p-2 text-right tabular-nums">{{formatMoney .TaxPayments}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">Unpaid tax</th><td class="p-2 text-right tabular-nums">{{formatMoney .UnpaidTax}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">Unfunded essential expenses</th><td class="p-2 text-right tabular-nums">{{formatMoney .UnfundedExpenses}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">Unmet optional saving</th><td class="p-2 text-right tabular-nums">{{formatMoney .UnfundedSaving}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">Reserve gap at period end</th><td class="p-2 text-right tabular-nums">{{formatMoney .ReserveGap}}</td></tr>
+        <tr><th scope="row" class="p-2 text-left font-normal">Cash reinvested (all sources)</th><td class="p-2 text-right tabular-nums">{{formatMoney .AllSourceReinvestment}}</td></tr>
+        {{if ne .HouseholdRoundingAdjustment 0.0}}<tr><th scope="row" class="p-2 text-left font-normal">Rounding adjustment</th><td class="p-2 text-right tabular-nums">{{formatMoney .HouseholdRoundingAdjustment}}</td></tr>{{end}}
+        <tr><th scope="row" class="p-2 text-left font-medium">Closing household wealth</th><td class="p-2 text-right tabular-nums font-medium">{{formatMoney .ClosingWealth}}</td></tr>
+      </tbody></table></div>
+      <h4 id="lifetime-accounts-{{.Year}}" class="mt-4 font-medium">Account reconciliation</h4>
+      <div class="relative overflow-x-auto rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" tabindex="0" role="region" aria-labelledby="lifetime-accounts-{{.Year}}"><table class="w-full text-sm text-gray-800 dark:text-gray-100"><caption class="sr-only">Account reconciliation for {{.Year}}</caption><thead><tr><th scope="col" class="p-2 text-left">Account</th><th scope="col" class="p-2 text-right">Opening</th><th scope="col" class="p-2 text-right">Deposits</th><th scope="col" class="p-2 text-right">Withdrawals</th><th scope="col" class="p-2 text-right">Return</th><th scope="col" class="p-2 text-right">Rounding adjustment</th><th scope="col" class="p-2 text-right">Closing</th></tr></thead><tbody>{{range .Accounts}}<tr><th scope="row" class="p-2 text-left font-normal">{{if .AccountName}}{{.AccountName}}{{else}}{{.AccountID}}{{end}}</th><td class="p-2 text-right">{{formatMoney .Opening}}</td><td class="p-2 text-right">{{formatMoney .Deposits}}</td><td class="p-2 text-right">{{formatMoney .Withdrawals}}</td><td class="p-2 text-right">{{formatMoney .Return}}</td><td class="p-2 text-right">{{if ne .RoundingAdjustment 0.0}}<span class="sr-only">Account rounding adjustment: </span>{{formatMoney .RoundingAdjustment}}{{else}}&mdash;{{end}}</td><td class="p-2 text-right">{{formatMoney .Closing}}</td></tr>{{end}}</tbody></table></div>
+      <h4 id="lifetime-rmd-{{.Year}}" class="mt-4 font-medium">Required minimum distributions</h4>
+      <div class="relative overflow-x-auto rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" tabindex="0" role="region" aria-labelledby="lifetime-rmd-{{.Year}}"><table class="w-full text-sm text-gray-800 dark:text-gray-100"><caption class="sr-only">Required minimum distributions for {{.Year}}</caption><thead><tr><th scope="col" class="p-2 text-left">Account</th><th scope="col" class="p-2 text-right">RMD obligation</th><th scope="col" class="p-2 text-right">Distributed gross</th><th scope="col" class="p-2 text-right">Credited</th><th scope="col" class="p-2 text-right">Taxable amount</th></tr></thead><tbody>{{range .RMD}}<tr><th scope="row" class="p-2 text-left font-normal">{{if .AccountName}}{{.AccountName}}{{else}}{{.AccountID}}{{end}}</th><td class="p-2 text-right">{{formatMoney .Obligation}}</td><td class="p-2 text-right">{{formatMoney .Distributed}}</td><td class="p-2 text-right">{{formatMoney .Credited}}</td><td class="p-2 text-right">{{formatMoney .Taxable}}</td></tr>{{end}}</tbody></table></div>
+      {{end}}
+    </section>
+  {{end}}
+  </div>
+</section>
+{{end}}{{end}}
+{{end}}

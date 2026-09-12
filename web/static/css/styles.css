@@ -312,3 +312,46 @@ input:focus, select:focus, textarea:focus {
     outline-offset: 2px;
     box-shadow: 0 0 0 2px rgb(255 255 255);
 }
+
+
+/* LP6A: keyboard-first skip navigation. It stays outside the header layout
+   until focused, then uses the existing high-contrast accent control color. */
+.skip-link {
+    position: fixed;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 100;
+    padding: 0.625rem 0.875rem;
+    border-radius: 0.375rem;
+    background: rgb(var(--accent-strong));
+    color: white;
+    font-weight: 600;
+    transform: translateY(calc(-100% - 1rem));
+}
+.skip-link:focus {
+    transform: translateY(0);
+}
+
+/* LP6A: allow the native file input to shrink beside Upload at phone widths. */
+.filemanager-upload-form,
+.filemanager-upload-input {
+    min-width: 0;
+}
+.filemanager-upload-input {
+    width: 100%;
+}
+
+/* LP6A: keep a long backup path inside the card while retaining a native,
+   keyboard-operable copy button and the exact selectable path text. */
+.backup-dir-copy {
+    display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+    text-align: left;
+}
+.backup-dir-copy code {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
+}

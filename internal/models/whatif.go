@@ -26,10 +26,11 @@ const (
 )
 
 type Person struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	BirthMonth string     `json:"birth_month"`
-	Role       PersonRole `json:"role"`
+	RetirementMonth string     `json:"retirement_month,omitempty"`
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	BirthMonth      string     `json:"birth_month"`
+	Role            PersonRole `json:"role"`
 }
 
 const yearMonthLayout = "2006-01"
@@ -73,6 +74,7 @@ type ScenarioChainLink struct {
 
 // WhatIfSettings contains all user parameters for retirement planning
 type WhatIfSettings struct {
+	Lifetime *LifetimeSettings `json:"lifetime,omitempty"`
 	// Scenario metadata
 	ScenarioName string `json:"scenario_name,omitempty"` // Display name for this scenario
 	// Scenario chaining: ordered list of scenarios to run after this one
@@ -895,32 +897,33 @@ func (s *WhatIfSettings) GetTaxableQualifiedDividendPercent() float64 {
 
 // ProjectionMonth represents a single month in the projection
 type ProjectionMonth struct {
-	Month                int     `json:"month"`
-	Year                 float64 `json:"year"`
-	CumulativeInflation  float64 `json:"cumulative_inflation,omitempty"`
-	PortfolioBalance     float64 `json:"portfolio_balance"`
-	PortfolioBalanceReal float64 `json:"portfolio_balance_real,omitempty"`
-	TaxDeferredBalance   float64 `json:"tax_deferred_balance"` // Tax-deferred portion (401k, IRA)
-	TaxableBalance       float64 `json:"taxable_balance"`      // Taxable portion (brokerage)
-	RothBalance          float64 `json:"roth_balance"`         // Roth portion (Roth IRA, Roth 401k)
-	GeneralExpenses      float64 `json:"general_expenses"`
-	HealthcareExpense    float64 `json:"healthcare_expense"`
-	TotalExpenses        float64 `json:"total_expenses"`
-	TotalExpensesReal    float64 `json:"total_expenses_real,omitempty"`
-	TotalIncome          float64 `json:"total_income"`
-	TotalIncomeReal      float64 `json:"total_income_real,omitempty"`
-	SocialSecurityIncome float64 `json:"social_security_income,omitempty"` // SS portion of TotalIncome (manual sources, or SS-optimizer output when active)
-	GrossIncome          float64 `json:"gross_income,omitempty"`
-	NetIncome            float64 `json:"net_income,omitempty"`
-	TaxesPaid            float64 `json:"taxes_paid,omitempty"`
-	StateTaxPaid         float64 `json:"state_tax_paid,omitempty"` // State portion of TaxesPaid (federal = TaxesPaid - StateTaxPaid)
-	NetWithdrawal        float64 `json:"net_withdrawal"`
-	FundingShortfall     float64 `json:"funding_shortfall,omitempty"`
-	RMDWithdrawal        float64 `json:"rmd_withdrawal"` // Forced RMD withdrawal (age 73+)
-	TaxableWithdrawals   float64 `json:"taxable_withdrawals,omitempty"`
-	RothConversions      float64 `json:"roth_conversions,omitempty"`
-	PortfolioGrowth      float64 `json:"portfolio_growth"`
-	Depleted             bool    `json:"depleted"`
+	Month                int                   `json:"month"`
+	Year                 float64               `json:"year"`
+	CumulativeInflation  float64               `json:"cumulative_inflation,omitempty"`
+	PortfolioBalance     float64               `json:"portfolio_balance"`
+	PortfolioBalanceReal float64               `json:"portfolio_balance_real,omitempty"`
+	TaxDeferredBalance   float64               `json:"tax_deferred_balance"` // Tax-deferred portion (401k, IRA)
+	TaxableBalance       float64               `json:"taxable_balance"`      // Taxable portion (brokerage)
+	RothBalance          float64               `json:"roth_balance"`         // Roth portion (Roth IRA, Roth 401k)
+	GeneralExpenses      float64               `json:"general_expenses"`
+	HealthcareExpense    float64               `json:"healthcare_expense"`
+	TotalExpenses        float64               `json:"total_expenses"`
+	TotalExpensesReal    float64               `json:"total_expenses_real,omitempty"`
+	TotalIncome          float64               `json:"total_income"`
+	TotalIncomeReal      float64               `json:"total_income_real,omitempty"`
+	SocialSecurityIncome float64               `json:"social_security_income,omitempty"` // SS portion of TotalIncome (manual sources, or SS-optimizer output when active)
+	GrossIncome          float64               `json:"gross_income,omitempty"`
+	NetIncome            float64               `json:"net_income,omitempty"`
+	TaxesPaid            float64               `json:"taxes_paid,omitempty"`
+	StateTaxPaid         float64               `json:"state_tax_paid,omitempty"` // State portion of TaxesPaid (federal = TaxesPaid - StateTaxPaid)
+	NetWithdrawal        float64               `json:"net_withdrawal"`
+	FundingShortfall     float64               `json:"funding_shortfall,omitempty"`
+	RMDWithdrawal        float64               `json:"rmd_withdrawal"` // Forced RMD withdrawal (age 73+)
+	TaxableWithdrawals   float64               `json:"taxable_withdrawals,omitempty"`
+	RothConversions      float64               `json:"roth_conversions,omitempty"`
+	PortfolioGrowth      float64               `json:"portfolio_growth"`
+	Depleted             bool                  `json:"depleted"`
+	Lifetime             *LifetimeMonthOutcome `json:"lifetime,omitempty"`
 
 	// Withdrawal source tracking
 	WithdrawalFromTaxDeferred float64 `json:"withdrawal_tax_deferred,omitempty"`
@@ -934,13 +937,16 @@ type ProjectionMonth struct {
 
 // ProjectionResult contains the complete projection with summary metrics
 type ProjectionResult struct {
-	Months          []ProjectionMonth       `json:"months"`
-	YearlySummaries []ProjectionYearSummary `json:"yearly_summaries,omitempty"`
-	LongevityYears  *float64                `json:"longevity_years"` // nil if portfolio survives
-	FinalBalance    float64                 `json:"final_balance"`
-	DepletionMonth  *int                    `json:"depletion_month"` // nil if no depletion
-	Survives        bool                    `json:"survives"`
-	GuardrailEvents []GuardrailEvent        `json:"guardrail_events,omitempty"`
+	CalculationError      string                  `json:"calculation_error,omitempty"`
+	Months                []ProjectionMonth       `json:"months"`
+	YearlySummaries       []ProjectionYearSummary `json:"yearly_summaries,omitempty"`
+	LifetimeYearSummaries []LifetimeYearSummary   `json:"lifetime_year_summaries,omitempty"`
+	LifetimeDiagnostics   *LifetimeDiagnostics    `json:"-"`
+	LongevityYears        *float64                `json:"longevity_years"` // nil if portfolio survives
+	FinalBalance          float64                 `json:"final_balance"`
+	DepletionMonth        *int                    `json:"depletion_month"` // nil if no depletion
+	Survives              bool                    `json:"survives"`
+	GuardrailEvents       []GuardrailEvent        `json:"guardrail_events,omitempty"`
 }
 
 // ProjectionYearSummary reconciles one projection year for explainability.
@@ -1141,12 +1147,15 @@ type RMDAnalysis struct {
 
 // PresentValueAnalysis shows PV of expenses vs income
 type PresentValueAnalysis struct {
-	PVExpenses     float64 `json:"pv_expenses"`        // Living + healthcare + property tax + expense sources + one-time expenses
-	PVTaxes        float64 `json:"pv_taxes,omitempty"` // Discounted income taxes + IRMAA from the projection (0 when no projection is supplied)
-	PVIncome       float64 `json:"pv_income"`
-	PVGap          float64 `json:"pv_gap"`          // (PV Expenses + PV Taxes) - PV Income
-	CoverageRatio  float64 `json:"coverage_ratio"`  // (Portfolio + PV Income) / (PV Expenses + PV Taxes)
-	SurplusDeficit float64 `json:"surplus_deficit"` // Portfolio + PV Income - PV Expenses - PV Taxes
+	Available         bool    `json:"available"`
+	UnavailableReason string  `json:"unavailable_reason,omitempty"`
+	StartingAssets    float64 `json:"starting_assets,omitempty"`
+	PVExpenses        float64 `json:"pv_expenses"`        // Living + healthcare + property tax + expense sources + one-time expenses
+	PVTaxes           float64 `json:"pv_taxes,omitempty"` // Discounted income taxes + IRMAA from the projection (0 when no projection is supplied)
+	PVIncome          float64 `json:"pv_income"`
+	PVGap             float64 `json:"pv_gap"`          // (PV Expenses + PV Taxes) - PV Income
+	CoverageRatio     float64 `json:"coverage_ratio"`  // (Portfolio + PV Income) / (PV Expenses + PV Taxes)
+	SurplusDeficit    float64 `json:"surplus_deficit"` // Portfolio + PV Income - PV Expenses - PV Taxes
 }
 
 // SustainabilityScore represents a 0-100 score with visual attributes
@@ -1217,11 +1226,12 @@ type SensitivityScenario struct {
 
 // SensitivityResult contains the outcome of a scenario test
 type SensitivityResult struct {
-	Scenario       SensitivityScenario `json:"scenario"`
-	LongevityYears *float64            `json:"longevity_years"`
-	FinalBalance   float64             `json:"final_balance"`
-	Survives       bool                `json:"survives"`
-	ScoreChange    int                 `json:"score_change"` // vs baseline
+	Scenario         SensitivityScenario `json:"scenario"`
+	LongevityYears   *float64            `json:"longevity_years"`
+	FinalBalance     float64             `json:"final_balance"`
+	Survives         bool                `json:"survives"`
+	ScoreChange      int                 `json:"score_change"` // vs baseline
+	CalculationError string              `json:"calculation_error,omitempty"`
 }
 
 // FailurePoint describes either a bracketed transition or a surviving outer search bound.
@@ -1242,6 +1252,7 @@ type FailurePoint struct {
 type FailurePointAnalysis struct {
 	FailurePoints    []FailurePoint `json:"failure_points"`
 	BaselineSurvives bool           `json:"baseline_survives"` // Does current scenario survive?
+	CalculationError string         `json:"calculation_error,omitempty"`
 }
 
 // MonteCarloGuardrailImpact records the lived spending path observed in one
@@ -1260,15 +1271,17 @@ type MonteCarloGuardrailImpact struct {
 
 // MonteCarloResult represents a single simulation run outcome
 type MonteCarloResult struct {
-	FinalBalance    float64                    `json:"final_balance"`
-	DepletionYear   float64                    `json:"depletion_year"` // 0 if survives
-	Survives        bool                       `json:"survives"`
-	TotalIRMAA      float64                    `json:"total_irmaa"`      // Cumulative IRMAA surcharge over the run
-	MarketCrashes   int                        `json:"market_crashes"`   // Number of crash years
-	SpendingShocks  int                        `json:"spending_shocks"`  // Number of spending shock events
-	HealthShocks    int                        `json:"health_shocks"`    // Number of health emergency events
-	ProjectionYears int                        `json:"projection_years"` // Actual years projected (varies with longevity)
-	GuardrailImpact *MonteCarloGuardrailImpact `json:"guardrail_impact"`
+	CalculationError    string                     `json:"calculation_error,omitempty"`
+	FinalBalance        float64                    `json:"final_balance"`
+	DepletionYear       float64                    `json:"depletion_year"` // 0 if survives
+	Survives            bool                       `json:"survives"`
+	TotalIRMAA          float64                    `json:"total_irmaa"`      // Cumulative IRMAA surcharge over the run
+	MarketCrashes       int                        `json:"market_crashes"`   // Number of crash years
+	SpendingShocks      int                        `json:"spending_shocks"`  // Number of spending shock events
+	HealthShocks        int                        `json:"health_shocks"`    // Number of health emergency events
+	ProjectionYears     int                        `json:"projection_years"` // Actual years projected (varies with longevity)
+	GuardrailImpact     *MonteCarloGuardrailImpact `json:"guardrail_impact"`
+	LifetimeDiagnostics *LifetimeDiagnostics       `json:"-"`
 
 	// Crash timing breakdown
 	EarlyCrashes   int `json:"early_crashes"`    // Crashes in years 1-5
@@ -1382,8 +1395,9 @@ type MonteCarloDistBucket struct {
 
 // MonteCarloAnalysis contains complete simulation analysis
 type MonteCarloAnalysis struct {
-	Stats        *MonteCarloStats        `json:"stats"`
-	Distribution *MonteCarloDistribution `json:"distribution"`
+	CalculationError string                  `json:"calculation_error,omitempty"`
+	Stats            *MonteCarloStats        `json:"stats"`
+	Distribution     *MonteCarloDistribution `json:"distribution"`
 }
 
 // FilingStatus represents IRS tax filing status
@@ -1567,19 +1581,22 @@ type HistoricalYear struct {
 
 // HistoricalBacktestResult represents testing retirement from one starting year
 type HistoricalBacktestResult struct {
-	StartYear           int     `json:"start_year"`
-	EndYear             int     `json:"end_year"`
-	Survives            bool    `json:"survives"`
-	FinalBalance        float64 `json:"final_balance"`        // Nominal final balance
-	FinalBalanceReal    float64 `json:"final_balance_real"`   // Inflation-adjusted (start-year dollars)
-	CumulativeInflation float64 `json:"cumulative_inflation"` // Total inflation factor over period
-	DepletionYear       int     `json:"depletion_year"`       // Year of depletion (0 if survives)
-	WorstDrawdown       float64 `json:"worst_drawdown"`       // Worst portfolio decline %
-	SequenceQuality     string  `json:"sequence_quality"`     // "favorable", "neutral", "adverse"
+	CalculationError    string               `json:"calculation_error,omitempty"`
+	StartYear           int                  `json:"start_year"`
+	EndYear             int                  `json:"end_year"`
+	Survives            bool                 `json:"survives"`
+	FinalBalance        float64              `json:"final_balance"`        // Nominal final balance
+	FinalBalanceReal    float64              `json:"final_balance_real"`   // Inflation-adjusted (start-year dollars)
+	CumulativeInflation float64              `json:"cumulative_inflation"` // Total inflation factor over period
+	DepletionYear       int                  `json:"depletion_year"`       // Year of depletion (0 if survives)
+	WorstDrawdown       float64              `json:"worst_drawdown"`       // Worst portfolio decline %
+	SequenceQuality     string               `json:"sequence_quality"`
+	LifetimeDiagnostics *LifetimeDiagnostics `json:"-"` // "favorable", "neutral", "adverse"
 }
 
 // HistoricalBacktestAnalysis contains complete backtesting results
 type HistoricalBacktestAnalysis struct {
+	CalculationError      string                     `json:"calculation_error,omitempty"`
 	DataStartYear         int                        `json:"data_start_year"`
 	DataEndYear           int                        `json:"data_end_year"`
 	TotalSequences        int                        `json:"total_sequences"`
@@ -1687,6 +1704,7 @@ type TaxOptimizerAnalysis struct {
 
 // WhatIfAnalysis is the complete analysis container returned to templates
 type WhatIfAnalysis struct {
+	CalculationError         string                      `json:"calculation_error,omitempty"`
 	Settings                 *WhatIfSettings             `json:"settings"`
 	Projection               *ProjectionResult           `json:"projection"`
 	ProjectionExplainability *ProjectionExplainability   `json:"projection_explainability,omitempty"`

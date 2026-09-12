@@ -428,6 +428,10 @@ func handleWhatIfSync(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if settings.Lifetime != nil {
+		renderError(w, "Dashboard sync is unavailable while Lifetime accounts are active. Edit income and expenses in the Lifetime plan.", http.StatusUnprocessableEntity)
+		return
+	}
 
 	plan, err := computeDashboardSync(settings)
 	if err != nil {
@@ -536,6 +540,10 @@ func handleWhatIfSyncApply(w http.ResponseWriter, r *http.Request) {
 	settings, err := retirementMgr.LoadContext(r.Context())
 	if err != nil {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if settings.Lifetime != nil {
+		renderRetargetedError(w, "Dashboard sync is unavailable while Lifetime accounts are active. Edit income and expenses in the Lifetime plan.", http.StatusUnprocessableEntity, "#whatif-sync-preview")
 		return
 	}
 

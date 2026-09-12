@@ -66,6 +66,7 @@ type ProjectionState struct {
 	// big-ticket pass into the first month's PortfolioMonthInput; reset
 	// after it is consumed.
 	BigTicketRothEarnings float64
+	Lifetime              *LifetimeAccountState
 }
 
 // MonthReturns carries the per-month inputs that legitimately differ
@@ -97,13 +98,18 @@ type MonthReturns struct {
 	DiscretionaryMultiplier float64
 	// ExtraExpenses is added after all expense sources (Monte Carlo's
 	// spending/health shocks); 0 elsewhere.
-	ExtraExpenses float64
+	ExtraExpenses     float64
+	AssetClassMonthly *AssetClassMonthReturns
 }
+
+type AssetClassMonthReturns struct{ Stock, Bond, Cash float64 }
 
 // MonthOutcome reports one stepped month back to the loop.
 type MonthOutcome struct {
-	Result TaxAwarePortfolioMonthResult
-	Income MonthlyIncomeBreakdown
+	Err      error
+	Lifetime *models.LifetimeMonthOutcome
+	Result   TaxAwarePortfolioMonthResult
+	Income   MonthlyIncomeBreakdown
 
 	// TotalExpenses is the month's guardrail-adjusted expense total
 	// including the IRMAA surcharge; PlannedExpenses is the same without
@@ -175,6 +181,10 @@ func NewProjectionState(in Input) *ProjectionState {
 	if s.Guardrails != nil && s.Guardrails.Enabled {
 		st.Guardrails = NewGuardrailState(s.PortfolioValue)
 	}
+	if s.Lifetime != nil {
+		st.Lifetime = NewLifetimeAccountState(s)
+		st.syncLifetimeAggregates()
+	}
 	return st
 }
 
@@ -187,6 +197,9 @@ func (st *ProjectionState) Settings() *models.WhatIfSettings {
 // ZeroBalances empties every account — the canonical loop's depletion
 // bookkeeping.
 func (st *ProjectionState) ZeroBalances() {
+	if st.Lifetime != nil {
+		st.Lifetime.Zero()
+	}
 	st.TaxDeferredBalance = 0
 	st.RothBalance = 0
 	st.TaxableAccount = NewTaxableAccountState(st.active, 0)
@@ -204,6 +217,21 @@ func (st *ProjectionState) ZeroBalances() {
 // randomness for the month, in its legacy order, to keep RNG streams
 // stable.
 func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSettings, month int) MonthReturns) MonthOutcome {
+	if st.Lifetime != nil {
+		work := *st
+		work.Lifetime = st.Lifetime.Clone()
+		work.CompletedMAGIHistory = append([]float64(nil), st.CompletedMAGIHistory...)
+		if st.TaxCalculator != nil {
+			calculator := *st.TaxCalculator
+			work.TaxCalculator = &calculator
+		}
+		out := work.stepLifetimeMonth(m, returnsFor)
+		if out.Err != nil {
+			return out
+		}
+		*st = work
+		return out
+	}
 	s := st.active
 	currentYear := m / 12
 	monthInYear := m % 12

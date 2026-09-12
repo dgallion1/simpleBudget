@@ -23,6 +23,13 @@ import (
 func FailurePointsWithBaseline(eng *engine.Engine, in engine.Input, baseProjection *models.ProjectionResult) *models.FailurePointAnalysis {
 	failurePoints := make([]models.FailurePoint, 0)
 
+	if baseProjection.CalculationError != "" {
+		return &models.FailurePointAnalysis{FailurePoints: failurePoints, CalculationError: baseProjection.CalculationError}
+	}
+	if in.Prepared.Settings().Lifetime != nil {
+		return &models.FailurePointAnalysis{CalculationError: "Failure-point analysis is unavailable for account-authoritative Lifetime plans."}
+	}
+
 	// If baseline already fails, we can't find "failure thresholds"
 	if !baseProjection.Survives {
 		return &models.FailurePointAnalysis{

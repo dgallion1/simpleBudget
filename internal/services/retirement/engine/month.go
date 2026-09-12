@@ -30,12 +30,15 @@ func earlyWithdrawalPenaltyRate(currentAge, currentYear int) float64 {
 func deterministicMonthReturns(s *models.WhatIfSettings, m int) MonthReturns {
 	currentYear := m / 12
 	var taxDeferredReturn, rothReturn, taxableReturn float64
+	stockMean, bondMean, cashMean := 7.0, 4.0, 3.0
+	if s.InvestmentReturn != 0 {
+		stockMean, bondMean, cashMean = s.InvestmentReturn, s.InvestmentReturn, s.InvestmentReturn
+	}
 	if s.InvestmentReturn != 0 {
 		taxDeferredReturn = s.InvestmentReturn
 		rothReturn = s.InvestmentReturn
 		taxableReturn = s.InvestmentReturn
 	} else {
-		stockMean, bondMean, cashMean := 7.0, 4.0, 3.0
 		tdStock, tdBond, tdCash, rothStock, rothBond, rothCash, taxStock, taxBond, taxCash := s.GetAllocationAtYear(currentYear)
 		taxDeferredReturn = models.GetBlendedReturn(tdStock, tdBond, tdCash, stockMean, bondMean, cashMean)
 		rothReturn = models.GetBlendedReturn(rothStock, rothBond, rothCash, stockMean, bondMean, cashMean)
@@ -50,6 +53,7 @@ func deterministicMonthReturns(s *models.WhatIfSettings, m int) MonthReturns {
 		TaxableAnnualPercent:    taxableReturn,
 		InflationAnnual:         s.InflationRate / 100,
 		NetInflationAnnual:      (s.InflationRate - s.SpendingDeclineRate) / 100,
+		AssetClassMonthly:       &AssetClassMonthReturns{Stock: math.Pow(1+stockMean/100, 1.0/12) - 1, Bond: math.Pow(1+bondMean/100, 1.0/12) - 1, Cash: math.Pow(1+cashMean/100, 1.0/12) - 1},
 		HealthcareMultiplier:    1,
 		DiscretionaryMultiplier: 1,
 	}
@@ -64,6 +68,9 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 	s := st.Settings()
 	months := s.ProjectionYears * 12
 	projection := make([]models.ProjectionMonth, 0, months)
+	lifetimeByYear := map[int][]models.LifetimeMonthOutcome{}
+	lifetimeYearOrder := []int{}
+	var lifetimeDiagnostics models.LifetimeDiagnostics
 
 	var depletionMonth *int
 	var longevityYears *float64
@@ -108,9 +115,23 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			}
 		}
 
-		out := st.StepMonth(m, deterministicMonthReturns)
+		returns := deterministicMonthReturns
+		if in.MonthReturnsOverride != nil {
+			returns = in.MonthReturnsOverride
+		}
+		out := st.StepMonth(m, returns)
+		if out.Err != nil {
+			return &models.ProjectionResult{Months: projection, CalculationError: out.Err.Error()}
+		}
 		if out.GuardrailEvent != nil {
 			guardrailEvents = append(guardrailEvents, *out.GuardrailEvent)
+		}
+		if out.Lifetime != nil {
+			if _, ok := lifetimeByYear[out.Lifetime.Year]; !ok {
+				lifetimeYearOrder = append(lifetimeYearOrder, out.Lifetime.Year)
+			}
+			lifetimeByYear[out.Lifetime.Year] = append(lifetimeByYear[out.Lifetime.Year], *out.Lifetime)
+			AccumulateLifetimeDiagnostics(&lifetimeDiagnostics, out.Lifetime)
 		}
 
 		monthResult := out.Result
@@ -181,6 +202,7 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 			RothConversions:           out.RothConversion,
 			PortfolioGrowth:           monthResult.TotalGrowth,
 			Depleted:                  depleted,
+			Lifetime:                  out.Lifetime,
 			WithdrawalFromTaxDeferred: cashFlow.WithdrawalFromTaxDeferred,
 			WithdrawalFromTaxable:     cashFlow.WithdrawalFromTaxable,
 			WithdrawalFromRoth:        cashFlow.WithdrawalFromRoth,
@@ -199,9 +221,20 @@ func runMonthlyLoop(in Input) *models.ProjectionResult {
 		finalizeCurrentYear(projection[len(projection)-1])
 	}
 
+	lifetimeYears := make([]models.LifetimeYearSummary, 0, len(lifetimeYearOrder))
+	for _, year := range lifetimeYearOrder {
+		lifetimeYears = append(lifetimeYears, models.AggregateLifetimeYear(lifetimeByYear[year]))
+	}
 	return &models.ProjectionResult{
-		Months:          projection,
-		YearlySummaries: yearlySummaries,
+		Months:                projection,
+		YearlySummaries:       yearlySummaries,
+		LifetimeYearSummaries: lifetimeYears,
+		LifetimeDiagnostics: func() *models.LifetimeDiagnostics {
+			if !in.CaptureLifetimeDiagnostics {
+				return nil
+			}
+			return st.CaptureLifetimeDiagnostics(lifetimeDiagnostics)
+		}(),
 		LongevityYears:  longevityYears,
 		FinalBalance:    finalBalance,
 		DepletionMonth:  depletionMonth,

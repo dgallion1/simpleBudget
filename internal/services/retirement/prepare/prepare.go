@@ -60,6 +60,12 @@ func From(cfg *models.WhatIfSettings) (PreparedSettings, error) {
 	if err := ValidateOneTimeExpenses(clone); err != nil {
 		return PreparedSettings{}, fmt.Errorf("prepare.From: validate: %w", err)
 	}
+	if err := ValidateLifetime(clone); err != nil {
+		return PreparedSettings{}, fmt.Errorf("prepare.From: validate: %w", err)
+	}
+	if clone.Lifetime != nil {
+		clone.Lifetime.StartMonth = clone.StartDate
+	}
 	return PreparedSettings{s: clone}, nil
 }
 

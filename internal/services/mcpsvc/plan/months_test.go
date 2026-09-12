@@ -77,3 +77,20 @@ func TestMonthWindow_RejectsInvertedRangeStatingValidRange(t *testing.T) {
 		t.Errorf("error should state the valid 0..23 range, got: %v", err)
 	}
 }
+
+func TestMonthWindowCalculationError(t *testing.T) {
+	_, err := MonthWindow(&models.ProjectionResult{CalculationError: "failed", Months: []models.ProjectionMonth{{}}}, 0, 0)
+	if err == nil || !strings.Contains(err.Error(), "failed") {
+		t.Fatalf("err=%v", err)
+	}
+}
+func TestMonthWindowCarriesCanonicalLifetimeRecord(t *testing.T) {
+	fact := &models.LifetimeMonthOutcome{Year: 2026, Month: 9, ExternalIncome: 100, TaxPayments: 8}
+	rows, err := MonthWindow(&models.ProjectionResult{Months: []models.ProjectionMonth{{Lifetime: fact}}}, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].Lifetime == nil || rows[0].Lifetime.Year != 2026 || rows[0].Lifetime.TaxPayments != 8 {
+		t.Fatalf("row=%+v", rows[0])
+	}
+}

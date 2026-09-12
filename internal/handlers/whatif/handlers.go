@@ -616,6 +616,9 @@ func buildProjectionChartEvents(settings *models.WhatIfSettings, projection *mod
 }
 
 func buildProjectionChartData(settings *models.WhatIfSettings, projection *models.ProjectionResult, displayDollars string) map[string]interface{} {
+	if projection != nil && projection.CalculationError != "" {
+		return map[string]interface{}{"calculationError": projection.CalculationError, "data": []map[string]interface{}{}}
+	}
 	displayDollars = normalizeDisplayDollars(displayDollars)
 	if projection == nil {
 		projection = &models.ProjectionResult{}
@@ -936,6 +939,9 @@ func RegisterRoutes(r chi.Router) {
 	r.Get("/whatif", handleWhatIf)
 	r.Post("/whatif/calculate", handleWhatIfCalculate)
 	r.Post("/whatif/settings", handleWhatIfSettings)
+	r.Post("/whatif/lifetime/preview", handleWhatIfLifetimePreview)
+	r.Post("/whatif/lifetime/save", handleWhatIfLifetimeSave)
+	r.Post("/whatif/lifetime/remove", handleWhatIfLifetimeRemove)
 	r.Post("/whatif/income", handleWhatIfAddIncome)
 	r.Put("/whatif/income/{id}", handleWhatIfUpdateIncome)
 	r.Delete("/whatif/income/{id}", handleWhatIfDeleteIncome)
@@ -988,10 +994,11 @@ func RegisterRoutes(r chi.Router) {
 }
 
 func handleWhatIf(w http.ResponseWriter, r *http.Request) {
-	settings, err := retirementMgr.LoadContext(r.Context())
+	settings, settingsRevision, err := retirementMgr.LoadContextWithRevision(r.Context())
 	if err != nil {
 		log.Printf("Error loading what-if settings: %v", err)
-		settings = models.DefaultWhatIfSettings()
+		renderError(w, "Failed to load what-if settings: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	// Run the fast analysis immediately on a cache miss (or serve the cached
@@ -1018,6 +1025,7 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		"Scenarios":               scenarios,
 		"ActiveScenario":          activeScenario,
 		"ActiveFilename":          activeFilename,
+		"SettingsRevision":        settingsRevision,
 		"Findings":                findings,
 		"AnalysisPending":         pendingHash != "",
 		"AsyncHash":               pendingHash,
@@ -1133,6 +1141,9 @@ func handleWhatIfIncomeChart(w http.ResponseWriter, r *http.Request) {
 // displayDollars == "real", values are deflated to today's dollars
 // using each month's cumulative inflation factor.
 func buildIncomeChartData(settings *models.WhatIfSettings, projection *models.ProjectionResult, displayDollars string) map[string]interface{} {
+	if projection != nil && projection.CalculationError != "" {
+		return map[string]interface{}{"calculationError": projection.CalculationError, "data": []map[string]interface{}{}}
+	}
 	displayDollars = normalizeDisplayDollars(displayDollars)
 	if projection == nil {
 		projection = &models.ProjectionResult{}
@@ -1158,6 +1169,10 @@ func buildIncomeChartData(settings *models.WhatIfSettings, projection *models.Pr
 
 		ss := m.SocialSecurityIncome
 		other := m.TotalIncome - m.SocialSecurityIncome
+		if m.Lifetime != nil {
+			ss = 0
+			other = m.Lifetime.ExternalIncome - m.Lifetime.EmployeeContributions
+		}
 		if other < 0 {
 			other = 0
 		}

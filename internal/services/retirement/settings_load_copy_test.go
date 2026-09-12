@@ -1,6 +1,8 @@
 package retirement
 
 import (
+	"encoding/json"
+	"reflect"
 	"testing"
 
 	"budget2/internal/models"
@@ -392,5 +394,70 @@ func TestMutatorReturnDoesNotAliasCache(t *testing.T) {
 			}
 			tc.verify(t, again)
 		})
+	}
+}
+
+func TestLifetimeSettingsLoadCopyRoundTripAndReject(t *testing.T) {
+	sm := newAgedManager(t)
+	s, err := sm.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Persons[0].RetirementMonth = "2035-04"
+	s.Lifetime = &models.LifetimeSettings{Version: 1,
+		Accounts: []models.LifetimeAccount{
+			{ID: "cash", OwnerID: "p1", LegalType: "cash", TaxTreatment: "taxable", OpeningValue: 1000, CashPercent: 100},
+			{ID: "broker", OwnerID: "p1", LegalType: "brokerage", TaxTreatment: "taxable", OpeningValue: 1234.56, Basis: 1400, StockPercent: 60, BondPercent: 40},
+			{ID: "trad", OwnerID: "p1", LegalType: "401k", TaxTreatment: "traditional", PlanID: "plan", EmployerID: "employer", LimitGroup: "shared", StockPercent: 100},
+		},
+		Jobs:              []models.LifetimeJob{{ID: "job", OwnerID: "p1", EmployerID: "employer", StartMonth: "2026-01", EndAtRetirement: true, GrossSalary: 100000, EligibleCompensation: 95000, PriorSponsorWages: 160000}},
+		ContributionRules: []models.ContributionRule{{ID: "rule", JobID: "job", StartMonth: "2026-01", EndAtRetirement: true, Rate: models.ContributionRate{Mode: "percent", PercentOfCompensation: 10}, TraditionalAccountID: "trad", Changes: []models.ContributionChange{{Month: "2028-01", Rate: models.ContributionRate{Mode: "fixed", FixedMonthly: 2000}}}, Employer: &models.EmployerContribution{Mode: "match", MatchTiming: "monthly", DestinationAccountID: "trad", TrueUp: true, DepartureTrueUp: true, Tiers: []models.MatchTier{{FromPercent: 0, ToPercent: 6, MatchPercent: 50}}}}},
+		ScheduledSavings:  []models.ScheduledSaving{{ID: "save", OwnerID: "p1", DestinationAccountID: "broker", MonthlyAmount: 500, StartMonth: "2026-01"}},
+		CashPolicy:        models.LifetimeCashPolicy{ReserveAccountID: "cash", ReserveTarget: 10000, SurplusAccountID: "broker", WithdrawalOrder: []string{"cash", "broker", "trad"}},
+		YTD:               models.LifetimeYTD{Year: 2026, ZeroHistoryAcknowledged: true},
+	}
+	if err := sm.Save(s); err != nil {
+		t.Fatal(err)
+	}
+	fresh := NewSettingsManager(sm.settingsDir, sm.store)
+	loaded, err := fresh.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(loaded.Lifetime, s.Lifetime) || loaded.Persons[0].RetirementMonth != "2035-04" {
+		t.Fatal("disk roundtrip lost lifetime fields")
+	}
+	loaded.Lifetime.ContributionRules[0].Employer.Tiers[0].MatchPercent = 75
+	loaded.Lifetime.ContributionRules[0].Changes[0].Rate.FixedMonthly = 999
+	loaded.Lifetime.Accounts[1].Basis = 1
+	loaded.Lifetime.CashPolicy.WithdrawalOrder[0] = "trad"
+	cached, err := fresh.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(cached.Lifetime, s.Lifetime) {
+		t.Fatal("load aliases nested lifetime settings")
+	}
+	revision := fresh.Revision()
+	cached.Lifetime.Jobs[0].OwnerID = "dangling"
+	if err := fresh.Save(cached); err == nil {
+		t.Fatal("invalid lifetime save accepted")
+	}
+	if fresh.Revision() != revision {
+		t.Fatal("invalid save advanced revision")
+	}
+	unchanged, err := fresh.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(unchanged.Lifetime, s.Lifetime) {
+		t.Fatal("rejected save overwrote cache")
+	}
+	raw, err := json.Marshal(cached)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := fresh.decodeSettings(raw); err == nil {
+		t.Fatal("disk decode accepted invalid lifetime")
 	}
 }

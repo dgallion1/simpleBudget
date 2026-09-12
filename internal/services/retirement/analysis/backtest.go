@@ -13,6 +13,7 @@ import (
 // HistoricalSequenceResult represents the outcome of one historical
 // sequence within a backtest.
 type HistoricalSequenceResult struct {
+	CalculationError    string
 	StartYear           int     // Year this sequence started
 	Survives            bool    // Did the portfolio survive the full period?
 	FinalBalance        float64 // Nominal balance at end of projection
@@ -24,6 +25,7 @@ type HistoricalSequenceResult struct {
 	WorstDrawdown       float64 // Worst percentage drawdown from peak
 	AvgWithdrawRate     float64 // Average withdrawal rate across the period
 	TotalIRMAA          float64 // Cumulative IRMAA surcharge over the period
+	LifetimeDiagnostics *models.LifetimeDiagnostics
 }
 
 func yearsUntilDepletion(result HistoricalSequenceResult) int {
@@ -70,6 +72,11 @@ func HistoricalBacktest(in engine.Input, data history.Data) *models.HistoricalBa
 	})
 
 	successCount := 0
+	for _, r := range results {
+		if r.CalculationError != "" {
+			return &models.HistoricalBacktestAnalysis{CalculationError: r.CalculationError}
+		}
+	}
 	for _, result := range results {
 		if result.Survives {
 			successCount++
@@ -141,12 +148,14 @@ func HistoricalBacktest(in engine.Input, data history.Data) *models.HistoricalBa
 	for i, r := range sortedByOutcome {
 		sequenceDetails[i] = models.HistoricalBacktestResult{
 			StartYear:           r.StartYear,
+			CalculationError:    r.CalculationError,
 			Survives:            r.Survives,
 			FinalBalance:        r.FinalBalance,
 			FinalBalanceReal:    r.FinalBalanceReal,
 			CumulativeInflation: r.CumulativeInflation,
 			DepletionYear:       r.DepletionYear,
 			WorstDrawdown:       r.WorstDrawdown,
+			LifetimeDiagnostics: r.LifetimeDiagnostics,
 		}
 	}
 
@@ -206,6 +215,7 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 	// Get per-account asset allocations (consistent with main projection and Monte Carlo)
 	tdStock, tdBond, tdCash, rothStock, rothBond, rothCash, taxStock, taxBond, taxCash := s.GetAllocationAtYear(0)
 
+	var lifetimeDiagnostics models.LifetimeDiagnostics
 	result := HistoricalSequenceResult{
 		StartYear:       startYear,
 		Survives:        true,
@@ -242,6 +252,7 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 			// The seam takes the taxable return in percent; passing the raw
 			// decimal here once understated taxable appreciation ~100x.
 			TaxableAnnualPercent:    taxAnnualReturn * 100,
+			AssetClassMonthly:       &engine.AssetClassMonthReturns{Stock: math.Pow(1+stockReturn, 1.0/12) - 1, Bond: math.Pow(1+bondReturn, 1.0/12) - 1, Cash: math.Pow(1+cashReturn, 1.0/12) - 1},
 			InflationAnnual:         inflationRate,
 			NetInflationAnnual:      inflationRate - s.SpendingDeclineRate/100,
 			HealthcareMultiplier:    1,
@@ -252,7 +263,17 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 	for m := 0; m < months; m++ {
 		currentYear := m / 12
 
-		out := st.StepMonth(m, btReturns)
+		returns := btReturns
+		if in.MonthReturnsOverride != nil {
+			returns = in.MonthReturnsOverride
+		}
+		out := st.StepMonth(m, returns)
+		if out.Err != nil {
+			result.CalculationError = out.Err.Error()
+			result.Survives = false
+			return result
+		}
+		engine.AccumulateLifetimeDiagnostics(&lifetimeDiagnostics, out.Lifetime)
 		result.TotalIRMAA += out.Result.IRMAAExpense
 		totalWithdrawals += out.Result.CashFlow.GrossWithdrawal()
 
@@ -291,6 +312,9 @@ func runSingleHistoricalSequence(in engine.Input, data history.Data, startYear i
 	}
 
 	result.FinalBalance = totalBalance
+	if in.CaptureLifetimeDiagnostics {
+		result.LifetimeDiagnostics = st.CaptureLifetimeDiagnostics(lifetimeDiagnostics)
+	}
 	result.FinalBalanceReal = totalBalance / st.CumulativeInflation // Convert to start-year dollars
 	result.CumulativeInflation = st.CumulativeInflation
 	result.LowestBalance = lowestBalance

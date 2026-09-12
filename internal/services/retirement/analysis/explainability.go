@@ -11,6 +11,12 @@ import (
 // runs), the function rebuilds the summaries from monthly rows using
 // the prepared settings' starting portfolio value.
 func BuildExplainability(proj *models.ProjectionResult, in engine.Input) *models.ProjectionExplainability {
+	if in.Prepared.Settings().Lifetime != nil {
+		return nil
+	}
+	if proj != nil && proj.CalculationError != "" {
+		return nil
+	}
 	if proj == nil || len(proj.Months) == 0 {
 		return nil
 	}

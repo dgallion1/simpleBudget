@@ -1,0 +1,258 @@
+{
+  "lifetime": {
+    "version": 1,
+    "accounts": [
+      {
+        "id": "account-1",
+        "name": "Concurrent saved cash",
+        "owner_id": "e79786f5-d2f6-4e09-b3ba-59acc4d1f68f",
+        "legal_type": "cash",
+        "tax_treatment": "taxable",
+        "capabilities": {
+          "allow_catch_up": false,
+          "allow_roth_catch_up": false,
+          "allow_employee_roth": false,
+          "allow_employer_roth": false,
+          "restrict_employee_compensation_to_limit": false
+        },
+        "opening_value": 25000,
+        "basis": 0,
+        "stock_percent": 0,
+        "bond_percent": 0,
+        "cash_percent": 100
+      },
+      {
+        "id": "account-2",
+        "name": "Brokerage",
+        "owner_id": "e79786f5-d2f6-4e09-b3ba-59acc4d1f68f",
+        "legal_type": "brokerage",
+        "tax_treatment": "taxable",
+        "capabilities": {
+          "allow_catch_up": false,
+          "allow_roth_catch_up": false,
+          "allow_employee_roth": false,
+          "allow_employer_roth": false,
+          "restrict_employee_compensation_to_limit": false
+        },
+        "opening_value": 50000,
+        "basis": 0,
+        "stock_percent": 100,
+        "bond_percent": 0,
+        "cash_percent": 0
+      },
+      {
+        "id": "account-3",
+        "name": "Workplace traditional",
+        "owner_id": "e79786f5-d2f6-4e09-b3ba-59acc4d1f68f",
+        "legal_type": "401k",
+        "tax_treatment": "traditional",
+        "plan_id": "Acme 401k",
+        "employer_id": "Acme",
+        "limit_group": "Acme 401k",
+        "capabilities": {
+          "allow_catch_up": false,
+          "allow_roth_catch_up": false,
+          "allow_employee_roth": false,
+          "allow_employer_roth": false,
+          "restrict_employee_compensation_to_limit": false
+        },
+        "opening_value": 100000,
+        "basis": 0,
+        "stock_percent": 100,
+        "bond_percent": 0,
+        "cash_percent": 0
+      }
+    ],
+    "jobs": [
+      {
+        "id": "job-4",
+        "name": "Acme engineering",
+        "owner_id": "e79786f5-d2f6-4e09-b3ba-59acc4d1f68f",
+        "employer_id": "Acme",
+        "gross_salary": 120000,
+        "eligible_compensation": 120000,
+        "growth_percent": 2,
+        "start_month": "2026-01",
+        "end_at_retirement": true,
+        "income_source_id": "1ea00c7a-fca0-403e-bcdb-1750e154af57",
+        "prior_sponsor_wages": 12345
+      }
+    ],
+    "contribution_rules": [
+      {
+        "id": "rule-5",
+        "job_id": "job-4",
+        "start_month": "2026-01",
+        "end_at_retirement": true,
+        "rate": {
+          "mode": "fixed",
+          "fixed_monthly": 500,
+          "percent_of_compensation": 0
+        },
+        "roth_percent": 0,
+        "traditional_account_id": "account-3",
+        "employer": {
+          "mode": "match",
+          "fixed_monthly": 0,
+          "percent_of_compensation": 0,
+          "destination_account_id": "account-3",
+          "tiers": [
+            {
+              "FromPercent": 0,
+              "ToPercent": 6,
+              "MatchPercent": 50
+            }
+          ],
+          "match_timing": "monthly",
+          "true_up": false,
+          "departure_true_up": false
+        }
+      }
+    ],
+    "cash_policy": {
+      "reserve_account_id": "account-1",
+      "reserve_target": 12000,
+      "surplus_account_id": "account-2",
+      "withdrawal_order": [
+        "account-1",
+        "account-2",
+        "account-3"
+      ]
+    },
+    "ytd": {
+      "year": 2026,
+      "zero_history_acknowledged": false,
+      "rules": [
+        {
+          "rule_id": "rule-5",
+          "employee_regular": 4000,
+          "employee_catch_up": 0,
+          "employer": 0,
+          "matching_paid": 0
+        }
+      ],
+      "jobs": [
+        {
+          "job_id": "job-4",
+          "gross_wages": 80000,
+          "eligible_pay": 80000
+        }
+      ]
+    }
+  },
+  "portfolio_value": 0,
+  "monthly_living_expenses": 4000,
+  "monthly_healthcare": 500,
+  "healthcare_start_years": 0,
+  "monthly_property_tax": 0,
+  "healthcare_persons": [
+    {
+      "id": "migrated-user",
+      "name": "You",
+      "person_id": "e79786f5-d2f6-4e09-b3ba-59acc4d1f68f",
+      "current_age": 65,
+      "current_coverage": "medicare",
+      "current_monthly_cost": 500,
+      "pre_medicare_inflation": 6,
+      "medicare_monthly_cost": 500,
+      "post_medicare_inflation": 6,
+      "medicare_eligible_age": 65,
+      "employer_coverage_years": 0,
+      "aca_cost_after_employer": 0
+    }
+  ],
+  "aca": {},
+  "start_date": "2026-09",
+  "persons": [
+    {
+      "retirement_month": "2035-06",
+      "id": "e79786f5-d2f6-4e09-b3ba-59acc4d1f68f",
+      "name": "You",
+      "birth_month": "1961-09",
+      "role": "primary"
+    }
+  ],
+  "phase_age_reference": "older",
+  "tax_deferred_percent": 60,
+  "roth_percent": 10,
+  "tax_deferred_stock_percent": 60,
+  "tax_deferred_cash_percent": 0,
+  "roth_stock_percent": 60,
+  "roth_cash_percent": 0,
+  "taxable_stock_percent": 60,
+  "taxable_cash_percent": 0,
+  "stock_percent": 60,
+  "cash_percent": 0,
+  "inflation_rate": 3,
+  "healthcare_inflation": 6,
+  "property_tax_inflation": 4,
+  "spending_decline_rate": 1,
+  "investment_return": 0,
+  "discount_rate": 5,
+  "taxable_qualified_dividend_percent": 100,
+  "spending_phase_config": {
+    "enabled": false,
+    "phases": [
+      {
+        "name": "Go-Go",
+        "start_age": 0,
+        "multiplier": 1,
+        "description": "Active retirement: travel, hobbies, dining out"
+      },
+      {
+        "name": "Active",
+        "start_age": 65,
+        "multiplier": 0.95,
+        "description": "Still active but pacing slows slightly"
+      },
+      {
+        "name": "Slow-Go",
+        "start_age": 75,
+        "multiplier": 0.85,
+        "description": "Reduced activity: less travel, more home-based"
+      },
+      {
+        "name": "Late Slow-Go",
+        "start_age": 80,
+        "multiplier": 0.75,
+        "description": "Further reduced activity and travel"
+      },
+      {
+        "name": "No-Go",
+        "start_age": 85,
+        "multiplier": 0.65,
+        "description": "Limited mobility: basic needs focus"
+      }
+    ]
+  },
+  "projection_years": 30,
+  "projection_timing": "end_of_month",
+  "steady_state_override_year": 0,
+  "tax_deferred_delay_years": 0,
+  "rmd_timing": "start_of_year",
+  "spouse_sole_beneficiary": true,
+  "income_sources": [
+    {
+      "id": "1ea00c7a-fca0-403e-bcdb-1750e154af57",
+      "name": "Salary replacement",
+      "amount": 1000,
+      "income_type": "fixed",
+      "start_month": 0,
+      "end_month": null,
+      "cola_rate": 0,
+      "inflation_adjusted": false
+    }
+  ],
+  "expense_sources": [],
+  "tax_config": {
+    "filing_status": "single",
+    "age_65_count": 0,
+    "mfs_lived_with_spouse": false
+  },
+  "roth_conversion": {
+    "enabled": false,
+    "annual_amount": 0,
+    "start_year": 0,
+    "end_year": 0
+  }
+}

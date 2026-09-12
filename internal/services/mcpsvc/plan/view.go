@@ -21,12 +21,13 @@ func round0(v float64) float64 { return math.Round(v) }
 // the tax-optimizer candidates each embed a full *models.WhatIfSettings which
 // is excluded entirely.
 type AnalysisView struct {
-	Headline   HeadlineView    `json:"headline"`
-	Budget     *BudgetView     `json:"budget,omitempty"`
-	Years      []YearView      `json:"years,omitempty"`
-	RMD        *RMDView        `json:"rmd,omitempty"`
-	Tax        *TaxView        `json:"tax,omitempty"`
-	MonteCarlo *MonteCarloView `json:"monte_carlo,omitempty"`
+	CalculationError string          `json:"calculation_error,omitempty"`
+	Headline         HeadlineView    `json:"headline"`
+	Budget           *BudgetView     `json:"budget,omitempty"`
+	Years            []YearView      `json:"years,omitempty"`
+	RMD              *RMDView        `json:"rmd,omitempty"`
+	Tax              *TaxView        `json:"tax,omitempty"`
+	MonteCarlo       *MonteCarloView `json:"monte_carlo,omitempty"`
 }
 
 type HeadlineView struct {
@@ -49,15 +50,26 @@ type BudgetView struct {
 }
 
 type YearView struct {
-	Year            int     `json:"year"`
-	StartingBalance float64 `json:"starting_balance"`
-	EndingBalance   float64 `json:"ending_balance"`
-	Growth          float64 `json:"growth"`
-	MAGI            float64 `json:"magi"`
-	Taxes           float64 `json:"taxes"`
-	IRMAA           float64 `json:"irmaa"`
-	Expenses        float64 `json:"expenses"`
-	Withdrawals     float64 `json:"withdrawals"`
+	Year                  int     `json:"year"`
+	StartingBalance       float64 `json:"starting_balance"`
+	EndingBalance         float64 `json:"ending_balance"`
+	Growth                float64 `json:"growth"`
+	MAGI                  float64 `json:"magi"`
+	Taxes                 float64 `json:"taxes"`
+	IRMAA                 float64 `json:"irmaa"`
+	Expenses              float64 `json:"expenses"`
+	Withdrawals           float64 `json:"withdrawals"`
+	ExternalIncome        float64 `json:"external_income,omitempty"`
+	EmployeeContributions float64 `json:"employee_contributions,omitempty"`
+	EmployerContributions float64 `json:"employer_contributions,omitempty"`
+	Consumption           float64 `json:"consumption_paid,omitempty"`
+	ConsumptionAssessed   float64 `json:"consumption_assessed,omitempty"`
+	TaxLiability          float64 `json:"tax_liability,omitempty"`
+	TaxPayments           float64 `json:"tax_payments,omitempty"`
+	UnpaidTax             float64 `json:"unpaid_tax,omitempty"`
+	UnfundedExpenses      float64 `json:"unfunded_expenses,omitempty"`
+	UnfundedSaving        float64 `json:"unfunded_saving,omitempty"`
+	ReserveGap            float64 `json:"reserve_gap,omitempty"`
 }
 
 type RMDView struct {
@@ -99,27 +111,37 @@ func ShapeAnalysis(a *models.WhatIfAnalysis, includeMonteCarlo bool) AnalysisVie
 	if a == nil {
 		return v
 	}
+	if a.CalculationError != "" {
+		v.CalculationError = a.CalculationError
+		return v
+	}
+	if a.Projection != nil && a.Projection.CalculationError != "" {
+		v.CalculationError = a.Projection.CalculationError
+		return v
+	}
 
 	if a.Settings != nil {
 		v.Headline.PortfolioValue = round0(a.Settings.PortfolioValue)
+		if a.Settings.Lifetime != nil {
+			v.Headline.PortfolioValue = 0
+			for _, account := range a.Settings.Lifetime.Accounts {
+				v.Headline.PortfolioValue += round0(account.OpeningValue)
+			}
+		}
 		v.Headline.ProjectionYears = a.Settings.ProjectionYears
 	}
 	if p := a.Projection; p != nil {
 		v.Headline.FinalBalance = round0(p.FinalBalance)
 		v.Headline.Survives = p.Survives
 		v.Headline.DepletionMonth = p.DepletionMonth
-		for _, y := range p.YearlySummaries {
-			v.Years = append(v.Years, YearView{
-				Year:            y.Year,
-				StartingBalance: round0(y.StartingBalance),
-				EndingBalance:   round0(y.EndingBalance),
-				Growth:          round0(y.Growth),
-				MAGI:            round0(y.MAGI),
-				Taxes:           round0(y.Taxes),
-				IRMAA:           round0(y.IRMAA),
-				Expenses:        round0(y.Expenses),
-				Withdrawals:     round0(y.Withdrawals),
-			})
+		if a.Settings != nil && a.Settings.Lifetime != nil {
+			for _, y := range p.LifetimeYearSummaries {
+				v.Years = append(v.Years, YearView{Year: y.Year, StartingBalance: round0(y.OpeningWealth), EndingBalance: round0(y.ClosingWealth), Growth: round0(y.InvestmentReturn), Taxes: round0(y.TaxPayments), Expenses: round0(y.Consumption), ExternalIncome: round0(y.ExternalIncome), EmployeeContributions: round0(y.EmployeeContributions), EmployerContributions: round0(y.EmployerContributions), Consumption: round0(y.Consumption), ConsumptionAssessed: round0(y.ConsumptionAssessed), TaxLiability: round0(y.TaxLiability), TaxPayments: round0(y.TaxPayments), UnpaidTax: round0(y.UnpaidTax), UnfundedExpenses: round0(y.UnfundedExpenses), UnfundedSaving: round0(y.UnfundedSaving), ReserveGap: round0(y.ReserveGap)})
+			}
+		} else {
+			for _, y := range p.YearlySummaries {
+				v.Years = append(v.Years, YearView{Year: y.Year, StartingBalance: round0(y.StartingBalance), EndingBalance: round0(y.EndingBalance), Growth: round0(y.Growth), MAGI: round0(y.MAGI), Taxes: round0(y.Taxes), IRMAA: round0(y.IRMAA), Expenses: round0(y.Expenses), Withdrawals: round0(y.Withdrawals)})
+			}
 		}
 	}
 	if s := a.Sustainability; s != nil {

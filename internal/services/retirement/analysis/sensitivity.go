@@ -68,8 +68,12 @@ func SensitivityWithBaseline(eng *engine.Engine, in engine.Input, baseProjection
 		}
 
 		// Run projection with modified settings
-		modIn := engine.Input{Prepared: perturbAndPrepare(&modifiedSettings), Chain: in.Chain, Hooks: in.Hooks}
+		modIn := engine.Input{Prepared: perturbAndPrepare(&modifiedSettings), Chain: in.Chain, Hooks: in.Hooks, TaxSettlementMaxIterations: in.TaxSettlementMaxIterations}
 		modProjection := eng.Run(modIn)
+		if modProjection.CalculationError != "" {
+			results[i] = models.SensitivityResult{Scenario: scenario, CalculationError: modProjection.CalculationError}
+			return
+		}
 		modBudgetFit := BudgetFit(modIn, modProjection)
 		modScore := Score(modBudgetFit.RequiredRate, modProjection.Survives)
 

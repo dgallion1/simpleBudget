@@ -53,5 +53,8 @@ func RunWithOverrides(base *models.WhatIfSettings, o Overrides) (AnalysisView, e
 		return AnalysisView{}, err
 	}
 	a := retirement.RunFull(engine.New(), engine.Input{Prepared: prepared})
+	if a != nil && a.CalculationError != "" {
+		return AnalysisView{}, fmt.Errorf("projection calculation failed: %s", a.CalculationError)
+	}
 	return ShapeAnalysis(a, false), nil
 }

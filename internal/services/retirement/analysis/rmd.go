@@ -15,6 +15,12 @@ import (
 // RMDWithdrawal over the year, so the panel cannot diverge from the
 // main projection.
 func BuildRMD(proj *models.ProjectionResult, in engine.Input) *models.RMDAnalysis {
+	if in.Prepared.Settings().Lifetime != nil {
+		return nil
+	}
+	if proj != nil && proj.CalculationError != "" {
+		return nil
+	}
 	s := in.Prepared.Settings()
 
 	taxDeferredValue := s.PortfolioValue * (s.TaxDeferredPercent / 100)

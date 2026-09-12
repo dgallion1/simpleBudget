@@ -13,27 +13,31 @@ const MaxMonthSpan = 120
 
 // MonthRow is one month of projection detail.
 type MonthRow struct {
-	Month                     int     `json:"month"`
-	PortfolioBalance          float64 `json:"portfolio_balance"`
-	TaxDeferredBalance        float64 `json:"tax_deferred_balance"`
-	TaxableBalance            float64 `json:"taxable_balance"`
-	RothBalance               float64 `json:"roth_balance"`
-	TotalExpenses             float64 `json:"total_expenses"`
-	TotalIncome               float64 `json:"total_income"`
-	TaxesPaid                 float64 `json:"taxes_paid"`
-	StateTaxPaid              float64 `json:"state_tax_paid"`
-	RMDWithdrawal             float64 `json:"rmd_withdrawal"`
-	NetWithdrawal             float64 `json:"net_withdrawal"`
-	WithdrawalFromTaxDeferred float64 `json:"withdrawal_tax_deferred"`
-	WithdrawalFromTaxable     float64 `json:"withdrawal_taxable"`
-	WithdrawalFromRoth        float64 `json:"withdrawal_roth"`
-	RothConversions           float64 `json:"roth_conversions"`
-	Depleted                  bool    `json:"depleted"`
+	Month                     int                          `json:"month"`
+	PortfolioBalance          float64                      `json:"portfolio_balance"`
+	TaxDeferredBalance        float64                      `json:"tax_deferred_balance"`
+	TaxableBalance            float64                      `json:"taxable_balance"`
+	RothBalance               float64                      `json:"roth_balance"`
+	TotalExpenses             float64                      `json:"total_expenses"`
+	TotalIncome               float64                      `json:"total_income"`
+	TaxesPaid                 float64                      `json:"taxes_paid"`
+	StateTaxPaid              float64                      `json:"state_tax_paid"`
+	RMDWithdrawal             float64                      `json:"rmd_withdrawal"`
+	NetWithdrawal             float64                      `json:"net_withdrawal"`
+	WithdrawalFromTaxDeferred float64                      `json:"withdrawal_tax_deferred"`
+	WithdrawalFromTaxable     float64                      `json:"withdrawal_taxable"`
+	WithdrawalFromRoth        float64                      `json:"withdrawal_roth"`
+	RothConversions           float64                      `json:"roth_conversions"`
+	Depleted                  bool                         `json:"depleted"`
+	Lifetime                  *models.LifetimeMonthOutcome `json:"lifetime,omitempty"`
 }
 
 // MonthWindow returns the inclusive [from, to] month range, rejecting spans
 // wider than MaxMonthSpan and windows outside the projection.
 func MonthWindow(p *models.ProjectionResult, from, to int) ([]MonthRow, error) {
+	if p != nil && p.CalculationError != "" {
+		return nil, fmt.Errorf("projection calculation failed: %s", p.CalculationError)
+	}
 	if p == nil || len(p.Months) == 0 {
 		return nil, fmt.Errorf("projection has no months")
 	}
@@ -67,6 +71,7 @@ func MonthWindow(p *models.ProjectionResult, from, to int) ([]MonthRow, error) {
 			WithdrawalFromRoth:        round0(m.WithdrawalFromRoth),
 			RothConversions:           round0(m.RothConversions),
 			Depleted:                  m.Depleted,
+			Lifetime:                  m.Lifetime,
 		})
 	}
 	return rows, nil

@@ -27,7 +27,7 @@
         Healthcare and late-life care are modeled separately and are not reduced by these multipliers.
     </p>
 
-    <div id="spending-phases-config" class="{{if not (and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled)}}opacity-50 pointer-events-none{{end}}">
+    <fieldset id="spending-phases-config" {{if not (and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled)}}disabled{{end}} class="border-0 p-0 m-0">
         <form hx-post="/whatif/spending-phases" hx-target="#whatif-results" hx-trigger="change delay:500ms"
             class="space-y-3" id="phases-form">
             <input type="hidden" name="enabled" value="{{if and .Settings.SpendingPhaseConfig .Settings.SpendingPhaseConfig.Enabled}}true{{else}}false{{end}}">
@@ -103,7 +103,7 @@
                 Reset to Defaults
             </button>
         </div>
-    </div>
+    </fieldset>
 
     <!-- Spending Trajectory (rendered server-side from the engine projection) -->
     <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">

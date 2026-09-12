@@ -10,9 +10,15 @@ import (
 // callsite has a nil-safe default that mirrors the old package-level
 // no-op vars (no SS optimizer, no chain transition).
 type Input struct {
-	Prepared prepare.PreparedSettings
-	Chain    []PreparedChainLink
-	Hooks    Hooks
+	// MonthReturnsOverride injects one exact return stream into every main loop for internal parity verification.
+	MonthReturnsOverride func(*models.WhatIfSettings, int) MonthReturns
+	// CaptureLifetimeDiagnostics retains only bounded final account and aggregate facts for internal parity verification.
+	CaptureLifetimeDiagnostics bool
+	// TaxSettlementMaxIterations bounds lifetime fixed-point work per month. Zero uses the production default; negative is invalid.
+	TaxSettlementMaxIterations int
+	Prepared                   prepare.PreparedSettings
+	Chain                      []PreparedChainLink
+	Hooks                      Hooks
 }
 
 // PreparedChainLink describes a scenario transition that fires when the

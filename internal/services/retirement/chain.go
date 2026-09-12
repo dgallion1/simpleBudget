@@ -27,6 +27,15 @@ func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatI
 	prepared.ProjectionYears = primary.ProjectionYears
 	prepared.TaxDeferredDelayYears = primary.TaxDeferredDelayYears
 
+	if linked.Lifetime != nil {
+		lifetime := *linked.Lifetime
+		lifetime.StartMonth = primary.StartDate
+		lifetime.Accounts = append([]models.LifetimeAccount(nil), linked.Lifetime.Accounts...)
+		lifetime.Jobs = append([]models.LifetimeJob(nil), linked.Lifetime.Jobs...)
+		lifetime.ContributionRules = append([]models.ContributionRule(nil), linked.Lifetime.ContributionRules...)
+		lifetime.ScheduledSavings = append([]models.ScheduledSaving(nil), linked.Lifetime.ScheduledSavings...)
+		prepared.Lifetime = &lifetime
+	}
 	transitionMonth := transitionYear * 12
 
 	prepared.IncomeSources = rebaseIncomeSources(linked.IncomeSources, transitionMonth)

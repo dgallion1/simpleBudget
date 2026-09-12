@@ -37,11 +37,7 @@ function updatePhaseSliderLabel(slider) {
 
 function togglePhaseInputs(enabled) {
     const config = document.getElementById('spending-phases-config');
-    if (enabled) {
-        config.classList.remove('opacity-50', 'pointer-events-none');
-    } else {
-        config.classList.add('opacity-50', 'pointer-events-none');
-    }
+    if (config) config.disabled = !enabled;
 }
 
 function togglePhasePreview() {

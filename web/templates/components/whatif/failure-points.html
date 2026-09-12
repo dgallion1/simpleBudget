@@ -4,6 +4,9 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Approximate failure thresholds</h2>
     <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">One assumption changes at a time; all other settings stay fixed.</p>
+    {{if .Analysis.FailurePoints.CalculationError}}
+    <p class="text-gray-600 dark:text-gray-300">Unavailable: {{.Analysis.FailurePoints.CalculationError}}</p>
+    {{else}}
     {{if not .Analysis.FailurePoints.BaselineSurvives}}
     <p class="text-negative">Portfolio already depletes under current settings. Adjust parameters to find survival thresholds.</p>
     {{else if eq (len .Analysis.FailurePoints.FailurePoints) 0}}
@@ -14,6 +17,7 @@
         {{template "whatif-failure-point-card" .}}
         {{end}}
     </div>
+    {{end}}
     {{end}}
 </div>
 {{end}}

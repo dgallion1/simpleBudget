@@ -44,6 +44,11 @@ func BuildVerdict(a *models.WhatIfAnalysis, s *models.WhatIfSettings) VerdictVie
 	if a == nil || s == nil {
 		return v
 	}
+	if a.CalculationError != "" {
+		v.Headline = "Calculation unavailable"
+		v.Detail = a.CalculationError
+		return v
+	}
 	start, dateErr := models.ParseYearMonth(s.StartDate)
 	if a.BudgetFit != nil {
 		b := a.BudgetFit

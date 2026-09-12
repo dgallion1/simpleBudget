@@ -294,6 +294,10 @@ func handleWhatIfConversionSweep(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if settings.Lifetime != nil {
+		renderError(w, "Conversion sweep is unavailable for lifetime accounts because legal conversion source and destination accounts are required", http.StatusUnprocessableEntity)
+		return
+	}
 
 	rows, err := buildConversionSweepRows(settings)
 	if err != nil {

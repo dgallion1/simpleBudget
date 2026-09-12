@@ -18,7 +18,13 @@ import (
 // consistent with the Budget Analysis panel. Pass nil for a pre-tax
 // estimate (PVTaxes stays 0).
 func PresentValue(in engine.Input, proj *models.ProjectionResult) *models.PresentValueAnalysis {
+	if proj != nil && proj.CalculationError != "" {
+		return nil
+	}
 	s := in.Prepared.Settings()
+	if s.Lifetime != nil {
+		return presentValueLifetime(s, proj)
+	}
 	months := s.ProjectionYears * 12
 	discountRate := s.DiscountRate
 
@@ -152,6 +158,8 @@ func PresentValue(in engine.Input, proj *models.ProjectionResult) *models.Presen
 	surplusDeficit := s.PortfolioValue + pvIncome - totalNeeds
 
 	return &models.PresentValueAnalysis{
+		Available:      true,
+		StartingAssets: s.PortfolioValue,
 		PVExpenses:     pvExpenses,
 		PVTaxes:        pvTaxes,
 		PVIncome:       pvIncome,
@@ -210,4 +218,42 @@ func presentValueOfMonthlyStream(amountAt func(month int) float64, discountRate 
 		}
 	}
 	return pv
+}
+
+func presentValueLifetime(s *models.WhatIfSettings, proj *models.ProjectionResult) *models.PresentValueAnalysis {
+	out := &models.PresentValueAnalysis{}
+	months := s.ProjectionYears * 12
+	if proj == nil || len(proj.Months) != months {
+		out.UnavailableReason = "lifetime present value requires a complete projection horizon"
+		return out
+	}
+	for i, month := range proj.Months {
+		if month.Lifetime == nil {
+			out.UnavailableReason = "lifetime present value requires complete canonical monthly records"
+			return out
+		}
+		if i == 0 {
+			for _, a := range month.Lifetime.Accounts {
+				out.StartingAssets += a.Opening
+			}
+		}
+	}
+	monthlyRate := engine.MonthlyCompoundFactorFromDecimal(s.DiscountRate/100) - 1
+	for i, month := range proj.Months {
+		factor := 1.0
+		if monthlyRate > 0 {
+			factor = math.Pow(1+monthlyRate, float64(i+1))
+		}
+		out.PVIncome += (month.Lifetime.ExternalIncome + month.Lifetime.EmployerContributions) / factor
+		out.PVExpenses += month.Lifetime.ConsumptionAssessed / factor
+		out.PVTaxes += month.Lifetime.TaxLiability / factor
+	}
+	totalNeeds := out.PVExpenses + out.PVTaxes
+	if totalNeeds > 0 {
+		out.CoverageRatio = (out.StartingAssets + out.PVIncome) / totalNeeds
+	}
+	out.PVGap = totalNeeds - out.PVIncome
+	out.SurplusDeficit = out.StartingAssets + out.PVIncome - totalNeeds
+	out.Available = true
+	return out
 }

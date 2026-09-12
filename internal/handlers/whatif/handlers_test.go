@@ -5643,16 +5643,13 @@ func expectError(t *testing.T, w *httptest.ResponseRecorder) {
 	}
 }
 
-func TestHandleWhatIf_LoadErrorFallsBackToDefaults(t *testing.T) {
+func TestHandleWhatIf_LoadErrorIsExplicit(t *testing.T) {
 	setupBrokenEnv(t)
-
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/whatif", nil)
 	handleWhatIf(w, req)
-
-	// handleWhatIf gracefully falls back to default settings on load error
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 (fallback to defaults), got %d", w.Code)
+	if w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), "Failed to load what-if settings") {
+		t.Fatalf("status=%d body=%q", w.Code, w.Body.String())
 	}
 }
 

@@ -4,8 +4,8 @@
 package plan
 
 import (
-	_ "embed"
 	"context"
+	_ "embed"
 	"fmt"
 	"time"
 
@@ -243,6 +243,9 @@ func Register(s *mcp.Server, deps Deps) {
 			return nil, applyChangesOutput{}, fmt.Errorf("prepare %s: %w", written, err)
 		}
 		a := retirement.RunFull(engine.New(), engine.Input{Prepared: prepared})
+		if a.CalculationError != "" {
+			return nil, applyChangesOutput{}, fmt.Errorf("settings saved to %s, but calculation failed: %s", written, a.CalculationError)
+		}
 
 		return nil, applyChangesOutput{
 			Scenario:       written,

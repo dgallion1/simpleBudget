@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"fmt"
+	"math"
 	"time"
 
 	"budget2/internal/models"
@@ -332,4 +334,17 @@ func CalculateRMDForYear(s *models.WhatIfSettings, taxDeferredBalance float64, c
 	amount = taxDeferredBalance / factor
 	percent = (1.0 / factor) * 100
 	return amount, percent
+}
+
+// LifetimeRMDRequirement computes one legal account's remaining annual RMD
+// from its explicit prior-December balance and distributions already credited.
+func LifetimeRMDRequirement(account models.LifetimeAccount, age int) (float64, error) {
+	factor := GetLifeExpectancyFactor(age)
+	if factor == 0 {
+		return 0, nil
+	}
+	if account.PriorDecemberValue == nil {
+		return 0, fmt.Errorf("account %q prior December value required for RMD", account.ID)
+	}
+	return math.Max(0, *account.PriorDecemberValue/factor-account.RMDPaidYTD), nil
 }

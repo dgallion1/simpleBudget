@@ -4,6 +4,7 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Portfolio & Expenses</h2>
+        {{if not .Settings.Lifetime}}
         <button hx-post="/whatif/sync" hx-target="#whatif-results" hx-indicator="#sync-loading"
             class="text-sm text-accent hover:text-accent flex items-center gap-1">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -22,11 +23,19 @@
                 </svg>
             </span>
         </button>
+        {{end}}
     </div>
 
     <form hx-post="/whatif/settings" hx-target="#whatif-results" hx-trigger="change delay:500ms, input delay:500ms from:find input[type=number]"
         class="space-y-3">
 
+        {{if .Settings.Lifetime}}
+        <div class="rounded-md border border-gray-200 p-3 dark:border-gray-700">
+          <p class="text-sm font-medium text-gray-800 dark:text-gray-100">Account opening total: {{formatMoney .Settings.Lifetime.OpeningTotal}}</p>
+          <p class="mt-1 text-body-sm text-gray-600 dark:text-gray-300">Lifetime accounts control balances and allocations. Edit individual accounts in the Lifetime plan.</p>
+          <button type="button" onclick="document.getElementById('lifetime-open')?.click()" class="mt-2 min-h-11 rounded-md border border-accent px-3 text-sm text-accent">Edit lifetime accounts</button>
+        </div>
+        {{else}}
         <div>
             <div class="flex items-center justify-between mb-1">
                 <label for="portfolio-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Portfolio Value</label>
@@ -50,6 +59,7 @@
             <span class="text-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="portfolio_value" data-quick-adjust-display-format="currency">${{formatNumber .Settings.PortfolioValue}}</span>
         </div>
 
+        {{end}}
         <div>
             <label for="monthly_living_expenses_input" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Monthly Living Expenses</label>
             {{/* Hidden input carries the exact saved value and is the only

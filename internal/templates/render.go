@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"budget2/internal/models"
+	"budget2/internal/moneyfmt"
 	"budget2/internal/services/retirement"
 	"budget2/internal/services/retirement/analysis"
 	"budget2/internal/services/retirement/engine"
@@ -429,46 +430,7 @@ func (r *Renderer) ExecuteTemplate(w io.Writer, name string, data interface{}) e
 
 // Template functions
 
-func formatMoney(v float64) string {
-	// Belt (ruling CB7-2026-09-03c): normalize IEEE negative zero to +0
-	// before the sign check. `v < 0` is false for -0.0, so an upstream -0.0
-	// (an exactly-cancelling window, e.g. metrics.SignedNet's own
-	// pre-normalization result before that fix, or any other caller that
-	// forgot to normalize) would otherwise fall through to the POSITIVE
-	// branch below and let fmt.Sprintf("%.2f", v) honor the sign bit
-	// anyway, rendering the literal "$-0.00". `-0.0 == 0` is true in Go, so
-	// assigning the literal 0 clears the sign bit.
-	if v == 0 {
-		v = 0
-	}
-	negative := v < 0
-	if negative {
-		v = -v
-	}
-	formatted := fmt.Sprintf("%.2f", v)
-
-	// Add thousands separators
-	parts := strings.Split(formatted, ".")
-	intPart := parts[0]
-	var result strings.Builder
-
-	for i, c := range intPart {
-		if i > 0 && (len(intPart)-i)%3 == 0 {
-			result.WriteRune(',')
-		}
-		result.WriteRune(c)
-	}
-
-	if len(parts) > 1 {
-		result.WriteRune('.')
-		result.WriteString(parts[1])
-	}
-
-	if negative {
-		return "-$" + result.String()
-	}
-	return "$" + result.String()
-}
+func formatMoney(v float64) string { return moneyfmt.Format(v) }
 
 // FormatMoney exposes the template money formatter to Go callers that render the same figure a template renders (What-If chart hover text). Keep it a pure wrapper so there is exactly one money formatter.
 func FormatMoney(v float64) string { return formatMoney(v) }

@@ -46,6 +46,9 @@ func RunFast(eng *engine.Engine, in engine.Input) *models.WhatIfAnalysis {
 // fastAnalysis assembles the cheap analyses derived from the single baseline
 // projection.
 func fastAnalysis(in engine.Input, proj *models.ProjectionResult) *models.WhatIfAnalysis {
+	if proj != nil && proj.CalculationError != "" {
+		return &models.WhatIfAnalysis{CalculationError: proj.CalculationError, Settings: in.Prepared.Settings(), Projection: proj}
+	}
 	budgetFit := analysis.BudgetFit(in, proj)
 	return &models.WhatIfAnalysis{
 		Settings:                 in.Prepared.Settings(),
@@ -74,6 +77,9 @@ func runFullWithSeed(eng *engine.Engine, in engine.Input, mcSeed int64) *models.
 	in = fillDefaultHooks(in)
 	proj := eng.Run(in)
 	a := fastAnalysis(in, proj)
+	if a.CalculationError != "" {
+		return a
+	}
 	settings := a.Settings
 	budgetFit := a.BudgetFit
 

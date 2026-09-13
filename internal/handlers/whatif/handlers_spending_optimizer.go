@@ -37,6 +37,7 @@ type spendingPreview struct {
 	cancel           context.CancelFunc
 	active, applying bool
 	request          models.SpendingOptimizerRequest
+	form             models.SpendingOptimizerRequest // raw parsed form, never normalized
 	result           *models.SpendingOptimizerResult
 	tokens           map[string]models.SpendingCandidate
 	graphs           map[string]models.SpendingCandidate
@@ -118,7 +119,7 @@ func parseSpendingRequest(r *http.Request) (models.SpendingOptimizerRequest, err
 		}
 	}
 	// Blank means the form default; an explicit 0 keeps the strict rule.
-	req.MaxShortfallPct = 5
+	req.MaxShortfallPct = models.DefaultSpendingMaxShortfallPct
 	if raw := strings.TrimSpace(r.PostForm.Get("max_shortfall_pct")); raw != "" {
 		req.MaxShortfallPct, err = strconv.ParseFloat(raw, 64)
 		if err != nil || math.IsNaN(req.MaxShortfallPct) || math.IsInf(req.MaxShortfallPct, 0) || req.MaxShortfallPct < 0 || req.MaxShortfallPct >= 100 {
@@ -223,7 +224,7 @@ func handleSpendingOptimizerWithRunner(w http.ResponseWriter, r *http.Request, r
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
 	defer cancel()
-	p := &spendingPreview{manager: manager, scenario: scenario, revision: revision, fingerprint: sha256.Sum256(raw), expires: time.Now().Add(15 * time.Minute), cancel: cancel, active: true, request: req, tokens: make(map[string]models.SpendingCandidate), graphs: make(map[string]models.SpendingCandidate)}
+	p := &spendingPreview{manager: manager, scenario: scenario, revision: revision, fingerprint: sha256.Sum256(raw), expires: time.Now().Add(15 * time.Minute), cancel: cancel, active: true, request: req, form: req, tokens: make(map[string]models.SpendingCandidate), graphs: make(map[string]models.SpendingCandidate)}
 	spendingPreviews.Lock()
 	busy := false
 	for key, old := range spendingPreviews.entries {
@@ -612,6 +613,28 @@ func handleApplySpendingOptimizerWithHook(w http.ResponseWriter, r *http.Request
 	s.LivingSpendingBoost = models.CloneLivingSpendingBoost(c.LivingSpendingBoost)
 	cfg := *c.Guardrails
 	s.Guardrails = &cfg
+	// The raw form (not the normalized request) so blanks reload blank.
+	s.SpendingSearch = &models.SpendingSearchPreferences{MaxShortfallPct: p.form.MaxShortfallPct, NearTermYears: p.form.NearTermYears, SearchMinMonthlyReal: p.form.SearchMinMonthlyReal, SearchMaxMonthlyReal: p.form.SearchMaxMonthlyReal, SearchStepMonthlyReal: p.form.SearchStepMonthlyReal}
+	// SP2: retain what the graph builder consumes (candidate + the exact
+	// request it was measured against + its three seeds and validation run
+	// count) so the evidence chart survives a reload. The hash is computed
+	// over these same post-apply settings with the evidence field nil-ed
+	// first (see getSettingsHash and appliedSpendingEvidenceFresh), then
+	// saved in this SAME single write -- circularity-free staleness guard.
+	s.AppliedSpendingEvidence = nil
+	evidenceHash := getSettingsHash(s)
+	evidenceRequest := p.request
+	evidenceRequest.LivingSpendingBoost = models.CloneLivingSpendingBoost(evidenceRequest.LivingSpendingBoost)
+	s.AppliedSpendingEvidence = &models.AppliedSpendingEvidence{
+		Candidate:      cloneSpendingCandidate(c),
+		Request:        evidenceRequest,
+		SearchSeed:     p.result.SearchSeed,
+		SelectionSeed:  p.result.SelectionSeed,
+		ValidationSeed: p.result.ValidationSeed,
+		ValidationRuns: p.result.ValidationRuns,
+		AppliedAt:      time.Now().UTC().Format("2006-01-02"),
+		SettingsHash:   evidenceHash,
+	}
 	if beforeSave != nil {
 		beforeSave()
 	}
@@ -637,7 +660,23 @@ func handleApplySpendingOptimizerWithHook(w http.ResponseWriter, r *http.Request
 	w.Header().Set("HX-Redirect", fmt.Sprintf("/whatif?spending_applied=%d#spending-optimizer", revision))
 }
 
-// Advanced range fields stay blank/automatic; prepare returns their canonical defaults.
+// appliedSpendingEvidenceFresh reports whether s.AppliedSpendingEvidence's
+// SettingsHash still matches s, using the same nil-then-hash mechanism Apply
+// created it with (see getSettingsHash): clone, nil the evidence field,
+// rehash, compare. A change to ANY other setting invalidates it. Callers
+// check s.AppliedSpendingEvidence != nil separately; nil is neither fresh
+// nor stale.
+func appliedSpendingEvidenceFresh(s *models.WhatIfSettings) bool {
+	if s == nil || s.AppliedSpendingEvidence == nil {
+		return false
+	}
+	clone := *s
+	clone.AppliedSpendingEvidence = nil
+	return getSettingsHash(&clone) == s.AppliedSpendingEvidence.SettingsHash
+}
+
+// Advanced range fields reload from the last applied search preferences and
+// otherwise stay blank/automatic; prepare returns their canonical defaults.
 func spendingOptimizerFormData(s *models.WhatIfSettings, projection *models.ProjectionResult) map[string]any {
 	// An absent saved floor is an unchosen required input, not the base budget.
 	var floor any
@@ -648,7 +687,35 @@ func spendingOptimizerFormData(s *models.WhatIfSettings, projection *models.Proj
 	if projection != nil && len(projection.Months) > 0 {
 		actual = projection.Months[0].PlannedLivingExpenses
 	}
-	data := map[string]any{"FloorMonthlyReal": floor, "NearTermYears": 5, "CurrentBaseMonthlyReal": s.MonthlyLivingExpenses, "CurrentStartingMonthlyReal": actual, "Chained": len(s.ScenarioChain) > 0}
+	search := models.SpendingSearchPreferences{MaxShortfallPct: models.DefaultSpendingMaxShortfallPct}
+	if s.SpendingSearch != nil {
+		search = *s.SpendingSearch
+	}
+	data := map[string]any{
+		"FloorMonthlyReal": floor, "NearTermYears": 5, "CurrentBaseMonthlyReal": s.MonthlyLivingExpenses, "CurrentStartingMonthlyReal": actual, "Chained": len(s.ScenarioChain) > 0,
+		// One formatter for the shortfall input: shortest exact decimal ("5", "7.5").
+		"MaxShortfallPctText":   strconv.FormatFloat(search.MaxShortfallPct, 'f', -1, 64),
+		"NearTermYearsSaved":    search.NearTermYears,
+		"SearchMinMonthlyReal":  search.SearchMinMonthlyReal,
+		"SearchMaxMonthlyReal":  search.SearchMaxMonthlyReal,
+		"SearchStepMonthlyReal": search.SearchStepMonthlyReal,
+		// SP2: always present (never a missing key -- html/template renders a
+		// missing interface-typed map key as "<no value>", a present false/""
+		// as nothing/empty). nil evidence -> Present stays false and the
+		// "Selected spending plan" block renders nothing.
+		"AppliedEvidencePresent": false,
+		"AppliedEvidenceFresh":   false,
+		"AppliedEvidenceLabel":   "",
+		"AppliedEvidenceDate":    time.Time{},
+	}
+	if evidence := s.AppliedSpendingEvidence; evidence != nil {
+		data["AppliedEvidencePresent"] = true
+		data["AppliedEvidenceFresh"] = appliedSpendingEvidenceFresh(s)
+		data["AppliedEvidenceLabel"] = spendingGraphCandidateLabel(evidence.Candidate)
+		if appliedAt, dateErr := time.Parse("2006-01-02", evidence.AppliedAt); dateErr == nil {
+			data["AppliedEvidenceDate"] = appliedAt
+		}
+	}
 	start, err := models.ParseYearMonth(s.StartDate)
 	if err == nil {
 		data["StartMonth"] = start.Format("2006-01")

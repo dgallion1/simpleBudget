@@ -475,14 +475,19 @@
             const controller = new AbortController();
             graphController = controller;
             status.textContent = 'Loading spending evidence…';
+            // The applied-plan "Inspect evidence" button carries its own
+            // endpoint and no request_id/candidate (it reads persisted
+            // evidence, not a live preview); the live-search graph buttons
+            // omit data-graph-endpoint and keep the original request_id +
+            // candidate token. Same renderGraph() either way -- see below.
+            const endpoint = button.dataset.graphEndpoint || '/whatif/spending/optimize/graph';
+            const params = {display_dollars: mode || 'real'};
+            if (button.dataset.requestId) params.request_id = button.dataset.requestId;
+            if (button.dataset.graphToken) params.candidate = button.dataset.graphToken;
             try {
-                const response = await fetch('/whatif/spending/optimize/graph', {
+                const response = await fetch(endpoint, {
                     method: 'POST',
-                    body: new URLSearchParams({
-                        request_id: button.dataset.requestId,
-                        candidate: button.dataset.graphToken,
-                        display_dollars: mode || 'real'
-                    }),
+                    body: new URLSearchParams(params),
                     signal: controller.signal
                 });
                 const payload = await response.json();

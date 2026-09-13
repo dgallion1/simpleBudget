@@ -84,9 +84,17 @@ type WhatIfSettings struct {
 	// Expenses
 	LivingSpendingBoost   *LivingSpendingBoost `json:"living_spending_boost,omitempty"`
 	MonthlyLivingExpenses float64              `json:"monthly_living_expenses"` // Base monthly expenses
-	MonthlyHealthcare     float64              `json:"monthly_healthcare"`      // Monthly healthcare costs (legacy)
-	HealthcareStartYears  int                  `json:"healthcare_start_years"`  // Years until healthcare starts (legacy)
-	MonthlyPropertyTax    float64              `json:"monthly_property_tax"`    // Monthly property tax on primary residence
+	// SpendingSearch retains the last applied "How much can I spend?" search
+	// inputs (shortfall allowance, near-term horizon, explicit range/step) so
+	// the comparison form reloads complete. nil = never applied.
+	SpendingSearch *SpendingSearchPreferences `json:"spending_search,omitempty"`
+	// AppliedSpendingEvidence retains the exact candidate/request/seeds behind
+	// the last applied "How much can I spend?" plan so its evidence chart
+	// survives a reload; nil = never applied. See SettingsHash for staleness.
+	AppliedSpendingEvidence *AppliedSpendingEvidence `json:"applied_spending_evidence,omitempty"`
+	MonthlyHealthcare       float64                  `json:"monthly_healthcare"`     // Monthly healthcare costs (legacy)
+	HealthcareStartYears    int                      `json:"healthcare_start_years"` // Years until healthcare starts (legacy)
+	MonthlyPropertyTax      float64                  `json:"monthly_property_tax"`   // Monthly property tax on primary residence
 
 	// Multi-person healthcare model
 	HealthcarePersons []HealthcarePerson `json:"healthcare_persons,omitempty"`

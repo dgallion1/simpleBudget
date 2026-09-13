@@ -22,6 +22,23 @@ type SpendingPathOutcome struct {
 	BelowPlanAtEnd                     bool    `json:"below_plan_at_end"`
 }
 
+// DefaultSpendingMaxShortfallPct is the acceptable-shortfall allowance the
+// comparison form starts with when the household has never applied one.
+const DefaultSpendingMaxShortfallPct = 5.0
+
+// SpendingSearchPreferences retains the comparison-form inputs of the last
+// applied spending plan that are not part of the plan itself, so a reload
+// restores the whole "How much can I spend?" form. MaxShortfallPct is always
+// meaningful (0 is the strict rule); the other fields are 0 when the input
+// was left blank ("Automatic").
+type SpendingSearchPreferences struct {
+	MaxShortfallPct       float64 `json:"max_shortfall_pct"`
+	NearTermYears         int     `json:"near_term_years,omitempty"`
+	SearchMinMonthlyReal  float64 `json:"search_min_monthly_real,omitempty"`
+	SearchMaxMonthlyReal  float64 `json:"search_max_monthly_real,omitempty"`
+	SearchStepMonthlyReal float64 `json:"search_step_monthly_real,omitempty"`
+}
+
 // SpendingOptimizerRequest defines the user's minimum and bounded living-budget search.
 // MaxShortfallPct is the largest share of checked futures (0–100, exclusive of
 // 100) that may fall below the minimum for a budget to qualify; 0 requires
@@ -99,6 +116,24 @@ type SpendingOptimizerResult struct {
 	HorizonMaxYears         int                      `json:"horizon_max_years"`
 	Candidates              []SpendingCandidate      `json:"candidates"`
 	RecommendationIDs       []string                 `json:"recommendation_ids"`
+}
+
+// AppliedSpendingEvidence retains everything the spending-evidence graph
+// builder consumes about the last applied "How much can I spend?" option, so
+// its chart can be reproduced seed-for-seed after a reload without a live
+// in-memory preview. SettingsHash is computed over the saved settings with
+// this field itself nil-ed (see getSettingsHash in the whatif handlers
+// package); any later edit to any other setting invalidates it. nil on
+// WhatIfSettings means no plan has ever been applied.
+type AppliedSpendingEvidence struct {
+	Candidate      SpendingCandidate        `json:"candidate"`
+	Request        SpendingOptimizerRequest `json:"request"`
+	SearchSeed     int64                    `json:"search_seed,string"`
+	SelectionSeed  int64                    `json:"selection_seed,string"`
+	ValidationSeed int64                    `json:"validation_seed,string"`
+	ValidationRuns int                      `json:"validation_runs"`
+	AppliedAt      string                   `json:"applied_at"` // "2006-01-02"
+	SettingsHash   string                   `json:"settings_hash"`
 }
 
 // SpendingFundingMonth records one observed canonical projection month. All

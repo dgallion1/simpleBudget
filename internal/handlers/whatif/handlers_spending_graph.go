@@ -7,6 +7,7 @@ import (
 	"budget2/internal/services/retirement/engine"
 	budgettemplates "budget2/internal/templates"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -95,35 +96,15 @@ func handleSpendingOptimizerGraphWithRunner(w http.ResponseWriter, r *http.Reque
 		fail("The plan changed or preview expired. Run again.", spendingSnapshotStatus(err))
 		return
 	}
-	in, _, err := buildEngineInput(settings)
-	if err != nil {
-		fail("Could not prepare graph.", 500)
-		return
-	}
-	in.Hooks = retirement.DefaultHooks()
-	currentStart := engine.LivingExpensesAtMonth(in.Prepared.Settings(), 0)
-	in, err = analysis.PrepareSpendingCandidate(in, candidate)
-	if err != nil {
-		fail("Could not prepare candidate graph.", 500)
-		return
-	}
-	projection := run(in)
-	if projection == nil {
-		fail("Could not project candidate.", 500)
-		return
-	}
-	fundingTimeline, err := analysis.BuildSpendingFundingTimeline(in, projection)
-	if err != nil {
-		fail("Could not prepare funding timeline.", 500)
-		return
-	}
-	addProjectedSSFundingMarkers(fundingTimeline, in.Prepared.Settings())
 	mode := "real"
 	if r.PostForm.Get("display_dollars") == "nominal" {
 		mode = "nominal"
 	}
-	payload := spendingGraphPayload{Candidate: candidate, CandidateLabel: spendingGraphCandidateLabel(candidate), Request: request, FloorMonthlyReal: request.FloorMonthlyReal, CurrentBaseMonthlyReal: settings.MonthlyLivingExpenses, CurrentStartingMonthlyReal: currentStart, SearchSeed: strconv.FormatInt(searchSeed, 10), SelectionSeed: strconv.FormatInt(selectionSeed, 10), ValidationSeed: strconv.FormatInt(validationSeed, 10), ValidationRuns: runs, DisplayDollars: mode, BaseCaseLabel: "Base case — canonical configured assumptions", BaseCaseChart: buildProjectionChartData(in.Prepared.Settings(), projection, mode), FundingTimeline: fundingTimeline}
-	payload.Simulated, payload.Worst = spendingEvidenceSeries(candidate, request.FloorMonthlyReal, mode)
+	payload, err := buildSpendingGraphPayload(settings, candidate, request, searchSeed, selectionSeed, validationSeed, runs, mode, run)
+	if err != nil {
+		fail("Could not prepare graph.", 500)
+		return
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		fail("Could not render graph.", 500)
@@ -142,6 +123,105 @@ func handleSpendingOptimizerGraphWithRunner(w http.ResponseWriter, r *http.Reque
 	// registry lock, including the stale-error response.
 	if !publish {
 		fail("Graph cancelled or expired. Run again.", 409)
+		return
+	}
+	_, _ = w.Write(body)
+}
+
+// buildSpendingGraphPayload is the single graph-production core for both the
+// live preview endpoint (/whatif/spending/optimize/graph) and the applied-
+// evidence endpoint (/whatif/spending/applied/graph): given settings, a
+// candidate, the request it was measured against, and its three retained
+// seeds/validation run count, it derives the exact same payload from the
+// exact same inputs. Callers differ only in where those inputs come from
+// (a live in-memory preview vs. persisted AppliedSpendingEvidence).
+func buildSpendingGraphPayload(settings *models.WhatIfSettings, candidate models.SpendingCandidate, request models.SpendingOptimizerRequest, searchSeed, selectionSeed, validationSeed int64, validationRuns int, mode string, run func(engine.Input) *models.ProjectionResult) (*spendingGraphPayload, error) {
+	in, _, err := buildEngineInput(settings)
+	if err != nil {
+		return nil, fmt.Errorf("prepare plan: %w", err)
+	}
+	in.Hooks = retirement.DefaultHooks()
+	currentStart := engine.LivingExpensesAtMonth(in.Prepared.Settings(), 0)
+	in, err = analysis.PrepareSpendingCandidate(in, candidate)
+	if err != nil {
+		return nil, fmt.Errorf("prepare candidate: %w", err)
+	}
+	projection := run(in)
+	if projection == nil {
+		return nil, errors.New("project candidate: no projection")
+	}
+	fundingTimeline, err := analysis.BuildSpendingFundingTimeline(in, projection)
+	if err != nil {
+		return nil, fmt.Errorf("prepare funding timeline: %w", err)
+	}
+	addProjectedSSFundingMarkers(fundingTimeline, in.Prepared.Settings())
+	payload := &spendingGraphPayload{
+		Candidate: candidate, CandidateLabel: spendingGraphCandidateLabel(candidate), Request: request,
+		FloorMonthlyReal: request.FloorMonthlyReal, CurrentBaseMonthlyReal: settings.MonthlyLivingExpenses, CurrentStartingMonthlyReal: currentStart,
+		SearchSeed: strconv.FormatInt(searchSeed, 10), SelectionSeed: strconv.FormatInt(selectionSeed, 10), ValidationSeed: strconv.FormatInt(validationSeed, 10), ValidationRuns: validationRuns,
+		DisplayDollars: mode, BaseCaseLabel: "Base case — canonical configured assumptions",
+		BaseCaseChart: buildProjectionChartData(in.Prepared.Settings(), projection, mode), FundingTimeline: fundingTimeline,
+	}
+	payload.Simulated, payload.Worst = spendingEvidenceSeries(candidate, request.FloorMonthlyReal, mode)
+	return payload, nil
+}
+
+// handleAppliedSpendingGraph serves the evidence chart for the last applied
+// spending plan directly from persisted settings -- no live preview required,
+// so it survives a reload. Fresh evidence reproduces the graph seed-for-seed
+// through the same buildSpendingGraphPayload core the live preview endpoint
+// uses; a stale hash (any settings edit since Apply) is an honest 409.
+func handleAppliedSpendingGraph(w http.ResponseWriter, r *http.Request) {
+	handleAppliedSpendingGraphWithRunner(w, r, getEngine().Run)
+}
+func handleAppliedSpendingGraphWithRunner(w http.ResponseWriter, r *http.Request, run func(engine.Input) *models.ProjectionResult) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	fail := func(message string, status int) {
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+	}
+	if err := r.ParseForm(); err != nil {
+		fail("Invalid graph request.", 400)
+		return
+	}
+	staleMessage := "Your plan has changed since this option was applied. Run a new comparison for current evidence."
+	settings, err := retirementMgr.LoadContext(r.Context())
+	if err != nil {
+		fail("Could not load the plan.", 500)
+		return
+	}
+	evidence := settings.AppliedSpendingEvidence
+	if evidence == nil || !appliedSpendingEvidenceFresh(settings) {
+		fail(staleMessage, 409)
+		return
+	}
+	if len(settings.ScenarioChain) > 0 {
+		fail("Chained scenarios are not supported.", 400)
+		return
+	}
+	mode := "real"
+	if r.PostForm.Get("display_dollars") == "nominal" {
+		mode = "nominal"
+	}
+	request := evidence.Request
+	request.LivingSpendingBoost = models.CloneLivingSpendingBoost(request.LivingSpendingBoost)
+	candidate := cloneSpendingCandidate(evidence.Candidate)
+	payload, err := buildSpendingGraphPayload(settings, candidate, request, evidence.SearchSeed, evidence.SelectionSeed, evidence.ValidationSeed, evidence.ValidationRuns, mode, run)
+	if err != nil {
+		fail("Could not prepare graph.", 500)
+		return
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		fail("Could not render graph.", 500)
+		return
+	}
+	// Canonical work can be slow; revalidate freshness against the SAME
+	// evidence instance before publishing so a concurrent edit is never shown.
+	settings2, err := retirementMgr.LoadContext(r.Context())
+	if err != nil || settings2.AppliedSpendingEvidence == nil || settings2.AppliedSpendingEvidence.SettingsHash != evidence.SettingsHash || !appliedSpendingEvidenceFresh(settings2) {
+		fail(staleMessage, 409)
 		return
 	}
 	_, _ = w.Write(body)

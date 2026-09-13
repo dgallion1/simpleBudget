@@ -118,6 +118,24 @@ type SpendingOptimizerResult struct {
 	RecommendationIDs       []string                 `json:"recommendation_ids"`
 }
 
+// AppliedSpendingEvidence retains everything the spending-evidence graph
+// builder consumes about the last applied "How much can I spend?" option, so
+// its chart can be reproduced seed-for-seed after a reload without a live
+// in-memory preview. SettingsHash is computed over the saved settings with
+// this field itself nil-ed (see getSettingsHash in the whatif handlers
+// package); any later edit to any other setting invalidates it. nil on
+// WhatIfSettings means no plan has ever been applied.
+type AppliedSpendingEvidence struct {
+	Candidate      SpendingCandidate        `json:"candidate"`
+	Request        SpendingOptimizerRequest `json:"request"`
+	SearchSeed     int64                    `json:"search_seed,string"`
+	SelectionSeed  int64                    `json:"selection_seed,string"`
+	ValidationSeed int64                    `json:"validation_seed,string"`
+	ValidationRuns int                      `json:"validation_runs"`
+	AppliedAt      string                   `json:"applied_at"` // "2006-01-02"
+	SettingsHash   string                   `json:"settings_hash"`
+}
+
 // SpendingFundingMonth records one observed canonical projection month. All
 // monetary values are monthly amounts in today's dollars.
 type SpendingFundingMonth struct {

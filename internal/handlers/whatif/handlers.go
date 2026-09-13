@@ -1301,6 +1301,7 @@ func RegisterRoutes(r chi.Router) {
 	r.Post("/whatif/spending/optimize/cancel", handleCancelSpendingOptimizer)
 	r.Post("/whatif/spending/optimize/apply", handleApplySpendingOptimizer)
 	r.Post("/whatif/spending/optimize/graph", handleSpendingOptimizerGraph)
+	r.Post("/whatif/spending/applied/graph", handleAppliedSpendingGraph)
 	r.Post("/whatif/tax-optimize", handleWhatIfTaxOptimize)
 	r.Post("/whatif/conversion-sweep", handleWhatIfConversionSweep)
 }

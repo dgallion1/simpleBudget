@@ -140,10 +140,14 @@ func TestSpendingApplyAtomicCompleteCandidate(t *testing.T) {
 			if got.SpendingSearch == nil {
 				t.Fatal("search preferences not saved")
 			}
+			if got.AppliedSpendingEvidence == nil || !appliedSpendingEvidenceFresh(got) {
+				t.Fatal("applied spending evidence not saved or does not verify")
+			}
 			got.MonthlyLivingExpenses = before.MonthlyLivingExpenses
 			got.LivingSpendingBoost = before.LivingSpendingBoost
 			got.Guardrails = before.Guardrails
 			got.SpendingSearch = before.SpendingSearch
+			got.AppliedSpendingEvidence = before.AppliedSpendingEvidence
 			a, _ := json.Marshal(got)
 			b, _ := json.Marshal(before)
 			if string(a) != string(b) {
@@ -888,7 +892,16 @@ func TestSpendingApplySavesSearchPreferences(t *testing.T) {
 			if !reflect.DeepEqual(got.SpendingSearch, tc.want) {
 				t.Fatalf("saved search preferences %#v want %#v", got.SpendingSearch, tc.want)
 			}
-			got.MonthlyLivingExpenses, got.LivingSpendingBoost, got.Guardrails, got.SpendingSearch = before.MonthlyLivingExpenses, before.LivingSpendingBoost, before.Guardrails, before.SpendingSearch
+			// SP2: the applied evidence is written atomically in the same
+			// revision, alongside SP1's fields.
+			evidence := got.AppliedSpendingEvidence
+			if evidence == nil || !reflect.DeepEqual(evidence.Candidate, c) || evidence.SearchSeed != 0 || evidence.SelectionSeed != 0 || evidence.ValidationSeed != 9223372036854775807 || evidence.ValidationRuns != 1000 || evidence.AppliedAt == "" {
+				t.Fatalf("applied spending evidence %#v", evidence)
+			}
+			if !appliedSpendingEvidenceFresh(got) {
+				t.Fatal("applied spending evidence hash does not verify against the settings it was saved with")
+			}
+			got.MonthlyLivingExpenses, got.LivingSpendingBoost, got.Guardrails, got.SpendingSearch, got.AppliedSpendingEvidence = before.MonthlyLivingExpenses, before.LivingSpendingBoost, before.Guardrails, before.SpendingSearch, before.AppliedSpendingEvidence
 			a, _ := json.Marshal(got)
 			b, _ := json.Marshal(before)
 			if string(a) != string(b) {

@@ -93,7 +93,19 @@
         </div>
     </form>
     <p id="spending-optimizer-status" role="status" aria-live="polite" aria-atomic="true" class="mt-3 min-h-5"></p>
+    {{if $form.AppliedEvidencePresent}}
+    <section id="spending-applied-plan" aria-labelledby="spending-applied-plan-heading" class="mt-4 rounded-md border border-gray-300 p-3 dark:border-gray-600">
+        <h4 id="spending-applied-plan-heading" class="font-semibold">Selected spending plan</h4>
+        {{if $form.AppliedEvidenceFresh}}
+        <p class="mt-1">{{$form.AppliedEvidenceLabel}} — applied {{formatDate $form.AppliedEvidenceDate}}.</p>
+        <button type="button" data-spending-graph="applied" data-graph-endpoint="/whatif/spending/applied/graph" aria-pressed="false" class="mt-2 rounded-md border border-gray-500 px-3 py-2 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent dark:border-gray-400">Inspect evidence</button>
+        {{else}}
+        <p class="mt-1 text-gray-600 dark:text-gray-300">Your plan has changed since this option was applied — run a new comparison for current evidence.</p>
+        {{end}}
+    </section>
+    {{end}}
     <div id="spending-optimizer-results" class="mt-4 min-w-0" aria-busy="false"></div>
+    {{template "whatif-spending-graph-panel"}}
     {{end}}
 </section>
 <script src="/static/js/whatif-spending-optimizer.js" defer></script>

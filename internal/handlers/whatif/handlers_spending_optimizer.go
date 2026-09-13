@@ -615,6 +615,26 @@ func handleApplySpendingOptimizerWithHook(w http.ResponseWriter, r *http.Request
 	s.Guardrails = &cfg
 	// The raw form (not the normalized request) so blanks reload blank.
 	s.SpendingSearch = &models.SpendingSearchPreferences{MaxShortfallPct: p.form.MaxShortfallPct, NearTermYears: p.form.NearTermYears, SearchMinMonthlyReal: p.form.SearchMinMonthlyReal, SearchMaxMonthlyReal: p.form.SearchMaxMonthlyReal, SearchStepMonthlyReal: p.form.SearchStepMonthlyReal}
+	// SP2: retain what the graph builder consumes (candidate + the exact
+	// request it was measured against + its three seeds and validation run
+	// count) so the evidence chart survives a reload. The hash is computed
+	// over these same post-apply settings with the evidence field nil-ed
+	// first (see getSettingsHash and appliedSpendingEvidenceFresh), then
+	// saved in this SAME single write -- circularity-free staleness guard.
+	s.AppliedSpendingEvidence = nil
+	evidenceHash := getSettingsHash(s)
+	evidenceRequest := p.request
+	evidenceRequest.LivingSpendingBoost = models.CloneLivingSpendingBoost(evidenceRequest.LivingSpendingBoost)
+	s.AppliedSpendingEvidence = &models.AppliedSpendingEvidence{
+		Candidate:      cloneSpendingCandidate(c),
+		Request:        evidenceRequest,
+		SearchSeed:     p.result.SearchSeed,
+		SelectionSeed:  p.result.SelectionSeed,
+		ValidationSeed: p.result.ValidationSeed,
+		ValidationRuns: p.result.ValidationRuns,
+		AppliedAt:      time.Now().UTC().Format("2006-01-02"),
+		SettingsHash:   evidenceHash,
+	}
 	if beforeSave != nil {
 		beforeSave()
 	}
@@ -638,6 +658,21 @@ func handleApplySpendingOptimizerWithHook(w http.ResponseWriter, r *http.Request
 	discardSpendingPreview(id, p)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("HX-Redirect", fmt.Sprintf("/whatif?spending_applied=%d#spending-optimizer", revision))
+}
+
+// appliedSpendingEvidenceFresh reports whether s.AppliedSpendingEvidence's
+// SettingsHash still matches s, using the same nil-then-hash mechanism Apply
+// created it with (see getSettingsHash): clone, nil the evidence field,
+// rehash, compare. A change to ANY other setting invalidates it. Callers
+// check s.AppliedSpendingEvidence != nil separately; nil is neither fresh
+// nor stale.
+func appliedSpendingEvidenceFresh(s *models.WhatIfSettings) bool {
+	if s == nil || s.AppliedSpendingEvidence == nil {
+		return false
+	}
+	clone := *s
+	clone.AppliedSpendingEvidence = nil
+	return getSettingsHash(&clone) == s.AppliedSpendingEvidence.SettingsHash
 }
 
 // Advanced range fields reload from the last applied search preferences and
@@ -664,6 +699,22 @@ func spendingOptimizerFormData(s *models.WhatIfSettings, projection *models.Proj
 		"SearchMinMonthlyReal":  search.SearchMinMonthlyReal,
 		"SearchMaxMonthlyReal":  search.SearchMaxMonthlyReal,
 		"SearchStepMonthlyReal": search.SearchStepMonthlyReal,
+		// SP2: always present (never a missing key -- html/template renders a
+		// missing interface-typed map key as "<no value>", a present false/""
+		// as nothing/empty). nil evidence -> Present stays false and the
+		// "Selected spending plan" block renders nothing.
+		"AppliedEvidencePresent": false,
+		"AppliedEvidenceFresh":   false,
+		"AppliedEvidenceLabel":   "",
+		"AppliedEvidenceDate":    time.Time{},
+	}
+	if evidence := s.AppliedSpendingEvidence; evidence != nil {
+		data["AppliedEvidencePresent"] = true
+		data["AppliedEvidenceFresh"] = appliedSpendingEvidenceFresh(s)
+		data["AppliedEvidenceLabel"] = spendingGraphCandidateLabel(evidence.Candidate)
+		if appliedAt, dateErr := time.Parse("2006-01-02", evidence.AppliedAt); dateErr == nil {
+			data["AppliedEvidenceDate"] = appliedAt
+		}
 	}
 	start, err := models.ParseYearMonth(s.StartDate)
 	if err == nil {

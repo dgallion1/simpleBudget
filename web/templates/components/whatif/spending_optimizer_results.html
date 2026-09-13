@@ -1,3 +1,26 @@
+{{/* Shared evidence-chart scaffold: lives in the persistent
+     whatif-spending-optimizer shell (not the swapped results partial) so it
+     exists whether the evidence comes from a live preview
+     (data-spending-graph on a frontier row, request_id + candidate) or the
+     persisted applied plan (data-spending-graph data-graph-endpoint, no
+     request_id). Both routes render into this ONE panel through the SAME
+     JS render function -- see loadGraph/renderGraph in
+     whatif-spending-optimizer.js. */}}
+{{define "whatif-spending-graph-panel"}}
+<section id="spending-graph-preview" hidden aria-labelledby="spending-graph-heading" class="mt-6 w-full min-w-0 max-w-full overflow-hidden rounded-md border border-gray-400 p-3 dark:border-gray-500">
+    <h4 id="spending-graph-heading" tabindex="-1" class="font-semibold rounded focus:outline focus:outline-2 focus:outline-accent"></h4>
+    <p id="spending-graph-summary" class="mt-2"></p>
+    <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div><label for="spending-graph-view" class="block text-xs font-medium">Evidence view</label><select id="spending-graph-view" class="mt-1 block w-full rounded border border-gray-500 bg-white p-2 focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400 dark:bg-gray-700"><option value="spending">Funded spending range</option><option value="worst">Lowest observed future</option><option value="timeline">Income and withdrawals timeline</option><option value="portfolio">Portfolio range</option><option value="base">Base-case portfolio</option></select></div>
+        <div><label for="spending-graph-dollars" class="block text-xs font-medium">Simulated graph dollars</label><select id="spending-graph-dollars" class="mt-1 block w-full rounded border border-gray-500 bg-white p-2 focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400 dark:bg-gray-700"><option value="real">Today's dollars</option><option value="nominal">Nominal dollars</option></select></div>
+    </div>
+    <p id="spending-graph-note" class="mt-3 text-gray-600 dark:text-gray-300"></p>
+    <div id="spending-graph-main" data-spending-plot class="mt-3 w-full min-w-0" role="img" aria-label="Spending evidence chart; exact values are in the adjacent chart values table"></div>
+    <details class="mt-3 w-full min-w-0 max-w-full overflow-hidden"><summary class="cursor-pointer rounded font-medium focus:outline focus:outline-2 focus:outline-accent">Chart values, samples, and events</summary><div id="spending-graph-data" data-spending-scroll tabindex="0" role="region" aria-label="Chart values; scroll horizontally if needed" class="mt-2 block w-full min-w-0 max-w-full overflow-x-auto"></div></details>
+    <button id="spending-graph-close" type="button" class="mt-3 rounded border border-gray-500 px-3 py-2 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent dark:border-gray-400">Close evidence</button>
+</section>
+{{end}}
+
 {{define "whatif-spending-option-name"}}{{if eq .Candidate.Kind "current"}}Current plan{{else if eq .Candidate.Kind "planned"}}Follow planned spending{{else}}Flexible spending{{end}}{{end}}
 
 {{define "whatif-spending-option"}}
@@ -65,19 +88,6 @@
     <p class="mt-1 text-gray-600 dark:text-gray-300">Qualification uses the final validation futures. Failed and current-plan rows remain available for graph inspection only.</p>
     {{template "whatif-spending-frontier" (dict "Rows" .PlannedRows "Kind" "planned" "Title" "Follow planned spending" "RequestID" .RequestID "ValidationRunsText" .ValidationRunsText)}}
     {{template "whatif-spending-frontier" (dict "Rows" .FlexibleRows "Kind" "flexible" "Title" "Flexible spending" "RequestID" .RequestID "ValidationRunsText" .ValidationRunsText)}}
-
-    <section id="spending-graph-preview" hidden aria-labelledby="spending-graph-heading" class="mt-6 w-full min-w-0 max-w-full overflow-hidden rounded-md border border-gray-400 p-3 dark:border-gray-500">
-        <h4 id="spending-graph-heading" tabindex="-1" class="font-semibold rounded focus:outline focus:outline-2 focus:outline-accent"></h4>
-        <p id="spending-graph-summary" class="mt-2"></p>
-        <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div><label for="spending-graph-view" class="block text-xs font-medium">Evidence view</label><select id="spending-graph-view" class="mt-1 block w-full rounded border border-gray-500 bg-white p-2 focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400 dark:bg-gray-700"><option value="spending">Funded spending range</option><option value="worst">Lowest observed future</option><option value="timeline">Income and withdrawals timeline</option><option value="portfolio">Portfolio range</option><option value="base">Base-case portfolio</option></select></div>
-            <div><label for="spending-graph-dollars" class="block text-xs font-medium">Simulated graph dollars</label><select id="spending-graph-dollars" class="mt-1 block w-full rounded border border-gray-500 bg-white p-2 focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400 dark:bg-gray-700"><option value="real">Today's dollars</option><option value="nominal">Nominal dollars</option></select></div>
-        </div>
-        <p id="spending-graph-note" class="mt-3 text-gray-600 dark:text-gray-300"></p>
-        <div id="spending-graph-main" data-spending-plot class="mt-3 w-full min-w-0" role="img" aria-label="Spending evidence chart; exact values are in the adjacent chart values table"></div>
-        <details class="mt-3 w-full min-w-0 max-w-full overflow-hidden"><summary class="cursor-pointer rounded font-medium focus:outline focus:outline-2 focus:outline-accent">Chart values, samples, and events</summary><div id="spending-graph-data" data-spending-scroll tabindex="0" role="region" aria-label="Chart values; scroll horizontally if needed" class="mt-2 block w-full min-w-0 max-w-full overflow-x-auto"></div></details>
-        <button id="spending-graph-close" type="button" class="mt-3 rounded border border-gray-500 px-3 py-2 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent dark:border-gray-400">Close evidence</button>
-    </section>
 
     <p class="mt-4 text-gray-600 dark:text-gray-300">Preview only. Apply saves the selected base living budget, optional early-spending boost, and complete portfolio-trigger spending rules together. Results expire after 15 minutes or when inputs or the plan change.</p>
     <details class="mt-4">

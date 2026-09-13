@@ -503,3 +503,63 @@ func TestSpendingOptimizerRenderSearchPreferences(t *testing.T) {
 		})
 	}
 }
+
+// SP2: the "Selected spending plan" block renders nothing when no plan has
+// ever been applied, label + applied date + an Inspect-evidence button wired
+// to the applied-graph endpoint when fresh, and an honest note with no
+// button when the settings have changed since Apply (stale hash). Never
+// "<no value>" for the always-present map keys.
+func TestSpendingOptimizerRenderAppliedPlanBlock(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	base := func() map[string]any {
+		return map[string]any{
+			"FloorMonthlyReal": 7000.0, "NearTermYears": 5, "MaxShortfallPctText": "5",
+			"CurrentBaseMonthlyReal": 8000.0, "CurrentStartingMonthlyReal": 8500.0,
+			"StartMonth": "2026-09", "ExpectedEndMonth": "2056-08",
+			"AppliedEvidencePresent": false, "AppliedEvidenceFresh": false, "AppliedEvidenceLabel": "", "AppliedEvidenceDate": time.Time{},
+		}
+	}
+	appliedDate, err := time.Parse("2006-01-02", "2026-09-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		extra  map[string]any
+		want   []string
+		forbid []string
+	}{
+		{name: "nil", forbid: []string{"Selected spending plan"}},
+		{name: "fresh", extra: map[string]any{"AppliedEvidencePresent": true, "AppliedEvidenceFresh": true, "AppliedEvidenceLabel": "Flexible spending at $10,000.00 per month", "AppliedEvidenceDate": appliedDate},
+			want: []string{"Selected spending plan", "Flexible spending at $10,000.00 per month", "Sep 10, 2026", "Inspect evidence", `data-graph-endpoint="/whatif/spending/applied/graph"`}},
+		{name: "stale", extra: map[string]any{"AppliedEvidencePresent": true, "AppliedEvidenceFresh": false, "AppliedEvidenceLabel": "Flexible spending at $10,000.00 per month", "AppliedEvidenceDate": appliedDate},
+			want: []string{"Selected spending plan", "Your plan has changed since this option was applied — run a new comparison for current evidence."}, forbid: []string{"Inspect evidence", "data-graph-endpoint"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			form := base()
+			for k, v := range tc.extra {
+				form[k] = v
+			}
+			w := httptest.NewRecorder()
+			if err := renderer.RenderPartial(w, "whatif-spending-optimizer", map[string]any{"SpendingOptimizerForm": form}); err != nil {
+				t.Fatal(err)
+			}
+			body := w.Body.String()
+			if strings.Contains(body, "<no value>") || strings.Contains(body, "&lt;no value&gt;") {
+				t.Fatal("template rendered <no value>")
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(body, want) {
+					t.Errorf("missing %q in body", want)
+				}
+			}
+			for _, forbid := range tc.forbid {
+				if strings.Contains(body, forbid) {
+					t.Errorf("unexpected %q in body", forbid)
+				}
+			}
+		})
+	}
+}

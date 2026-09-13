@@ -87,7 +87,12 @@ func TestDI5RenderedFractional(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, s := range []string{`Selected period: <span class="num font-semibold">$10.01</span>`, `Prior period: <span class="num">$0.00</span>`, `+$10.01`, `<span class="num">$0.02</span> monthly`, `<span class="num">$0.12</span> annual`, `$2.67`, `$0.01`, `Monthly and annual figures are rounded separately.`} {
+	// IP1 re-anchor: "Selected period"/"Prior period" moved from one inline
+	// sentence into the What-changed KPI tiles (SPEC.md IP1 3.1); the label
+	// and its formatMoney value now live in separate <p> tags, so this
+	// asserts on the semantic (label text + value markup) rather than the
+	// old concatenated sentence.
+	for _, s := range []string{`>Selected period</p>`, `<p class="num text-3xl font-bold text-gray-900 dark:text-gray-100">$10.01</p>`, `>Prior period</p>`, `<p class="num text-3xl font-bold text-gray-900 dark:text-gray-100">$0.00</p>`, `+$10.01`, `<span class="num">$0.02</span> monthly`, `<span class="num">$0.12</span> annual`, `$2.67`, `$0.01`, `Monthly and annual figures are rounded separately.`} {
 		if !strings.Contains(b, s) {
 			t.Errorf("missing rendered %s", s)
 		}

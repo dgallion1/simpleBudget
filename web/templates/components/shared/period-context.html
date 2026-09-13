@@ -1,9 +1,9 @@
 {{define "shared/period-context"}}
 {{with .Period}}
-<section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-    <p class="text-sm text-gray-700 dark:text-gray-300">Selected period: {{.SelectedStart.Format "2006-01-02"}} to {{.SelectedEnd.Format "2006-01-02"}} ({{.SelectedDays}} calendar days){{if .HasData}} · Latest transaction: {{.LatestTransaction.Format "2006-01-02"}}{{else}} · No transaction data available.{{end}}</p>
+{{if $.Compact}}<section class="space-y-2">{{else}}<section class="bg-white dark:bg-gray-800 rounded-lg shadow p-4">{{end}}
+    <p class="text-sm {{if $.Compact}}text-gray-600 dark:text-gray-400{{else}}text-gray-700 dark:text-gray-300{{end}}">Selected period: {{.SelectedStart.Format "2006-01-02"}} to {{.SelectedEnd.Format "2006-01-02"}} ({{.SelectedDays}} calendar days){{if .HasData}} · Latest transaction: {{.LatestTransaction.Format "2006-01-02"}}{{else}} · No transaction data available.{{end}}</p>
     {{if .Stale}}
-    <p class="text-sm text-gray-700 dark:text-gray-300">Data is more than seven calendar days old ({{.DataAgeDays}} days). Current-month forecast is unavailable.</p>
+    {{if $.Compact}}<p class="rounded-lg border border-warning bg-warning-soft text-warning px-3 py-2 text-sm"><span class="font-semibold">Note:</span> Data is more than seven calendar days old ({{.DataAgeDays}} days). Current-month forecast is unavailable.</p>{{else}}<p class="text-sm text-gray-700 dark:text-gray-300">Data is more than seven calendar days old ({{.DataAgeDays}} days). Current-month forecast is unavailable.</p>{{end}}
     {{end}}
     <details>
         <summary class="text-sm text-accent cursor-pointer">Period details</summary>

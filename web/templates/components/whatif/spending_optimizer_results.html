@@ -36,18 +36,14 @@
 {{$rows := .Rows}}
 <section class="mt-5" aria-labelledby="{{.Kind}}-frontier-heading">
     <h5 id="{{.Kind}}-frontier-heading" class="font-semibold">{{.Title}}</h5>
-    <div data-spending-scroll tabindex="0" role="region" aria-label="{{.Title}} frontier; scroll horizontally for all measures" class="mt-2 max-w-full overflow-x-auto rounded-md border border-gray-300 focus:outline focus:outline-2 focus:outline-accent dark:border-gray-600">
-        <table data-spending-frontier="{{.Kind}}" class="w-full min-w-max text-left text-xs">
-            <caption class="p-2 text-left text-gray-600 dark:text-gray-300">Every base budget measured on the final validation futures, in ascending order.</caption>
-            <thead><tr class="bg-gray-100 dark:bg-gray-700"><th scope="col" class="p-2">Base budget</th><th scope="col" class="p-2">Near-term funded monthly living</th><th scope="col" class="p-2">Minimum result</th><th scope="col" class="p-2">Below-plan cuts</th><th scope="col" class="p-2">Minimum funded after depletion</th><th scope="col" class="p-2">Final validation futures</th><th scope="col" class="p-2">Actions</th></tr></thead>
+    <div data-spending-scroll tabindex="0" role="region" aria-label="{{.Title}} frontier" class="mt-2 max-w-full overflow-x-auto rounded-md border border-gray-300 focus:outline focus:outline-2 focus:outline-accent dark:border-gray-600">
+        <table data-spending-frontier="{{.Kind}}" class="w-full text-left text-xs">
+            <caption class="p-2 text-left text-gray-600 dark:text-gray-300">Every base budget measured on {{.ValidationRunsText}} final validation futures, in ascending order. Shares are percent of those futures.</caption>
+            <thead><tr class="bg-gray-100 dark:bg-gray-700"><th scope="col" class="p-1.5">Base budget</th><th scope="col" class="p-1.5">Outcomes</th><th scope="col" class="p-1.5">Actions</th></tr></thead>
             <tbody>{{range $rows}}{{$row := .}}<tr data-spending-row="{{$row.Candidate.ID}}" class="border-t border-gray-300 align-top dark:border-gray-600">
-                <th scope="row" class="p-2">{{formatMoney $row.Candidate.BaseMonthlyLivingExpenses}}<span class="block font-normal">{{if $row.Candidate.Qualifies}}Qualifies{{else}}Did not qualify{{end}}</span></th>
-                <td class="p-2">{{if $row.MetricsAvailable}}{{formatMoney $row.NearTermMonthlyReal}}{{else}}Unavailable{{end}}</td>
-                <td class="p-2">{{if $row.MetricsAvailable}}{{$row.FloorFailureCount}}{{else}}Unavailable{{end}}</td>
-                <td class="p-2">{{if $row.MetricsAvailable}}{{$row.CutCount}}{{else}}Unavailable{{end}}</td>
-                <td class="p-2">{{if $row.MetricsAvailable}}{{with $row.Candidate.Metrics}}{{.DepletionFloorFundedPaths}} / {{.DepletionPaths}}{{end}}{{else}}Unavailable{{end}}</td>
-                <td class="p-2">{{if $row.MetricsAvailable}}{{with $row.Candidate.Metrics}}{{.Runs}}{{end}}{{else}}Unavailable{{end}}</td>
-                <td class="p-2"><div class="flex flex-wrap gap-2"><button type="button" data-spending-graph="{{$row.Candidate.ID}}" data-graph-token="{{$row.GraphToken}}" data-request-id="{{$.RequestID}}" aria-pressed="false" class="rounded border border-gray-500 px-2 py-1.5 focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400">Inspect</button>{{if $row.Token}}<form data-spending-apply-form action="/whatif/spending/optimize/apply" method="post"><input type="hidden" name="request_id" value="{{$.RequestID}}"><input type="hidden" name="recommendation" value="{{$row.Token}}"><button type="submit" data-spending-apply="{{$row.Candidate.ID}}" class="rounded bg-accent-strong px-2 py-1.5 text-white focus:outline focus:outline-2 focus:outline-accent">Apply</button></form>{{else}}<span>Graph only</span>{{end}}</div></td>
+                <th scope="row" class="p-1.5 font-semibold">{{formatMoney $row.Candidate.BaseMonthlyLivingExpenses}}<span class="block font-normal">{{if $row.Candidate.Qualifies}}Qualifies{{else}}Did not qualify{{end}}</span>{{if $row.RuleSummary}}<span class="block font-normal text-gray-600 dark:text-gray-300">Rules: {{$row.RuleSummary}}</span>{{end}}</th>
+                <td class="p-1.5 tabular-nums">{{if $row.MetricsAvailable}}<span class="block text-gray-600 dark:text-gray-300">Below minimum</span><span class="block whitespace-nowrap">{{$row.FloorFailureCount}}</span><span class="block text-gray-600 dark:text-gray-300">Below-plan cuts</span><span class="block whitespace-nowrap">{{$row.CutCount}}</span><span class="block text-gray-600 dark:text-gray-300">Near-term funded living</span><span class="block">{{formatMoney $row.NearTermMonthlyReal}}/mo</span>{{else}}Unavailable{{end}}</td>
+                <td class="p-1.5"><div class="flex flex-col items-start gap-2"><button type="button" data-spending-graph="{{$row.Candidate.ID}}" data-graph-token="{{$row.GraphToken}}" data-request-id="{{$.RequestID}}" aria-pressed="false" class="rounded border border-gray-500 px-2 py-1.5 focus:outline focus:outline-2 focus:outline-accent dark:border-gray-400">Inspect</button>{{if $row.Token}}<form data-spending-apply-form action="/whatif/spending/optimize/apply" method="post"><input type="hidden" name="request_id" value="{{$.RequestID}}"><input type="hidden" name="recommendation" value="{{$row.Token}}"><button type="submit" data-spending-apply="{{$row.Candidate.ID}}" class="rounded bg-accent-strong px-2 py-1.5 text-white focus:outline focus:outline-2 focus:outline-accent">Apply</button></form>{{else}}<span>Graph only</span>{{end}}</div></td>
             </tr>{{end}}</tbody>
         </table>
     </div>
@@ -57,7 +53,8 @@
 {{define "whatif-spending-optimizer-results"}}
 <div data-spending-results-root>
     <h4 data-spending-outcome tabindex="-1" class="text-base font-semibold rounded focus:outline focus:outline-2 focus:outline-accent">{{if .Headlines}}Your spending options{{else}}No spending option met your minimum{{end}}</h4>
-    {{if .Headlines}}<p class="mt-1 text-gray-600 dark:text-gray-300">Current plan first, followed by up to two qualifying choices. Near-term funded monthly living is the primary comparison.</p>{{else}}<p class="mt-1 font-medium">Your minimum, acceptance rule, and modeled horizon were kept unchanged. Review the complete tested frontier below.</p>{{end}}
+    <p class="mt-1 font-medium">{{.QualificationRule}}</p>
+    {{if .Headlines}}<p class="mt-1 text-gray-600 dark:text-gray-300">Current plan first, followed by up to two qualifying choices. Near-term funded monthly living is the primary comparison.</p>{{else}}<p class="mt-1 text-gray-600 dark:text-gray-300">Your minimum, acceptable shortfall, and modeled horizon were kept unchanged. Review the complete tested frontier below; raising the acceptable shortfall or lowering the minimum widens what qualifies.</p>{{end}}
     <div class="mt-3 space-y-3">
         {{with .Current}}{{template "whatif-spending-option" (dict "Row" . "RequestID" $.RequestID "NearTermYears" $.Request.NearTermYears)}}{{end}}
         {{range .Headlines}}{{template "whatif-spending-option" (dict "Row" . "RequestID" $.RequestID "NearTermYears" $.Request.NearTermYears "Headline" true)}}{{end}}
@@ -66,8 +63,8 @@
 
     <h4 class="mt-6 text-base font-semibold">Complete tested frontier</h4>
     <p class="mt-1 text-gray-600 dark:text-gray-300">Qualification uses the final validation futures. Failed and current-plan rows remain available for graph inspection only.</p>
-    {{template "whatif-spending-frontier" (dict "Rows" .PlannedRows "Kind" "planned" "Title" "Follow planned spending" "RequestID" .RequestID)}}
-    {{template "whatif-spending-frontier" (dict "Rows" .FlexibleRows "Kind" "flexible" "Title" "Flexible spending" "RequestID" .RequestID)}}
+    {{template "whatif-spending-frontier" (dict "Rows" .PlannedRows "Kind" "planned" "Title" "Follow planned spending" "RequestID" .RequestID "ValidationRunsText" .ValidationRunsText)}}
+    {{template "whatif-spending-frontier" (dict "Rows" .FlexibleRows "Kind" "flexible" "Title" "Flexible spending" "RequestID" .RequestID "ValidationRunsText" .ValidationRunsText)}}
 
     <section id="spending-graph-preview" hidden aria-labelledby="spending-graph-heading" class="mt-6 w-full min-w-0 max-w-full overflow-hidden rounded-md border border-gray-400 p-3 dark:border-gray-500">
         <h4 id="spending-graph-heading" tabindex="-1" class="font-semibold rounded focus:outline focus:outline-2 focus:outline-accent"></h4>

@@ -92,7 +92,7 @@ func optimizeSpendingWithRunner(ctx context.Context, in engine.Input, req models
 		if err != nil {
 			return err
 		}
-		c.Qualifies = spendingCandidateQualifies(*c)
+		c.Qualifies = spendingCandidateQualifies(*c, req.MaxShortfallPct)
 		if final {
 			// Legacy summarization permits no capture; this optimizer requires complete
 			// annual evidence to support every inspectable final frontier row.
@@ -111,7 +111,7 @@ func optimizeSpendingWithRunner(ctx context.Context, in engine.Input, req models
 		return nil
 	}
 	planned := &models.GuardrailConfig{Enabled: true, FloorDropPct: 20, CeilingRisePct: 20, MinSpendingPct: 100, MaxSpendingPct: 100, MinMonthlySpendingReal: req.FloorMonthlyReal}
-	policies := guardrailOptimizerPolicies(s.Guardrails, req.FloorMonthlyReal)
+	policies := spendingGuardrailPolicies(s.Guardrails, req.FloorMonthlyReal)
 	var frontier []models.SpendingCandidate
 	for _, index := range spendingDiscoveryPositions(len(grid)) {
 		amount := float64(grid[index]) / 100
@@ -251,6 +251,9 @@ func normalizeSpendingRequest(in engine.Input, req models.SpendingOptimizerReque
 	if req.NearTermYears == 0 {
 		req.NearTermYears = 5
 	}
+	if !spendingCandidateFinite(req.MaxShortfallPct) || req.MaxShortfallPct < 0 || req.MaxShortfallPct >= 100 {
+		return invalid("acceptable shortfall must be at least 0% and less than 100%")
+	}
 	s := in.Prepared.Settings()
 	shortest := max(10, s.ProjectionYears-DefaultMonteCarloConfig().LongevityVariation)
 	if req.NearTermYears < 1 || req.NearTermYears > 10 || req.NearTermYears > shortest {
@@ -343,9 +346,55 @@ func spendingDiscoveryPositions(length int) []int {
 	return out
 }
 
-func spendingCandidateQualifies(c models.SpendingCandidate) bool {
+// spendingCandidateQualifies accepts a candidate whose failing share of checked
+// futures is within maxShortfallPct. Unpaid obligations always count as a
+// failure; for planned spending, any below-plan month is an unfunded month, so
+// cuts count too. The inclusive boundary uses the same unrounded count-derived
+// percentage the results display (multiplying the allowance by runs can round
+// an inclusive boundary the wrong way).
+func spendingCandidateQualifies(c models.SpendingCandidate, maxShortfallPct float64) bool {
 	m := c.Metrics
-	return m != nil && m.Runs > 0 && m.FloorShortfallPaths == 0 && m.UnpaidObligationPaths == 0 && (c.Kind != "planned" || m.CutPaths == 0)
+	if m == nil || m.Runs <= 0 {
+		return false
+	}
+	failed := max(m.FloorShortfallPaths, m.UnpaidObligationPaths)
+	if c.Kind == "planned" {
+		failed = max(failed, m.CutPaths)
+	}
+	return 100*float64(failed)/float64(m.Runs) <= maxShortfallPct
+}
+
+// spendingGuardrailPolicies is the flexible-spending policy pool: a finer grid
+// than the guardrail optimizer's, plus the saved rules verbatim (enabled, at the
+// requested floor). The guardrail optimizer keeps its own coarser grid.
+func spendingGuardrailPolicies(current *models.GuardrailConfig, floor float64) []models.GuardrailOptimizerCandidate {
+	var out []models.GuardrailOptimizerCandidate
+	seen := map[models.GuardrailConfig]bool{}
+	add := func(g models.GuardrailConfig, id string) {
+		if !seen[g] {
+			seen[g] = true
+			out = append(out, models.GuardrailOptimizerCandidate{ID: id, Guardrails: &g})
+		}
+	}
+	for _, drop := range []float64{5, 10, 20} {
+		for _, cut := range []float64{2, 5, 10} {
+			for _, rise := range []float64{10, 15, 25} {
+				for _, raise := range []float64{2, 5, 10} {
+					for _, cap := range []float64{120, 150} {
+						add(models.GuardrailConfig{Enabled: true, FloorDropPct: drop, FloorCutPct: cut, CeilingRisePct: rise, CeilingRaisePct: raise, MaxSpendingPct: cap, MinMonthlySpendingReal: floor}, fmt.Sprintf("grid-%g-%g-%g-%g-%g", drop, cut, rise, raise, cap))
+					}
+				}
+			}
+		}
+	}
+	g := models.GuardrailConfig{FloorDropPct: 20, FloorCutPct: 10, CeilingRisePct: 20, CeilingRaisePct: 10, MaxSpendingPct: 125}
+	if current != nil {
+		g = *current
+	}
+	g.Enabled = true
+	g.MinMonthlySpendingReal = floor
+	add(g, "current-floor")
+	return out
 }
 
 func spendingDiscoveryBetter(a, b models.SpendingCandidate) bool {

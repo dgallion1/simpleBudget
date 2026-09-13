@@ -51,7 +51,9 @@ func TestSpendingOptimizerRenderFormDecision(t *testing.T) {
 				"Required. Enter today's dollars; the minimum increases with inflation.",
 				"Include basic living costs and a fun allowance.",
 				"Healthcare, taxes, and other separately entered expenses are additional.",
-				"Recommendations must fund this minimum in every checked future.",
+				"Acceptable shortfall",
+				`name="max_shortfall_pct"`,
+				"Shown the same way as the funding-shortfall line in Simulated lifestyle outcomes",
 				"Compare spending options",
 				"Extra spending early",
 				"When enabled, both extra-spending fields are required.",
@@ -66,7 +68,11 @@ func TestSpendingOptimizerRenderFormDecision(t *testing.T) {
 					t.Errorf("missing %q", want)
 				}
 			}
-			for _, forbidden := range []string{`value="7500"`, "guaranteed", "risk-free"} {
+			shortfall := guardrailTestElement(t, body, "id", "spending-shortfall")
+			if value := guardrailTestAttribute(shortfall, "value"); value != "5" {
+				t.Fatalf("acceptable shortfall default = %q, want 5", value)
+			}
+			for _, forbidden := range []string{`value="7500"`, "guaranteed", "risk-free", "in every checked future"} {
 				if strings.Contains(strings.ToLower(body), strings.ToLower(forbidden)) {
 					t.Errorf("new spending form contains forbidden copy %q", forbidden)
 				}
@@ -148,7 +154,7 @@ func TestSpendingOptimizerRenderResultsEvidence(t *testing.T) {
 	failed.ID, failed.Kind, failed.Qualifies, failed.BaseMonthlyLivingExpenses = "flex-9250", "flexible", false, 9250
 
 	result := &models.SpendingOptimizerResult{
-		Request:    models.SpendingOptimizerRequest{FloorMonthlyReal: 7000, NearTermYears: 5, SearchMinMonthlyReal: 7000, SearchMaxMonthlyReal: 9500, SearchStepMonthlyReal: 250},
+		Request:    models.SpendingOptimizerRequest{FloorMonthlyReal: 7000, MaxShortfallPct: 5, NearTermYears: 5, SearchMinMonthlyReal: 7000, SearchMaxMonthlyReal: 9500, SearchStepMonthlyReal: 250},
 		SearchRuns: 1000, SelectionRuns: 1000, ValidationRuns: 1000,
 		EvaluatedCandidates: 4, EffectiveMinMonthlyReal: 7000, EffectiveMaxMonthlyReal: 9500,
 		ResolutionMonthlyReal: 250, RangeLimited: true, HorizonMinYears: 20, HorizonMaxYears: 35,
@@ -168,9 +174,13 @@ func TestSpendingOptimizerRenderResultsEvidence(t *testing.T) {
 		"Current plan", "Follow planned spending", "Flexible spending",
 		"$8,000.00", "$9,000.01", "$1,000.01 more per month than the current plan",
 		"No cuts observed across 1,000 checked futures.",
-		"Cuts occurred in 250 of 1,000 futures (25.00%).",
+		"Cuts occurred in 25.0% · 250 of 1,000 futures.",
 		"Among those 250 futures, the median first cut was in plan year 3.",
-		"Below the minimum in 2 of 1,000 futures",
+		"Below the minimum in 0.2% · 2 of 1,000 futures",
+		"at most 5.0% of checked futures",
+		"0.2% · 2 / 1,000", "25.0% · 250 / 1,000", "0.0% · 0 / 1,000",
+		"cut 5% after a 0% drop",
+		"measured on 1,000 final validation futures",
 		"Largest observed monthly gap: $1,000.00.",
 		"Longest observed below-minimum episode: 4 consecutive months.",
 		"These maxima may come from different futures.",
@@ -178,13 +188,30 @@ func TestSpendingOptimizerRenderResultsEvidence(t *testing.T) {
 		"Percentage depth: median deepest reduction 25.00% of planned living.",
 		"Duration: median 18 months below planned living.",
 		"These are separate summaries across futures with a cut.",
-		"The model recorded depletion in 120 of 1,000 futures; in 90 of those, your minimum stayed funded from that event through the end.",
+		"The model recorded depletion in 12.0% · 120 of 1,000 futures; in 90 of those, your minimum stayed funded from that event through the end.",
 		"The early-spending boost ends in 2031-09; this planned change is separate from below-plan cuts.",
-		"Complete tested frontier", "Final validation futures", "Minimum funded after depletion",
+		"Complete tested frontier",
 		"Search reached the upper range", "portfolio-trigger spending rules",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
+		}
+	}
+	// The frontier must fit the card: no forced table width and no
+	// constant or details-only columns forcing a horizontal scroll.
+	for _, gone := range []string{"min-w-max", ">Final validation futures<", ">Minimum funded after depletion<", "(25.00%)"} {
+		if strings.Contains(body, gone) {
+			t.Errorf("unexpected %q", gone)
+		}
+	}
+	// Two frontier tables of three columns each (budget, outcomes, actions)
+	// is what fits the ~350px strategies card without a horizontal scroll.
+	if got := strings.Count(body, `scope="col"`); got != 6 {
+		t.Errorf("frontier column headers = %d, want 6", got)
+	}
+	for _, want := range []string{"Below minimum</span>", "Below-plan cuts</span>", "Near-term funded living</span>"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing stacked outcome label %q", want)
 		}
 	}
 	if got := strings.Count(body, `data-spending-headline`); got != 2 {

@@ -60,6 +60,7 @@ type spendingOptimizerRow struct {
 	StillBelowPlanCount, RecoveredCount                                     string
 	CutEvidence, CutTimingEvidence, CutDepthEvidence                        string
 	MinimumEvidence, UnpaidEvidence, DepletionEvidence                      string
+	RuleSummary                                                             string
 	PlannedChangesEvidence, StartingBudgetEvidence, LifetimeEvidence        string
 }
 type spendingOptimizerView struct {
@@ -69,6 +70,7 @@ type spendingOptimizerView struct {
 	RequestID                                                                      string
 	Rows, PlannedRows, FlexibleRows, Headlines                                     []spendingOptimizerRow
 	Current                                                                        *spendingOptimizerRow
+	QualificationRule, ValidationRunsText                                          string
 	CurrentBaseMonthlyReal, CurrentStartingMonthlyReal, CurrentNearTermMonthlyReal float64
 }
 type spendingOptimizerRunner func(context.Context, engine.Input, models.SpendingOptimizerRequest) (*models.SpendingOptimizerResult, error)
@@ -113,6 +115,14 @@ func parseSpendingRequest(r *http.Request) (models.SpendingOptimizerRequest, err
 		*field.dst, err = parse(field.key, field.required)
 		if err != nil {
 			return req, err
+		}
+	}
+	// Blank means the form default; an explicit 0 keeps the strict rule.
+	req.MaxShortfallPct = 5
+	if raw := strings.TrimSpace(r.PostForm.Get("max_shortfall_pct")); raw != "" {
+		req.MaxShortfallPct, err = strconv.ParseFloat(raw, 64)
+		if err != nil || math.IsNaN(req.MaxShortfallPct) || math.IsInf(req.MaxShortfallPct, 0) || req.MaxShortfallPct < 0 || req.MaxShortfallPct >= 100 {
+			return req, fmt.Errorf("acceptable shortfall must be at least 0%% and less than 100%%")
 		}
 	}
 	if raw := strings.TrimSpace(r.PostForm.Get("near_term_years")); raw != "" {
@@ -336,7 +346,12 @@ func spendingCandidateCanApply(c models.SpendingCandidate) bool {
 	return c.Qualifies && !c.Baseline && c.Kind != "current" && c.Guardrails != nil && c.Guardrails.Enabled
 }
 func buildSpendingOptimizerView(id string, result *models.SpendingOptimizerResult) (spendingOptimizerView, map[string]models.SpendingCandidate, map[string]models.SpendingCandidate, error) {
-	view := spendingOptimizerView{Optimizer: result, Request: result.Request, RequestID: id}
+	view := spendingOptimizerView{Optimizer: result, Request: result.Request, RequestID: id, ValidationRunsText: formatSpendingCount(result.ValidationRuns)}
+	if result.Request.MaxShortfallPct > 0 {
+		view.QualificationRule = fmt.Sprintf("Qualifying budgets fall below your minimum in at most %.1f%% of checked futures.", result.Request.MaxShortfallPct)
+	} else {
+		view.QualificationRule = "Qualifying budgets fund your minimum in every checked future."
+	}
 	graphs := make(map[string]models.SpendingCandidate)
 	tokens := make(map[string]models.SpendingCandidate)
 	heads := make(map[string]bool)
@@ -392,7 +407,9 @@ func buildSpendingOptimizerView(id string, result *models.SpendingOptimizerResul
 			default:
 				row.NearTermComparison = "Same near-term funded living as the current plan"
 			}
-			count := func(n, d int) string { return fmt.Sprintf("%d / %d", n, d) }
+			count := func(n, d int) string {
+				return fmt.Sprintf("%s · %s / %s", spendingObservedPercent(n, d), formatSpendingCount(n), formatSpendingCount(d))
+			}
 			row.CutCount = count(m.CutPaths, m.Runs)
 			row.EarlyCutCount = count(m.EarlyCutPaths, m.Runs)
 			row.FloorFailureCount = count(m.FloorShortfallPaths, m.Runs)
@@ -403,6 +420,9 @@ func buildSpendingOptimizerView(id string, result *models.SpendingOptimizerResul
 			populateSpendingRowEvidence(&row, m)
 		}
 		populateSpendingRowPlanEvidence(&row)
+		if g := c.Guardrails; c.Kind == "flexible" && g != nil {
+			row.RuleSummary = fmt.Sprintf("cut %g%% after a %g%% drop; raise %g%% after a %g%% rise; cap %g%%", g.FloorCutPct, g.FloorDropPct, g.CeilingRaisePct, g.CeilingRisePct, g.MaxSpendingPct)
+		}
 		view.Rows = append(view.Rows, row)
 		if row.Headline {
 			view.Headlines = append(view.Headlines, row)
@@ -432,7 +452,13 @@ func spendingObservedPercent(observed, total int) string {
 	if total <= 0 {
 		return "Unavailable"
 	}
-	return fmt.Sprintf("%.2f%%", float64(observed)*100/float64(total))
+	// One decimal, matching the Simulated lifestyle outcomes card.
+	return fmt.Sprintf("%.1f%%", float64(observed)*100/float64(total))
+}
+
+// spendingShare reads "4.8% · 48 of 1,000", the lifestyle card's units.
+func spendingShare(observed, total int) string {
+	return fmt.Sprintf("%s · %s of %s", spendingObservedPercent(observed, total), formatSpendingCount(observed), formatSpendingCount(total))
 }
 
 func populateSpendingRowEvidence(row *spendingOptimizerRow, metrics *models.SpendingRiskMetrics) {
@@ -445,7 +471,7 @@ func populateSpendingRowEvidence(row *spendingOptimizerRow, metrics *models.Spen
 		row.CutTimingEvidence = "Cut timing and depth are unavailable because no below-plan cuts were observed."
 	} else {
 		cuts := formatSpendingCount(metrics.CutPaths)
-		row.CutEvidence = fmt.Sprintf("Cuts occurred in %s of %s futures (%s).", cuts, runs, spendingObservedPercent(metrics.CutPaths, metrics.Runs))
+		row.CutEvidence = fmt.Sprintf("Cuts occurred in %s futures.", spendingShare(metrics.CutPaths, metrics.Runs))
 		if metrics.MedianFirstCutMonth != nil && *metrics.MedianFirstCutMonth > 0 {
 			year := (int(math.Round(*metrics.MedianFirstCutMonth))-1)/12 + 1
 			row.CutTimingEvidence = fmt.Sprintf("Among those %s futures, the median first cut was in plan year %d.", cuts, year)
@@ -468,14 +494,14 @@ func populateSpendingRowEvidence(row *spendingOptimizerRow, metrics *models.Spen
 			row.CutDepthEvidence = "Among futures with a cut: " + strings.Join(parts, " ") + " These are separate summaries across futures with a cut."
 		}
 	}
-	row.MinimumEvidence = fmt.Sprintf("Below the minimum in %s of %s futures", formatSpendingCount(metrics.FloorShortfallPaths), runs)
+	row.MinimumEvidence = fmt.Sprintf("Below the minimum in %s futures", spendingShare(metrics.FloorShortfallPaths, metrics.Runs))
 	if metrics.FloorShortfallPaths > 0 {
 		row.MinimumEvidence += fmt.Sprintf(". Largest observed monthly gap: %s. Longest observed below-minimum episode: %d consecutive months. These maxima may come from different futures.", budgettemplates.FormatMoney(metrics.LargestFloorGapReal), metrics.LongestFloorShortfallMonths)
 	} else {
 		row.MinimumEvidence += "."
 	}
-	row.UnpaidEvidence = fmt.Sprintf("Other configured obligations went unpaid in %s of %s futures.", formatSpendingCount(metrics.UnpaidObligationPaths), runs)
-	row.DepletionEvidence = fmt.Sprintf("The model recorded depletion in %s of %s futures; in %s of those, your minimum stayed funded from that event through the end.", formatSpendingCount(metrics.DepletionPaths), runs, formatSpendingCount(metrics.DepletionFloorFundedPaths))
+	row.UnpaidEvidence = fmt.Sprintf("Other configured obligations went unpaid in %s futures.", spendingShare(metrics.UnpaidObligationPaths, metrics.Runs))
+	row.DepletionEvidence = fmt.Sprintf("The model recorded depletion in %s futures; in %s of those, your minimum stayed funded from that event through the end.", spendingShare(metrics.DepletionPaths, metrics.Runs), formatSpendingCount(metrics.DepletionFloorFundedPaths))
 	row.LifetimeEvidence = fmt.Sprintf("Median lifetime funded living spending: %s in today's dollars.", budgettemplates.FormatMoney(metrics.FloorEvidence.MedianLifetimeFundedLivingReal))
 }
 

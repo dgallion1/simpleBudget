@@ -209,7 +209,7 @@ func TestSpendingApplyRejections(t *testing.T) {
 	}
 }
 func TestSpendingOptimizerInvalidInput(t *testing.T) {
-	for _, tc := range []struct{ k, v string }{{"floor_monthly_real", "NaN"}, {"floor_monthly_real", "0"}, {"search_min_monthly_real", "0"}, {"search_max_monthly_real", "-1"}, {"search_step_monthly_real", "+Inf"}, {"near_term_years", "0"}, {"seed", "9223372036854775808"}} {
+	for _, tc := range []struct{ k, v string }{{"floor_monthly_real", "NaN"}, {"floor_monthly_real", "0"}, {"search_min_monthly_real", "0"}, {"search_max_monthly_real", "-1"}, {"search_step_monthly_real", "+Inf"}, {"near_term_years", "0"}, {"seed", "9223372036854775808"}, {"max_shortfall_pct", "-1"}, {"max_shortfall_pct", "100"}, {"max_shortfall_pct", "NaN"}} {
 		t.Run(tc.k+tc.v, func(t *testing.T) {
 			rm, _ := spendingFixture(t)
 			before := spendingBytes(t, rm)
@@ -463,6 +463,9 @@ func TestSpendingOptimizerPrepareReadOnlyDefaults(t *testing.T) {
 	if got.Request.SearchMinMonthlyReal != 6000 || got.Request.SearchMaxMonthlyReal != 13800 || got.Request.SearchStepMonthlyReal != 100 || got.Request.NearTermYears != 5 || got.Request.Seed != 9223372036854775807 || got.CurrentBaseMonthlyReal != 8000 || got.CurrentStartingMonthlyReal != 6900 {
 		t.Fatalf("prepare response %+v", got)
 	}
+	if got.Request.MaxShortfallPct != 5 {
+		t.Fatalf("blank acceptable shortfall must default to 5%%: %+v", got.Request)
+	}
 	spendingPreviews.Lock()
 	afterCount := len(spendingPreviews.entries)
 	spendingPreviews.Unlock()
@@ -470,7 +473,7 @@ func TestSpendingOptimizerPrepareReadOnlyDefaults(t *testing.T) {
 		t.Fatal("prepare mutated registry/settings")
 	}
 	w = httptest.NewRecorder()
-	handlePrepareSpendingOptimizer(w, spendingPost(url.Values{"floor_monthly_real": {"6000"}, "search_max_monthly_real": {"100000"}}))
+	handlePrepareSpendingOptimizer(w, spendingPost(url.Values{"floor_monthly_real": {"6000"}, "search_max_monthly_real": {"100000"}, "max_shortfall_pct": {"0"}}))
 	if w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
@@ -479,6 +482,9 @@ func TestSpendingOptimizerPrepareReadOnlyDefaults(t *testing.T) {
 	}
 	if got.Request.SearchStepMonthlyReal != 500 || got.Request.Seed != 0 {
 		t.Fatalf("coarse default/seed %+v", got.Request)
+	}
+	if got.Request.MaxShortfallPct != 0 {
+		t.Fatalf("an explicit 0%% allowance must stay strict: %+v", got.Request)
 	}
 }
 func TestSpendingOptimizerChainAndCapacity(t *testing.T) {

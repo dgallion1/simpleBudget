@@ -137,9 +137,13 @@ func TestSpendingApplyAtomicCompleteCandidate(t *testing.T) {
 					t.Fatalf("preview/apply month %d differs", idx)
 				}
 			}
+			if got.SpendingSearch == nil {
+				t.Fatal("search preferences not saved")
+			}
 			got.MonthlyLivingExpenses = before.MonthlyLivingExpenses
 			got.LivingSpendingBoost = before.LivingSpendingBoost
 			got.Guardrails = before.Guardrails
+			got.SpendingSearch = before.SpendingSearch
 			a, _ := json.Marshal(got)
 			b, _ := json.Marshal(before)
 			if string(a) != string(b) {
@@ -842,6 +846,109 @@ func TestSpendingOptimizerFormMinimumRequiresSavedFloor(t *testing.T) {
 			}
 			if tc.want == nil && !strings.Contains(string(encoded), `"FloorMonthlyReal":null`) {
 				t.Fatalf("missing minimum must serialize as null: %s", encoded)
+			}
+		})
+	}
+}
+
+// SP1: Apply persists the comparison form's search preferences so a reload
+// restores every "How much can I spend?" input, not only the floor and boost.
+func TestSpendingApplySavesSearchPreferences(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		form models.SpendingOptimizerRequest
+		want *models.SpendingSearchPreferences
+	}{
+		{name: "explicit", form: models.SpendingOptimizerRequest{FloorMonthlyReal: 6000, MaxShortfallPct: 7.5, NearTermYears: 3, SearchMinMonthlyReal: 7000, SearchMaxMonthlyReal: 9500.5, SearchStepMonthlyReal: 250}, want: &models.SpendingSearchPreferences{MaxShortfallPct: 7.5, NearTermYears: 3, SearchMinMonthlyReal: 7000, SearchMaxMonthlyReal: 9500.5, SearchStepMonthlyReal: 250}},
+		{name: "defaults", form: models.SpendingOptimizerRequest{FloorMonthlyReal: 6000, MaxShortfallPct: models.DefaultSpendingMaxShortfallPct}, want: &models.SpendingSearchPreferences{MaxShortfallPct: 5}},
+		{name: "strict-zero", form: models.SpendingOptimizerRequest{FloorMonthlyReal: 6000, MaxShortfallPct: 0}, want: &models.SpendingSearchPreferences{MaxShortfallPct: 0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rm, before := spendingFixture(t)
+			if before.SpendingSearch != nil {
+				t.Fatal("fixture unexpectedly carries search preferences")
+			}
+			c := spendingAccepted()
+			id, p := spendingSeed(t, rm, c)
+			p.form = tc.form
+			// The normalized request must not leak into what is saved.
+			p.request = models.SpendingOptimizerRequest{FloorMonthlyReal: 6000, MaxShortfallPct: 99, NearTermYears: 5, SearchMinMonthlyReal: 6000, SearchMaxMonthlyReal: 17000, SearchStepMonthlyReal: 100}
+			w := httptest.NewRecorder()
+			handleApplySpendingOptimizer(w, spendingPost(url.Values{"request_id": {id}, "recommendation": {"apply-token"}, "max_shortfall_pct": {"42"}, "near_term_years": {"9"}}))
+			if w.Code != 200 {
+				t.Fatalf("apply %d %s", w.Code, w.Body.String())
+			}
+			got, rev, e := rm.LoadContextWithRevision(context.Background())
+			if e != nil {
+				t.Fatal(e)
+			}
+			if rev != p.revision+1 {
+				t.Fatalf("revision %d want %d", rev, p.revision+1)
+			}
+			if !reflect.DeepEqual(got.SpendingSearch, tc.want) {
+				t.Fatalf("saved search preferences %#v want %#v", got.SpendingSearch, tc.want)
+			}
+			got.MonthlyLivingExpenses, got.LivingSpendingBoost, got.Guardrails, got.SpendingSearch = before.MonthlyLivingExpenses, before.LivingSpendingBoost, before.Guardrails, before.SpendingSearch
+			a, _ := json.Marshal(got)
+			b, _ := json.Marshal(before)
+			if string(a) != string(b) {
+				t.Fatal("unrelated settings changed")
+			}
+		})
+	}
+}
+
+// SP1: a real preview retains the raw form (blanks stay blank) rather than the
+// normalizer's filled-in canonical range.
+func TestSpendingOptimizerPreviewRetainsRawForm(t *testing.T) {
+	rm, _ := spendingFixture(t)
+	_ = rm
+	w := httptest.NewRecorder()
+	runner := func(_ context.Context, _ engine.Input, req models.SpendingOptimizerRequest) (*models.SpendingOptimizerResult, error) {
+		// Emulate the optimizer echoing a normalized request.
+		req.NearTermYears, req.SearchMinMonthlyReal, req.SearchMaxMonthlyReal, req.SearchStepMonthlyReal = 5, 6000, 17000, 100
+		return &models.SpendingOptimizerResult{Request: req, Candidates: []models.SpendingCandidate{{ID: "current", Kind: "current", Baseline: true, Metrics: &models.SpendingRiskMetrics{Runs: 1}}}}, nil
+	}
+	handleSpendingOptimizerWithRunner(w, spendingPost(url.Values{"request_id": {"raw-form-request"}, "floor_monthly_real": {"6000"}, "max_shortfall_pct": {"2.5"}}), runner)
+	if w.Code != 200 {
+		t.Fatalf("run %d %s", w.Code, w.Body.String())
+	}
+	spendingPreviews.Lock()
+	p := spendingPreviews.entries["raw-form-request"]
+	spendingPreviews.Unlock()
+	if p == nil {
+		t.Fatal("preview not retained")
+	}
+	want := models.SpendingOptimizerRequest{FloorMonthlyReal: 6000, MaxShortfallPct: 2.5}
+	if !reflect.DeepEqual(p.form, want) {
+		t.Fatalf("raw form %#v want %#v", p.form, want)
+	}
+	if p.request.NearTermYears != 5 || p.request.SearchMinMonthlyReal != 6000 {
+		t.Fatalf("normalized request not retained: %#v", p.request)
+	}
+}
+
+// SP1: the form initializes from saved search preferences, and defaults when none exist.
+func TestSpendingOptimizerFormRestoresSearchPreferences(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		prefs *models.SpendingSearchPreferences
+		want  map[string]any
+	}{
+		{name: "none", want: map[string]any{"MaxShortfallPctText": "5", "NearTermYearsSaved": 0, "SearchMinMonthlyReal": 0.0, "SearchMaxMonthlyReal": 0.0, "SearchStepMonthlyReal": 0.0}},
+		{name: "saved", prefs: &models.SpendingSearchPreferences{MaxShortfallPct: 7.5, NearTermYears: 3, SearchMinMonthlyReal: 7000, SearchMaxMonthlyReal: 9500.5, SearchStepMonthlyReal: 250}, want: map[string]any{"MaxShortfallPctText": "7.5", "NearTermYearsSaved": 3, "SearchMinMonthlyReal": 7000.0, "SearchMaxMonthlyReal": 9500.5, "SearchStepMonthlyReal": 250.0}},
+		{name: "strict-zero", prefs: &models.SpendingSearchPreferences{MaxShortfallPct: 0}, want: map[string]any{"MaxShortfallPctText": "0", "NearTermYearsSaved": 0, "SearchMinMonthlyReal": 0.0, "SearchMaxMonthlyReal": 0.0, "SearchStepMonthlyReal": 0.0}},
+		{name: "fractional", prefs: &models.SpendingSearchPreferences{MaxShortfallPct: 12.3}, want: map[string]any{"MaxShortfallPctText": "12.3", "NearTermYearsSaved": 0, "SearchMinMonthlyReal": 0.0, "SearchMaxMonthlyReal": 0.0, "SearchStepMonthlyReal": 0.0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := models.DefaultWhatIfSettings()
+			s.MonthlyLivingExpenses = 8000
+			s.SpendingSearch = tc.prefs
+			form := spendingOptimizerFormData(s, nil)
+			for key, want := range tc.want {
+				if !reflect.DeepEqual(form[key], want) {
+					t.Errorf("%s = %#v want %#v", key, form[key], want)
+				}
 			}
 		})
 	}

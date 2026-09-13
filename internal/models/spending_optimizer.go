@@ -22,6 +22,23 @@ type SpendingPathOutcome struct {
 	BelowPlanAtEnd                     bool    `json:"below_plan_at_end"`
 }
 
+// DefaultSpendingMaxShortfallPct is the acceptable-shortfall allowance the
+// comparison form starts with when the household has never applied one.
+const DefaultSpendingMaxShortfallPct = 5.0
+
+// SpendingSearchPreferences retains the comparison-form inputs of the last
+// applied spending plan that are not part of the plan itself, so a reload
+// restores the whole "How much can I spend?" form. MaxShortfallPct is always
+// meaningful (0 is the strict rule); the other fields are 0 when the input
+// was left blank ("Automatic").
+type SpendingSearchPreferences struct {
+	MaxShortfallPct       float64 `json:"max_shortfall_pct"`
+	NearTermYears         int     `json:"near_term_years,omitempty"`
+	SearchMinMonthlyReal  float64 `json:"search_min_monthly_real,omitempty"`
+	SearchMaxMonthlyReal  float64 `json:"search_max_monthly_real,omitempty"`
+	SearchStepMonthlyReal float64 `json:"search_step_monthly_real,omitempty"`
+}
+
 // SpendingOptimizerRequest defines the user's minimum and bounded living-budget search.
 // MaxShortfallPct is the largest share of checked futures (0–100, exclusive of
 // 100) that may fall below the minimum for a budget to qualify; 0 requires

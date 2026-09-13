@@ -37,6 +37,7 @@ type spendingPreview struct {
 	cancel           context.CancelFunc
 	active, applying bool
 	request          models.SpendingOptimizerRequest
+	form             models.SpendingOptimizerRequest // raw parsed form, never normalized
 	result           *models.SpendingOptimizerResult
 	tokens           map[string]models.SpendingCandidate
 	graphs           map[string]models.SpendingCandidate
@@ -118,7 +119,7 @@ func parseSpendingRequest(r *http.Request) (models.SpendingOptimizerRequest, err
 		}
 	}
 	// Blank means the form default; an explicit 0 keeps the strict rule.
-	req.MaxShortfallPct = 5
+	req.MaxShortfallPct = models.DefaultSpendingMaxShortfallPct
 	if raw := strings.TrimSpace(r.PostForm.Get("max_shortfall_pct")); raw != "" {
 		req.MaxShortfallPct, err = strconv.ParseFloat(raw, 64)
 		if err != nil || math.IsNaN(req.MaxShortfallPct) || math.IsInf(req.MaxShortfallPct, 0) || req.MaxShortfallPct < 0 || req.MaxShortfallPct >= 100 {
@@ -223,7 +224,7 @@ func handleSpendingOptimizerWithRunner(w http.ResponseWriter, r *http.Request, r
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
 	defer cancel()
-	p := &spendingPreview{manager: manager, scenario: scenario, revision: revision, fingerprint: sha256.Sum256(raw), expires: time.Now().Add(15 * time.Minute), cancel: cancel, active: true, request: req, tokens: make(map[string]models.SpendingCandidate), graphs: make(map[string]models.SpendingCandidate)}
+	p := &spendingPreview{manager: manager, scenario: scenario, revision: revision, fingerprint: sha256.Sum256(raw), expires: time.Now().Add(15 * time.Minute), cancel: cancel, active: true, request: req, form: req, tokens: make(map[string]models.SpendingCandidate), graphs: make(map[string]models.SpendingCandidate)}
 	spendingPreviews.Lock()
 	busy := false
 	for key, old := range spendingPreviews.entries {
@@ -612,6 +613,8 @@ func handleApplySpendingOptimizerWithHook(w http.ResponseWriter, r *http.Request
 	s.LivingSpendingBoost = models.CloneLivingSpendingBoost(c.LivingSpendingBoost)
 	cfg := *c.Guardrails
 	s.Guardrails = &cfg
+	// The raw form (not the normalized request) so blanks reload blank.
+	s.SpendingSearch = &models.SpendingSearchPreferences{MaxShortfallPct: p.form.MaxShortfallPct, NearTermYears: p.form.NearTermYears, SearchMinMonthlyReal: p.form.SearchMinMonthlyReal, SearchMaxMonthlyReal: p.form.SearchMaxMonthlyReal, SearchStepMonthlyReal: p.form.SearchStepMonthlyReal}
 	if beforeSave != nil {
 		beforeSave()
 	}
@@ -637,7 +640,8 @@ func handleApplySpendingOptimizerWithHook(w http.ResponseWriter, r *http.Request
 	w.Header().Set("HX-Redirect", fmt.Sprintf("/whatif?spending_applied=%d#spending-optimizer", revision))
 }
 
-// Advanced range fields stay blank/automatic; prepare returns their canonical defaults.
+// Advanced range fields reload from the last applied search preferences and
+// otherwise stay blank/automatic; prepare returns their canonical defaults.
 func spendingOptimizerFormData(s *models.WhatIfSettings, projection *models.ProjectionResult) map[string]any {
 	// An absent saved floor is an unchosen required input, not the base budget.
 	var floor any
@@ -648,7 +652,19 @@ func spendingOptimizerFormData(s *models.WhatIfSettings, projection *models.Proj
 	if projection != nil && len(projection.Months) > 0 {
 		actual = projection.Months[0].PlannedLivingExpenses
 	}
-	data := map[string]any{"FloorMonthlyReal": floor, "NearTermYears": 5, "CurrentBaseMonthlyReal": s.MonthlyLivingExpenses, "CurrentStartingMonthlyReal": actual, "Chained": len(s.ScenarioChain) > 0}
+	search := models.SpendingSearchPreferences{MaxShortfallPct: models.DefaultSpendingMaxShortfallPct}
+	if s.SpendingSearch != nil {
+		search = *s.SpendingSearch
+	}
+	data := map[string]any{
+		"FloorMonthlyReal": floor, "NearTermYears": 5, "CurrentBaseMonthlyReal": s.MonthlyLivingExpenses, "CurrentStartingMonthlyReal": actual, "Chained": len(s.ScenarioChain) > 0,
+		// One formatter for the shortfall input: shortest exact decimal ("5", "7.5").
+		"MaxShortfallPctText":   strconv.FormatFloat(search.MaxShortfallPct, 'f', -1, 64),
+		"NearTermYearsSaved":    search.NearTermYears,
+		"SearchMinMonthlyReal":  search.SearchMinMonthlyReal,
+		"SearchMaxMonthlyReal":  search.SearchMaxMonthlyReal,
+		"SearchStepMonthlyReal": search.SearchStepMonthlyReal,
+	}
 	start, err := models.ParseYearMonth(s.StartDate)
 	if err == nil {
 		data["StartMonth"] = start.Format("2006-01")

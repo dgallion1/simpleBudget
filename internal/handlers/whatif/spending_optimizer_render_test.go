@@ -31,6 +31,7 @@ func TestSpendingOptimizerRenderFormDecision(t *testing.T) {
 				"SpendingOptimizerForm": map[string]any{
 					"FloorMonthlyReal":           tc.floor,
 					"NearTermYears":              5,
+					"MaxShortfallPctText":        "5",
 					"CurrentBaseMonthlyReal":     8000.0,
 					"CurrentStartingMonthlyReal": 8500.0,
 					"StartMonth":                 "2026-09",
@@ -96,7 +97,7 @@ func TestSpendingOptimizerRenderSavedBoostStates(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			form := map[string]any{
-				"FloorMonthlyReal": 7000.0, "NearTermYears": 5,
+				"FloorMonthlyReal": 7000.0, "NearTermYears": 5, "MaxShortfallPctText": "5",
 				"CurrentBaseMonthlyReal": 8000.0, "CurrentStartingMonthlyReal": 8500.0,
 				"StartMonth": "2026-09", "ExpectedEndMonth": "2056-08", "BoostStopMinimum": "2026-10",
 				"BoostEnabled": true, "BoostMonthlyReal": 500.0, "BoostStopMonth": "2031-09",
@@ -371,7 +372,7 @@ func TestSpendingOptimizerBrowserFixture(t *testing.T) {
 
 	form := httptest.NewRecorder()
 	formData := map[string]any{"SpendingOptimizerForm": map[string]any{
-		"FloorMonthlyReal": nil, "NearTermYears": 5,
+		"FloorMonthlyReal": nil, "NearTermYears": 5, "MaxShortfallPctText": "5",
 		"CurrentBaseMonthlyReal": 8000.0, "CurrentStartingMonthlyReal": 8500.0,
 		"StartMonth": "2026-09", "ExpectedEndMonth": "2056-08",
 	}}
@@ -451,5 +452,54 @@ func TestSpendingOptimizerBrowserFixture(t *testing.T) {
 	}
 	if err := os.WriteFile(path, payload, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// SP1: saved search preferences populate the shortfall and advanced inputs;
+// absent preferences render the default and blanks, never "<no value>".
+func TestSpendingOptimizerRenderSearchPreferences(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+
+	base := func() map[string]any {
+		return map[string]any{
+			"FloorMonthlyReal": 7000.0, "NearTermYears": 5,
+			"CurrentBaseMonthlyReal": 8000.0, "CurrentStartingMonthlyReal": 8500.0,
+			"StartMonth": "2026-09", "ExpectedEndMonth": "2056-08",
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		form map[string]any
+		want map[string]string // input id -> value attribute
+	}{
+		{name: "saved", form: map[string]any{"MaxShortfallPctText": "7.5", "NearTermYearsSaved": 3, "SearchMinMonthlyReal": 7000.0, "SearchMaxMonthlyReal": 9500.5, "SearchStepMonthlyReal": 250.0},
+			want: map[string]string{"spending-shortfall": "7.5", "spending-near-term-years": "3", "spending-search-min": "7000.00", "spending-search-max": "9500.50", "spending-search-step": "250.00"}},
+		{name: "defaults", form: map[string]any{"MaxShortfallPctText": "5", "NearTermYearsSaved": 0, "SearchMinMonthlyReal": 0.0, "SearchMaxMonthlyReal": 0.0, "SearchStepMonthlyReal": 0.0},
+			want: map[string]string{"spending-shortfall": "5", "spending-near-term-years": "", "spending-search-min": "", "spending-search-max": "", "spending-search-step": ""}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			form := base()
+			for k, v := range tc.form {
+				form[k] = v
+			}
+			w := httptest.NewRecorder()
+			if err := renderer.RenderPartial(w, "whatif-spending-optimizer", map[string]any{"SpendingOptimizerForm": form}); err != nil {
+				t.Fatal(err)
+			}
+			body := w.Body.String()
+			if strings.Contains(body, "<no value>") || strings.Contains(body, "&lt;no value&gt;") {
+				t.Fatal("template rendered <no value>")
+			}
+			for id, want := range tc.want {
+				el := guardrailTestElement(t, body, "id", id)
+				if got := guardrailTestAttribute(el, "value"); got != want {
+					t.Errorf("%s value = %q want %q", id, got, want)
+				}
+			}
+			if !strings.Contains(body, `placeholder="Automatic: 5"`) {
+				t.Error("near-term placeholder lost")
+			}
+		})
 	}
 }

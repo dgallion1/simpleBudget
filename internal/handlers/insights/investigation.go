@@ -24,9 +24,9 @@ type InvestigationView struct {
 	Monthly, Annual              float64
 }
 type FindingView struct {
-	Transaction                models.Transaction
-	Type, Label, Evidence, URL string
-	Creep                      *pricecreep.Creep
+	Transaction                          models.Transaction
+	Type, Label, Evidence, URL, Severity string
+	Creep                                *pricecreep.Creep
 }
 type RecurringRowView struct {
 	models.RecurringPayment
@@ -91,18 +91,18 @@ func buildFindings(ts *models.TransactionSet, p models.PeriodContext, flags []an
 	}
 	seen := map[string]bool{}
 	out := []FindingView{}
-	add := func(t models.Transaction, kind, label, evidence string, c *pricecreep.Creep) {
+	add := func(t models.Transaction, kind, label, evidence, severity string, c *pricecreep.Creep) {
 		key := t.Hash + "/" + kind
 		if t.Hash == "" || seen[key] {
 			return
 		}
 		seen[key] = true
 		q := url.Values{"start": {p.SelectedStart.Format("2006-01-02")}, "end": {p.SelectedEnd.Format("2006-01-02")}, "search": {t.Description}, "category": {t.Category}, "type": {"Outflow"}}
-		out = append(out, FindingView{Transaction: t, Type: kind, Label: label, Evidence: evidence, Creep: c, URL: "/explorer?" + q.Encode()})
+		out = append(out, FindingView{Transaction: t, Type: kind, Label: label, Evidence: evidence, Severity: severity, Creep: c, URL: "/explorer?" + q.Encode()})
 	}
 	for _, a := range flags {
 		if t, ok := byHash[a.Hash]; ok {
-			add(t, "anomaly", anomalyMethodLabel(a.Method), a.Severity+" severity", nil)
+			add(t, "anomaly", anomalyMethodLabel(a.Method), a.Severity+" severity", a.Severity, nil)
 		}
 	}
 	expenses := []models.Transaction{}
@@ -123,7 +123,7 @@ func buildFindings(ts *models.TransactionSet, p models.PeriodContext, flags []an
 			}
 		}
 		if _, ok := byHash[chosen.Hash]; ok {
-			add(chosen, "price-creep", "Price creep", "Median of first three vs last three charges", &c)
+			add(chosen, "price-creep", "Price creep", "Median of first three vs last three charges", "", &c)
 		}
 	}
 	// Largest absolute amount first (SV1): the review list exists to surface

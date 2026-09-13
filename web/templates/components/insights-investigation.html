@@ -5,13 +5,22 @@
 {{end}}
 
 {{define "insights-finding"}}
-<li id="finding-{{.Type}}-{{.Transaction.Hash}}" data-finding-type="{{.Type}}" data-finding-hash="{{.Transaction.Hash}}" class="py-4 space-y-2">
-    <div class="flex flex-wrap justify-between gap-2">
-        <a href="{{.URL}}" class="text-accent underline break-words">{{or .Transaction.DisplayName .Transaction.Description}}</a>
-        <span class="num text-gray-800 dark:text-gray-100">Actual transaction: {{formatMoney .Transaction.Amount}} outflow</span>
+<li id="finding-{{.Type}}-{{.Transaction.Hash}}" data-finding-type="{{.Type}}" data-finding-hash="{{.Transaction.Hash}}" class="py-4">
+    <div class="flex flex-wrap justify-between gap-4">
+        <div class="min-w-0 flex-1 space-y-1">
+            <a href="{{.URL}}" class="text-accent underline break-words">{{or .Transaction.DisplayName .Transaction.Description}}</a>
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded px-2 py-0.5 text-sm">{{.Label}}</span>
+                {{if eq .Type "anomaly"}}{{if eq .Severity "high"}}<span class="bg-negative-soft text-negative rounded px-2 py-0.5 text-sm">High severity</span>{{else if eq .Severity "medium"}}<span class="bg-warning-soft text-warning rounded px-2 py-0.5 text-sm">Medium severity</span>{{end}}{{end}}
+            </div>
+            <p class="text-base text-gray-600 dark:text-gray-400">{{.Transaction.Date.Format "2006-01-02"}} · {{.Transaction.Category}}{{if .Transaction.MajorExpenseName}} · Major Expense: {{.Transaction.MajorExpenseName}}{{end}}</p>
+            {{with .Creep}}<p class="text-base text-gray-700 dark:text-gray-300">{{$.Evidence}}: {{formatMoney .FirstAmount}} → {{formatMoney .CurrentAmount}} ({{printf "%.1f" .PctChange}}% increase), {{.FirstDate.Format "2006-01-02"}} to {{.LastDate.Format "2006-01-02"}}.</p>{{end}}
+        </div>
+        <div class="text-right flex-shrink-0">
+            <p class="num text-lg font-semibold text-gray-900 dark:text-gray-100">{{formatMoney .Transaction.Amount}}</p>
+            <p class="text-sm text-gray-600 dark:text-gray-400">actual transaction · outflow</p>
+        </div>
     </div>
-    <p class="text-base text-gray-600 dark:text-gray-400">{{.Transaction.Date.Format "2006-01-02"}} · {{.Transaction.Category}}{{if .Transaction.MajorExpenseName}} · Major Expense: {{.Transaction.MajorExpenseName}}{{end}}</p>
-    <p class="text-base text-gray-700 dark:text-gray-300">{{.Label}} · {{.Evidence}}{{with .Creep}}: {{formatMoney .FirstAmount}} → {{formatMoney .CurrentAmount}} ({{printf "%.1f" .PctChange}}% increase), {{.FirstDate.Format "2006-01-02"}} to {{.LastDate.Format "2006-01-02"}}.{{end}}</p>
 </li>
 {{end}}
 

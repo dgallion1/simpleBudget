@@ -38,28 +38,63 @@
     </div>
 
 
-    <div id="period-context">{{template "shared/period-context" .}}</div>
+    <div id="period-context">{{template "shared/period-context" (dict "Period" .Period "Compact" true)}}</div>
     {{with .Investigation}}
     <p id="insights-lead" class="text-xl leading-snug text-gray-900 dark:text-gray-100">Net spending this period: <span class="num">{{formatMoney .Current}}</span>{{if $.Period.HistoryAvailable}} ({{template "insights-dollar-change" .Change}} versus the prior period){{end}}. {{$n := len .Findings}}{{if eq $n 0}}No transactions to review{{else}}{{$n}} {{if eq $n 1}}transaction{{else}}transactions{{end}} to review{{end}}; detected recurring spending is about <span class="num">{{formatMoney .Monthly}}</span> a month.</p>
-    <section id="insights-change" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="change-heading">
+    <nav aria-label="On this page" class="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+        <a class="text-accent underline py-1" href="#insights-change">What changed</a>
+        <a class="text-accent underline py-1" href="#insights-findings">Review</a>
+        <a class="text-accent underline py-1" href="#insights-recurring">Recurring</a>
+        <a class="text-accent underline py-1" href="#insights-supporting">Charts</a>
+    </nav>
+    <section id="insights-change" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3 scroll-mt-20" aria-labelledby="change-heading">
         <h2 id="change-heading" class="text-xl font-semibold text-gray-800 dark:text-gray-100">What changed</h2>
         <p class="text-base text-gray-700 dark:text-gray-300">Actual net spending across all outflows, including refunds and excluding transfers.</p>
-        <p class="text-base text-gray-700 dark:text-gray-300">Selected period: <span class="num font-semibold">{{formatMoney .Current}}</span>{{if $.Period.HistoryAvailable}} · Prior period: <span class="num">{{formatMoney .Previous}}</span>{{end}}</p>
         {{if $.Period.HistoryAvailable}}
-        <p class="text-gray-800 dark:text-gray-100">Dollar difference: {{template "insights-dollar-change" .Change}} · {{template "insights-change-cell" .Change}}</p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="rounded-xl border border-gray-500 dark:border-gray-400 p-4">
+                <p class="text-label font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Selected period</p>
+                <p class="num text-3xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Current}}</p>
+            </div>
+            <div class="rounded-xl border border-gray-500 dark:border-gray-400 p-4">
+                <p class="text-label font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Prior period</p>
+                <p class="num text-3xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Previous}}</p>
+            </div>
+            <div class="rounded-xl border p-4 {{if eq .Change.Direction "up"}}border-negative bg-negative-soft{{else if eq .Change.Direction "down"}}border-positive bg-positive-soft{{else}}border-gray-500 dark:border-gray-400{{end}}">
+                <p class="text-label font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Change</p>
+                <p class="num text-3xl font-bold {{if eq .Change.Direction "up"}}text-negative{{else if eq .Change.Direction "down"}}text-positive{{else}}text-gray-900 dark:text-gray-100{{end}}">{{template "insights-dollar-change" .Change}}</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400">{{template "insights-change-cell" .Change}}</p>
+            </div>
+        </div>
         <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">Largest contributors</h3>
         <p class="text-base text-gray-600 dark:text-gray-400">Grouped by {{.Grouping}}. Up to three largest absolute dollar changes; these are not a complete reconciliation of all spending.</p>
+        {{$contributors := .Contributors}}
+        {{$maxChange := 0.0}}{{if $contributors}}{{$maxChange = abs (index $contributors 0).Change.Amount}}{{end}}
         <ul class="divide-y divide-gray-200 dark:divide-gray-700">
-            {{range .Contributors}}
+            {{range $contributors}}
             <li class="py-3 flex flex-wrap justify-between gap-2 text-base" data-contributor="{{.Category}}">
-                <a class="text-accent underline" href="/explorer?{{if index $.Investigation.GroupIDs .Category}}majorExpense={{urlquery (index $.Investigation.GroupIDs .Category)}}{{else}}category={{urlquery .Category}}{{end}}&amp;start={{$.StartDate}}&amp;end={{$.EndDate}}&amp;type=Outflow">{{.Category}}</a>
-                <span class="num text-gray-800 dark:text-gray-100">{{template "insights-dollar-change" .Change}} · {{template "insights-change-cell" .Change}}</span>
+                <div class="min-w-0 flex-1 pr-2 space-y-1">
+                    <a class="text-accent underline" href="/explorer?{{if index $.Investigation.GroupIDs .Category}}majorExpense={{urlquery (index $.Investigation.GroupIDs .Category)}}{{else}}category={{urlquery .Category}}{{end}}&amp;start={{$.StartDate}}&amp;end={{$.EndDate}}&amp;type=Outflow">{{.Category}}</a>
+                    {{if gt $maxChange 0.0}}
+                    {{$pct := div (mul (abs .Change.Amount) 100.0) $maxChange}}
+                    <div class="h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700" aria-hidden="true"><div class="h-1.5 rounded-full {{if eq .Change.Direction "up"}}bg-negative{{else if eq .Change.Direction "down"}}bg-positive{{else}}bg-gray-400{{end}}" style="width: {{printf "%.0f" $pct}}%"></div></div>
+                    {{end}}
+                </div>
+                <span class="num {{if eq .Change.Direction "up"}}text-negative{{else if eq .Change.Direction "down"}}text-positive{{else}}text-gray-800 dark:text-gray-100{{end}}">{{template "insights-dollar-change" .Change}} · {{template "insights-change-cell" .Change}}</span>
             </li>
             {{else}}<li class="text-base text-gray-600 dark:text-gray-400">No category changes to compare.</li>{{end}}
         </ul>
-        {{else}}<p class="text-base text-gray-700 dark:text-gray-300">Not enough history to compare</p>{{end}}
+        {{else}}
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="rounded-xl border border-gray-500 dark:border-gray-400 p-4">
+                <p class="text-label font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Selected period</p>
+                <p class="num text-3xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Current}}</p>
+            </div>
+        </div>
+        <p class="text-base text-gray-700 dark:text-gray-300">Not enough history to compare</p>
+        {{end}}
     </section>
-    <section id="insights-findings" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3" aria-labelledby="findings-heading">
+    <section id="insights-findings" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 space-y-3 scroll-mt-20" aria-labelledby="findings-heading">
         <h2 id="findings-heading" class="text-xl font-semibold text-gray-800 dark:text-gray-100">Review these transactions</h2>
         <p class="text-base text-gray-700 dark:text-gray-300">{{len .Findings}} findings in the selected period, largest amount first. A transaction can have more than one finding type.</p>
         {{if .Findings}}
@@ -81,7 +116,7 @@
             {{if $hasCreep}}<p class="text-sm text-gray-600 dark:text-gray-400">Price-creep findings: the linked transaction is the latest in its full-history group; its actual amount may differ from the median.</p>{{end}}
         </details>
     </section>
-    <section id="insights-recurring" class="space-y-4" aria-labelledby="recurring-heading">
+    <section id="insights-recurring" class="space-y-4 scroll-mt-20" aria-labelledby="recurring-heading">
         <div class="space-y-2">
             <h2 id="recurring-heading" class="text-xl font-semibold text-gray-800 dark:text-gray-100">Detected recurring spending</h2>
             <p class="text-base text-gray-700 dark:text-gray-300">Retained estimates: <span class="num">{{formatMoney .Monthly}}</span> monthly · <span class="num">{{formatMoney .Annual}}</span> annual.</p>
@@ -90,6 +125,15 @@
                 <p class="text-sm text-gray-700 dark:text-gray-300">Estimates from history through {{$.Period.SelectedEnd.Format "2006-01-02"}}, not actual selected-period spending or confirmed obligations. All detected recurring series are shown without a row limit.</p>
                 <p class="text-sm text-gray-700 dark:text-gray-300">Totals sum displayed estimates. Monthly and annual figures are rounded separately.</p>
             </details>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {{range .Groups}}
+            <a href="#recurring-{{.ID}}" class="rounded-xl border border-gray-500 dark:border-gray-400 p-4 block focus-visible:ring-2 focus-visible:ring-accent">
+                <p class="text-label font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">{{.Label}}</p>
+                <p class="num text-2xl font-bold text-gray-900 dark:text-gray-100">{{formatMoney .Monthly}}</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400">{{len .Rows}} series · {{formatMoney .Annual}} a year</p>
+            </a>
+            {{end}}
         </div>
         {{range .Groups}}{{template "insights-recurring-group" (dict "Group" . "Period" $.Period "StartDate" $.StartDate "EndDate" $.EndDate)}}{{end}}
     </section>
@@ -157,7 +201,7 @@
     <section><h2 class="text-lg font-semibold">Other recurring spending</h2>{{template "recurring-payments" (dict "RecurringPayments" .Insights.OtherRecurring)}}</section>
     {{end}}
     {{end}}
-    <section id="insights-supporting" class="space-y-4" aria-labelledby="supporting-heading">
+    <section id="insights-supporting" class="space-y-4 scroll-mt-20" aria-labelledby="supporting-heading">
         <h2 id="supporting-heading" class="text-xl font-semibold text-gray-800 dark:text-gray-100">Supporting charts and tables</h2>
         <div role="tablist" aria-label="Supporting charts and tables" class="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-700">
             <button type="button" role="tab" id="insights-tab-trends" aria-controls="insights-panel-trends" aria-selected="false" data-ins-tab="trends" class="px-3 py-2 text-sm font-medium border-b-2 border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-100">Spending trends</button>

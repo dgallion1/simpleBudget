@@ -290,63 +290,58 @@ func estimateOtherTaxableIncome(s *models.WhatIfSettings, projectionYear int) fl
 	return taxable
 }
 
-// inflatedBracketTopForYear returns the top of the target ordinary
-// bracket (a taxable-income ceiling) inflated to the candidate's calendar
-// year, matching how the engine inflates its brackets off taxBaseYear
-// (2024). Comparing a frozen 2024 ceiling against future-nominal income
-// systematically understates conversion room for plans years out.
+// inflatedBracketTopForYear returns the top of the target ordinary bracket
+// (a taxable-income ceiling) for the candidate's calendar year, read from
+// the SAME versioned tax-year registry (engine.ResolveTaxYear via
+// GetAdjustedBrackets) that the engine itself uses to size brackets. A
+// second, hand-inflated table here would drift from the engine's own
+// figures the moment a new statutory year is seeded (e.g. the engine's 2026
+// MFJ 22% ceiling of $211,400 vs. a manually-inflated-from-2024 estimate of
+// ~$217,000) — one source, read by both surfaces.
 func inflatedBracketTopForYear(s *models.WhatIfSettings, target float64, projectionYear int) (float64, bool) {
 	if s == nil || s.TaxConfig == nil {
 		return 0, false
 	}
-	base, ok := bracketTopFor(s.TaxConfig.FilingStatus, target)
-	if !ok {
-		return 0, false
-	}
 	tc := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
-	return base * tc.InflationFactor(engine.YearsFromTaxBase(s, projectionYear)), true
+	return bracketTopForRate(tc.GetAdjustedBrackets(engine.YearsFromTaxBase(s, projectionYear)), target)
 }
 
-// bracketTopFor returns the top of the given target marginal bracket
-// for the filing status. Returns (ceiling, ok). ok=false signals
-// either an unknown filing status OR a target rate that is not in
-// the table (e.g., 0.32 — currently unsupported). Callers should
-// treat ok=false as "skip this candidate" or "skip the bracket-fill
-// family" depending on context.
-//
-// Values are 2024 IRS thresholds, in nominal dollars. Acceptable
-// approximation for optimization — the optimizer ranks on the engine's
-// actual output, which uses the engine's full tax tables; this table
-// is only used to set per-year conversion targets.
-func bracketTopFor(status models.FilingStatus, target float64) (float64, bool) {
-	table := map[models.FilingStatus]map[float64]float64{
-		models.FilingSingle: {
-			0.12: 47_150,
-			0.22: 100_525,
-			0.24: 191_950,
-		},
-		models.FilingMarriedJoint: {
-			0.12: 94_300,
-			0.22: 201_050,
-			0.24: 383_900,
-		},
-		models.FilingMarriedSeparate: {
-			0.12: 47_150,
-			0.22: 100_525,
-			0.24: 191_950,
-		},
-		models.FilingHeadOfHousehold: {
-			0.12: 63_100,
-			0.22: 100_500,
-			0.24: 191_950,
-		},
+// bracketTopForRate scans a resolved set of ordinary brackets for the one
+// whose Rate equals target (exact float equality: every Rate in the
+// registry is a literal like 0.22, never a computed value, so there is no
+// accumulated floating-point drift to guard against) and returns its
+// MaxIncome. ok=false when no bracket has that rate, or when the matching
+// bracket's top is unbounded (math.MaxFloat64, the top marginal bracket) —
+// there is no ceiling to fill up to.
+func bracketTopForRate(brackets []engine.FederalTaxBracket, target float64) (float64, bool) {
+	for _, b := range brackets {
+		if b.Rate == target {
+			if b.MaxIncome >= math.MaxFloat64 {
+				return 0, false
+			}
+			return b.MaxIncome, true
+		}
 	}
-	rows, ok := table[status]
-	if !ok {
+	return 0, false
+}
+
+// bracketTopFor returns the top of the given target marginal bracket for
+// the filing status, as of the tax base year (engine.GetAdjustedBrackets at
+// yearsFromBase=0 — currently 2024, the origin every projection offset is
+// measured from). Returns (ceiling, ok). ok=false signals either an unknown
+// filing status OR a target rate with no bounded bracket in the registry.
+// Callers should treat ok=false as "skip this candidate" or "skip the
+// bracket-fill family" depending on context.
+//
+// Reads through engine.NewTaxCalculator/GetAdjustedBrackets — the same
+// versioned registry every other bracket lookup in this codebase uses — so
+// this can never drift from the engine's own figures.
+func bracketTopFor(status models.FilingStatus, target float64) (float64, bool) {
+	if engine.NormalizeFilingStatus(status) != status {
 		return 0, false
 	}
-	ceiling, ok := rows[target]
-	return ceiling, ok
+	tc := engine.NewTaxCalculator(&models.TaxConfig{FilingStatus: status}, 0)
+	return bracketTopForRate(tc.GetAdjustedBrackets(0), target)
 }
 
 // enumerateBracketFillStrategies generates bracket-fill candidates:

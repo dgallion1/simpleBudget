@@ -156,37 +156,71 @@ func TestEstimateOtherTaxableIncome_PreSSAndPreRMD(t *testing.T) {
 
 func TestInflatedBracketTopForYear_GrowsWithCalendarYear(t *testing.T) {
 	// Regression: the bracket-fill ceiling is a future-nominal taxable-
-	// income threshold and must be inflated to the candidate's calendar
-	// year (matching the engine's bracket inflation off taxBaseYear=2024).
-	// A frozen 2024 ceiling understated conversion room for later years.
+	// income threshold and must track the SAME versioned tax-year registry
+	// (engine.GetAdjustedBrackets) the engine itself uses to size brackets
+	// for the candidate's calendar year — not a second, hand-inflated
+	// table that can drift from it. A frozen/mis-inflated ceiling
+	// understated (or overstated) conversion room for later years.
+	//
+	// The expected figures below are derived INDEPENDENTLY from the
+	// statutory literal (MFJ's 2026 22% ceiling, $211,400 — IRS Rev. Proc.
+	// 2025-32 §4.01) via the compounding formula itself, not by calling
+	// engine.GetAdjustedBrackets a second time: computing "expected" through
+	// the same chain under test would be tautological — a mis-scale inside
+	// the engine would move both sides together and the test would stay
+	// green (this is how mutation testing caught the previous version).
+	const mfj22CeilingIn2026 = 211400.0
+	const rate = 3.0
 	s := &models.WhatIfSettings{
-		StartDate:     "2024-01",
-		InflationRate: 3.0,
+		StartDate:     "2026-01",
+		InflationRate: rate,
 		TaxConfig:     &models.TaxConfig{FilingStatus: models.FilingMarriedJoint},
 	}
 
-	base, ok := bracketTopFor(models.FilingMarriedJoint, 0.24)
-	if !ok {
-		t.Fatal("bracketTopFor failed for MFJ 24%")
+	for _, n := range []int{0, 1, 10} {
+		got, ok := inflatedBracketTopForYear(s, 0.22, n)
+		if !ok {
+			t.Fatalf("inflatedBracketTopForYear failed at projection year %d", n)
+		}
+		want := mfj22CeilingIn2026 * math.Pow(1+rate/100, float64(n))
+		if relErr := math.Abs(got-want) / want; relErr > 1e-6 {
+			t.Errorf("projection year %d ceiling = %v, want %v (211400 x (1+rate/100)^%d), relative error %v",
+				n, got, want, n, relErr)
+		}
 	}
 
-	// Year 0 == base year 2024: no inflation.
-	y0, ok := inflatedBracketTopForYear(s, 0.24, 0)
+	// Additional, non-load-bearing cross-check: the function's output must
+	// still agree with the engine's own GetAdjustedBrackets at year 10 —
+	// this only guards the "one source of truth" property and is not what
+	// pins the numeric value (that's the formula assertions above).
+	tc := engine.NewTaxCalculator(s.TaxConfig, s.InflationRate)
+	engineY10, ok := bracketTopForRate(tc.GetAdjustedBrackets(engine.YearsFromTaxBase(s, 10)), 0.22)
 	if !ok {
-		t.Fatal("inflatedBracketTopForYear failed at year 0")
+		t.Fatal("engine has no bounded 0.22 bracket at year 10")
 	}
-	if !ssWithinTolerance(y0, base, 0.01) {
-		t.Errorf("year 0 ceiling = %v, want base %v (no inflation in base year)", y0, base)
+	fnY10, _ := inflatedBracketTopForYear(s, 0.22, 10)
+	if !ssWithinTolerance(fnY10, engineY10, 0.01) {
+		t.Errorf("year 10 ceiling = %v, want %v (engine's own 0.22 bracket top, cross-check only)", fnY10, engineY10)
 	}
+}
 
-	// Year 10: ceiling must have compounded ~3%/yr above the base.
-	y10, _ := inflatedBracketTopForYear(s, 0.24, 10)
-	wantY10 := base * math.Pow(1.03, 10)
-	if !ssWithinTolerance(y10, wantY10, 1.0) {
-		t.Errorf("year 10 ceiling = %v, want %v (base × 1.03^10)", y10, wantY10)
+// TestInflatedBracketTopForYear_SingleFiler12PercentAt2026 pins a second
+// filing status/rate combination directly against the statutory literal
+// (IRS Rev. Proc. 2025-32 §4.01, Single 12% ceiling for tax year 2026),
+// independent of any engine call.
+func TestInflatedBracketTopForYear_SingleFiler12PercentAt2026(t *testing.T) {
+	s := &models.WhatIfSettings{
+		StartDate:     "2026-01",
+		InflationRate: 3.0,
+		TaxConfig:     &models.TaxConfig{FilingStatus: models.FilingSingle},
 	}
-	if y10 <= y0 {
-		t.Errorf("ceiling must grow with calendar year: y0=%v y10=%v", y0, y10)
+	got, ok := inflatedBracketTopForYear(s, 0.12, 0)
+	if !ok {
+		t.Fatal("inflatedBracketTopForYear failed for Single 12% at year 0")
+	}
+	const want = 50400.0
+	if math.Abs(got-want) > 1e-6 {
+		t.Errorf("Single 12%% ceiling at 2026 = %v, want %v", got, want)
 	}
 }
 

@@ -123,6 +123,92 @@ var AdditionalStandardDeduction2024Age65 = map[models.FilingStatus]float64{
 	models.FilingMarriedSeparate: 1550,
 }
 
+// TaxBrackets2026 contains 2026 federal tax brackets by filing status.
+// Source: IRS Rev. Proc. 2025-32, §4.01 rate tables.
+var TaxBrackets2026 = map[models.FilingStatus][]FederalTaxBracket{
+	models.FilingSingle: {
+		{0, 12400, 0.10},
+		{12400, 50400, 0.12},
+		{50400, 105700, 0.22},
+		{105700, 201775, 0.24},
+		{201775, 256225, 0.32},
+		{256225, 640600, 0.35},
+		{640600, math.MaxFloat64, 0.37},
+	},
+	models.FilingMarriedJoint: {
+		{0, 24800, 0.10},
+		{24800, 100800, 0.12},
+		{100800, 211400, 0.22},
+		{211400, 403550, 0.24},
+		{403550, 512450, 0.32},
+		{512450, 768700, 0.35},
+		{768700, math.MaxFloat64, 0.37},
+	},
+	models.FilingMarriedSeparate: {
+		{0, 12400, 0.10},
+		{12400, 50400, 0.12},
+		{50400, 105700, 0.22},
+		{105700, 201775, 0.24},
+		{201775, 256225, 0.32},
+		{256225, 384350, 0.35},
+		{384350, math.MaxFloat64, 0.37},
+	},
+	models.FilingHeadOfHousehold: {
+		{0, 17700, 0.10},
+		{17700, 67450, 0.12},
+		{67450, 105700, 0.22},
+		{105700, 201750, 0.24},
+		{201750, 256200, 0.32},
+		{256200, 640600, 0.35},
+		{640600, math.MaxFloat64, 0.37},
+	},
+}
+
+// LongTermCapitalGainsBrackets2026 contains 2026 federal long-term capital
+// gains brackets. Source: IRS Rev. Proc. 2025-32, §4.03.
+var LongTermCapitalGainsBrackets2026 = map[models.FilingStatus][]FederalTaxBracket{
+	models.FilingSingle: {
+		{0, 49450, 0.00},
+		{49450, 545500, 0.15},
+		{545500, math.MaxFloat64, 0.20},
+	},
+	models.FilingMarriedJoint: {
+		{0, 98900, 0.00},
+		{98900, 613700, 0.15},
+		{613700, math.MaxFloat64, 0.20},
+	},
+	models.FilingMarriedSeparate: {
+		{0, 49450, 0.00},
+		{49450, 306850, 0.15},
+		{306850, math.MaxFloat64, 0.20},
+	},
+	models.FilingHeadOfHousehold: {
+		{0, 66200, 0.00},
+		{66200, 579600, 0.15},
+		{579600, math.MaxFloat64, 0.20},
+	},
+}
+
+// StandardDeduction2026 contains 2026 standard deductions by filing status.
+// Source: IRS Rev. Proc. 2025-32, §4.14.
+var StandardDeduction2026 = map[models.FilingStatus]float64{
+	models.FilingSingle:          16100,
+	models.FilingMarriedJoint:    32200,
+	models.FilingMarriedSeparate: 16100,
+	models.FilingHeadOfHousehold: 24150,
+}
+
+// AdditionalStandardDeduction2026Age65 — TY2026 amounts per qualifying
+// person 65 or older. Source: IRS Rev. Proc. 2025-32, §4.14; 26 USC §63(f):
+// $1,650 per qualifying person, $2,050 if unmarried and not a surviving
+// spouse.
+var AdditionalStandardDeduction2026Age65 = map[models.FilingStatus]float64{
+	models.FilingSingle:          2050,
+	models.FilingHeadOfHousehold: 2050,
+	models.FilingMarriedJoint:    1650,
+	models.FilingMarriedSeparate: 1650,
+}
+
 var socialSecurityTaxThresholds = map[models.FilingStatus]socialSecurityTaxThreshold{
 	models.FilingSingle:          {BaseThreshold: 25000, UpperThreshold: 34000, BaseTaxableAmount: 4500},
 	models.FilingMarriedJoint:    {BaseThreshold: 32000, UpperThreshold: 44000, BaseTaxableAmount: 6000},

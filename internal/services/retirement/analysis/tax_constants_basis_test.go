@@ -1,8 +1,10 @@
 package analysis
 
 import (
+	"strings"
 	"testing"
 
+	"budget2/internal/models"
 	"budget2/internal/services/retirement/engine"
 )
 
@@ -55,4 +57,35 @@ func TestBuildTax_ReportsWhichConstantsTheAnswerRestsOn(t *testing.T) {
 	t.Logf("figures: %s (verified %s); years %d-%d projected at %.1f%%/yr",
 		basis.Source, basis.VerifiedOn,
 		basis.FirstProjectedYear, basis.LastProjectedYear, basis.InflationRate)
+}
+
+// TestBuildTax_2026StartPlanRestsOnSeeded2026Statutory pins AC7: a plan
+// starting in the seeded 2026 statutory year (IRS Rev. Proc. 2025-32) must
+// report that year as statutory, and the first genuinely-extrapolated year
+// as the very next one, 2027.
+func TestBuildTax_2026StartPlanRestsOnSeeded2026Statutory(t *testing.T) {
+	s := taxableScenario()
+	s.StartDate = "2026-01"
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, s.CurrentAge)
+	s.ProjectionYears = 3
+
+	proj, in := runProj(t, s)
+	tax := BuildTax(proj, in)
+	if tax == nil {
+		t.Fatal("BuildTax returned nil")
+	}
+	basis := tax.ConstantsBasis
+	if basis == nil {
+		t.Fatal("ConstantsBasis is nil")
+	}
+
+	if basis.StatutoryYear != 2026 {
+		t.Errorf("StatutoryYear = %d, want 2026", basis.StatutoryYear)
+	}
+	if !strings.Contains(basis.Source, "Rev. Proc. 2025-32") {
+		t.Errorf("Source = %q, want it to name Rev. Proc. 2025-32", basis.Source)
+	}
+	if basis.FirstProjectedYear != 2027 {
+		t.Errorf("FirstProjectedYear = %d, want 2027", basis.FirstProjectedYear)
+	}
 }

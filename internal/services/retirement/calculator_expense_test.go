@@ -928,9 +928,15 @@ func TestCalculateBudgetFit(t *testing.T) {
 		// Year-15 gain fraction is 1 − 1.05⁻¹⁵ ≈ 0.519, so an all-0% LTCG
 		// simulation prices the withdrawal at 0% effective and an all-15% one
 		// at ≈7.8%. Baseline distributions leave only partial 0%-bracket
-		// headroom, so the crossing must land strictly between.
-		if fit.SteadyStateEffectiveRateTaxable <= 0.5 || fit.SteadyStateEffectiveRateTaxable >= 7.5 {
-			t.Errorf("SteadyStateEffectiveRateTaxable: want blended 0/15 crossing rate in (0.5, 7.5), got %.2f",
+		// headroom, so the crossing must land strictly between — a genuine
+		// blend, not pure 0% nor pure 15%. StartDate is calendar-anchored to
+		// "today" (DefaultWhatIfSettings), so the exact LTCG ceiling this
+		// resolves to (and therefore the exact blended rate) shifts as the
+		// versioned tax-year registry gains statutory years closer to
+		// "today" + 15; the bound below is deliberately loose rather than a
+		// tight pin on the current figure.
+		if fit.SteadyStateEffectiveRateTaxable <= 0.1 || fit.SteadyStateEffectiveRateTaxable >= 7.5 {
+			t.Errorf("SteadyStateEffectiveRateTaxable: want blended 0/15 crossing rate in (0.1, 7.5), got %.2f",
 				fit.SteadyStateEffectiveRateTaxable)
 		}
 		wantGross := fit.SteadyStateNetWithdrawalTaxable / (1 - fit.SteadyStateEffectiveRateTaxable/100)

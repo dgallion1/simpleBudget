@@ -29,19 +29,28 @@ func TestFailureBoundsRender_ActualSearchRoundingIsApproximate(t *testing.T) {
 		wantRenderedRange string
 	}{
 		{
-			name: "return", settings: roundingFailureSettings(8, 400_000, 3_500, 3),
+			// Fixture expenses recalibrated for the seeded 2026 federal tax
+			// tables (IRS Rev. Proc. 2025-32): the original $3,500/mo fixture's
+			// true transition (~-1.4096%) rounds to a value ON THE SURVIVING
+			// side of the true crossing under the new figures, which this test
+			// exists to rule out. $3,400/mo keeps the true transition strictly
+			// between the reported threshold and its rounding boundary.
+			name: "return", settings: roundingFailureSettings(8, 400_000, 3_400, 3),
 			find:      retirementanalysis.FindReturnThreshold,
 			set:       func(s *models.WhatIfSettings, v float64) { s.InvestmentReturn = v },
 			searchMin: -5, searchMax: 3, roundingQuantum: 0.1, failureAtLow: true,
-			wantThreshold: -1.4, wantTransition: "Approximate transition near -1.4%",
+			wantThreshold: -2.1, wantTransition: "Approximate transition near -2.1%",
 			wantRenderedRange: "Tested range: -5.0% to 3.0%",
 		},
 		{
+			// wantThreshold recalibrated for the seeded 2026 federal tax
+			// tables (IRS Rev. Proc. 2025-32): production now reports 14.1 at
+			// this fixture, not 14.3.
 			name: "inflation", settings: roundingFailureSettings(10, 400_000, 2_000, 3),
 			find:      retirementanalysis.FindInflationThreshold,
 			set:       func(s *models.WhatIfSettings, v float64) { s.InflationRate = v },
 			searchMin: 3, searchMax: 15, roundingQuantum: 0.1,
-			wantThreshold: 14.3, wantTransition: "Approximate transition near 14.3%",
+			wantThreshold: 14.1, wantTransition: "Approximate transition near 14.1%",
 			wantRenderedRange: "Tested range: 3.0% to 15.0%",
 		},
 		{
@@ -53,11 +62,14 @@ func TestFailureBoundsRender_ActualSearchRoundingIsApproximate(t *testing.T) {
 			wantRenderedRange: "Tested range: $2,000.00/mo to $6,000.00/mo",
 		},
 		{
-			name: "portfolio", settings: roundingFailureSettings(8, 300_000, 2_500, 3),
+			// Fixture expenses recalibrated for the seeded 2026 federal tax
+			// tables (IRS Rev. Proc. 2025-32); see the "return" case above for
+			// why.
+			name: "portfolio", settings: roundingFailureSettings(8, 300_000, 2_300, 3),
 			find:      retirementanalysis.FindPortfolioThreshold,
 			set:       func(s *models.WhatIfSettings, v float64) { s.PortfolioValue = v },
 			searchMin: 0, searchMax: 300_000, roundingQuantum: 1_000, failureAtLow: true,
-			wantThreshold: 236_000, wantTransition: "Approximate transition near $236,000.00",
+			wantThreshold: 216_000, wantTransition: "Approximate transition near $216,000.00",
 			wantRenderedRange: "Tested range: $0.00 to $300,000.00",
 		},
 	}

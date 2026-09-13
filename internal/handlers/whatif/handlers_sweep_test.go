@@ -392,8 +392,12 @@ func TestHandleWhatIfConversionSweep_SurvivesVsDepletesSplit(t *testing.T) {
 		t.Fatalf("len(rows) = %d, want 9: %v", len(rows), rows)
 	}
 
-	// amounts 0, 25k, 50k (indices 0-2) survive the horizon.
-	for i := 0; i <= 2; i++ {
+	// amounts 0, 25k, 50k, 75k (indices 0-3) survive the horizon. The
+	// survive/deplete split moved from 75k to 100k when the 2026 federal tax
+	// tables (IRS Rev. Proc. 2025-32) were seeded — a $75k conversion at this
+	// fixture's income now lands in lower real brackets than the previous
+	// projected-from-2024 estimate.
+	for i := 0; i <= 3; i++ {
 		row := rows[i]
 		survives, _ := row["Survives"].(bool)
 		if !survives {
@@ -409,8 +413,8 @@ func TestHandleWhatIfConversionSweep_SurvivesVsDepletesSplit(t *testing.T) {
 		}
 	}
 
-	// amounts 75k..200k (indices 3-8) deplete before the horizon ends.
-	for i := 3; i <= 8; i++ {
+	// amounts 100k..200k (indices 4-8) deplete before the horizon ends.
+	for i := 4; i <= 8; i++ {
 		row := rows[i]
 		survives, _ := row["Survives"].(bool)
 		if survives {

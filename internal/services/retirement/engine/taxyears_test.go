@@ -309,19 +309,110 @@ func TestResolveTaxYear_2027ProjectsFrom2026(t *testing.T) {
 	}
 }
 
-// TestResolveTaxYear_2025NoRecordProjectsWithoutError — 2025 has no
-// statutory record of its own; it must not error, and must be projected
-// (from 2026, per the registry's rule that a non-positive offset applies no
-// inflation).
-func TestResolveTaxYear_2025NoRecordProjectsWithoutError(t *testing.T) {
+// TestResolveTaxYear_2025IsStatutory pins the seeded 2025 record (IRS Rev.
+// Proc. 2024-40, standard deduction per OBBBA §63(c)(7) as restated in Rev.
+// Proc. 2025-32 §3.01) against the whole real federalTaxYears table.
+func TestResolveTaxYear_2025IsStatutory(t *testing.T) {
 	tc := versionedCalculator(t, 3.0)
 
 	resolved, err := tc.ResolveTaxYear(2025, 1)
 	if err != nil {
 		t.Fatalf("ResolveTaxYear(2025): %v", err)
 	}
-	if resolved.Basis != BasisProjected {
-		t.Errorf("Basis = %q, want projected — 2025 has no statutory record", resolved.Basis)
+	if resolved.Basis != BasisStatutory {
+		t.Errorf("Basis = %q, want statutory — 2025 has a seeded record", resolved.Basis)
+	}
+	if resolved.DerivedFromYear != 2025 {
+		t.Errorf("DerivedFromYear = %d, want 2025", resolved.DerivedFromYear)
+	}
+	if resolved.InflationFactor != 1 {
+		t.Errorf("InflationFactor = %v, want 1 for a statutory year", resolved.InflationFactor)
+	}
+
+	mfj := bracketsFor(resolved.Record.OrdinaryBrackets, models.FilingMarriedJoint)
+	if got := mfj[2].MaxIncome; got != 206700 {
+		t.Errorf("MFJ 22%% ceiling = %v, want 206700", got)
+	}
+	if got := resolved.Record.StandardDeduction[models.FilingMarriedJoint]; got != 31500 {
+		t.Errorf("MFJ standard deduction = %v, want 31500", got)
+	}
+	if got := resolved.Record.AdditionalDeductionAge65[models.FilingMarriedJoint]; got != 1600 {
+		t.Errorf("MFJ age-65 addition = %v, want 1600", got)
+	}
+	if got := resolved.Record.AdditionalDeductionAge65[models.FilingSingle]; got != 2000 {
+		t.Errorf("Single age-65 addition = %v, want 2000", got)
+	}
+
+	ltcg := bracketsFor(resolved.Record.LongTermGainBrackets, models.FilingMarriedJoint)
+	if got := ltcg[0].MaxIncome; got != 96700 {
+		t.Errorf("MFJ LTCG 0%% ceiling = %v, want 96700", got)
+	}
+
+	mfs := bracketsFor(resolved.Record.OrdinaryBrackets, models.FilingMarriedSeparate)
+	if got := mfs[5].MaxIncome; got != 375800 {
+		t.Errorf("MFS 35%% ceiling = %v, want 375800", got)
+	}
+}
+
+// TestFederalTaxYears_TableInvariants pins the structural invariants every
+// consumer of federalTaxYears relies on: ascending order, complete filing
+// status coverage, and internally-consistent bracket boundaries.
+func TestFederalTaxYears_TableInvariants(t *testing.T) {
+	statuses := []models.FilingStatus{
+		models.FilingSingle, models.FilingMarriedJoint,
+		models.FilingMarriedSeparate, models.FilingHeadOfHousehold,
+	}
+
+	for i := 1; i < len(federalTaxYears); i++ {
+		prev, cur := federalTaxYears[i-1], federalTaxYears[i]
+		if cur.Year < prev.Year || (cur.Year == prev.Year && cur.EffectiveFromMonth <= prev.EffectiveFromMonth) {
+			t.Errorf("federalTaxYears not strictly ascending at index %d: (%d,%d) then (%d,%d)",
+				i, prev.Year, prev.EffectiveFromMonth, cur.Year, cur.EffectiveFromMonth)
+		}
+	}
+
+	for _, rec := range federalTaxYears {
+		for _, status := range statuses {
+			if _, ok := rec.OrdinaryBrackets[status]; !ok {
+				t.Errorf("year %d: OrdinaryBrackets missing filing status %v", rec.Year, status)
+			}
+			if _, ok := rec.LongTermGainBrackets[status]; !ok {
+				t.Errorf("year %d: LongTermGainBrackets missing filing status %v", rec.Year, status)
+			}
+			if _, ok := rec.StandardDeduction[status]; !ok {
+				t.Errorf("year %d: StandardDeduction missing filing status %v", rec.Year, status)
+			}
+			if _, ok := rec.AdditionalDeductionAge65[status]; !ok {
+				t.Errorf("year %d: AdditionalDeductionAge65 missing filing status %v", rec.Year, status)
+			}
+
+			for _, name := range []string{"OrdinaryBrackets", "LongTermGainBrackets"} {
+				var brackets []FederalTaxBracket
+				if name == "OrdinaryBrackets" {
+					brackets = rec.OrdinaryBrackets[status]
+				} else {
+					brackets = rec.LongTermGainBrackets[status]
+				}
+				if len(brackets) == 0 {
+					t.Errorf("year %d status %v: %s empty", rec.Year, status, name)
+					continue
+				}
+				if brackets[0].MinIncome != 0 {
+					t.Errorf("year %d status %v: %s first MinIncome = %v, want 0",
+						rec.Year, status, name, brackets[0].MinIncome)
+				}
+				if last := brackets[len(brackets)-1].MaxIncome; last != math.MaxFloat64 {
+					t.Errorf("year %d status %v: %s last MaxIncome = %v, want math.MaxFloat64",
+						rec.Year, status, name, last)
+				}
+				for i := 1; i < len(brackets); i++ {
+					if brackets[i].MinIncome != brackets[i-1].MaxIncome {
+						t.Errorf("year %d status %v: %s bracket %d MinIncome %v != previous MaxIncome %v",
+							rec.Year, status, name, i, brackets[i].MinIncome, brackets[i-1].MaxIncome)
+					}
+				}
+			}
+		}
 	}
 }
 

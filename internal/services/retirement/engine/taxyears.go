@@ -78,14 +78,11 @@ const JurisdictionUS = "US"
 
 // federalTaxYears holds every statutory record, ascending by (year, month).
 //
-// 2024 and 2026 are seeded, because those are the years whose figures this
-// repository can cite: IRS Rev. Proc. 2023-34 for 2024, IRS Rev. Proc.
-// 2025-32 for 2026. 2025 was never seeded — Congress's mid-2025 changes make
-// a 2025 record its own citation project, not a mechanical interpolation —
-// so a 2025 lookup resolves as BasisProjected, derived from the 2026
-// record: InflationFactor of a non-positive offset (2025 − 2026) is 1, so
-// today a 2025 lookup returns the 2026 figures unscaled rather than an
-// inflated-2024 estimate. Later statutory years are a data entry, not a code
+// Three years are seeded, because those are the years whose figures this
+// repository can cite: IRS Rev. Proc. 2023-34 for 2024; IRS Rev. Proc.
+// 2024-40 for 2025, with its standard deduction superseded by the OBBBA
+// figure restated in IRS Rev. Proc. 2025-32 §3.01; and IRS Rev. Proc.
+// 2025-32 for 2026. Later statutory years are a data entry, not a code
 // change — append a record with its own Provenance and every consumer picks
 // it up. Until then, later years resolve as BasisProjected and say so.
 var federalTaxYears = []TaxYearRecord{
@@ -101,6 +98,19 @@ var federalTaxYears = []TaxYearRecord{
 		LongTermGainBrackets:     LongTermCapitalGainsBrackets2024,
 		StandardDeduction:        StandardDeduction2024,
 		AdditionalDeductionAge65: AdditionalStandardDeduction2024Age65,
+	},
+	{
+		Jurisdiction:       JurisdictionUS,
+		Year:               2025,
+		EffectiveFromMonth: 1,
+		Provenance: ConstantProvenance{
+			Source:     "IRS Rev. Proc. 2024-40 (tax year 2025); §2.01 rate tables, §2.03 capital gains, §2.15(3) aged addition; standard deduction per OBBBA §63(c)(7) as restated in Rev. Proc. 2025-32 §3.01",
+			VerifiedOn: "2026-09-13",
+		},
+		OrdinaryBrackets:         TaxBrackets2025,
+		LongTermGainBrackets:     LongTermCapitalGainsBrackets2025,
+		StandardDeduction:        StandardDeduction2025,
+		AdditionalDeductionAge65: AdditionalStandardDeduction2025Age65,
 	},
 	{
 		Jurisdiction:       JurisdictionUS,

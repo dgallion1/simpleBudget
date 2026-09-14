@@ -224,6 +224,25 @@ func TestInflatedBracketTopForYear_SingleFiler12PercentAt2026(t *testing.T) {
 	}
 }
 
+// TestInflatedBracketTopForYear_MFJ22PercentAt2025 pins the seeded 2025
+// statutory record (IRS Rev. Proc. 2024-40 §2.01, MFJ 22% ceiling)
+// directly against the literal, independent of any engine call.
+func TestInflatedBracketTopForYear_MFJ22PercentAt2025(t *testing.T) {
+	s := &models.WhatIfSettings{
+		StartDate:     "2025-01",
+		InflationRate: 3.0,
+		TaxConfig:     &models.TaxConfig{FilingStatus: models.FilingMarriedJoint},
+	}
+	got, ok := inflatedBracketTopForYear(s, 0.22, 0)
+	if !ok {
+		t.Fatal("inflatedBracketTopForYear failed for MFJ 22% at year 0")
+	}
+	const want = 206700.0
+	if got != want {
+		t.Errorf("MFJ 22%% ceiling at 2025 = %v, want %v", got, want)
+	}
+}
+
 func TestEstimateOtherTaxableIncome_TaxableIncomeUnits(t *testing.T) {
 	// estimateOtherTaxableIncome returns TAXABLE ordinary income, so a
 	// household with only modest Social Security has ~0: SS is below the

@@ -123,6 +123,94 @@ var AdditionalStandardDeduction2024Age65 = map[models.FilingStatus]float64{
 	models.FilingMarriedSeparate: 1550,
 }
 
+// TaxBrackets2025 contains 2025 federal tax brackets by filing status.
+// Source: IRS Rev. Proc. 2024-40, §2.01 Tables 1-4.
+var TaxBrackets2025 = map[models.FilingStatus][]FederalTaxBracket{
+	models.FilingSingle: {
+		{0, 11925, 0.10},
+		{11925, 48475, 0.12},
+		{48475, 103350, 0.22},
+		{103350, 197300, 0.24},
+		{197300, 250525, 0.32},
+		{250525, 626350, 0.35},
+		{626350, math.MaxFloat64, 0.37},
+	},
+	models.FilingMarriedJoint: {
+		{0, 23850, 0.10},
+		{23850, 96950, 0.12},
+		{96950, 206700, 0.22},
+		{206700, 394600, 0.24},
+		{394600, 501050, 0.32},
+		{501050, 751600, 0.35},
+		{751600, math.MaxFloat64, 0.37},
+	},
+	models.FilingMarriedSeparate: {
+		{0, 11925, 0.10},
+		{11925, 48475, 0.12},
+		{48475, 103350, 0.22},
+		{103350, 197300, 0.24},
+		{197300, 250525, 0.32},
+		{250525, 375800, 0.35},
+		{375800, math.MaxFloat64, 0.37},
+	},
+	models.FilingHeadOfHousehold: {
+		{0, 17000, 0.10},
+		{17000, 64850, 0.12},
+		{64850, 103350, 0.22},
+		{103350, 197300, 0.24},
+		{197300, 250500, 0.32},
+		{250500, 626350, 0.35},
+		{626350, math.MaxFloat64, 0.37},
+	},
+}
+
+// LongTermCapitalGainsBrackets2025 contains 2025 federal long-term capital
+// gains brackets. Source: IRS Rev. Proc. 2024-40, §2.03.
+var LongTermCapitalGainsBrackets2025 = map[models.FilingStatus][]FederalTaxBracket{
+	models.FilingSingle: {
+		{0, 48350, 0.00},
+		{48350, 533400, 0.15},
+		{533400, math.MaxFloat64, 0.20},
+	},
+	models.FilingMarriedJoint: {
+		{0, 96700, 0.00},
+		{96700, 600050, 0.15},
+		{600050, math.MaxFloat64, 0.20},
+	},
+	models.FilingMarriedSeparate: {
+		{0, 48350, 0.00},
+		{48350, 300000, 0.15},
+		{300000, math.MaxFloat64, 0.20},
+	},
+	models.FilingHeadOfHousehold: {
+		{0, 64750, 0.00},
+		{64750, 566700, 0.15},
+		{566700, math.MaxFloat64, 0.20},
+	},
+}
+
+// StandardDeduction2025 contains 2025 standard deductions by filing status.
+// These are the OBBBA § 63(c)(7) amounts as restated in IRS Rev. Proc.
+// 2025-32 §3.01, which superseded the pre-OBBBA figures originally
+// published at Rev. Proc. 2024-40 §2.15(1) (removed by Rev. Proc. 2025-32
+// §3.01).
+var StandardDeduction2025 = map[models.FilingStatus]float64{
+	models.FilingSingle:          15750,
+	models.FilingMarriedJoint:    31500,
+	models.FilingMarriedSeparate: 15750,
+	models.FilingHeadOfHousehold: 23625,
+}
+
+// AdditionalStandardDeduction2025Age65 — TY2025 amounts per qualifying
+// person 65 or older. Source: IRS Rev. Proc. 2024-40 §2.15(3), unchanged by
+// OBBBA.
+var AdditionalStandardDeduction2025Age65 = map[models.FilingStatus]float64{
+	models.FilingSingle:          2000,
+	models.FilingHeadOfHousehold: 2000,
+	models.FilingMarriedJoint:    1600,
+	models.FilingMarriedSeparate: 1600,
+}
+
 // TaxBrackets2026 contains 2026 federal tax brackets by filing status.
 // Source: IRS Rev. Proc. 2025-32, §4.01 rate tables.
 var TaxBrackets2026 = map[models.FilingStatus][]FederalTaxBracket{

@@ -214,8 +214,8 @@ func TestInflatedBracketTopForYear_GuardBranches(t *testing.T) {
 		CurrentAge: 60,
 		TaxConfig:  &models.TaxConfig{FilingStatus: models.FilingSingle},
 	}
-	if _, ok := inflatedBracketTopForYear(s, 0.32, 0); ok {
-		t.Error("unsupported 32%% target: expected ok=false")
+	if _, ok := inflatedBracketTopForYear(s, 0.99, 0); ok {
+		t.Error("unsupported 99%% target: expected ok=false")
 	}
 }
 
@@ -294,8 +294,8 @@ func TestBracketFillProducesNonZero_Branches(t *testing.T) {
 
 	// Unsupported target bracket: inflatedBracketTopForYear fails -> false.
 	w := strategyWindow{StartAge: 60, EndAge: 65, Anchor: "IRMAA"}
-	if bracketFillProducesNonZero(lowIncome, w, 0.32) {
-		t.Error("unsupported 32% target should report no non-zero conversions")
+	if bracketFillProducesNonZero(lowIncome, w, 0.99) {
+		t.Error("unsupported 99% target should report no non-zero conversions")
 	}
 
 	// Income above the ceiling in every year: loop completes -> false.
@@ -347,7 +347,7 @@ func TestStrategyYearlyConversions_GuardBranches(t *testing.T) {
 
 	t.Run("bracket_fill_unsupported_target_nil", func(t *testing.T) {
 		strat := models.RothOptimizerStrategy{
-			Kind: models.RothStrategyBracketFill, TargetBracket: 0.32, StartAge: 60, EndAge: 65,
+			Kind: models.RothStrategyBracketFill, TargetBracket: 0.99, StartAge: 60, EndAge: 65,
 		}
 		if got := strategyYearlyConversions(s, strat, nil); got != nil {
 			t.Errorf("unsupported target: got %+v, want nil", got)

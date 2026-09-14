@@ -13,7 +13,10 @@ func TestTaxCalculatorAdjustedStandardDeduction(t *testing.T) {
 	}, 3)
 
 	assertClose(t, "age 65 count is capped at two", tc.GetAdjustedStandardDeduction(0), 29200+2*1550)
-	assertClose(t, "inflation adjusted deduction", tc.GetAdjustedStandardDeduction(2), (29200+2*1550)*1.03*1.03)
+	// yearsFromBase=2 lands on calendar year 2026, now a seeded statutory
+	// year (IRS Rev. Proc. 2025-32): no inflation is applied, the real 2026
+	// figures are used directly.
+	assertClose(t, "2026 statutory deduction, age-65 count capped at two", tc.GetAdjustedStandardDeduction(2), 32200+2*1650)
 }
 
 func TestCalculateFederalTaxUsesStandardDeductionAndMarginalBracket(t *testing.T) {

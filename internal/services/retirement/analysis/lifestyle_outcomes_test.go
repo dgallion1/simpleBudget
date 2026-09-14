@@ -251,7 +251,11 @@ func TestL3SeededNoShockInstrumentationParity(t *testing.T) {
 	c.SpendingShockProb, c.HealthShockProb = 0, 0
 
 	got := RunSingleMonteCarloSimulation(in, rand.New(rand.NewSource(123)), c)
-	if math.Abs(got.FinalBalance-1049524.798651163) > 1e-7 || got.TotalIRMAA != 0 ||
+	// FinalBalance pinned against the real 2026 federal tax tables (IRS Rev.
+	// Proc. 2025-32): the fixture's StartDate is 2026-01, which now resolves
+	// as a seeded statutory year instead of a projection extrapolated from
+	// 2024.
+	if math.Abs(got.FinalBalance-1049593.547061985) > 1e-7 || got.TotalIRMAA != 0 ||
 		got.MarketCrashes != 0 || got.SpendingShocks != 0 || got.HealthShocks != 0 ||
 		!got.Survives || got.ProjectionYears != 2 {
 		t.Fatalf("seeded no-shock scalar outcome changed: %+v", got)

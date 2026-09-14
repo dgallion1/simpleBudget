@@ -60,7 +60,8 @@ func TestResolveTaxYear_StatutoryYear(t *testing.T) {
 // silently as last year's table.
 func TestResolveTaxYear_LabelsProjectionRatherThanPretending(t *testing.T) {
 	tc := versionedCalculator(t, 3.0)
-	const future = taxBaseYear + 10
+	latest := LatestStatutoryFederalTaxYear()
+	future := latest + 10
 
 	resolved, err := tc.ResolveTaxYear(future, 1)
 	if err != nil {
@@ -70,9 +71,9 @@ func TestResolveTaxYear_LabelsProjectionRatherThanPretending(t *testing.T) {
 		t.Errorf("Basis = %q; a year with no published figures must be marked projected",
 			resolved.Basis)
 	}
-	if resolved.DerivedFromYear != taxBaseYear {
+	if resolved.DerivedFromYear != latest {
 		t.Errorf("DerivedFromYear = %d, want %d — a forecast must say what it was built from",
-			resolved.DerivedFromYear, taxBaseYear)
+			resolved.DerivedFromYear, latest)
 	}
 	if want := math.Pow(1.03, 10); math.Abs(resolved.InflationFactor-want) > 1e-9 {
 		t.Errorf("InflationFactor = %v, want %v", resolved.InflationFactor, want)
@@ -81,13 +82,13 @@ func TestResolveTaxYear_LabelsProjectionRatherThanPretending(t *testing.T) {
 		t.Errorf("Record.Year = %d, want %d", resolved.Record.Year, future)
 	}
 
-	// The projected figures must actually be scaled, not the base table
-	// handed back under a different label.
-	base, _ := tc.ResolveTaxYear(taxBaseYear, 1)
+	// The projected figures must actually be scaled, not the latest
+	// statutory table handed back under a different label.
+	base, _ := tc.ResolveTaxYear(latest, 1)
 	baseTop := bracketsFor(base.Record.OrdinaryBrackets, models.FilingMarriedJoint)[1].MaxIncome
 	futureTop := bracketsFor(resolved.Record.OrdinaryBrackets, models.FilingMarriedJoint)[1].MaxIncome
 	if futureTop <= baseTop {
-		t.Errorf("projected bracket top %.2f did not move from the base %.2f", futureTop, baseTop)
+		t.Errorf("projected bracket top %.2f did not move from the latest statutory %.2f", futureTop, baseTop)
 	}
 }
 
@@ -189,7 +190,14 @@ func TestResolveTaxYear_ProjectsFromTheLatestStatutoryYear(t *testing.T) {
 
 // TestVersionedConstants_PreserveExistingValues pins the migration: routing
 // the accessors through the versioned store must not move a single number.
+// Isolated to a table holding only the 2024 record — with additional real
+// statutory years seeded (e.g. 2026), a year like 2025 legitimately resolves
+// against the newer record instead of an inflated-2024 guess, which is
+// correct behavior, not a migration regression. This test's job is only to
+// confirm the routing mechanics, not to pin numbers across future data
+// additions.
 func TestVersionedConstants_PreserveExistingValues(t *testing.T) {
+	withFederalTaxYears(t, []TaxYearRecord{federalTaxYears[0]})
 	tc := versionedCalculator(t, 3.0)
 
 	for _, yearsFromBase := range []int{-3, 0, 1, 7, 25} {
@@ -236,5 +244,114 @@ func TestVersionedConstants_ProjectionDoesNotMutateTheStatutoryTable(t *testing.
 	}
 	if after := TaxBrackets2024[models.FilingMarriedJoint][1].MaxIncome; after != before {
 		t.Errorf("statutory table mutated by a projection: %.2f -> %.2f", before, after)
+	}
+}
+
+// TestResolveTaxYear_2026IsStatutory pins the seeded 2026 record (IRS Rev.
+// Proc. 2025-32) against the whole real federalTaxYears table.
+func TestResolveTaxYear_2026IsStatutory(t *testing.T) {
+	tc := versionedCalculator(t, 3.0)
+
+	resolved, err := tc.ResolveTaxYear(2026, 1)
+	if err != nil {
+		t.Fatalf("ResolveTaxYear(2026): %v", err)
+	}
+	if resolved.Basis != BasisStatutory {
+		t.Errorf("Basis = %q, want statutory for a seeded year", resolved.Basis)
+	}
+	if resolved.DerivedFromYear != 2026 {
+		t.Errorf("DerivedFromYear = %d, want 2026", resolved.DerivedFromYear)
+	}
+	if resolved.InflationFactor != 1 {
+		t.Errorf("InflationFactor = %v, want 1 for a statutory year", resolved.InflationFactor)
+	}
+
+	mfj := bracketsFor(resolved.Record.OrdinaryBrackets, models.FilingMarriedJoint)
+	if got := mfj[2].MaxIncome; got != 211400 {
+		t.Errorf("MFJ 22%% ceiling = %v, want 211400", got)
+	}
+	if got := resolved.Record.StandardDeduction[models.FilingMarriedJoint]; got != 32200 {
+		t.Errorf("MFJ standard deduction = %v, want 32200", got)
+	}
+	if got := resolved.Record.AdditionalDeductionAge65[models.FilingMarriedJoint]; got != 1650 {
+		t.Errorf("MFJ age-65 addition = %v, want 1650", got)
+	}
+	if got := resolved.Record.AdditionalDeductionAge65[models.FilingSingle]; got != 2050 {
+		t.Errorf("Single age-65 addition = %v, want 2050", got)
+	}
+
+	ltcg := bracketsFor(resolved.Record.LongTermGainBrackets, models.FilingMarriedJoint)
+	if got := ltcg[0].MaxIncome; got != 98900 {
+		t.Errorf("MFJ LTCG 0%% ceiling = %v, want 98900", got)
+	}
+}
+
+// TestResolveTaxYear_2027ProjectsFrom2026 — a year past the newest statutory
+// record must extrapolate from 2026, not the older 2024 record.
+func TestResolveTaxYear_2027ProjectsFrom2026(t *testing.T) {
+	tc := versionedCalculator(t, 4.0)
+
+	resolved, err := tc.ResolveTaxYear(2027, 1)
+	if err != nil {
+		t.Fatalf("ResolveTaxYear(2027): %v", err)
+	}
+	if resolved.Basis != BasisProjected {
+		t.Errorf("Basis = %q, want projected", resolved.Basis)
+	}
+	if resolved.DerivedFromYear != 2026 {
+		t.Errorf("DerivedFromYear = %d, want 2026", resolved.DerivedFromYear)
+	}
+
+	mfj := bracketsFor(resolved.Record.OrdinaryBrackets, models.FilingMarriedJoint)
+	want := 211400.0 * (1 + tc.InflationRate/100)
+	if got := mfj[2].MaxIncome; math.Abs(got-want) > 1e-6 {
+		t.Errorf("MFJ 22%% ceiling = %v, want %v (211400 x (1+rate/100))", got, want)
+	}
+}
+
+// TestResolveTaxYear_2025NoRecordProjectsWithoutError — 2025 has no
+// statutory record of its own; it must not error, and must be projected
+// (from 2026, per the registry's rule that a non-positive offset applies no
+// inflation).
+func TestResolveTaxYear_2025NoRecordProjectsWithoutError(t *testing.T) {
+	tc := versionedCalculator(t, 3.0)
+
+	resolved, err := tc.ResolveTaxYear(2025, 1)
+	if err != nil {
+		t.Fatalf("ResolveTaxYear(2025): %v", err)
+	}
+	if resolved.Basis != BasisProjected {
+		t.Errorf("Basis = %q, want projected — 2025 has no statutory record", resolved.Basis)
+	}
+}
+
+// TestLatestAndEarliestFederalTaxYear pins the real table's span.
+func TestLatestAndEarliestFederalTaxYear(t *testing.T) {
+	if got := LatestStatutoryFederalTaxYear(); got != 2026 {
+		t.Errorf("LatestStatutoryFederalTaxYear() = %d, want 2026", got)
+	}
+	if got := EarliestFederalTaxYear(); got != 2024 {
+		t.Errorf("EarliestFederalTaxYear() = %d, want 2024", got)
+	}
+}
+
+// TestResolveTaxYear_2024Unchanged — adding the 2026 record must not move
+// the 2024 statutory figures.
+func TestResolveTaxYear_2024Unchanged(t *testing.T) {
+	tc := versionedCalculator(t, 3.0)
+
+	resolved, err := tc.ResolveTaxYear(2024, 1)
+	if err != nil {
+		t.Fatalf("ResolveTaxYear(2024): %v", err)
+	}
+	if resolved.Basis != BasisStatutory {
+		t.Errorf("Basis = %q, want statutory", resolved.Basis)
+	}
+	if resolved.DerivedFromYear != 2024 {
+		t.Errorf("DerivedFromYear = %d, want 2024", resolved.DerivedFromYear)
+	}
+	mfj := bracketsFor(resolved.Record.OrdinaryBrackets, models.FilingMarriedJoint)
+	if got := mfj[2].MaxIncome; got != 201050 {
+		t.Errorf("MFJ 22%% ceiling = %v, want 201050 (2024, unchanged)", got)
 	}
 }

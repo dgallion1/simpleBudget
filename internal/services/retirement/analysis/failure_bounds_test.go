@@ -86,26 +86,34 @@ func TestFailureThresholdSearchFindsBracketedTransitions(t *testing.T) {
 		wantMin       float64
 		wantMax       float64
 		wantThreshold float64
-		setThreshold  func(*models.WhatIfSettings, float64)
+		// verifyValue is one rounding-precision step past wantThreshold in the
+		// adverse direction. The search's reported Threshold is round(high) (or
+		// round(low)) — a rounded SURVIVING sample for a "below" search, so
+		// testing the exact reported number can land back on the surviving
+		// side of a true boundary that falls inside that rounding cell. One
+		// step further in the failing direction is what the search itself
+		// guarantees crosses the transition.
+		verifyValue  float64
+		setThreshold func(*models.WhatIfSettings, float64)
 	}{
 		{
 			name: "return", settings: failureBoundSettings(8, 400_000, 3_500, 3),
-			find: findReturnThreshold, wantMin: -5, wantMax: 3, wantThreshold: -1.4,
+			find: findReturnThreshold, wantMin: -5, wantMax: 3, wantThreshold: -1.4, verifyValue: -1.5,
 			setThreshold: func(s *models.WhatIfSettings, v float64) { s.InvestmentReturn = v },
 		},
 		{
 			name: "inflation", settings: failureBoundSettings(10, 400_000, 2_000, 3),
-			find: findInflationThreshold, wantMin: 3, wantMax: 15, wantThreshold: 14.3,
+			find: findInflationThreshold, wantMin: 3, wantMax: 15, wantThreshold: 14.1, verifyValue: 14.1,
 			setThreshold: func(s *models.WhatIfSettings, v float64) { s.InflationRate = v },
 		},
 		{
 			name: "expenses", settings: failureBoundSettings(8, 200_000, 2_000, 3),
-			find: findExpensesThreshold, wantMin: 2_000, wantMax: 6_000, wantThreshold: 2_150,
+			find: findExpensesThreshold, wantMin: 2_000, wantMax: 6_000, wantThreshold: 2_150, verifyValue: 2_150,
 			setThreshold: func(s *models.WhatIfSettings, v float64) { s.MonthlyLivingExpenses = v },
 		},
 		{
 			name: "portfolio", settings: failureBoundSettings(8, 300_000, 2_500, 3),
-			find: findPortfolioThreshold, wantMin: 0, wantMax: 300_000, wantThreshold: 236_000,
+			find: findPortfolioThreshold, wantMin: 0, wantMax: 300_000, wantThreshold: 236_000, verifyValue: 235_000,
 			setThreshold: func(s *models.WhatIfSettings, v float64) { s.PortfolioValue = v },
 		},
 	}
@@ -131,10 +139,10 @@ func TestFailureThresholdSearchFindsBracketedTransitions(t *testing.T) {
 			}
 
 			atRoundedThreshold := *tc.settings
-			tc.setThreshold(&atRoundedThreshold, tc.wantThreshold)
+			tc.setThreshold(&atRoundedThreshold, tc.verifyValue)
 			thresholdEngine, thresholdInput := failureInput(t, &atRoundedThreshold)
 			if thresholdEngine.Run(thresholdInput).Survives {
-				t.Errorf("fixed rounded value %v must exercise the failing side of this fixture", tc.wantThreshold)
+				t.Errorf("value %v (one precision step past the reported threshold) must exercise the failing side of this fixture", tc.verifyValue)
 			}
 		})
 	}

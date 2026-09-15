@@ -343,8 +343,23 @@ func cloneSpendingCandidate(c models.SpendingCandidate) models.SpendingCandidate
 	_ = json.Unmarshal(raw, &out)
 	return out
 }
+
+// spendingCandidateCanApply authorizes an Apply token (minted in
+// buildSpendingOptimizerView, re-checked in the apply handler). Every kind
+// must qualify at the entered minimum and shortfall allowance. Searched
+// candidates must also carry an enabled rule set because Apply writes it
+// verbatim. The current plan is applied exactly as saved -- its rules may be
+// disabled or absent -- so applying it re-saves the same budget, boost and
+// rules and additionally records the search preferences and the applied
+// evidence (CP1, 2026-09-14).
 func spendingCandidateCanApply(c models.SpendingCandidate) bool {
-	return c.Qualifies && !c.Baseline && c.Kind != "current" && c.Guardrails != nil && c.Guardrails.Enabled
+	if !c.Qualifies {
+		return false
+	}
+	if c.Kind == "current" {
+		return true
+	}
+	return !c.Baseline && c.Guardrails != nil && c.Guardrails.Enabled
 }
 func buildSpendingOptimizerView(id string, result *models.SpendingOptimizerResult) (spendingOptimizerView, map[string]models.SpendingCandidate, map[string]models.SpendingCandidate, error) {
 	view := spendingOptimizerView{Optimizer: result, Request: result.Request, RequestID: id, ValidationRunsText: formatSpendingCount(result.ValidationRuns)}
@@ -611,8 +626,14 @@ func handleApplySpendingOptimizerWithHook(w http.ResponseWriter, r *http.Request
 	}
 	s.MonthlyLivingExpenses = c.BaseMonthlyLivingExpenses
 	s.LivingSpendingBoost = models.CloneLivingSpendingBoost(c.LivingSpendingBoost)
-	cfg := *c.Guardrails
-	s.Guardrails = &cfg
+	// Searched candidates always carry rules (see spendingCandidateCanApply);
+	// the current plan may have none, in which case none are written.
+	if c.Guardrails != nil {
+		cfg := *c.Guardrails
+		s.Guardrails = &cfg
+	} else {
+		s.Guardrails = nil
+	}
 	// The raw form (not the normalized request) so blanks reload blank.
 	s.SpendingSearch = &models.SpendingSearchPreferences{MaxShortfallPct: p.form.MaxShortfallPct, NearTermYears: p.form.NearTermYears, SearchMinMonthlyReal: p.form.SearchMinMonthlyReal, SearchMaxMonthlyReal: p.form.SearchMaxMonthlyReal, SearchStepMonthlyReal: p.form.SearchStepMonthlyReal}
 	// SP2: retain what the graph builder consumes (candidate + the exact

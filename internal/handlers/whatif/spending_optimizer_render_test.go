@@ -228,7 +228,16 @@ func TestSpendingOptimizerRenderResultsEvidence(t *testing.T) {
 		t.Error("failed frontier row must remain visible and graph-only")
 	}
 	if !strings.Contains(body, `data-spending-apply="planned-8500"`) || !strings.Contains(body, `data-spending-apply="flex-9000"`) {
-		t.Error("every qualifying nonbaseline frontier row needs Apply")
+		t.Error("every qualifying frontier row needs Apply")
+	}
+	// CP1: the fixture's current plan does not qualify (Qualifies unset), so
+	// its card stays inspect-only; the qualifying case is covered by
+	// TestSpendingOptimizerRenderCurrentPlanApply.
+	if strings.Contains(body, `data-spending-apply="current"`) {
+		t.Error("non-qualifying current plan must not offer Apply")
+	}
+	if strings.Contains(body, "current-plan rows remain available for graph inspection only") {
+		t.Error("stale inspect-only copy for the current plan")
 	}
 	for _, forbidden := range []string{"income alone", "guaranteed", "risk-free", "global optimum", "Guyton"} {
 		if strings.Contains(body, forbidden) {

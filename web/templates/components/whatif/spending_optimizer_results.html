@@ -85,7 +85,7 @@
     {{if .Optimizer.RangeLimited}}<p class="mt-4 rounded-md bg-warning-soft p-3 text-warning">Search reached the upper range. A higher qualifying budget may exist outside the tested range; widen it and compare again if useful.</p>{{end}}
 
     <h4 class="mt-6 text-base font-semibold">Complete tested frontier</h4>
-    <p class="mt-1 text-gray-600 dark:text-gray-300">Qualification uses the final validation futures. Failed and current-plan rows remain available for graph inspection only.</p>
+    <p class="mt-1 text-gray-600 dark:text-gray-300">Qualification uses the final validation futures. Failed rows remain available for graph inspection only.</p>
     {{template "whatif-spending-frontier" (dict "Rows" .PlannedRows "Kind" "planned" "Title" "Follow planned spending" "RequestID" .RequestID "ValidationRunsText" .ValidationRunsText)}}
     {{template "whatif-spending-frontier" (dict "Rows" .FlexibleRows "Kind" "flexible" "Title" "Flexible spending" "RequestID" .RequestID "ValidationRunsText" .ValidationRunsText)}}
 

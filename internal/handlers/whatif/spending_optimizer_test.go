@@ -162,7 +162,7 @@ func TestSpendingApplyAtomicCompleteCandidate(t *testing.T) {
 	}
 }
 func TestSpendingApplyRejections(t *testing.T) {
-	for _, mode := range []string{"expired", "cancelled", "revision", "fingerprint", "scenario", "manager", "unknown", "baseline", "failed", "missing-policy"} {
+	for _, mode := range []string{"expired", "cancelled", "revision", "fingerprint", "scenario", "manager", "unknown", "baseline", "failed", "missing-policy", "current-failed"} {
 		t.Run(mode, func(t *testing.T) {
 			rm, _ := spendingFixture(t)
 			c := spendingAccepted()
@@ -202,6 +202,9 @@ func TestSpendingApplyRejections(t *testing.T) {
 				p.tokens[token] = c
 			case "missing-policy":
 				c.Guardrails = nil
+				p.tokens[token] = c
+			case "current-failed":
+				c.ID, c.Kind, c.Baseline, c.Qualifies = "current", "current", true, false
 				p.tokens[token] = c
 			}
 			before := spendingBytes(t, rm)
@@ -373,7 +376,9 @@ func TestSpendingOptimizerCancellationDoesNotDeleteNewSearch(t *testing.T) {
 	spendingPreviews.Lock()
 	fresh := spendingPreviews.entries[id]
 	spendingPreviews.Unlock()
-	if fresh == nil || len(fresh.tokens) != 2 {
+	// Three apply tokens: the two qualifying searched candidates plus the
+	// fixture's qualifying current plan (CP1).
+	if fresh == nil || len(fresh.tokens) != 3 {
 		t.Fatal("old search deleted/replaced fresh preview")
 	}
 	if before != spendingBytes(t, rm) {

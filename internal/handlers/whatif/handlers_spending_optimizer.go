@@ -635,7 +635,7 @@ func handleApplySpendingOptimizerWithHook(w http.ResponseWriter, r *http.Request
 		s.Guardrails = nil
 	}
 	// The raw form (not the normalized request) so blanks reload blank.
-	s.SpendingSearch = &models.SpendingSearchPreferences{MaxShortfallPct: p.form.MaxShortfallPct, NearTermYears: p.form.NearTermYears, SearchMinMonthlyReal: p.form.SearchMinMonthlyReal, SearchMaxMonthlyReal: p.form.SearchMaxMonthlyReal, SearchStepMonthlyReal: p.form.SearchStepMonthlyReal}
+	s.SpendingSearch = &models.SpendingSearchPreferences{FloorMonthlyReal: p.form.FloorMonthlyReal, MaxShortfallPct: p.form.MaxShortfallPct, NearTermYears: p.form.NearTermYears, SearchMinMonthlyReal: p.form.SearchMinMonthlyReal, SearchMaxMonthlyReal: p.form.SearchMaxMonthlyReal, SearchStepMonthlyReal: p.form.SearchStepMonthlyReal}
 	// SP2: retain what the graph builder consumes (candidate + the exact
 	// request it was measured against + its three seeds and validation run
 	// count) so the evidence chart survives a reload. The hash is computed
@@ -700,8 +700,12 @@ func appliedSpendingEvidenceFresh(s *models.WhatIfSettings) bool {
 // otherwise stay blank/automatic; prepare returns their canonical defaults.
 func spendingOptimizerFormData(s *models.WhatIfSettings, projection *models.ProjectionResult) map[string]any {
 	// An absent saved floor is an unchosen required input, not the base budget.
+	// The comparison minimum is a search preference (RC1); the guardrail
+	// policy floor is only the fallback for plans saved before it existed.
 	var floor any
-	if s.Guardrails != nil && s.Guardrails.MinMonthlySpendingReal > 0 {
+	if s.SpendingSearch != nil && s.SpendingSearch.FloorMonthlyReal > 0 {
+		floor = s.SpendingSearch.FloorMonthlyReal
+	} else if s.Guardrails != nil && s.Guardrails.MinMonthlySpendingReal > 0 {
 		floor = s.Guardrails.MinMonthlySpendingReal
 	}
 	actual := s.MonthlyLivingExpenses

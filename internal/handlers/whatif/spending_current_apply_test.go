@@ -161,3 +161,91 @@ func TestSpendingOptimizerRenderCurrentPlanApply(t *testing.T) {
 		}
 	}
 }
+
+// RC1 (2026-09-16): the comparison minimum the user ran the optimizer with
+// is saved as a search preference on Apply and prefills the form on reload,
+// regardless of which candidate was applied. Applying the current plan
+// keeps the plan's own rules (policy floor 5000 in the fixture, or none),
+// so the policy floor cannot stand in for the entered minimum.
+func TestSpendingApplyKeepsComparisonMinimum(t *testing.T) {
+	for _, mode := range []string{"current-with-rules", "current-nil-rules", "searched"} {
+		t.Run(mode, func(t *testing.T) {
+			rm, _ := spendingFixture(t)
+			if mode == "current-nil-rules" {
+				s, e := rm.Load()
+				if e != nil {
+					t.Fatal(e)
+				}
+				s.Guardrails = nil
+				if e := rm.Save(s); e != nil {
+					t.Fatal(e)
+				}
+				rm.InvalidateCache()
+			}
+			before, e := rm.Load()
+			if e != nil {
+				t.Fatal(e)
+			}
+			c := spendingAccepted()
+			if mode != "searched" {
+				c = spendingCurrentCandidate(before)
+			}
+			id, p := spendingSeed(t, rm, c)
+			p.request.FloorMonthlyReal, p.form.FloorMonthlyReal = 7000, 7000
+			w := httptest.NewRecorder()
+			handleApplySpendingOptimizer(w, spendingPost(url.Values{"request_id": {id}, "recommendation": {"apply-token"}}))
+			if w.Code != 200 {
+				t.Fatalf("apply %d %s", w.Code, w.Body.String())
+			}
+			got, e := rm.Load()
+			if e != nil {
+				t.Fatal(e)
+			}
+			if got.SpendingSearch == nil || got.SpendingSearch.FloorMonthlyReal != 7000 {
+				t.Fatalf("saved search preferences %+v", got.SpendingSearch)
+			}
+			switch mode {
+			case "current-with-rules":
+				if got.Guardrails == nil || got.Guardrails.MinMonthlySpendingReal != 5000 {
+					t.Fatalf("current-plan apply changed the policy floor: %+v", got.Guardrails)
+				}
+			case "current-nil-rules":
+				if got.Guardrails != nil {
+					t.Fatalf("current-plan apply wrote rules: %+v", got.Guardrails)
+				}
+			case "searched":
+				if got.Guardrails == nil || got.Guardrails.MinMonthlySpendingReal != 6000 {
+					t.Fatalf("searched apply lost the candidate's rules: %+v", got.Guardrails)
+				}
+			}
+			form := spendingOptimizerFormData(got, nil)
+			if form["FloorMonthlyReal"] != 7000.0 || form["MinimumAboveCurrent"] != false {
+				t.Fatalf("form minimum %#v above-current %#v", form["FloorMonthlyReal"], form["MinimumAboveCurrent"])
+			}
+			// The persisted record round-trips through JSON under its own key.
+			raw, _ := json.Marshal(got.SpendingSearch)
+			if !strings.Contains(string(raw), `"floor_monthly_real":7000`) {
+				t.Fatalf("search preferences JSON %s", raw)
+			}
+		})
+	}
+}
+
+// The rendered form input carries the saved comparison minimum through the
+// template's single %.2f formatter.
+func TestSpendingOptimizerFormRendersSavedMinimum(t *testing.T) {
+	_, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+	s := models.DefaultWhatIfSettings()
+	s.MonthlyLivingExpenses = 8000
+	s.Guardrails = &models.GuardrailConfig{Enabled: true, MinMonthlySpendingReal: 5000}
+	s.SpendingSearch = &models.SpendingSearchPreferences{FloorMonthlyReal: 7000, MaxShortfallPct: 20}
+	w := httptest.NewRecorder()
+	if err := renderer.RenderPartial(w, "whatif-spending-optimizer", map[string]any{"SpendingOptimizerForm": spendingOptimizerFormData(s, nil)}); err != nil {
+		t.Fatal(err)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `name="floor_monthly_real"`) || !strings.Contains(body, `value="7000.00"`) || strings.Contains(body, `value="5000.00"`) {
+		t.Fatalf("form did not prefill the saved minimum:\n%s", body)
+	}
+}

@@ -832,16 +832,24 @@ func TestSpendingOptimizerFormMinimumRequiresSavedFloor(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		guardrails *models.GuardrailConfig
+		prefs      *models.SpendingSearchPreferences
 		want       any
 	}{
 		{name: "no-policy"},
 		{name: "no-floor", guardrails: &models.GuardrailConfig{Enabled: true}},
 		{name: "saved-floor", guardrails: &models.GuardrailConfig{Enabled: true, MinMonthlySpendingReal: 6250.25}, want: 6250.25},
+		// RC1: the saved comparison minimum wins over the policy floor; a
+		// legacy preference record without one falls back to the policy.
+		{name: "search-floor-wins", guardrails: &models.GuardrailConfig{Enabled: true, MinMonthlySpendingReal: 6250.25}, prefs: &models.SpendingSearchPreferences{FloorMonthlyReal: 7000}, want: 7000.0},
+		{name: "search-floor-no-policy", prefs: &models.SpendingSearchPreferences{FloorMonthlyReal: 7000}, want: 7000.0},
+		{name: "legacy-prefs-policy-floor", guardrails: &models.GuardrailConfig{Enabled: true, MinMonthlySpendingReal: 6000}, prefs: &models.SpendingSearchPreferences{MaxShortfallPct: 20}, want: 6000.0},
+		{name: "legacy-prefs-no-policy", prefs: &models.SpendingSearchPreferences{MaxShortfallPct: 20}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := models.DefaultWhatIfSettings()
 			s.MonthlyLivingExpenses = 8000
 			s.Guardrails = tc.guardrails
+			s.SpendingSearch = tc.prefs
 			form := spendingOptimizerFormData(s, nil)
 			if !reflect.DeepEqual(form["FloorMonthlyReal"], tc.want) {
 				t.Fatalf("floor %#v want %#v", form["FloorMonthlyReal"], tc.want)
@@ -868,9 +876,9 @@ func TestSpendingApplySavesSearchPreferences(t *testing.T) {
 		form models.SpendingOptimizerRequest
 		want *models.SpendingSearchPreferences
 	}{
-		{name: "explicit", form: models.SpendingOptimizerRequest{FloorMonthlyReal: 6000, MaxShortfallPct: 7.5, NearTermYears: 3, SearchMinMonthlyReal: 7000, SearchMaxMonthlyReal: 9500.5, SearchStepMonthlyReal: 250}, want: &models.SpendingSearchPreferences{MaxShortfallPct: 7.5, NearTermYears: 3, SearchMinMonthlyReal: 7000, SearchMaxMonthlyReal: 9500.5, SearchStepMonthlyReal: 250}},
-		{name: "defaults", form: models.SpendingOptimizerRequest{FloorMonthlyReal: 6000, MaxShortfallPct: models.DefaultSpendingMaxShortfallPct}, want: &models.SpendingSearchPreferences{MaxShortfallPct: 5}},
-		{name: "strict-zero", form: models.SpendingOptimizerRequest{FloorMonthlyReal: 6000, MaxShortfallPct: 0}, want: &models.SpendingSearchPreferences{MaxShortfallPct: 0}},
+		{name: "explicit", form: models.SpendingOptimizerRequest{FloorMonthlyReal: 6000, MaxShortfallPct: 7.5, NearTermYears: 3, SearchMinMonthlyReal: 7000, SearchMaxMonthlyReal: 9500.5, SearchStepMonthlyReal: 250}, want: &models.SpendingSearchPreferences{FloorMonthlyReal: 6000, MaxShortfallPct: 7.5, NearTermYears: 3, SearchMinMonthlyReal: 7000, SearchMaxMonthlyReal: 9500.5, SearchStepMonthlyReal: 250}},
+		{name: "defaults", form: models.SpendingOptimizerRequest{FloorMonthlyReal: 6000, MaxShortfallPct: models.DefaultSpendingMaxShortfallPct}, want: &models.SpendingSearchPreferences{FloorMonthlyReal: 6000, MaxShortfallPct: 5}},
+		{name: "strict-zero", form: models.SpendingOptimizerRequest{FloorMonthlyReal: 6000, MaxShortfallPct: 0}, want: &models.SpendingSearchPreferences{FloorMonthlyReal: 6000, MaxShortfallPct: 0}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rm, before := spendingFixture(t)

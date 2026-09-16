@@ -95,6 +95,20 @@ func TestRenderBigTicketCard_ShowsCalendarMonth(t *testing.T) {
 			t.Errorf("want %q in: %s", want, html)
 		}
 	}
+	// A past entry (a month the rollover has already carried us past) says so
+	// in BOTH lists, rather than showing a date with no explanation.
+	s.BigTicketItems = append(s.BigTicketItems, models.BigTicketItem{ID: "b2", Name: "Old Fence", Amount: 100, Month: -1, Type: models.BigTicketExpense})
+	s.RemovedBigTicketItems[0].Month = -2
+	pastOut, err := r.RenderToString("whatif-bigticket-card", map[string]any{"Settings": s})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	pastHTML := collapse(pastOut)
+	for _, want := range []string{"Sep 2026 (past)", "Aug 2026 (past)"} {
+		if !strings.Contains(pastHTML, want) {
+			t.Errorf("want %q in: %s", want, pastHTML)
+		}
+	}
 	// The item's own fields still render after the card started receiving
 	// both the settings and the item.
 	if !strings.Contains(html, `aria-label="Delete big ticket New Car"`) {
@@ -105,17 +119,21 @@ func TestRenderBigTicketCard_ShowsCalendarMonth(t *testing.T) {
 	}
 }
 
-// The expense list's inline edit inputs still speak whole years (RC3 replaces
-// them with calendar-month inputs); this pins the offset→year conversion so a
-// year-aligned source round-trips unchanged.
-func TestRenderExpenseSourcesList_YearInputsFromMonthOffsets(t *testing.T) {
+// The expense list's inline edit inputs are calendar-month pickers (RC3). The
+// value is the exact month the offset names, so an untouched re-save cannot
+// move the date — including for an offset that is NOT year-aligned, the state
+// the monthly rollover produces. "Through" is the LAST month charged, one
+// month before the stored (end-exclusive) EndMonth.
+func TestRenderExpenseSourcesList_MonthInputsFromMonthOffsets(t *testing.T) {
 	r := newWhatIfRenderer(t)
 
-	s := scheduleRenderSettings()
+	s := scheduleRenderSettings() // plan start 2026-10
 	end := 60
+	endOffAligned := 24
 	s.ExpenseSources = []models.ExpenseSource{
 		{ID: "e1", Name: "Boat", Amount: 500, StartMonth: 24, EndMonth: &end},
 		{ID: "e2", Name: "Gym", Amount: 100, StartMonth: 0, EndMonth: nil},
+		{ID: "e3", Name: "Lease", Amount: 200, StartMonth: 11, EndMonth: &endOffAligned},
 	}
 
 	out, err := r.RenderToString("whatif-expense-sources-list", map[string]any{"Settings": s})
@@ -125,12 +143,28 @@ func TestRenderExpenseSourcesList_YearInputsFromMonthOffsets(t *testing.T) {
 	html := collapse(out)
 
 	for _, want := range []string{
-		`name="start_year" min="0" max="50" value="2"`,
-		`name="end_year" min="0" max="50" value="5"`,
-		`name="end_year" min="0" max="50" value=""`,
+		`id="expense-start-e1" name="start_month" value="2028-10" min="2026-10"`,
+		`id="expense-end-e1" name="end_month" value="2031-09" min="2026-10"`,
+		`id="expense-start-e2" name="start_month" value="2026-10" min="2026-10"`,
+		`id="expense-end-e2" name="end_month" value="" min="2026-10"`,
+		`id="expense-start-e3" name="start_month" value="2027-09" min="2026-10"`,
+		`id="expense-end-e3" name="end_month" value="2028-09" min="2026-10"`,
+		// Every month input is programmatically labelled and described.
+		`<label for="expense-start-e3"`,
+		`<label for="expense-end-e3"`,
+		`aria-describedby="expense-schedule-e3"`,
+		`id="expense-schedule-e3"`,
+		// ...and the row states the schedule in words, ongoing included.
+		"Starts Sep 2027 · Through Sep 2028",
+		"Starts Oct 2026 · ongoing",
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("want %q in: %s", want, html)
+		}
+	}
+	for _, bad := range []string{"start_year", "end_year", "Starts yr", "Ends yr"} {
+		if strings.Contains(html, bad) {
+			t.Errorf("year-offset input %q survived in: %s", bad, html)
 		}
 	}
 }

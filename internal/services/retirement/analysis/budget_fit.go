@@ -17,11 +17,15 @@ import (
 // which itself formats with "%.2f"; deriving cents any other way can
 // disagree with that rendering at floating-point ties (Ruling 2026-08-29b).
 // scheduleNote renders a breakdown note naming the calendar month a schedule
-// offset falls in ("starts Sep 2027", "ends Sep 2028" — an end month is the
-// first month WITHOUT the item, exactly as stored). It goes through
+// offset falls in ("starts Sep 2027", "through Sep 2028"). It goes through
 // models.CalendarMonthLabel so every surface naming a scheduled date uses one
 // formatter. When StartDate is unparseable there is no calendar to name, so it
 // falls back to the previous year-offset wording rather than printing nothing.
+//
+// Callers pass the month they want NAMED. For "through" that is EndMonth-1:
+// EndMonth is the first month WITHOUT the item, and the user's form says
+// "Through" = the last month the item is still included — the same convention
+// the expense row's month inputs use, so the note and the form agree.
 func scheduleNote(verb, startDate string, month int) string {
 	if label := models.CalendarMonthLabel(startDate, month); label != "" {
 		return fmt.Sprintf("%s %s", verb, label)
@@ -211,7 +215,7 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 		}
 		note := ""
 		if source.EndMonth != nil {
-			note = scheduleNote("ends", s.StartDate, *source.EndMonth)
+			note = scheduleNote("through", s.StartDate, *source.EndMonth-1)
 		}
 		breakdown = append(breakdown, models.ExpenseBreakdownItem{
 			Name:   source.Name,

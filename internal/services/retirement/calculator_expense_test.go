@@ -662,12 +662,13 @@ func TestCalculateBudgetFit(t *testing.T) {
 		if fit.ExpenseBreakdown[0].Name != "Living Expenses" {
 			t.Errorf("first breakdown: want 'Living Expenses', got %q", fit.ExpenseBreakdown[0].Name)
 		}
-		// Find property tax entry. The note names the calendar month the
-		// source ends in, derived through models.CalendarMonthLabel — the one
-		// formatter every surface uses — so it cannot drift from what the
-		// cards render.
-		wantNote := "ends " + models.CalendarMonthLabel(s.StartDate, 5*12)
-		if wantNote == "ends " {
+		// Find property tax entry. The note names the LAST calendar month the
+		// source is still charged in — EndMonth-1, because EndMonth is the
+		// first month without it — derived through models.CalendarMonthLabel,
+		// the one formatter every surface uses, so the note cannot drift from
+		// the "Through" month the expense row's form shows.
+		wantNote := "through " + models.CalendarMonthLabel(s.StartDate, 5*12-1)
+		if wantNote == "through " {
 			t.Fatalf("test fixture has an unparseable StartDate %q", s.StartDate)
 		}
 		found := false

@@ -56,6 +56,16 @@ func wireWhatIfEnv(t *testing.T, settingsDir, csvDir string) *retirement.Setting
 	return rm
 }
 
+// planMonthValue renders the calendar month `offset` months after the CURRENT
+// month — exactly the "YYYY-MM" value an <input type="month"> carries for that
+// schedule offset on the default fixture, whose plan is anchored to now
+// (UseCurrentMonth). Tests build form values with it rather than a literal
+// month so they keep asserting the same OFFSET as the clock moves, and it goes
+// through models.CalendarMonth, the one formatter the forms themselves use.
+func planMonthValue(offset int) string {
+	return models.CalendarMonth(time.Now().Format("2006-01"), offset)
+}
+
 // setupTestEnv creates temp directories, initializes package-level vars,
 // and returns the SettingsManager plus a cleanup function.
 func setupTestEnv(t *testing.T) (*retirement.SettingsManager, func()) {
@@ -1317,11 +1327,11 @@ func TestHandleWhatIfAddIncome(t *testing.T) {
 	defer cleanup()
 
 	form := url.Values{
-		"name":       {"Social Security"},
-		"amount":     {"2000"},
-		"start_year": {"5"},
-		"end_year":   {"30"},
-		"cola":       {"on"},
+		"name":        {"Social Security"},
+		"amount":      {"2000"},
+		"start_month": {planMonthValue(60)},
+		"end_month":   {planMonthValue(359)},
+		"cola":        {"on"},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/income", formBody(form))
@@ -1375,11 +1385,11 @@ func TestHandleWhatIfAddIncome_NegativeAmount(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfAddIncome_BadStartYear(t *testing.T) {
+func TestHandleWhatIfAddIncome_BadStartMonth(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_year": {"abc"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {"abc"}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/income", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1389,11 +1399,11 @@ func TestHandleWhatIfAddIncome_BadStartYear(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfAddIncome_NegativeStartYear(t *testing.T) {
+func TestHandleWhatIfAddIncome_StartMonthBeforePlanStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_year": {"-1"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {planMonthValue(-1)}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/income", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1403,11 +1413,11 @@ func TestHandleWhatIfAddIncome_NegativeStartYear(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfAddIncome_BadEndYear(t *testing.T) {
+func TestHandleWhatIfAddIncome_BadEndMonth(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "end_year": {"abc"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {planMonthValue(0)}, "end_month": {"abc"}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/income", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1417,11 +1427,11 @@ func TestHandleWhatIfAddIncome_BadEndYear(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfAddIncome_NegativeEndYear(t *testing.T) {
+func TestHandleWhatIfAddIncome_EndMonthBeforePlanStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "end_year": {"-1"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {planMonthValue(0)}, "end_month": {planMonthValue(-1)}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/income", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1435,7 +1445,7 @@ func TestHandleWhatIfAddIncome_EndBeforeStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_year": {"5"}, "end_year": {"3"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {planMonthValue(60)}, "end_month": {planMonthValue(36)}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/income", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1449,7 +1459,7 @@ func TestHandleWhatIfAddIncome_NoCola(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {planMonthValue(0)}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/income", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1467,7 +1477,7 @@ func TestHandleWhatIfUpdateIncome(t *testing.T) {
 	src := models.IncomeSource{ID: "test-inc-1", Name: "Test", Amount: 1000, Type: models.IncomeFixed}
 	rm.AddIncomeSource(src)
 
-	form := url.Values{"start_year": {"2"}, "end_year": {"10"}, "cola": {"true"}}
+	form := url.Values{"start_month": {planMonthValue(24)}, "end_month": {planMonthValue(119)}, "cola": {"true"}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/income/test-inc-1", formBody(form), map[string]string{"id": "test-inc-1"})
 	handleWhatIfUpdateIncome(w, req)
@@ -1476,11 +1486,11 @@ func TestHandleWhatIfUpdateIncome(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfUpdateIncome_BadStartYear(t *testing.T) {
+func TestHandleWhatIfUpdateIncome_BadStartMonth(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"start_year": {"abc"}}
+	form := url.Values{"start_month": {"abc"}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/income/x", formBody(form), map[string]string{"id": "x"})
 	handleWhatIfUpdateIncome(w, req)
@@ -1489,11 +1499,11 @@ func TestHandleWhatIfUpdateIncome_BadStartYear(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfUpdateIncome_NegativeStartYear(t *testing.T) {
+func TestHandleWhatIfUpdateIncome_StartMonthBeforePlanStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"start_year": {"-1"}}
+	form := url.Values{"start_month": {planMonthValue(-1)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/income/x", formBody(form), map[string]string{"id": "x"})
 	handleWhatIfUpdateIncome(w, req)
@@ -1502,11 +1512,11 @@ func TestHandleWhatIfUpdateIncome_NegativeStartYear(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfUpdateIncome_BadEndYear(t *testing.T) {
+func TestHandleWhatIfUpdateIncome_BadEndMonth(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"end_year": {"abc"}}
+	form := url.Values{"start_month": {planMonthValue(0)}, "end_month": {"abc"}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/income/x", formBody(form), map[string]string{"id": "x"})
 	handleWhatIfUpdateIncome(w, req)
@@ -1515,11 +1525,11 @@ func TestHandleWhatIfUpdateIncome_BadEndYear(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfUpdateIncome_NegativeEndYear(t *testing.T) {
+func TestHandleWhatIfUpdateIncome_EndMonthBeforePlanStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"end_year": {"-1"}}
+	form := url.Values{"start_month": {planMonthValue(0)}, "end_month": {planMonthValue(-1)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/income/x", formBody(form), map[string]string{"id": "x"})
 	handleWhatIfUpdateIncome(w, req)
@@ -1532,7 +1542,7 @@ func TestHandleWhatIfUpdateIncome_EndBeforeStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"start_year": {"5"}, "end_year": {"3"}}
+	form := url.Values{"start_month": {planMonthValue(60)}, "end_month": {planMonthValue(36)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/income/x", formBody(form), map[string]string{"id": "x"})
 	handleWhatIfUpdateIncome(w, req)
@@ -1651,8 +1661,8 @@ func TestHandleWhatIfAddExpense(t *testing.T) {
 	form := url.Values{
 		"name":          {"Car Payment"},
 		"amount":        {"500"},
-		"start_year":    {"0"},
-		"end_year":      {"5"},
+		"start_month":   {planMonthValue(0)},
+		"end_month":     {planMonthValue(59)},
 		"inflation":     {"on"},
 		"discretionary": {"true"},
 	}
@@ -1708,11 +1718,11 @@ func TestHandleWhatIfAddExpense_NegativeAmount(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfAddExpense_BadStartYear(t *testing.T) {
+func TestHandleWhatIfAddExpense_BadStartMonth(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_year": {"abc"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {"abc"}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/expense", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1722,11 +1732,11 @@ func TestHandleWhatIfAddExpense_BadStartYear(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfAddExpense_NegativeStartYear(t *testing.T) {
+func TestHandleWhatIfAddExpense_StartMonthBeforePlanStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_year": {"-1"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {planMonthValue(-1)}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/expense", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1736,11 +1746,11 @@ func TestHandleWhatIfAddExpense_NegativeStartYear(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfAddExpense_BadEndYear(t *testing.T) {
+func TestHandleWhatIfAddExpense_BadEndMonth(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "end_year": {"abc"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {planMonthValue(0)}, "end_month": {"abc"}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/expense", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1750,11 +1760,11 @@ func TestHandleWhatIfAddExpense_BadEndYear(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfAddExpense_NegativeEndYear(t *testing.T) {
+func TestHandleWhatIfAddExpense_EndMonthBeforePlanStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "end_year": {"-1"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {planMonthValue(0)}, "end_month": {planMonthValue(-1)}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/expense", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1768,7 +1778,7 @@ func TestHandleWhatIfAddExpense_EndBeforeStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_year": {"5"}, "end_year": {"3"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {planMonthValue(60)}, "end_month": {planMonthValue(36)}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/expense", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1778,11 +1788,11 @@ func TestHandleWhatIfAddExpense_EndBeforeStart(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfAddExpense_NoEndYear(t *testing.T) {
+func TestHandleWhatIfAddExpense_NoEndMonth(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {planMonthValue(0)}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/expense", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -1799,7 +1809,7 @@ func TestHandleWhatIfUpdateExpense(t *testing.T) {
 	exp := models.ExpenseSource{ID: "test-exp-1", Name: "Test", Amount: 500}
 	rm.AddExpenseSource(exp)
 
-	form := url.Values{"start_year": {"1"}, "end_year": {"5"}, "inflation": {"on"}, "discretionary": {"true"}}
+	form := url.Values{"start_month": {planMonthValue(12)}, "end_month": {planMonthValue(59)}, "inflation": {"on"}, "discretionary": {"true"}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/expense/test-exp-1", formBody(form), map[string]string{"id": "test-exp-1"})
 	handleWhatIfUpdateExpense(w, req)
@@ -1808,11 +1818,11 @@ func TestHandleWhatIfUpdateExpense(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfUpdateExpense_BadStartYear(t *testing.T) {
+func TestHandleWhatIfUpdateExpense_BadStartMonth(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"start_year": {"abc"}}
+	form := url.Values{"start_month": {"abc"}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/expense/x", formBody(form), map[string]string{"id": "x"})
 	handleWhatIfUpdateExpense(w, req)
@@ -1821,11 +1831,11 @@ func TestHandleWhatIfUpdateExpense_BadStartYear(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfUpdateExpense_NegativeStartYear(t *testing.T) {
+func TestHandleWhatIfUpdateExpense_StartMonthBeforePlanStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"start_year": {"-1"}}
+	form := url.Values{"start_month": {planMonthValue(-1)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/expense/x", formBody(form), map[string]string{"id": "x"})
 	handleWhatIfUpdateExpense(w, req)
@@ -1834,11 +1844,11 @@ func TestHandleWhatIfUpdateExpense_NegativeStartYear(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfUpdateExpense_BadEndYear(t *testing.T) {
+func TestHandleWhatIfUpdateExpense_BadEndMonth(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"end_year": {"abc"}}
+	form := url.Values{"start_month": {planMonthValue(0)}, "end_month": {"abc"}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/expense/x", formBody(form), map[string]string{"id": "x"})
 	handleWhatIfUpdateExpense(w, req)
@@ -1847,11 +1857,11 @@ func TestHandleWhatIfUpdateExpense_BadEndYear(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfUpdateExpense_NegativeEndYear(t *testing.T) {
+func TestHandleWhatIfUpdateExpense_EndMonthBeforePlanStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"end_year": {"-1"}}
+	form := url.Values{"start_month": {planMonthValue(0)}, "end_month": {planMonthValue(-1)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/expense/x", formBody(form), map[string]string{"id": "x"})
 	handleWhatIfUpdateExpense(w, req)
@@ -1864,7 +1874,7 @@ func TestHandleWhatIfUpdateExpense_EndBeforeStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"start_year": {"5"}, "end_year": {"3"}}
+	form := url.Values{"start_month": {planMonthValue(60)}, "end_month": {planMonthValue(36)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/expense/x", formBody(form), map[string]string{"id": "x"})
 	handleWhatIfUpdateExpense(w, req)
@@ -2691,7 +2701,7 @@ func TestHandleWhatIfAddBigTicket(t *testing.T) {
 	form := url.Values{
 		"name":          {"New Roof"},
 		"amount":        {"25000"},
-		"year":          {"3"},
+		"month":         {planMonthValue(36)},
 		"type":          {"expense"},
 		"tax_treatment": {"none"},
 		"notes":         {"Replace aging roof"},
@@ -2712,7 +2722,7 @@ func TestHandleWhatIfAddBigTicket_IncomeType(t *testing.T) {
 	form := url.Values{
 		"name":          {"Home Sale"},
 		"amount":        {"200000"},
-		"year":          {"5"},
+		"month":         {planMonthValue(60)},
 		"type":          {"income"},
 		"tax_treatment": {"cap_gains"},
 	}
@@ -2733,6 +2743,7 @@ func TestHandleWhatIfAddBigTicket_InvalidTypeDefaultsToExpense(t *testing.T) {
 		"name":   {"Test"},
 		"amount": {"1000"},
 		"type":   {"bogus"},
+		"month":  {planMonthValue(0)},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/bigticket", formBody(form))
@@ -2751,6 +2762,7 @@ func TestHandleWhatIfAddBigTicket_InvalidTaxTreatmentDefaultsToNone(t *testing.T
 		"name":          {"Test"},
 		"amount":        {"1000"},
 		"tax_treatment": {"bogus"},
+		"month":         {planMonthValue(0)},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/bigticket", formBody(form))
@@ -2770,6 +2782,7 @@ func TestHandleWhatIfAddBigTicket_OrdinaryTax(t *testing.T) {
 		"amount":        {"10000"},
 		"type":          {"income"},
 		"tax_treatment": {"ordinary"},
+		"month":         {planMonthValue(0)},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/bigticket", formBody(form))
@@ -2822,11 +2835,11 @@ func TestHandleWhatIfAddBigTicket_NegativeAmount(t *testing.T) {
 	}
 }
 
-func TestHandleWhatIfAddBigTicket_NegativeYear(t *testing.T) {
+func TestHandleWhatIfAddBigTicket_MonthBeforePlanStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "year": {"-5"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "month": {planMonthValue(-5)}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/bigticket", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -2837,11 +2850,11 @@ func TestHandleWhatIfAddBigTicket_NegativeYear(t *testing.T) {
 	assertRetargetHeader(t, w, "#whatif-add-bigticket-error")
 }
 
-func TestHandleWhatIfAddBigTicket_BadYear(t *testing.T) {
+func TestHandleWhatIfAddBigTicket_BadMonth(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "year": {"abc"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "month": {"abc"}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/bigticket", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -4122,7 +4135,7 @@ func TestHandleWhatIfAddIncome_ColaTrue(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"name": {"Test"}, "amount": {"100"}, "cola": {"true"}}
+	form := url.Values{"name": {"Test"}, "amount": {"100"}, "start_month": {planMonthValue(0)}, "cola": {"true"}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/income", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -4143,6 +4156,7 @@ func TestHandleWhatIfAddExpense_Flags(t *testing.T) {
 		"amount":        {"100"},
 		"inflation":     {"true"},
 		"discretionary": {"on"},
+		"start_month":   {planMonthValue(0)},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/expense", formBody(form))
@@ -4436,7 +4450,7 @@ func TestHandleWhatIfUpdateIncome_NonexistentID(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"start_year": {"0"}}
+	form := url.Values{"start_month": {planMonthValue(0)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/income/nonexistent", formBody(form), map[string]string{"id": "nonexistent"})
 	handleWhatIfUpdateIncome(w, req)
@@ -4473,7 +4487,7 @@ func TestHandleWhatIfUpdateExpense_NonexistentID(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"start_year": {"0"}}
+	form := url.Values{"start_month": {planMonthValue(0)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/expense/nonexistent", formBody(form), map[string]string{"id": "nonexistent"})
 	handleWhatIfUpdateExpense(w, req)
@@ -5098,11 +5112,11 @@ func TestHandleWhatIfAddIncome_WithRenderer(t *testing.T) {
 	defer cleanup()
 
 	form := url.Values{
-		"name":       {"Social Security"},
-		"amount":     {"2000"},
-		"start_year": {"5"},
-		"end_year":   {"30"},
-		"cola":       {"on"},
+		"name":        {"Social Security"},
+		"amount":      {"2000"},
+		"start_month": {planMonthValue(60)},
+		"end_month":   {planMonthValue(359)},
+		"cola":        {"on"},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/income", formBody(form))
@@ -5124,7 +5138,7 @@ func TestHandleWhatIfUpdateIncome_WithRenderer(t *testing.T) {
 	src := models.IncomeSource{ID: "rend-inc-1", Name: "Test", Amount: 1000, Type: models.IncomeFixed}
 	rm.AddIncomeSource(src)
 
-	form := url.Values{"start_year": {"2"}, "end_year": {"10"}, "cola": {"true"}}
+	form := url.Values{"start_month": {planMonthValue(24)}, "end_month": {planMonthValue(119)}, "cola": {"true"}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/income/rend-inc-1", formBody(form), map[string]string{"id": "rend-inc-1"})
 	handleWhatIfUpdateIncome(w, req)
@@ -5247,7 +5261,7 @@ func TestHandleWhatIfUpdateIncome_NoToastForUnrelatedMutation(t *testing.T) {
 	}
 	rm.AddIncomeSource(models.IncomeSource{ID: "unrelated-update", Name: "Salary", Amount: 2000, Type: models.IncomeFixed})
 
-	form := url.Values{"start_year": {"1"}}
+	form := url.Values{"start_month": {planMonthValue(12)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/income/unrelated-update", formBody(form), map[string]string{"id": "unrelated-update"})
 	handleWhatIfUpdateIncome(w, req)
@@ -5315,11 +5329,11 @@ func TestHandleWhatIfAddExpense_WithRenderer(t *testing.T) {
 	defer cleanup()
 
 	form := url.Values{
-		"name":       {"Car Payment"},
-		"amount":     {"500"},
-		"start_year": {"0"},
-		"end_year":   {"5"},
-		"inflation":  {"on"},
+		"name":        {"Car Payment"},
+		"amount":      {"500"},
+		"start_month": {planMonthValue(0)},
+		"end_month":   {planMonthValue(59)},
+		"inflation":   {"on"},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/expense", formBody(form))
@@ -5338,7 +5352,7 @@ func TestHandleWhatIfUpdateExpense_WithRenderer(t *testing.T) {
 	exp := models.ExpenseSource{ID: "rend-exp-1", Name: "Test", Amount: 500}
 	rm.AddExpenseSource(exp)
 
-	form := url.Values{"start_year": {"1"}, "end_year": {"5"}, "inflation": {"on"}}
+	form := url.Values{"start_month": {planMonthValue(12)}, "end_month": {planMonthValue(59)}, "inflation": {"on"}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/expense/rend-exp-1", formBody(form), map[string]string{"id": "rend-exp-1"})
 	handleWhatIfUpdateExpense(w, req)
@@ -5573,7 +5587,7 @@ func TestHandleWhatIfAddBigTicket_WithRenderer(t *testing.T) {
 	form := url.Values{
 		"name":   {"New Roof"},
 		"amount": {"25000"},
-		"year":   {"5"},
+		"month":  {planMonthValue(60)},
 		"type":   {"expense"},
 	}
 	w := httptest.NewRecorder()
@@ -7294,9 +7308,9 @@ func TestHandleWhatIfAddIncome_SaveError(t *testing.T) {
 	makeSaveFail(t, dir)
 
 	form := url.Values{
-		"name":       {"Test Income"},
-		"amount":     {"1000"},
-		"start_year": {"0"},
+		"name":        {"Test Income"},
+		"amount":      {"1000"},
+		"start_month": {planMonthValue(0)},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/income", formBody(form))
@@ -7314,9 +7328,9 @@ func TestHandleWhatIfAddExpense_SaveError(t *testing.T) {
 	makeSaveFail(t, dir)
 
 	form := url.Values{
-		"name":       {"Test Expense"},
-		"amount":     {"500"},
-		"start_year": {"0"},
+		"name":        {"Test Expense"},
+		"amount":      {"500"},
+		"start_month": {planMonthValue(0)},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/expense", formBody(form))
@@ -7336,7 +7350,7 @@ func TestHandleWhatIfAddBigTicket_SaveError(t *testing.T) {
 	form := url.Values{
 		"name":   {"Big Item"},
 		"amount": {"5000"},
-		"year":   {"3"},
+		"month":  {planMonthValue(36)},
 		"type":   {"expense"},
 	}
 	w := httptest.NewRecorder()
@@ -7383,7 +7397,7 @@ func TestHandleWhatIfUpdateIncome_SaveError(t *testing.T) {
 	primeLoadCache(t, rm)
 	makeSaveFail(t, dir)
 
-	form := url.Values{"start_year": {"5"}}
+	form := url.Values{"start_month": {planMonthValue(60)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/income/upd-inc-save", formBody(form), map[string]string{"id": "upd-inc-save"})
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -7404,7 +7418,7 @@ func TestHandleWhatIfUpdateExpense_SaveError(t *testing.T) {
 	primeLoadCache(t, rm)
 	makeSaveFail(t, dir)
 
-	form := url.Values{"start_year": {"3"}}
+	form := url.Values{"start_month": {planMonthValue(36)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/expense/upd-exp-save", formBody(form), map[string]string{"id": "upd-exp-save"})
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -8013,9 +8027,9 @@ func TestHandleWhatIfAddIncome_AnalysisError(t *testing.T) {
 	setupItemsThenBreakChain(t, func(rm *retirement.SettingsManager) {})
 
 	form := url.Values{
-		"name":       {"Test"},
-		"amount":     {"1000"},
-		"start_year": {"0"},
+		"name":        {"Test"},
+		"amount":      {"1000"},
+		"start_month": {planMonthValue(0)},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/income", formBody(form))
@@ -8030,9 +8044,9 @@ func TestHandleWhatIfAddExpense_AnalysisError(t *testing.T) {
 	setupItemsThenBreakChain(t, func(rm *retirement.SettingsManager) {})
 
 	form := url.Values{
-		"name":       {"Test"},
-		"amount":     {"500"},
-		"start_year": {"0"},
+		"name":        {"Test"},
+		"amount":      {"500"},
+		"start_month": {planMonthValue(0)},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/expense", formBody(form))
@@ -8049,7 +8063,7 @@ func TestHandleWhatIfAddBigTicket_AnalysisError(t *testing.T) {
 	form := url.Values{
 		"name":   {"Big"},
 		"amount": {"5000"},
-		"year":   {"3"},
+		"month":  {planMonthValue(36)},
 		"type":   {"expense"},
 	}
 	w := httptest.NewRecorder()
@@ -8087,7 +8101,7 @@ func TestHandleWhatIfUpdateIncome_AnalysisError(t *testing.T) {
 	})
 	_ = rm
 
-	form := url.Values{"start_year": {"5"}}
+	form := url.Values{"start_month": {planMonthValue(60)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/income/danger-upd-i", formBody(form), map[string]string{"id": "danger-upd-i"})
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -8106,7 +8120,7 @@ func TestHandleWhatIfUpdateExpense_AnalysisError(t *testing.T) {
 	})
 	_ = rm
 
-	form := url.Values{"start_year": {"3"}}
+	form := url.Values{"start_month": {planMonthValue(36)}}
 	w := httptest.NewRecorder()
 	req := chiRequest("PUT", "/whatif/expense/danger-upd-e", formBody(form), map[string]string{"id": "danger-upd-e"})
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

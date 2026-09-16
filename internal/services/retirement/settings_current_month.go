@@ -22,6 +22,15 @@ func monthsBetween(from, to string) (int, bool) {
 	return (toYear-fromYear)*12 + (toMonth - fromMonth), true
 }
 
+// MonthOffset returns the offset in months from a plan's startDate to the
+// calendar month `value` (both "YYYY-MM"), and ok=false when either string is
+// not a calendar month. It is the exported face of monthsBetween, so the
+// handlers that accept <input type="month"> values convert them with exactly
+// the arithmetic the rollover shift uses — one conversion rule, not two.
+func MonthOffset(startDate, value string) (int, bool) {
+	return monthsBetween(startDate, value)
+}
+
 // shiftScheduleOffsets re-anchors every month-granular schedule offset in
 // settings by `elapsed` months, so that a schedule entered against the OLD
 // StartDate still means the same calendar month against the new one. Without

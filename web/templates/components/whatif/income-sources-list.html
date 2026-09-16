@@ -5,14 +5,14 @@
     {{$optimizerActive := socialSecurityProjectionActive .Settings}}
     {{if $optimizerActive}}
     {{range projectedSSEntries .Settings}}
-    {{template "whatif-projected-ss-item" .}}
+    {{template "whatif-projected-ss-item" (dict "Settings" $.Settings "Entry" .)}}
     {{end}}
     {{end}}
     {{range .Settings.IncomeSources}}
     {{if and $optimizerActive (isSocialSecurityIncomeSource .)}}
     {{template "whatif-income-source-item-excluded" .}}
     {{else}}
-    {{template "whatif-income-source-item" .}}
+    {{template "whatif-income-source-item" (dict "Settings" $.Settings "Source" .)}}
     {{end}}
     {{else}}
     {{if not $optimizerActive}}
@@ -22,8 +22,14 @@
 </div>
 {{end}}
 
-{{/* Read-only Social Security item rendered from SS Optimizer settings */}}
+{{/* Read-only Social Security item rendered from SS Optimizer settings.
+Expects: .Settings (for StartDate) and .Entry (a ProjectedSSEntry); the entry
+is re-scoped as dot below so the markup reads its own fields, and $ stays the
+dict for the calendar-month label. Callers: whatif-income-sources-list and the
+every-mutation OOB partial in pages/whatif.html. */}}
 {{define "whatif-projected-ss-item"}}
+{{$start := calendarMonthLabel .Settings.StartDate .Entry.StartMonth}}
+{{with .Entry}}
 <div class="p-2 bg-accent-soft border border-accent rounded text-sm" title="Computed from the SS Claiming Age Optimizer below. Edit there to change.">
     <div class="flex items-center justify-between mb-1">
         <div>
@@ -39,10 +45,11 @@
         {{if .AlreadyClaiming}}
         Already claiming at age {{.ClaimAge}}
         {{else}}
-        Starts age {{.ClaimAge}} (yr {{div .StartMonth 12}})
+        Starts {{if $start}}{{$start}} {{end}}(age {{.ClaimAge}})
         {{end}}
     </div>
 </div>
+{{end}}
 {{end}}
 
 {{/* Income source flagged as excluded because the SS Optimizer is active and
@@ -66,8 +73,14 @@ keep" affordance so the user can either delete the duplicate or rename it. */}}
 </div>
 {{end}}
 
-{{/* Single Income Source Item */}}
+{{/* Single Income Source Item. Expects: .Settings (for StartDate, which the
+month inputs are anchored to) and .Source; the source is re-scoped as dot
+below so the markup reads its own fields, and $s keeps the settings in reach.
+Callers: whatif-income-sources-list and the every-mutation OOB partial in
+pages/whatif.html. */}}
 {{define "whatif-income-source-item"}}
+{{$s := .Settings}}
+{{with .Source}}
 <form hx-put="/whatif/income/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms, input delay:500ms from:find input[type=number]"
     class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
     <div class="flex items-center justify-between mb-2">
@@ -82,26 +95,32 @@ keep" affordance so the user can either delete the duplicate or rename it. */}}
             </svg>
         </button>
     </div>
-    <div class="flex items-center gap-4 text-xs">
-        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
-            Starts yr:
-            <input type="number" name="start_year" min="0" max="50" value="{{div .StartMonth 12}}"
-                class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
-                title="Year income starts (0 = now)">
-        </label>
-        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
-            Ends yr:
-            <input type="number" name="end_year" min="0" max="50" value="{{if .EndMonth}}{{div .EndMonth 12}}{{end}}"
-                class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
-                title="Year income ends (blank = never, 0 = ends immediately)">
-        </label>
-        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
+    <div class="flex items-center gap-4 text-xs flex-wrap">
+        <div class="flex items-center gap-1">
+            <label for="income-start-{{.ID}}" class="text-gray-700 dark:text-gray-200">Starts</label>
+            <input type="month" id="income-start-{{.ID}}" name="start_month"
+                value="{{calendarMonth $s.StartDate .StartMonth}}" min="{{calendarMonth $s.StartDate 0}}"
+                aria-describedby="income-schedule-{{.ID}}"
+                class="px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs">
+        </div>
+        <div class="flex items-center gap-1">
+            <label for="income-end-{{.ID}}" class="text-gray-700 dark:text-gray-200">Through</label>
+            <input type="month" id="income-end-{{.ID}}" name="end_month"
+                value="{{if .EndMonth}}{{calendarMonth $s.StartDate (throughMonth .EndMonth)}}{{end}}" min="{{calendarMonth $s.StartDate 0}}"
+                aria-describedby="income-schedule-{{.ID}}"
+                class="px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs">
+        </div>
+        <label class="flex items-center gap-1 text-gray-700 dark:text-gray-200">
             <input type="checkbox" name="cola" {{if gt .COLARate 0.0}}checked{{end}}
                 class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-accent">
             COLA (2%/yr)
         </label>
     </div>
+    <p id="income-schedule-{{.ID}}" class="mt-1 text-xs text-gray-700 dark:text-gray-200">
+        Starts {{calendarMonthLabel $s.StartDate .StartMonth}}{{if .EndMonth}} · Through {{calendarMonthLabel $s.StartDate (throughMonth .EndMonth)}} (the last month paid){{else}} · ongoing — leave Through blank{{end}}
+    </p>
 </form>
+{{end}}
 {{end}}
 
 {{/* Undo toast for an income source removed in the CURRENT request (U13;
@@ -161,18 +180,23 @@ it. */}}
     </div>
     <div class="grid grid-cols-2 gap-2">
         <div>
-            <label for="add-income-start-year" class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Starts yr (0=now)</label>
-            <input type="number" id="add-income-start-year" name="start_year"
+            <label for="add-income-start-month" class="block text-xs text-gray-700 dark:text-gray-200 mb-1">Starts</label>
+            <input type="month" id="add-income-start-month" name="start_month"
                 class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2"
-                value="0" min="0">
+                value="{{calendarMonth .Settings.StartDate 0}}" min="{{calendarMonth .Settings.StartDate 0}}"
+                aria-describedby="add-income-schedule-help">
         </div>
         <div>
-            <label for="add-income-end-year" class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Ends yr (blank=never)</label>
-            <input type="number" id="add-income-end-year" name="end_year"
+            <label for="add-income-end-month" class="block text-xs text-gray-700 dark:text-gray-200 mb-1">Through</label>
+            <input type="month" id="add-income-end-month" name="end_month"
                 class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2"
-                value="" min="0">
+                value="" min="{{calendarMonth .Settings.StartDate 0}}"
+                aria-describedby="add-income-schedule-help">
         </div>
     </div>
+    <p id="add-income-schedule-help" class="text-xs text-gray-700 dark:text-gray-200">
+        The plan starts {{calendarMonthLabel .Settings.StartDate 0}}. Through is the last month paid; leave it blank for ongoing income.
+    </p>
     <div class="flex items-center justify-between">
         <label class="flex items-center text-sm dark:text-gray-300">
             <input type="checkbox" name="cola"

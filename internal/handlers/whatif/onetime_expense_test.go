@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -20,7 +19,7 @@ func TestOneTimeExpense_HandlerAdd(t *testing.T) {
 	form := url.Values{
 		"description": {"New Roof"},
 		"amount":      {"25000"},
-		"year":        {"3"},
+		"month":       {planMonthValue(36)},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/onetime", formBody(form))
@@ -75,11 +74,11 @@ func TestOneTimeExpense_HandlerAdd_NegativeAmount(t *testing.T) {
 	assertRetargetHeader(t, w, "#whatif-add-onetime-error")
 }
 
-func TestOneTimeExpense_HandlerAdd_NegativeYear(t *testing.T) {
+func TestOneTimeExpense_HandlerAdd_MonthBeforePlanStart(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"description": {"Roof"}, "amount": {"1000"}, "year": {"-5"}}
+	form := url.Values{"description": {"Roof"}, "amount": {"1000"}, "month": {planMonthValue(-5)}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/onetime", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -90,11 +89,11 @@ func TestOneTimeExpense_HandlerAdd_NegativeYear(t *testing.T) {
 	assertRetargetHeader(t, w, "#whatif-add-onetime-error")
 }
 
-func TestOneTimeExpense_HandlerAdd_BadYear(t *testing.T) {
+func TestOneTimeExpense_HandlerAdd_BadMonth(t *testing.T) {
 	_, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	form := url.Values{"description": {"Roof"}, "amount": {"1000"}, "year": {"abc"}}
+	form := url.Values{"description": {"Roof"}, "amount": {"1000"}, "month": {"abc"}}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/onetime", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -105,9 +104,9 @@ func TestOneTimeExpense_HandlerAdd_BadYear(t *testing.T) {
 	assertRetargetHeader(t, w, "#whatif-add-onetime-error")
 }
 
-// TestOneTimeExpense_HandlerAdd_YearBeyondHorizonRejected covers the add
-// UX seam: a year at or past ProjectionYears passes the handler's own
-// non-negative check, so it must be caught by a handler-level "beyond the
+// TestOneTimeExpense_HandlerAdd_MonthBeyondHorizonRejected covers the add
+// UX seam: a month at or past ProjectionYears*12 is a perfectly parseable
+// calendar month, so it must be caught by a handler-level "beyond the
 // current horizon" rejection BEFORE the entry is persisted. This check is
 // deliberately handler-only (not in the shared ValidateOneTimeExpenses),
 // since attempt 3's spec change made an out-of-horizon entry DORMANT, not
@@ -121,7 +120,7 @@ func TestOneTimeExpense_HandlerAdd_BadYear(t *testing.T) {
 // status code — as attempt 1's test did — cannot detect that: the response
 // was already a 500, just an untimely one, issued after the write. So this
 // test also reloads settings from disk and issues a follow-up GET /whatif.
-func TestOneTimeExpense_HandlerAdd_YearBeyondHorizonRejected(t *testing.T) {
+func TestOneTimeExpense_HandlerAdd_MonthBeyondHorizonRejected(t *testing.T) {
 	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
 
@@ -134,14 +133,14 @@ func TestOneTimeExpense_HandlerAdd_YearBeyondHorizonRejected(t *testing.T) {
 	form := url.Values{
 		"description": {"Roof"},
 		"amount":      {"1000"},
-		"year":        {strconv.Itoa(settings.ProjectionYears)}, // == ProjectionYears, out of range
+		"month":       {planMonthValue(settings.ProjectionYears * 12)}, // first month past the horizon
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/onetime", formBody(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	handleWhatIfAddOneTime(w, req)
 	if w.Code < 400 || w.Code >= 500 {
-		t.Fatalf("expected a 4xx error status for a year beyond the projection horizon, got %d. body: %s", w.Code, w.Body.String())
+		t.Fatalf("expected a 4xx error status for a month beyond the projection horizon, got %d. body: %s", w.Code, w.Body.String())
 	}
 
 	// The rejected entry must not have been persisted.
@@ -254,7 +253,7 @@ func TestOneTimeExpense_HandlerAdd_PersistsToSettings(t *testing.T) {
 	form := url.Values{
 		"description": {"Wedding"},
 		"amount":      {"15000"},
-		"year":        {"2"},
+		"month":       {planMonthValue(24)},
 	}
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/whatif/onetime", formBody(form))
@@ -324,8 +323,11 @@ func TestOneTimeExpenseCard_Renders(t *testing.T) {
 	if !strings.Contains(out, `for="onetime-amount"`) || !strings.Contains(out, `id="onetime-amount"`) {
 		t.Errorf("expected labeled amount input; got: %s", truncate(out, 1500))
 	}
-	if !strings.Contains(out, `for="onetime-year"`) || !strings.Contains(out, `id="onetime-year"`) {
-		t.Errorf("expected labeled year input; got: %s", truncate(out, 1500))
+	if !strings.Contains(out, `for="onetime-month"`) || !strings.Contains(out, `id="onetime-month"`) {
+		t.Errorf("expected labeled month input; got: %s", truncate(out, 1500))
+	}
+	if !strings.Contains(out, `type="month"`) {
+		t.Errorf("expected a calendar-month picker, not a year number box; got: %s", truncate(out, 1500))
 	}
 	// The add button must carry visible text, not just an icon.
 	if !strings.Contains(out, "Add one-time expense") {

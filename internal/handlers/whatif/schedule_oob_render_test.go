@@ -48,7 +48,7 @@ func TestMutationOOBPartial_RendersScheduleListsCompletely(t *testing.T) {
 	req := httptest.NewRequest("POST", "/whatif/bigticket", formBody(url.Values{
 		"name":   {"BoatSale"},
 		"amount": {"9000"},
-		"year":   {"2"},
+		"month":  {models.CalendarMonth(s.StartDate, 24)},
 		"type":   {"income"},
 	}))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

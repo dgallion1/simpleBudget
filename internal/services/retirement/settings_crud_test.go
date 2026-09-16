@@ -66,25 +66,27 @@ func TestIncomeSource_AddRemoveRestoreUpdate(t *testing.T) {
 		t.Fatalf("expected 0 removed after restore, got %d", len(s.RemovedIncomeSources))
 	}
 
-	// Update
-	endYear := 5
-	s, err = sm.UpdateIncomeSource("inc1", 2, &endYear, 0.03)
+	// Update. The arguments are MONTH offsets (RC3): the calendar-month form
+	// converts the user's months to offsets, and the manager stores them
+	// verbatim — no ×12 anywhere, so a non-year-aligned schedule survives.
+	endMonth := 61
+	s, err = sm.UpdateIncomeSource("inc1", 25, &endMonth, 0.03)
 	if err != nil {
 		t.Fatalf("UpdateIncomeSource: %v", err)
 	}
 	updated := s.IncomeSources[0]
-	if updated.StartMonth != 24 { // 2 * 12
-		t.Errorf("expected StartMonth 24, got %d", updated.StartMonth)
+	if updated.StartMonth != 25 {
+		t.Errorf("expected StartMonth 25, got %d", updated.StartMonth)
 	}
-	if updated.EndMonth == nil || *updated.EndMonth != 60 { // 5 * 12
-		t.Errorf("expected EndMonth 60, got %v", updated.EndMonth)
+	if updated.EndMonth == nil || *updated.EndMonth != 61 {
+		t.Errorf("expected EndMonth 61, got %v", updated.EndMonth)
 	}
 	if updated.COLARate != 0.03 {
 		t.Errorf("expected COLARate 0.03, got %f", updated.COLARate)
 	}
 
-	// Update with nil endYear
-	s, err = sm.UpdateIncomeSource("inc1", 1, nil, 0.01)
+	// Update with nil endMonth
+	s, err = sm.UpdateIncomeSource("inc1", 12, nil, 0.01)
 	if err != nil {
 		t.Fatalf("UpdateIncomeSource nil end: %v", err)
 	}
@@ -109,29 +111,28 @@ func TestExpenseSource_AddRemoveRestoreUpdate(t *testing.T) {
 		t.Fatalf("expected 1 expense source, got %+v", s.ExpenseSources)
 	}
 
-	// Update
-	endYear := 10
-	s, err = sm.UpdateExpenseSource("exp1", 2, &endYear, false, true)
+	// Update. The arguments are MONTH offsets (RC3), stored verbatim, so a
+	// schedule that is not year-aligned round-trips unchanged.
+	endMonth := 121
+	s, err = sm.UpdateExpenseSource("exp1", 25, &endMonth, false, true)
 	if err != nil {
 		t.Fatalf("UpdateExpenseSource: %v", err)
 	}
-	// The year-based form input is stored as the month offsets the model
-	// keeps, so an untouched re-save cannot move the schedule.
 	u := s.ExpenseSources[0]
-	if u.StartMonth != 24 || u.EndMonth == nil || *u.EndMonth != 120 || u.Inflation != false || u.Discretionary != true {
+	if u.StartMonth != 25 || u.EndMonth == nil || *u.EndMonth != 121 || u.Inflation != false || u.Discretionary != true {
 		t.Errorf("unexpected update result: %+v (EndMonth %v)", u, u.EndMonth)
 	}
 
-	// Update with nil endYear clears EndMonth (perpetual)
-	s, err = sm.UpdateExpenseSource("exp1", 1, nil, true, false)
+	// Update with nil endMonth clears EndMonth (perpetual)
+	s, err = sm.UpdateExpenseSource("exp1", 11, nil, true, false)
 	if err != nil {
 		t.Fatalf("UpdateExpenseSource nil end: %v", err)
 	}
 	if s.ExpenseSources[0].EndMonth != nil {
 		t.Errorf("expected nil EndMonth for perpetual, got %d", *s.ExpenseSources[0].EndMonth)
 	}
-	if s.ExpenseSources[0].StartMonth != 12 {
-		t.Errorf("expected StartMonth 12 for start year 1, got %d", s.ExpenseSources[0].StartMonth)
+	if s.ExpenseSources[0].StartMonth != 11 {
+		t.Errorf("expected StartMonth 11, got %d", s.ExpenseSources[0].StartMonth)
 	}
 
 	// Remove

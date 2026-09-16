@@ -278,14 +278,14 @@
         {{$optimizerActive := socialSecurityProjectionActive .Settings}}
         {{if $optimizerActive}}
         {{range projectedSSEntries .Settings}}
-        {{template "whatif-projected-ss-item" .}}
+        {{template "whatif-projected-ss-item" (dict "Settings" $.Settings "Entry" .)}}
         {{end}}
         {{end}}
         {{range .Settings.IncomeSources}}
         {{if and $optimizerActive (isSocialSecurityIncomeSource .)}}
         {{template "whatif-income-source-item-excluded" .}}
         {{else}}
-        {{template "whatif-income-source-item" .}}
+        {{template "whatif-income-source-item" (dict "Settings" $.Settings "Source" .)}}
         {{end}}
         {{else}}
         {{if not $optimizerActive}}
@@ -298,7 +298,7 @@
 
     <div id="expense-sources-list" hx-swap-oob="true" class="space-y-2 mb-4">
         {{range .Settings.ExpenseSources}}
-        {{template "whatif-expense-source-item" .}}
+        {{template "whatif-expense-source-item" (dict "Settings" $.Settings "Source" .)}}
         {{else}}
         <p class="text-sm text-gray-600 dark:text-gray-300 italic">No additional expenses added</p>
         {{end}}

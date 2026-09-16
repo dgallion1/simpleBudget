@@ -225,7 +225,7 @@ func TestBigTicketRothEarnings_FeedTaxState(t *testing.T) {
 	// A $200k big-ticket expense in year 2 vastly exceeds the $100k initial
 	// Roth basis (plus any growth), forcing earnings into the withdrawal.
 	s.BigTicketItems = append(s.BigTicketItems, models.BigTicketItem{
-		Year:         2,
+		Month:        2 * 12,
 		Type:         models.BigTicketExpense,
 		Amount:       200_000,
 		TaxTreatment: models.TaxOrdinary,
@@ -264,7 +264,7 @@ func TestBigTicketRothEarnings_NotTaxedWhenClockSatisfied(t *testing.T) {
 	s.TaxDeferredPercent = 0
 	s.RothPercent = 100
 	s.BigTicketItems = append(s.BigTicketItems, models.BigTicketItem{
-		Year:         2,
+		Month:        2 * 12,
 		Type:         models.BigTicketExpense,
 		Amount:       200_000,
 		TaxTreatment: models.TaxOrdinary,
@@ -299,7 +299,7 @@ func TestBigTicketRothEarnings_CountedOnceInYearSummary(t *testing.T) {
 	s.MonthlyLivingExpenses = 0 // no cash-flow withdrawals
 	s.InvestmentReturn = 6.0
 	s.BigTicketItems = []models.BigTicketItem{{
-		Year:         4, // calendar 2030 — clock still unsatisfied
+		Month:        4 * 12, // calendar 2030 — clock still unsatisfied
 		Type:         models.BigTicketExpense,
 		Amount:       63_000,
 		TaxTreatment: models.TaxOrdinary,

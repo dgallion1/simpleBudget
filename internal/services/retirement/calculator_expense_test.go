@@ -96,8 +96,8 @@ func TestCalculateTotalExpenses(t *testing.T) {
 		s.InflationRate = 5.0
 		s.SpendingDeclineRate = 5.0 // net inflation = 0 for living expenses
 		s.ExpenseSources = []models.ExpenseSource{
-			{ID: "e1", Name: "Inflating", Amount: 500, StartYear: 0, EndYear: 0, Inflation: true},
-			{ID: "e2", Name: "Fixed", Amount: 300, StartYear: 0, EndYear: 0, Inflation: false},
+			{ID: "e1", Name: "Inflating", Amount: 500, StartMonth: 0, EndMonth: nil, Inflation: true},
+			{ID: "e2", Name: "Fixed", Amount: 300, StartMonth: 0, EndMonth: nil, Inflation: false},
 		}
 
 		calc := newTestCalc(t, s)
@@ -646,7 +646,7 @@ func TestCalculateBudgetFit(t *testing.T) {
 		s.RothPercent = 0
 		s.SpendingPhaseConfig = nil
 		s.ExpenseSources = []models.ExpenseSource{
-			{ID: "e1", Name: "Property Tax", Amount: 400, EndYear: 5},
+			{ID: "e1", Name: "Property Tax", Amount: 400, EndMonth: expenseEndPtr(5 * 12)},
 		}
 		s.IncomeSources = []models.IncomeSource{
 			{ID: "i1", Name: "Pension", Amount: 1000, StartMonth: 0},
@@ -662,13 +662,20 @@ func TestCalculateBudgetFit(t *testing.T) {
 		if fit.ExpenseBreakdown[0].Name != "Living Expenses" {
 			t.Errorf("first breakdown: want 'Living Expenses', got %q", fit.ExpenseBreakdown[0].Name)
 		}
-		// Find property tax entry
+		// Find property tax entry. The note names the calendar month the
+		// source ends in, derived through models.CalendarMonthLabel — the one
+		// formatter every surface uses — so it cannot drift from what the
+		// cards render.
+		wantNote := "ends " + models.CalendarMonthLabel(s.StartDate, 5*12)
+		if wantNote == "ends " {
+			t.Fatalf("test fixture has an unparseable StartDate %q", s.StartDate)
+		}
 		found := false
 		for _, item := range fit.ExpenseBreakdown {
 			if item.Name == "Property Tax" {
 				found = true
-				if item.Note != "ends year 5" {
-					t.Errorf("property tax note: want 'ends year 5', got %q", item.Note)
+				if item.Note != wantNote {
+					t.Errorf("property tax note: want %q, got %q", wantNote, item.Note)
 				}
 			}
 		}

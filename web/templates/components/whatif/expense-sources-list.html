@@ -29,13 +29,13 @@
     <div class="flex items-center gap-4 text-xs flex-wrap">
         <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
             Starts yr:
-            <input type="number" name="start_year" min="0" max="50" value="{{.StartYear}}"
+            <input type="number" name="start_year" min="0" max="50" value="{{div .StartMonth 12}}"
                 class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
                 title="Year expense starts (0 = now)">
         </label>
         <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
             Ends yr:
-            <input type="number" name="end_year" min="0" max="50" value="{{if ne .EndYear 0}}{{.EndYear}}{{end}}"
+            <input type="number" name="end_year" min="0" max="50" value="{{if .EndMonth}}{{div .EndMonth 12}}{{end}}"
                 class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
                 title="Year expense ends (blank = never, 0 = ends immediately)">
         </label>

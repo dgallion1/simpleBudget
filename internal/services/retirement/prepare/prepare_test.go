@@ -212,7 +212,7 @@ func TestDeepCopy_PreservesAllJSONFields(t *testing.T) {
 		{ID: "inc-1", Name: "SS", Amount: 2000, Type: models.IncomeFixed, StartMonth: 24},
 	}
 	s.ExpenseSources = []models.ExpenseSource{
-		{ID: "exp-1", Name: "Mortgage", Amount: 1500, EndYear: 10, Inflation: true},
+		{ID: "exp-1", Name: "Mortgage", Amount: 1500, EndMonth: prepareEndMonth(10 * 12), Inflation: true},
 	}
 	s.RemovedIncomeSources = []models.IncomeSource{
 		{ID: "rem-inc-1", Name: "Old job", Amount: 100, Type: models.IncomeTemporary},
@@ -294,3 +294,7 @@ func TestDeepCopy_NilReturnsError(t *testing.T) {
 		t.Errorf("expected nil output, got %+v", out)
 	}
 }
+
+// prepareEndMonth returns the *int an ExpenseSource's EndMonth needs (nil
+// means perpetual, so a real end month must be addressable).
+func prepareEndMonth(month int) *int { return &month }

@@ -36,7 +36,7 @@ func oneTimeExpenseRegressionSettings(oneTime []models.OneTimeExpense) *models.W
 // mirroring TestHistoricalBacktest_IncludesPropertyTax.
 func TestOneTimeExpense_HistoricalBacktestPicksItUp(t *testing.T) {
 	withIn := engineInput(t, oneTimeExpenseRegressionSettings([]models.OneTimeExpense{
-		{Description: "roof", Year: 3, Amount: 50_000},
+		{Description: "roof", Month: 3 * 12, Amount: 50_000},
 	}))
 	withoutIn := engineInput(t, oneTimeExpenseRegressionSettings(nil))
 
@@ -103,7 +103,7 @@ func TestOneTimeExpense_MonteCarloPicksItUp(t *testing.T) {
 		return sum / float64(runs)
 	}
 
-	withMean := run([]models.OneTimeExpense{{Description: "roof", Year: 3, Amount: 50_000}})
+	withMean := run([]models.OneTimeExpense{{Description: "roof", Month: 3 * 12, Amount: 50_000}})
 	withoutMean := run(nil)
 
 	// Same seed → identical random draws consumed elsewhere, so the only

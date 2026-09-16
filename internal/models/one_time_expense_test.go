@@ -11,8 +11,8 @@ import (
 func TestOneTimeExpense_JSONRoundTrip(t *testing.T) {
 	s := DefaultWhatIfSettings()
 	s.OneTimeExpenses = []OneTimeExpense{
-		{ID: "ote-1", Description: "New roof", Year: 3, Amount: 50_000},
-		{ID: "ote-2", Description: "Wedding", Year: 7, Amount: 25_000.50},
+		{ID: "ote-1", Description: "New roof", Month: 36, Amount: 50_000},
+		{ID: "ote-2", Description: "Wedding", Month: 84, Amount: 25_000.50},
 	}
 
 	raw, err := json.Marshal(s)
@@ -41,11 +41,11 @@ func TestOneTimeExpense_JSONRoundTrip(t *testing.T) {
 
 // TestOneTimeExpense_JSONFieldNames locks down the wire format the spec
 // requires: one_time_expenses on the settings object, and id/description/
-// year/amount on each entry.
+// month/amount on each entry.
 func TestOneTimeExpense_JSONFieldNames(t *testing.T) {
 	s := &WhatIfSettings{
 		OneTimeExpenses: []OneTimeExpense{
-			{ID: "x", Description: "Car", Year: 2, Amount: 30000},
+			{ID: "x", Description: "Car", Month: 24, Amount: 30000},
 		},
 	}
 	raw, err := json.Marshal(s)
@@ -65,7 +65,7 @@ func TestOneTimeExpense_JSONFieldNames(t *testing.T) {
 	if !ok {
 		t.Fatalf("entry is not an object: %v", items[0])
 	}
-	for _, key := range []string{"id", "description", "year", "amount"} {
+	for _, key := range []string{"id", "description", "month", "amount"} {
 		if _, ok := entry[key]; !ok {
 			t.Errorf("expected key %q in entry, got %v", key, entry)
 		}

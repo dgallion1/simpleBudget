@@ -191,7 +191,7 @@ func TestOneTimeExpense_HorizonShrinkKeepsPageAlive(t *testing.T) {
 	}
 
 	// Add a one-time expense at year 29 — valid under the 30-year horizon.
-	expense := models.OneTimeExpense{ID: "ote-shrink", Description: "Roof", Year: 29, Amount: 5000}
+	expense := models.OneTimeExpense{ID: "ote-shrink", Description: "Roof", Month: 29 * 12, Amount: 5000}
 	if _, err := rm.AddOneTimeExpense(expense); err != nil {
 		t.Fatalf("AddOneTimeExpense: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestOneTimeExpense_HandlerDelete(t *testing.T) {
 	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	expense := models.OneTimeExpense{ID: "ote-1", Description: "Test", Amount: 1000, Year: 1}
+	expense := models.OneTimeExpense{ID: "ote-1", Description: "Test", Amount: 1000, Month: 1 * 12}
 	if _, err := rm.AddOneTimeExpense(expense); err != nil {
 		t.Fatalf("AddOneTimeExpense: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestOneTimeExpense_HandlerAdd_PersistsToSettings(t *testing.T) {
 	}
 	found := false
 	for _, e := range settings.OneTimeExpenses {
-		if e.Description == "Wedding" && e.Year == 2 && e.Amount == 15000 {
+		if e.Description == "Wedding" && e.Month == 2*12 && e.Amount == 15000 {
 			found = true
 		}
 	}
@@ -288,7 +288,7 @@ func TestOneTimeExpenseCard_Renders(t *testing.T) {
 	settings := models.DefaultWhatIfSettings()
 	settings.StartDate = "2026-01"
 	settings.OneTimeExpenses = []models.OneTimeExpense{
-		{ID: "ote-1", Description: "New Roof", Year: 3, Amount: 50000},
+		{ID: "ote-1", Description: "New Roof", Month: 3 * 12, Amount: 50000},
 	}
 
 	out, err := renderer.RenderToString("whatif-onetime-card", map[string]any{
@@ -303,8 +303,11 @@ func TestOneTimeExpenseCard_Renders(t *testing.T) {
 	if !strings.Contains(out, "New Roof") {
 		t.Errorf("expected item description rendered; got: %s", truncate(out, 800))
 	}
-	if !strings.Contains(out, "Year 3") {
-		t.Errorf("expected year rendered; got: %s", truncate(out, 800))
+	// The scheduled date is rendered as a calendar month through
+	// models.CalendarMonthLabel — month 36 from a 2026-01 plan start is
+	// Jan 2029 — never as a bare offset.
+	if !strings.Contains(out, "Jan 2029") {
+		t.Errorf("expected calendar month rendered; got: %s", truncate(out, 800))
 	}
 	if !strings.Contains(out, "50,000") {
 		t.Errorf("expected formatted amount rendered; got: %s", truncate(out, 800))

@@ -17,15 +17,18 @@
 {{define "whatif-bigticket-list"}}
 <div id="bigticket-list" class="space-y-2 mb-4">
     {{range .Settings.BigTicketItems}}
-    {{template "whatif-bigticket-item" .}}
+    {{template "whatif-bigticket-item" (dict "Settings" $.Settings "Item" .)}}
     {{else}}
     <p class="text-sm text-gray-600 dark:text-gray-300 italic">No big ticket items added</p>
     {{end}}
 </div>
 {{end}}
 
-{{/* Single Big Ticket Item */}}
+{{/* Single Big Ticket Item. Expects: .Settings (for StartDate) and .Item; the
+     item is re-scoped as dot below so the markup reads the item's own fields,
+     and $ stays the dict for the scheduled-month label. */}}
 {{define "whatif-bigticket-item"}}
+{{with .Item}}
 <div class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
     <div class="flex items-center justify-between mb-1">
         <div>
@@ -45,7 +48,7 @@
         </button>
     </div>
     <div class="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-300">
-        <span>Year {{.Year}}</span>
+        {{$when := calendarMonthLabel $.Settings.StartDate .Month}}{{if $when}}<span>{{$when}}</span>{{end}}
         <span class="px-1.5 py-0.5 rounded
             {{if eq .Type "income"}}bg-positive-soft text-positive
             {{else}}bg-negative-soft text-negative{{end}}">
@@ -64,6 +67,7 @@
     {{end}}
 </div>
 {{end}}
+{{end}}
 
 {{/* Removed Big Ticket Items */}}
 {{define "whatif-removed-bigticket"}}
@@ -75,7 +79,7 @@
         <div>
             <span class="font-medium dark:text-gray-300 line-through">{{.Name}}</span>
             <span class="text-gray-500 dark:text-gray-300">
-                {{if eq .Type "income"}}+{{else}}-{{end}}${{formatNumber .Amount}} (yr {{.Year}})
+                {{if eq .Type "income"}}+{{else}}-{{end}}${{formatNumber .Amount}}{{$when := calendarMonthLabel $.Settings.StartDate .Month}}{{if $when}} ({{$when}}){{end}}
             </span>
         </div>
         <div class="flex items-center gap-1">

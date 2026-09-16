@@ -7231,7 +7231,7 @@ func TestHandleWhatIfDeleteBigTicket_SaveError(t *testing.T) {
 	rm, dir, cleanup := setupTestEnvWithDir(t)
 	defer cleanup()
 
-	item := models.BigTicketItem{ID: "del-bt-save", Name: "Test", Amount: 1000, Year: 5, Type: models.BigTicketExpense}
+	item := models.BigTicketItem{ID: "del-bt-save", Name: "Test", Amount: 1000, Month: 5 * 12, Type: models.BigTicketExpense}
 	if _, err := rm.AddBigTicketItem(item); err != nil {
 		t.Fatalf("AddBigTicketItem: %v", err)
 	}
@@ -7250,7 +7250,7 @@ func TestHandleWhatIfRestoreBigTicket_SaveError(t *testing.T) {
 	rm, dir, cleanup := setupTestEnvWithDir(t)
 	defer cleanup()
 
-	item := models.BigTicketItem{ID: "rest-bt-save", Name: "Test", Amount: 1000, Year: 5, Type: models.BigTicketExpense}
+	item := models.BigTicketItem{ID: "rest-bt-save", Name: "Test", Amount: 1000, Month: 5 * 12, Type: models.BigTicketExpense}
 	if _, err := rm.AddBigTicketItem(item); err != nil {
 		t.Fatalf("AddBigTicketItem: %v", err)
 	}
@@ -7955,7 +7955,7 @@ func TestHandleWhatIfRestoreExpense_AnalysisError(t *testing.T) {
 
 func TestHandleWhatIfDeleteBigTicket_AnalysisError(t *testing.T) {
 	rm, _ := setupItemsThenBreakChain(t, func(rm *retirement.SettingsManager) {
-		item := models.BigTicketItem{ID: "danger-bt", Name: "Test", Amount: 1000, Year: 5, Type: models.BigTicketExpense}
+		item := models.BigTicketItem{ID: "danger-bt", Name: "Test", Amount: 1000, Month: 5 * 12, Type: models.BigTicketExpense}
 		if _, err := rm.AddBigTicketItem(item); err != nil {
 			t.Fatalf("AddBigTicketItem: %v", err)
 		}
@@ -7972,7 +7972,7 @@ func TestHandleWhatIfDeleteBigTicket_AnalysisError(t *testing.T) {
 
 func TestHandleWhatIfRestoreBigTicket_AnalysisError(t *testing.T) {
 	rm, _ := setupItemsThenBreakChain(t, func(rm *retirement.SettingsManager) {
-		item := models.BigTicketItem{ID: "danger-bt-r", Name: "Test", Amount: 1000, Year: 5, Type: models.BigTicketExpense}
+		item := models.BigTicketItem{ID: "danger-bt-r", Name: "Test", Amount: 1000, Month: 5 * 12, Type: models.BigTicketExpense}
 		if _, err := rm.AddBigTicketItem(item); err != nil {
 			t.Fatalf("AddBigTicketItem: %v", err)
 		}
@@ -8827,7 +8827,7 @@ func TestHandleWhatIfPurgeExpense(t *testing.T) {
 	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	src := models.ExpenseSource{ID: "purge-exp-1", Name: "Test", Amount: 500, StartYear: 0}
+	src := models.ExpenseSource{ID: "purge-exp-1", Name: "Test", Amount: 500, StartMonth: 0}
 	if _, err := rm.AddExpenseSource(src); err != nil {
 		t.Fatalf("AddExpenseSource: %v", err)
 	}
@@ -8867,7 +8867,7 @@ func TestHandleWhatIfPurgeBigTicket(t *testing.T) {
 	rm, cleanup := setupTestEnv(t)
 	defer cleanup()
 
-	item := models.BigTicketItem{ID: "purge-bt-1", Name: "Test", Amount: 10000, Year: 2030, Type: "expense"}
+	item := models.BigTicketItem{ID: "purge-bt-1", Name: "Test", Amount: 10000, Month: 2030 * 12, Type: "expense"}
 	if _, err := rm.AddBigTicketItem(item); err != nil {
 		t.Fatalf("AddBigTicketItem: %v", err)
 	}

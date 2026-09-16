@@ -97,43 +97,43 @@ func TestExpenseSourceGetAdjustedAmount(t *testing.T) {
 	}{
 		{
 			name:   "zero amount",
-			source: ExpenseSource{Amount: 0, StartYear: 0},
+			source: ExpenseSource{Amount: 0, StartMonth: 0},
 			month:  12, inflation: 3.0,
 			want: 0,
 		},
 		{
 			name:   "before start",
-			source: ExpenseSource{Amount: 500, StartYear: 2},
+			source: ExpenseSource{Amount: 500, StartMonth: 24},
 			month:  12, inflation: 3.0,
 			want: 0,
 		},
 		{
 			name:   "after end",
-			source: ExpenseSource{Amount: 500, StartYear: 0, EndYear: 2},
+			source: ExpenseSource{Amount: 500, StartMonth: 0, EndMonth: expenseEndMonth(24)},
 			month:  24, inflation: 3.0,
 			want: 0,
 		},
 		{
 			name:   "active no inflation",
-			source: ExpenseSource{Amount: 500, StartYear: 0, Inflation: false},
+			source: ExpenseSource{Amount: 500, StartMonth: 0, Inflation: false},
 			month:  12, inflation: 3.0,
 			want: 500,
 		},
 		{
 			name:   "active with inflation",
-			source: ExpenseSource{Amount: 500, StartYear: 0, Inflation: true},
+			source: ExpenseSource{Amount: 500, StartMonth: 0, Inflation: true},
 			month:  12, inflation: 3.0,
 			want: 500 * math.Pow(1.03, 1.0),
 		},
 		{
-			name:   "perpetual (EndYear=0)",
-			source: ExpenseSource{Amount: 500, StartYear: 0, EndYear: 0},
+			name:   "perpetual (nil EndMonth)",
+			source: ExpenseSource{Amount: 500, StartMonth: 0, EndMonth: nil},
 			month:  100, inflation: 0,
 			want: 500,
 		},
 		{
 			name:   "inflation rate zero",
-			source: ExpenseSource{Amount: 500, StartYear: 0, Inflation: true},
+			source: ExpenseSource{Amount: 500, StartMonth: 0, Inflation: true},
 			month:  12, inflation: 0,
 			want: 500,
 		},
@@ -156,11 +156,11 @@ func TestExpenseSourceIsActive(t *testing.T) {
 		month  int
 		want   bool
 	}{
-		{"before start", ExpenseSource{StartYear: 2}, 12, false},
-		{"at start", ExpenseSource{StartYear: 1}, 12, true},
-		{"after end", ExpenseSource{StartYear: 0, EndYear: 2}, 24, false},
-		{"before end", ExpenseSource{StartYear: 0, EndYear: 2}, 23, true},
-		{"perpetual", ExpenseSource{StartYear: 0, EndYear: 0}, 999, true},
+		{"before start", ExpenseSource{StartMonth: 24}, 12, false},
+		{"at start", ExpenseSource{StartMonth: 12}, 12, true},
+		{"after end", ExpenseSource{StartMonth: 0, EndMonth: expenseEndMonth(24)}, 24, false},
+		{"before end", ExpenseSource{StartMonth: 0, EndMonth: expenseEndMonth(24)}, 23, true},
+		{"perpetual", ExpenseSource{StartMonth: 0, EndMonth: nil}, 999, true},
 	}
 
 	for _, tt := range tests {
@@ -171,3 +171,7 @@ func TestExpenseSourceIsActive(t *testing.T) {
 		})
 	}
 }
+
+// expenseEndMonth is the *int an ExpenseSource's EndMonth wants (nil means
+// perpetual, so a non-nil end always needs an addressable value).
+func expenseEndMonth(month int) *int { return &month }

@@ -11,7 +11,7 @@ func TestOneTimeExpenseTaxWithRMD(t *testing.T) {
 	for _, timing := range []models.RMDTiming{models.RMDTimingStartOfYear, models.RMDTimingMidYear, models.RMDTimingEndOfYear} {
 		t.Run(string(timing), func(t *testing.T) {
 			s := rmdTimingScenario(timing)
-			s.OneTimeExpenses = []models.OneTimeExpense{{ID: "roof", Year: 0, Amount: 50000}}
+			s.OneTimeExpenses = []models.OneTimeExpense{{ID: "roof", Month: 0, Amount: 50000}}
 			in := Input{Prepared: prepare.MustFrom(t, s)}
 			proj := New().Run(in)
 			withdrawals := 0.0
@@ -41,7 +41,7 @@ func TestOneTimeExpenseTaxOnUnqualifiedRothEarnings(t *testing.T) {
 	s.SpendingPhaseConfig = nil
 	s.InflationRate = 0
 	s.SpendingDeclineRate = 0
-	s.OneTimeExpenses = []models.OneTimeExpense{{ID: "care", Year: 0, Amount: 50000}}
+	s.OneTimeExpenses = []models.OneTimeExpense{{ID: "care", Month: 0, Amount: 50000}}
 	st := NewProjectionState(Input{Prepared: prepare.MustFrom(t, s)})
 	// Exercise an existing Roth account whose contribution basis is exhausted
 	// and whose five-year qualified-distribution clock has not elapsed.

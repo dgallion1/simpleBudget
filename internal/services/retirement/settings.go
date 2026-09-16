@@ -1195,7 +1195,12 @@ func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*model
 	return prepare.Clone(settings)
 }
 
-// UpdateExpenseSource updates an existing expense source by ID atomically
+// UpdateExpenseSource updates an existing expense source by ID atomically.
+//
+// The signature stays year-based because the edit form is still year-based
+// (RC3 replaces it with calendar-month inputs); the years are converted to the
+// month offsets the model now stores. A nil endYear means perpetual and is
+// stored as a nil EndMonth.
 func (sm *SettingsManager) UpdateExpenseSource(id string, startYear int, endYear *int, inflation, discretionary bool) (*models.WhatIfSettings, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -1207,11 +1212,12 @@ func (sm *SettingsManager) UpdateExpenseSource(id string, startYear int, endYear
 
 	for i := range settings.ExpenseSources {
 		if settings.ExpenseSources[i].ID == id {
-			settings.ExpenseSources[i].StartYear = startYear
+			settings.ExpenseSources[i].StartMonth = startYear * 12
 			if endYear != nil {
-				settings.ExpenseSources[i].EndYear = *endYear
+				endMonth := *endYear * 12
+				settings.ExpenseSources[i].EndMonth = &endMonth
 			} else {
-				settings.ExpenseSources[i].EndYear = 0 // In ExpenseSource, 0 is perpetual
+				settings.ExpenseSources[i].EndMonth = nil // nil EndMonth is perpetual
 			}
 			settings.ExpenseSources[i].Inflation = inflation
 			settings.ExpenseSources[i].Discretionary = discretionary

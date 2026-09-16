@@ -210,7 +210,7 @@ func TestBacktestWithBigTicketItems(t *testing.T) {
 				ID:     "test1",
 				Name:   "Home Sale",
 				Amount: 200000,
-				Year:   5,
+				Month:  5 * 12,
 				Type:   models.BigTicketIncome,
 			},
 		},

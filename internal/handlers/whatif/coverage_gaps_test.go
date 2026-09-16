@@ -522,7 +522,7 @@ func TestHandleWhatIfPurgeExpense_AnalysisError(t *testing.T) {
 
 func TestHandleWhatIfPurgeBigTicket_AnalysisError(t *testing.T) {
 	setupItemsThenBreakChain(t, func(rm *retirement.SettingsManager) {
-		item := models.BigTicketItem{ID: "danger-purge-bt", Name: "Test", Amount: 1000, Year: 5, Type: models.BigTicketExpense}
+		item := models.BigTicketItem{ID: "danger-purge-bt", Name: "Test", Amount: 1000, Month: 5 * 12, Type: models.BigTicketExpense}
 		if _, err := rm.AddBigTicketItem(item); err != nil {
 			t.Fatalf("AddBigTicketItem: %v", err)
 		}

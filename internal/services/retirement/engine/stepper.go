@@ -255,19 +255,26 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 		st.AnnualRMD = AnnualRMDForYear(s, currentYear, st.TaxDeferredBalance)
 
 		rothConversionThisMonth = ApplyRothConversionAtYear(s, currentYear, &st.TaxDeferredBalance, &st.RothBalance, &st.RothBasis, &st.RothFirstFundedYear)
-
-		bigTicketResult := ApplyBigTicketItemsForYear(s, currentYear, allowTaxDeferredWithdrawal, penaltyRate, &st.TaxDeferredBalance, &st.TaxableAccount, &st.RothBalance, &st.RothBasis)
-		bigTicketExpenseThisMonth += bigTicketResult.UnfundedExpense
-		st.BigTicketRothEarnings = bigTicketResult.RothEarningsWithdrawal
-
-		// One-time expenses (models.OneTimeExpense) are spending, not a
-		// funding-source draw: unlike big-ticket items they are folded
-		// straight into the year's expense total so the standard
-		// withdrawal-gross-up/tax machinery applies to them like any other
-		// expense, rather than being withdrawn directly from a specific
-		// account first.
-		oneTimeExpenseThisMonth = OneTimeExpensesForYear(s, currentYear)
 	}
+
+	// Big-ticket items and one-time expenses are scheduled to an exact MONTH,
+	// not a projection year, so they are applied every month rather than only
+	// at a year boundary. Placed immediately after the year-boundary block and
+	// before returnsFor so they still see the post-chain-transition settings
+	// and keep their order relative to the RMD/Roth-conversion pass; a
+	// year-aligned item (month = 12k) therefore lands exactly where it used
+	// to.
+	bigTicketResult := ApplyBigTicketItemsForMonth(s, m, allowTaxDeferredWithdrawal, penaltyRate, &st.TaxDeferredBalance, &st.TaxableAccount, &st.RothBalance, &st.RothBasis)
+	bigTicketExpenseThisMonth += bigTicketResult.UnfundedExpense
+	st.BigTicketRothEarnings = bigTicketResult.RothEarningsWithdrawal
+
+	// One-time expenses (models.OneTimeExpense) are spending, not a
+	// funding-source draw: unlike big-ticket items they are folded
+	// straight into the month's expense total so the standard
+	// withdrawal-gross-up/tax machinery applies to them like any other
+	// expense, rather than being withdrawn directly from a specific
+	// account first.
+	oneTimeExpenseThisMonth = OneTimeExpensesForMonth(s, m)
 
 	// The month's injected returns; drawn after the chain transition so a
 	// stochastic loop sees the settings it must blend against.

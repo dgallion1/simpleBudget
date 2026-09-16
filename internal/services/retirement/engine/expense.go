@@ -45,22 +45,29 @@ func PropertyTaxAtMonth(s *models.WhatIfSettings, month int) float64 {
 	return s.MonthlyPropertyTax * compoundedFactorFromPercent(s.PropertyTaxInflation, float64(month))
 }
 
-// OneTimeExpensesForYear sums every models.OneTimeExpense entry scheduled for
-// currentYear, inflating each Amount (today's dollars) from today to
-// currentYear using the plan's general CPI (InflationRate) — year 0 is
-// uninflated. Deliberately NOT scaled by spending-phase multipliers and NOT
-// touched by healthcare inflation: general CPI only, per the model contract
-// on models.OneTimeExpense.
-func OneTimeExpensesForYear(s *models.WhatIfSettings, currentYear int) float64 {
+// OneTimeExpensesForMonth sums every models.OneTimeExpense entry scheduled for
+// exactly `month`, inflating each Amount (today's dollars) from today to that
+// month using the plan's general CPI (InflationRate) — month 0 is uninflated.
+// Deliberately NOT scaled by spending-phase multipliers and NOT touched by
+// healthcare inflation: general CPI only, per the model contract on
+// models.OneTimeExpense.
+//
+// Entries are month-precise, so a schedule survives the monthly StartDate
+// rollover without rounding. A year-aligned entry (month = 12k) produces the
+// same figure the year-granular predecessor did, because the inflation factor
+// is the same compounding over the same number of months. A negative month is
+// a past, dormant entry and never matches: the projection loop never reaches
+// it.
+func OneTimeExpensesForMonth(s *models.WhatIfSettings, month int) float64 {
 	if len(s.OneTimeExpenses) == 0 {
 		return 0
 	}
 	total := 0.0
 	for _, e := range s.OneTimeExpenses {
-		if e.Year != currentYear {
+		if e.Month != month {
 			continue
 		}
-		total += e.Amount * compoundedFactorFromPercent(s.InflationRate, float64(currentYear*12))
+		total += e.Amount * compoundedFactorFromPercent(s.InflationRate, float64(month))
 	}
 	return total
 }

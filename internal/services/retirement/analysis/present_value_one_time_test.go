@@ -32,7 +32,7 @@ func TestPresentValue_IncludesOneTimeExpense(t *testing.T) {
 
 	without := oneTimeExpensePVSettings(nil)
 	withOne := oneTimeExpensePVSettings([]models.OneTimeExpense{
-		{Description: "roof", Year: year, Amount: amount},
+		{Description: "roof", Month: year * 12, Amount: amount},
 	})
 
 	resultWithout := PresentValue(engineInput(t, without), nil)
@@ -65,7 +65,7 @@ func TestPresentValue_OneTimeExpense_ZeroDiscountRate(t *testing.T) {
 	without := oneTimeExpensePVSettings(nil)
 	without.DiscountRate = 0
 	withOne := oneTimeExpensePVSettings([]models.OneTimeExpense{
-		{Description: "car", Year: year, Amount: amount},
+		{Description: "car", Month: year * 12, Amount: amount},
 	})
 	withOne.DiscountRate = 0
 
@@ -86,7 +86,7 @@ func TestPresentValue_OneTimeExpense_ZeroDiscountRate(t *testing.T) {
 
 // TestPresentValue_OneTimeExpense_AtOrBeyondHorizonContributesNothing
 // verifies an expense scheduled at or beyond the projection horizon
-// (e.Year*12 >= months) is excluded from PVExpenses, per the Z1 scope note.
+// (e.Month >= months) is excluded from PVExpenses, per the Z1 scope note.
 func TestPresentValue_OneTimeExpense_AtOrBeyondHorizonContributesNothing(t *testing.T) {
 	for _, year := range []int{10, 15} {
 		year := year
@@ -94,7 +94,7 @@ func TestPresentValue_OneTimeExpense_AtOrBeyondHorizonContributesNothing(t *test
 			without := oneTimeExpensePVSettings(nil)
 			without.ProjectionYears = 10
 			withOne := oneTimeExpensePVSettings([]models.OneTimeExpense{
-				{Description: "wedding", Year: year, Amount: 30_000},
+				{Description: "wedding", Month: year * 12, Amount: 30_000},
 			})
 			withOne.ProjectionYears = 10
 
@@ -107,5 +107,47 @@ func TestPresentValue_OneTimeExpense_AtOrBeyondHorizonContributesNothing(t *test
 					year, diff, withOne.ProjectionYears)
 			}
 		})
+	}
+}
+
+// A one-time expense whose month has already passed (a NEGATIVE offset the
+// monthly rollover leaves behind) is never charged by the engine, so it must
+// contribute nothing to PVExpenses either — the PV leg and the projection
+// agree on which entries are live.
+func TestPresentValue_OneTimeExpense_PastMonthContributesNothing(t *testing.T) {
+	without := oneTimeExpensePVSettings(nil)
+	withPast := oneTimeExpensePVSettings([]models.OneTimeExpense{
+		{Description: "old roof", Month: -1, Amount: 30_000},
+	})
+
+	resultWithout := PresentValue(engineInput(t, without), nil)
+	resultWith := PresentValue(engineInput(t, withPast), nil)
+
+	if diff := resultWith.PVExpenses - resultWithout.PVExpenses; math.Abs(diff) > 1e-9 {
+		t.Errorf("PVExpenses diff = %.9f, want 0 (a past one-time expense must not contribute)", diff)
+	}
+}
+
+// A one-time expense off a year boundary is charged and discounted at its
+// EXACT month, not at the surrounding year boundary.
+func TestPresentValue_OneTimeExpense_NonYearAlignedMonth(t *testing.T) {
+	const amount = 12_000.0
+
+	without := oneTimeExpensePVSettings(nil)
+	withOne := oneTimeExpensePVSettings([]models.OneTimeExpense{
+		{Description: "roof", Month: 11, Amount: amount},
+	})
+
+	resultWithout := PresentValue(engineInput(t, without), nil)
+	resultWith := PresentValue(engineInput(t, withOne), nil)
+
+	diff := resultWith.PVExpenses - resultWithout.PVExpenses
+
+	monthlyRate := engine.MonthlyCompoundFactorFromDecimal(withOne.DiscountRate/100) - 1
+	inflatedAmount := amount * math.Pow(1+withOne.InflationRate/100, 11.0/12.0)
+	want := inflatedAmount / math.Pow(1+monthlyRate, 12)
+
+	if relErr := math.Abs(diff-want) / want; relErr > 1e-6 {
+		t.Fatalf("PVExpenses diff = %.6f, want %.6f (charge must land in month 11)", diff, want)
 	}
 }

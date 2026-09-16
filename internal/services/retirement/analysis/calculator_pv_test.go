@@ -391,18 +391,18 @@ func TestCalculatePresentValueAnalysis(t *testing.T) {
 
 		settings.ExpenseSources = []models.ExpenseSource{
 			{
-				Name:      "Property Tax",
-				Amount:    500,
-				StartYear: 0,
-				EndYear:   0, // perpetual
-				Inflation: true,
+				Name:       "Property Tax",
+				Amount:     500,
+				StartMonth: 0,
+				EndMonth:   nil, // perpetual
+				Inflation:  true,
 			},
 			{
-				Name:      "Car Payment",
-				Amount:    400,
-				StartYear: 0,
-				EndYear:   5,
-				Inflation: false,
+				Name:       "Car Payment",
+				Amount:     400,
+				StartMonth: 0,
+				EndMonth:   expenseEndPtr(5 * 12),
+				Inflation:  false,
 			},
 		}
 

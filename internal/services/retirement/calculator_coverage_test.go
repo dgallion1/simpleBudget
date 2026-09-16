@@ -45,7 +45,7 @@ func TestRunSingleHistoricalSequence_BigTicketItems(t *testing.T) {
 	t.Run("expense", func(t *testing.T) {
 		s := defaultSettingsForTest()
 		s.BigTicketItems = []models.BigTicketItem{
-			{ID: "1", Name: "Roof", Amount: 30000, Year: 2, Type: models.BigTicketExpense},
+			{ID: "1", Name: "Roof", Amount: 30000, Month: 2 * 12, Type: models.BigTicketExpense},
 		}
 		c := newTestCalc(t, s)
 		result := c.runSingleHistoricalSequence(1990)
@@ -58,7 +58,7 @@ func TestRunSingleHistoricalSequence_BigTicketItems(t *testing.T) {
 	t.Run("income", func(t *testing.T) {
 		s := defaultSettingsForTest()
 		s.BigTicketItems = []models.BigTicketItem{
-			{ID: "2", Name: "Inheritance", Amount: 100000, Year: 3, Type: models.BigTicketIncome},
+			{ID: "2", Name: "Inheritance", Amount: 100000, Month: 3 * 12, Type: models.BigTicketIncome},
 		}
 		c := newTestCalc(t, s)
 		result := c.runSingleHistoricalSequence(1990)
@@ -121,8 +121,8 @@ func TestRunProjection_RothConversion(t *testing.T) {
 func TestRunProjection_BigTicketItems(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.BigTicketItems = []models.BigTicketItem{
-		{ID: "1", Name: "New Car", Amount: 40000, Year: 1, Type: models.BigTicketExpense},
-		{ID: "2", Name: "Home Sale", Amount: 200000, Year: 3, Type: models.BigTicketIncome},
+		{ID: "1", Name: "New Car", Amount: 40000, Month: 1 * 12, Type: models.BigTicketExpense},
+		{ID: "2", Name: "Home Sale", Amount: 200000, Month: 3 * 12, Type: models.BigTicketIncome},
 	}
 
 	c := newTestCalc(t, s)
@@ -143,8 +143,8 @@ func TestRunProjection_SpendingPhasesWithDiscretionary(t *testing.T) {
 		Phases:  models.DefaultSpendingPhases(),
 	}
 	s.ExpenseSources = []models.ExpenseSource{
-		{ID: "1", Name: "Dining", Amount: 300, StartYear: 0, EndYear: 0, Inflation: true, Discretionary: true},
-		{ID: "2", Name: "Insurance", Amount: 200, StartYear: 0, EndYear: 0, Inflation: true, Discretionary: false},
+		{ID: "1", Name: "Dining", Amount: 300, StartMonth: 0, EndMonth: nil, Inflation: true, Discretionary: true},
+		{ID: "2", Name: "Insurance", Amount: 200, StartMonth: 0, EndMonth: nil, Inflation: true, Discretionary: false},
 	}
 
 	c := newTestCalc(t, s)

@@ -196,17 +196,20 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The form is still year-based (RC3 replaces it with calendar-month
+	// inputs); convert to the month offsets the model stores.
 	source := models.ExpenseSource{
 		ID:            uuid.New().String(),
 		Name:          name,
 		Amount:        amount,
-		StartYear:     startYear,
-		EndYear:       0, // Default to perpetual
+		StartMonth:    startYear * 12,
+		EndMonth:      nil, // Default to perpetual
 		Inflation:     checkboxOn(r, "inflation"),
 		Discretionary: checkboxOn(r, "discretionary"),
 	}
 	if endYear != nil {
-		source.EndYear = *endYear
+		endMonth := *endYear * 12
+		source.EndMonth = &endMonth
 	}
 
 	recalcAndRender(w, r, "Failed to add expense", func() (*models.WhatIfSettings, int, error) {
@@ -289,7 +292,7 @@ func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
 		ID:           uuid.New().String(),
 		Name:         name,
 		Amount:       amount,
-		Year:         year,
+		Month:        year * 12,
 		Type:         itemType,
 		TaxTreatment: taxTreatment,
 		Notes:        r.FormValue("notes"),
@@ -353,12 +356,12 @@ func handleWhatIfAddOneTime(w http.ResponseWriter, r *http.Request) {
 	expense := models.OneTimeExpense{
 		ID:          uuid.New().String(),
 		Description: description,
-		Year:        year,
+		Month:       year * 12,
 		Amount:      amount,
 	}
 
 	// Validate the would-be new list against the invariants prepare.From
-	// enforces on every recalc (malformed Amount/Year) BEFORE persisting, so a
+	// enforces on every recalc (malformed Amount) BEFORE persisting, so a
 	// bad row can never reach storage.
 	current, err := retirementMgr.Load()
 	if err != nil {

@@ -337,25 +337,31 @@ func ApplyRothConversionAtYear(
 	return conversionAmount
 }
 
-// BigTicketYearResult aggregates a year's big-ticket draws so the
+// BigTicketYearResult aggregates a month's big-ticket draws so the
 // caller can fold the unfunded expense into the month's expense total
 // and route the taxable Roth earnings (if the clock is unsatisfied)
-// into that month's tax snapshot.
+// into that month's tax snapshot. (The name predates month-precise
+// scheduling and is kept so callers outside this package need no change.)
 type BigTicketYearResult struct {
 	UnfundedExpense        float64
 	RothBasisWithdrawal    float64
 	RothEarningsWithdrawal float64
 }
 
-// ApplyBigTicketItemsForYear processes every big-ticket item scheduled
-// for currentYear: income items add cash to the taxable account,
+// ApplyBigTicketItemsForMonth processes every big-ticket item scheduled
+// for exactly `month`: income items add cash to the taxable account,
 // expense items are funded via the canonical waterfall, and the
 // aggregated unfunded-expense plus Roth split are returned so the
 // monthly loop can feed taxable Roth earnings into the tax snapshot.
-func ApplyBigTicketItemsForYear(s *models.WhatIfSettings, currentYear int, allowTaxDeferredWithdrawal bool, penaltyRate float64, taxDeferredBalance *float64, taxableAccount *TaxableAccountState, rothBalance, rothBasis *float64) BigTicketYearResult {
+//
+// Items are month-precise so a schedule survives the monthly StartDate
+// rollover; a year-aligned item (month = 12k) still lands in the same month it
+// always did. A negative month is a past, dormant entry and never matches,
+// because the projection loop never reaches it.
+func ApplyBigTicketItemsForMonth(s *models.WhatIfSettings, month int, allowTaxDeferredWithdrawal bool, penaltyRate float64, taxDeferredBalance *float64, taxableAccount *TaxableAccountState, rothBalance, rothBasis *float64) BigTicketYearResult {
 	out := BigTicketYearResult{}
 	for _, item := range s.BigTicketItems {
-		if item.Year != currentYear {
+		if item.Month != month {
 			continue
 		}
 		if item.Type == models.BigTicketIncome {

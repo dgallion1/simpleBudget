@@ -44,7 +44,7 @@ func TestOneTimeExpenseTaxesReconcileToActualAnnualIncome(t *testing.T) {
 			s.TaxableDividendYield = 0
 			s.TaxableCapitalGainsDistributionRate = 0
 			s.ProjectionYears = 2
-			s.OneTimeExpenses = []models.OneTimeExpense{{ID: "roof", Description: "Roof", Year: 0, Amount: 50000}}
+			s.OneTimeExpenses = []models.OneTimeExpense{{ID: "roof", Description: "Roof", Month: 0, Amount: 50000}}
 			in := Input{Prepared: prepare.MustFrom(t, s)}
 			proj := New().Run(in)
 			calc := NewTaxCalculator(in.Prepared.Settings().TaxConfig, 0)

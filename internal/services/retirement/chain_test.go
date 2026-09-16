@@ -30,37 +30,72 @@ func TestRebaseIncomeSources(t *testing.T) {
 
 func TestRebaseExpenseSources(t *testing.T) {
 	sources := []models.ExpenseSource{
-		{Name: "Gym", StartYear: 0, EndYear: 0, Amount: 100},
-		{Name: "Tuition", StartYear: 2, EndYear: 5, Amount: 500},
-		{Name: "Expired", StartYear: 0, EndYear: 1, Amount: 200},
+		{Name: "Gym", StartMonth: 0, EndMonth: nil, Amount: 100},
+		{Name: "Tuition", StartMonth: 2 * 12, EndMonth: intPtr(5 * 12), Amount: 500},
+		{Name: "Expired", StartMonth: 0, EndMonth: intPtr(1 * 12), Amount: 200},
 	}
-	result := rebaseExpenseSources(sources, 3)
+	result := rebaseExpenseSources(sources, 3*12)
 	if len(result) != 2 {
 		t.Fatalf("expected 2, got %d", len(result))
 	}
-	if result[0].StartYear != 0 {
-		t.Errorf("Gym StartYear: expected 0, got %d", result[0].StartYear)
+	if result[0].StartMonth != 0 || result[0].EndMonth != nil {
+		t.Errorf("Gym: start=%d, end=%v", result[0].StartMonth, result[0].EndMonth)
 	}
-	if result[1].EndYear != 2 {
-		t.Errorf("Tuition EndYear: expected 2, got %d", result[1].EndYear)
+	if result[1].EndMonth == nil || *result[1].EndMonth != 24 {
+		t.Errorf("Tuition EndMonth: expected 24, got %v", result[1].EndMonth)
+	}
+}
+
+// A transition that does not land on a year boundary rebases in months, the
+// unit the schedule is actually stored in.
+func TestRebaseExpenseSourcesNonYearAlignedTransition(t *testing.T) {
+	sources := []models.ExpenseSource{
+		{Name: "Tuition", StartMonth: 24, EndMonth: intPtr(60), Amount: 500},
+	}
+	result := rebaseExpenseSources(sources, 11)
+	if len(result) != 1 {
+		t.Fatalf("expected 1, got %d", len(result))
+	}
+	if result[0].StartMonth != 13 || result[0].EndMonth == nil || *result[0].EndMonth != 49 {
+		t.Errorf("Tuition: start=%d end=%v, want 13/49", result[0].StartMonth, result[0].EndMonth)
 	}
 }
 
 func TestRebaseBigTicketItems(t *testing.T) {
 	items := []models.BigTicketItem{
-		{Name: "Home Sale", Year: 5, Amount: 200000},
-		{Name: "Past Event", Year: 1, Amount: 50000},
-		{Name: "At Transition", Year: 3, Amount: 100000},
+		{Name: "Home Sale", Month: 5 * 12, Amount: 200000},
+		{Name: "Past Event", Month: 1 * 12, Amount: 50000},
+		{Name: "At Transition", Month: 3 * 12, Amount: 100000},
 	}
-	result := rebaseBigTicketItems(items, 3)
+	result := rebaseBigTicketItems(items, 3*12)
 	if len(result) != 2 {
 		t.Fatalf("expected 2, got %d", len(result))
 	}
-	if result[0].Year != 0 {
-		t.Errorf("At Transition: expected year 0, got %d", result[0].Year)
+	if result[0].Month != 0 {
+		t.Errorf("At Transition: expected month 0, got %d", result[0].Month)
 	}
-	if result[1].Year != 2 {
-		t.Errorf("Home Sale: expected year 2, got %d", result[1].Year)
+	if result[1].Month != 24 {
+		t.Errorf("Home Sale: expected month 24, got %d", result[1].Month)
+	}
+}
+
+// Sorting and dropping are by month, so two items in the same year keep their
+// real order rather than an arbitrary one.
+func TestRebaseBigTicketItemsSortsByMonth(t *testing.T) {
+	items := []models.BigTicketItem{
+		{Name: "Later in year 3", Month: 3*12 + 7, Amount: 1},
+		{Name: "One month before the transition", Month: 3*12 - 1, Amount: 2},
+		{Name: "At transition", Month: 3 * 12, Amount: 3},
+	}
+	result := rebaseBigTicketItems(items, 3*12)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 (the pre-transition item is dropped), got %d", len(result))
+	}
+	if result[0].Name != "At transition" || result[0].Month != 0 {
+		t.Errorf("first = %q at month %d, want At transition at 0", result[0].Name, result[0].Month)
+	}
+	if result[1].Name != "Later in year 3" || result[1].Month != 7 {
+		t.Errorf("second = %q at month %d, want Later in year 3 at 7", result[1].Name, result[1].Month)
 	}
 }
 
@@ -203,3 +238,7 @@ func mustPrepareChained(t *testing.T, linked, primary *models.WhatIfSettings, tr
 	}
 	return prepared.Settings()
 }
+
+// expenseEndPtr returns the *int an ExpenseSource's EndMonth needs (nil means
+// perpetual, so a real end month must be addressable).
+func expenseEndPtr(month int) *int { return &month }

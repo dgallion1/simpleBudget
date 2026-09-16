@@ -40,10 +40,13 @@
             </button>
         </div>
     </div>
+    {{$when := calendarMonthLabel .Settings.StartDate .Item.Month}}
+    {{if $when}}
     <div class="text-xs text-gray-600 dark:text-gray-300">
-        Year {{.Item.Year}}{{if .Settings.StartDate}} ({{add (startYear .Settings.StartDate) .Item.Year}}){{end}}
+        {{$when}}
     </div>
-    {{if ge .Item.Year .Settings.ProjectionYears}}
+    {{end}}
+    {{if ge (yearOf .Item.Month) .Settings.ProjectionYears}}
     <div class="text-body-sm text-warning mt-1">
         beyond current horizon ({{.Settings.ProjectionYears}} yr) — not counted; edit the year or extend the projection to reactivate it
     </div>

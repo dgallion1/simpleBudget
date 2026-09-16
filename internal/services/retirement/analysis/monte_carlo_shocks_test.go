@@ -166,7 +166,7 @@ func TestMonteCarloShockMatchesPlannedOneTimeExpenseTaxTreatment(t *testing.T) {
 		engineInput(t, taxDeferredShockSettings()), rand.New(rand.NewSource(123)), c)
 
 	plannedSettings := taxDeferredShockSettings()
-	plannedSettings.OneTimeExpenses = []models.OneTimeExpense{{ID: "shock-control", Year: 0, Amount: amount}}
+	plannedSettings.OneTimeExpenses = []models.OneTimeExpense{{ID: "shock-control", Month: 0, Amount: amount}}
 	c.SpendingShockMin, c.SpendingShockMax = 0, 0
 	planned := RunSingleMonteCarloSimulation(
 		engineInput(t, plannedSettings), rand.New(rand.NewSource(123)), c)

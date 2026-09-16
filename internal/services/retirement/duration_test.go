@@ -65,11 +65,11 @@ func TestIncomeSourceDuration(t *testing.T) {
 func TestExpenseSourceDuration(t *testing.T) {
 	amount := 1000.0
 
-	t.Run("EndYear 0 is perpetual", func(t *testing.T) {
+	t.Run("nil EndMonth is perpetual", func(t *testing.T) {
 		es := &models.ExpenseSource{
-			Amount:    amount,
-			StartYear: 0,
-			EndYear:   0, // Traditional behavior: 0 is perpetual
+			Amount:     amount,
+			StartMonth: 0,
+			EndMonth:   nil, // nil is perpetual, as for IncomeSource
 		}
 
 		val := es.GetAdjustedAmount(120, 0)
@@ -78,11 +78,11 @@ func TestExpenseSourceDuration(t *testing.T) {
 		}
 	})
 
-	t.Run("EndYear same as StartYear ends immediately", func(t *testing.T) {
+	t.Run("EndMonth same as StartMonth ends immediately", func(t *testing.T) {
 		es := &models.ExpenseSource{
-			Amount:    amount,
-			StartYear: 1,
-			EndYear:   1, // Ends at start of year 1 (immediately after starting)
+			Amount:     amount,
+			StartMonth: 12,
+			EndMonth:   durationEndMonth(12), // Ends the month it starts (end exclusive)
 		}
 
 		val := es.GetAdjustedAmount(12, 0)
@@ -91,11 +91,11 @@ func TestExpenseSourceDuration(t *testing.T) {
 		}
 	})
 
-	t.Run("EndYear 1 ends after 1 year", func(t *testing.T) {
+	t.Run("EndMonth 12 ends after 1 year", func(t *testing.T) {
 		es := &models.ExpenseSource{
-			Amount:    amount,
-			StartYear: 0,
-			EndYear:   1,
+			Amount:     amount,
+			StartMonth: 0,
+			EndMonth:   durationEndMonth(12),
 		}
 
 		val := es.GetAdjustedAmount(11, 0)
@@ -126,14 +126,35 @@ func TestIncomeSourceMonthlyCOLA(t *testing.T) {
 
 func TestExpenseSourceMonthlyInflation(t *testing.T) {
 	es := &models.ExpenseSource{
-		Amount:    1000,
-		StartYear: 0,
-		Inflation: true,
+		Amount:     1000,
+		StartMonth: 0,
+		Inflation:  true,
 	}
 
 	got := es.GetAdjustedAmount(6, 12)
 	want := 1000.0 * math.Pow(1.12, 0.5)
 	if math.Abs(got-want) > 0.01 {
 		t.Fatalf("month 6: want %.2f, got %.2f", want, got)
+	}
+}
+
+// durationEndMonth returns the *int an ExpenseSource's EndMonth needs.
+func durationEndMonth(month int) *int { return &month }
+
+// TestExpenseSourceMonthPrecision pins the behaviour the monthly rollover
+// depends on: an expense can start and end mid-year, not just on a year
+// boundary.
+func TestExpenseSourceMonthPrecision(t *testing.T) {
+	es := &models.ExpenseSource{Amount: 500, StartMonth: 11, EndMonth: durationEndMonth(23)}
+	for _, tc := range []struct {
+		month int
+		want  float64
+	}{{10, 0}, {11, 500}, {12, 500}, {22, 500}, {23, 0}} {
+		if got := es.GetAdjustedAmount(tc.month, 0); got != tc.want {
+			t.Errorf("month %d: got %.0f, want %.0f", tc.month, got, tc.want)
+		}
+		if got := es.IsActive(tc.month); got != (tc.want > 0) {
+			t.Errorf("month %d: IsActive %v, want %v", tc.month, got, tc.want > 0)
+		}
 	}
 }

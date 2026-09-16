@@ -39,7 +39,7 @@
     {{end}}
     <div class="mt-3 flex flex-wrap gap-2">
         <button type="button" data-spending-graph="{{$row.Candidate.ID}}" data-graph-token="{{$row.GraphToken}}" data-request-id="{{$.RequestID}}" aria-pressed="false" class="rounded-md border border-gray-500 px-3 py-2 focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent dark:border-gray-400">Inspect evidence</button>
-        {{if $row.Token}}<form data-spending-apply-form action="/whatif/spending/optimize/apply" method="post"><input type="hidden" name="request_id" value="{{$.RequestID}}"><input type="hidden" name="recommendation" value="{{$row.Token}}"><button type="submit" data-spending-apply="{{$row.Candidate.ID}}" class="rounded-md bg-accent-strong px-3 py-2 text-white focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent">Apply this option</button></form>{{end}}
+        {{if $row.Token}}<form data-spending-apply-form action="/whatif/spending/optimize/apply" method="post"><input type="hidden" name="request_id" value="{{$.RequestID}}"><input type="hidden" name="recommendation" value="{{$row.Token}}"><button type="submit" data-spending-apply="{{$row.Candidate.ID}}" class="rounded-md bg-accent-strong px-3 py-2 text-white focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-accent">{{if eq $row.Candidate.Kind "current"}}Keep current plan{{else}}Apply this option{{end}}</button></form>{{end}}
     </div>
     <details class="mt-3">
         <summary class="cursor-pointer rounded font-medium focus:outline focus:outline-2 focus:outline-accent">Supporting details</summary>

@@ -81,6 +81,31 @@ pages/whatif.html. */}}
 {{define "whatif-income-source-item"}}
 {{$s := .Settings}}
 {{with .Source}}
+{{if scheduleEnded .EndMonth}}
+{{/* The monthly rollover clamped this source's end to 0 and threw the real
+end month away, so there is no honest month to offer in a Through input and
+no date here the user chose. The row is display-only: name, amount, what
+happened, and the Remove control -- no schedule inputs and no hx-put, so
+nothing can re-save (and be rejected for) a date nobody touched
+(ruling 2026-09-16e). */}}
+<div class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
+    <div class="flex items-center justify-between mb-1">
+        <div>
+            <span class="font-medium dark:text-gray-200">{{.Name}}</span>
+            <span class="text-gray-700 dark:text-gray-200">- ${{printf "%.0f" .Amount}}/mo</span>
+        </div>
+        <button type="button" hx-delete="/whatif/income/{{.ID}}" hx-target="#whatif-results"
+            class="text-negative hover:text-negative" aria-label="Delete income source {{.Name}}">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+    </div>
+    <p class="text-xs text-gray-700 dark:text-gray-200">
+        Ended before the plan start ({{calendarMonthLabel $s.StartDate 0}}) — not counted; remove it if you no longer need it
+    </p>
+</div>
+{{else}}
 <form hx-put="/whatif/income/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms, input delay:500ms from:find input[type=number]"
     class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
     <div class="flex items-center justify-between mb-2">
@@ -117,9 +142,10 @@ pages/whatif.html. */}}
         </label>
     </div>
     <p id="income-schedule-{{.ID}}" class="mt-1 text-xs text-gray-700 dark:text-gray-200">
-        Starts {{calendarMonthLabel $s.StartDate .StartMonth}}{{if .EndMonth}} · Through {{calendarMonthLabel $s.StartDate (throughMonth .EndMonth)}} (the last month paid){{else}} · ongoing — leave Through blank{{end}}
+        {{if eq .StartMonth 0}}Since plan start ({{calendarMonthLabel $s.StartDate 0}}){{else}}Starts {{calendarMonthLabel $s.StartDate .StartMonth}}{{end}}{{if .EndMonth}} · Through {{calendarMonthLabel $s.StartDate (throughMonth .EndMonth)}} (the last month paid){{else}} · ongoing — leave Through blank{{end}}
     </p>
 </form>
+{{end}}
 {{end}}
 {{end}}
 
@@ -167,7 +193,11 @@ it. */}}
 
 {{/* Add Income Form */}}
 {{define "whatif-add-income-form"}}
-<div id="whatif-add-income-error" class="mb-2"></div>
+{{/* The add handler answers a rejected month with HX-Retarget to this id and
+HX-Reswap:innerHTML, so the element itself survives and its role="alert"
+announces each new message (WCAG 4.1.3). Every month input below names it in
+aria-describedby, so the error is reachable from the field too. */}}
+<div id="whatif-add-income-error" role="alert" class="mb-2"></div>
 <form hx-post="/whatif/income" hx-target="#whatif-results" hx-on::after-request="if(event.detail.successful) this.reset()"
     class="space-y-2 border-t dark:border-gray-700 pt-3">
     <div class="grid grid-cols-2 gap-2">
@@ -184,14 +214,14 @@ it. */}}
             <input type="month" id="add-income-start-month" name="start_month"
                 class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2"
                 value="{{calendarMonth .Settings.StartDate 0}}" min="{{calendarMonth .Settings.StartDate 0}}"
-                aria-describedby="add-income-schedule-help">
+                aria-describedby="add-income-schedule-help whatif-add-income-error">
         </div>
         <div>
             <label for="add-income-end-month" class="block text-xs text-gray-700 dark:text-gray-200 mb-1">Through</label>
             <input type="month" id="add-income-end-month" name="end_month"
                 class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2"
                 value="" min="{{calendarMonth .Settings.StartDate 0}}"
-                aria-describedby="add-income-schedule-help">
+                aria-describedby="add-income-schedule-help whatif-add-income-error">
         </div>
     </div>
     <p id="add-income-schedule-help" class="text-xs text-gray-700 dark:text-gray-200">

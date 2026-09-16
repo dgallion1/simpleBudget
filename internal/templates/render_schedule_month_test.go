@@ -154,9 +154,12 @@ func TestRenderExpenseSourcesList_MonthInputsFromMonthOffsets(t *testing.T) {
 		`<label for="expense-end-e3"`,
 		`aria-describedby="expense-schedule-e3"`,
 		`id="expense-schedule-e3"`,
-		// ...and the row states the schedule in words, ongoing included.
+		// ...and the row states the schedule in words, ongoing included. A
+		// start of 0 reads "Since plan start": the rollover clamps a past
+		// start to 0, so the row must not claim the entry was scheduled for
+		// the plan start month (ruling 2026-09-16e).
 		"Starts Sep 2027 · Through Sep 2028",
-		"Starts Oct 2026 · ongoing",
+		"Since plan start (Oct 2026) · ongoing",
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("want %q in: %s", want, html)
@@ -165,6 +168,59 @@ func TestRenderExpenseSourcesList_MonthInputsFromMonthOffsets(t *testing.T) {
 	for _, bad := range []string{"start_year", "end_year", "Starts yr", "Ends yr"} {
 		if strings.Contains(html, bad) {
 			t.Errorf("year-offset input %q survived in: %s", bad, html)
+		}
+	}
+}
+
+// An expense the rollover clamped to "already finished" (EndMonth 0) has no
+// honest Through month left to render, so the row is display-only: it says
+// what happened and offers Remove, and it carries no schedule input and no
+// hx-put — nothing that could re-submit, and be rejected for, a date the user
+// never chose (ruling 2026-09-16e).
+func TestRenderExpenseSourcesList_EndedRowIsDisplayOnly(t *testing.T) {
+	r := newWhatIfRenderer(t)
+
+	s := scheduleRenderSettings() // plan start 2026-10
+	ended := 0
+	running := 24
+	s.ExpenseSources = []models.ExpenseSource{
+		{ID: "gone", Name: "OldLease", Amount: 400, StartMonth: 0, EndMonth: &ended},
+		{ID: "live", Name: "Gym", Amount: 100, StartMonth: 0, EndMonth: &running},
+	}
+
+	out, err := r.RenderToString("whatif-expense-sources-list", map[string]any{"Settings": s})
+	if err != nil {
+		t.Fatalf("RenderToString: %v", err)
+	}
+	html := collapse(out)
+
+	for _, want := range []string{
+		"OldLease",
+		"Ended before the plan start (Oct 2026)",
+		// The Remove control is the one action that stays.
+		`aria-label="Delete expense OldLease"`,
+		`hx-delete="/whatif/expense/gone"`,
+		// The still-running sibling keeps its full form.
+		`hx-put="/whatif/expense/live"`,
+		`id="expense-start-live"`,
+		"Since plan start (Oct 2026) · Through Sep 2028",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("want %q in: %s", want, html)
+		}
+	}
+	for _, bad := range []string{
+		`hx-put="/whatif/expense/gone"`,
+		`id="expense-start-gone"`,
+		`id="expense-end-gone"`,
+		`id="expense-schedule-gone"`,
+		// Sep 2026 is the month before the plan start: throughMonth(&0) would
+		// name it, and no input may offer it.
+		`value="2026-09"`,
+		"Through Sep 2026",
+	} {
+		if strings.Contains(html, bad) {
+			t.Errorf("ended row must not render %q: %s", bad, html)
 		}
 	}
 }

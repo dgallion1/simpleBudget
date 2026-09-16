@@ -87,6 +87,7 @@ func getFuncMap() template.FuncMap {
 		"div":                                 div,
 		"yearOf":                              yearOf,
 		"throughMonth":                        throughMonth,
+		"scheduleEnded":                       scheduleEnded,
 		"mod":                                 mod,
 		"calendarMonth":                       models.CalendarMonth,
 		"calendarMonthLabel":                  models.CalendarMonthLabel,
@@ -715,6 +716,18 @@ func throughMonth(endMonth *int) int {
 		return 0
 	}
 	return *endMonth - 1
+}
+
+// scheduleEnded reports whether an income/expense source has an end offset of
+// zero — "already finished, contributing nothing". Only the monthly rollover's
+// clamp produces it (shiftScheduleOffsets floors a past end at 0), and the
+// clamp has by then DISCARDED the month the entry really ended in. The form
+// cannot produce it either: a "Through" month is stored as offset+1, so a
+// form-set end is always ≥ 1. Such a row is therefore rendered display-only:
+// there is no honest month to put in a Through input, and a form would offer
+// to re-save a date the user never chose (ruling 2026-09-16e).
+func scheduleEnded(endMonth *int) bool {
+	return endMonth != nil && *endMonth <= 0
 }
 
 func mod(a, b int) int {

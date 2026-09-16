@@ -132,8 +132,8 @@ func TestScheduleForms_PageShowsCalendarMonths(t *testing.T) {
 		`<label for="onetime-month"`, `<label for="add-bigticket-month"`,
 		`aria-describedby="income-schedule-sched-inc"`, `id="income-schedule-sched-inc"`,
 		`aria-describedby="expense-schedule-sched-exp"`, `id="expense-schedule-sched-exp"`,
-		`aria-describedby="onetime-month-help"`, `id="onetime-month-help"`,
-		`aria-describedby="add-bigticket-month-help"`, `id="add-bigticket-month-help"`,
+		`aria-describedby="onetime-month-help whatif-add-onetime-error"`, `id="onetime-month-help"`,
+		`aria-describedby="add-bigticket-month-help whatif-add-bigticket-error"`, `id="add-bigticket-month-help"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page missing accessibility wiring %q", want)
@@ -456,5 +456,253 @@ func TestScheduleForms_RolloverKeepsTheCalendarMonth(t *testing.T) {
 	// The min attribute is the (re-anchored) plan start, i.e. this month.
 	if !strings.Contains(body, `min="`+thisMonth.Format("2006-01")+`"`) {
 		t.Errorf("month inputs should allow this month (%s) at the earliest", thisMonth.Format("2006-01"))
+	}
+}
+
+// writeSettingsFile persists settings WITHOUT going through Save, whose own
+// resolve would re-anchor them first. Loading the file afterwards is what puts
+// the plan through the real monthly rollover.
+func writeSettingsFile(t *testing.T, rm *retirement.SettingsManager, s *models.WhatIfSettings) {
+	t.Helper()
+	raw, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("marshal settings: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(rm.SettingsDir(), "whatif.json"), raw, 0o644); err != nil {
+		t.Fatalf("write settings: %v", err)
+	}
+	rm.InvalidateCache()
+}
+
+// clampedFixture writes a plan anchored 20 months ago holding entries the
+// rollover must clamp, and returns this month's first day. After the load:
+//
+//	exp-ended     StartMonth 0→0, EndMonth 3→0   (ended 17 months ago)
+//	exp-clamped   StartMonth 4→0, EndMonth 30→10 (started before the plan)
+//	inc-clamped   StartMonth 12→0, EndMonth 42→22
+//
+// The clamp is lossy on purpose (RC2: never delete user data, never charge a
+// past entry), which is exactly why the rows below must not claim to know a
+// month the clamp threw away.
+func clampedFixture(t *testing.T, rm *retirement.SettingsManager) time.Time {
+	t.Helper()
+	s, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	now := time.Now()
+	thisMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	s.UseCurrentMonth = true
+	s.StartDate = thisMonth.AddDate(0, -20, 0).Format("2006-01")
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, 65)
+	endedEnd := 3
+	clampedExpenseEnd := 30
+	clampedIncomeEnd := 42
+	s.ExpenseSources = []models.ExpenseSource{
+		{ID: "exp-ended", Name: "ClampOldLease", Amount: 400, StartMonth: 0, EndMonth: &endedEnd},
+		{ID: "exp-clamped", Name: "ClampGym", Amount: 100, StartMonth: 4, EndMonth: &clampedExpenseEnd, Inflation: true},
+	}
+	s.IncomeSources = []models.IncomeSource{
+		{ID: "inc-clamped", Name: "ClampPension", Amount: 900, Type: models.IncomeFixed, StartMonth: 12, EndMonth: &clampedIncomeEnd},
+	}
+	s.OneTimeExpenses = nil
+	s.BigTicketItems = nil
+	s.RemovedBigTicketItems = nil
+	writeSettingsFile(t, rm, s)
+
+	loaded, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load after write: %v", err)
+	}
+	if loaded.StartDate != thisMonth.Format("2006-01") {
+		t.Fatalf("fixture: plan did not re-anchor to this month: %q", loaded.StartDate)
+	}
+	if loaded.ExpenseSources[0].StartMonth != 0 || loaded.ExpenseSources[0].EndMonth == nil || *loaded.ExpenseSources[0].EndMonth != 0 {
+		t.Fatalf("fixture: ended expense not clamped to 0/0: %+v", loaded.ExpenseSources[0])
+	}
+	if loaded.ExpenseSources[1].StartMonth != 0 || loaded.ExpenseSources[1].EndMonth == nil || *loaded.ExpenseSources[1].EndMonth != 10 {
+		t.Fatalf("fixture: clamped expense not 0/10: %+v", loaded.ExpenseSources[1])
+	}
+	if loaded.IncomeSources[0].StartMonth != 0 || loaded.IncomeSources[0].EndMonth == nil || *loaded.IncomeSources[0].EndMonth != 22 {
+		t.Fatalf("fixture: clamped income not 0/22: %+v", loaded.IncomeSources[0])
+	}
+	return thisMonth
+}
+
+// Ruling 2026-09-16e, criterion 3. The rollover clamps a past start AND a past
+// end to 0, discarding both original months. A row must not invent them: an
+// ENDED entry (EndMonth 0) is display-only, and a clamped START says "Since
+// plan start" rather than claiming the entry was scheduled for that month.
+func TestScheduleForms_ClampedRowsAreHonestAboutLostMonths(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+	thisMonth := clampedFixture(t, rm)
+
+	planStart := thisMonth.Format("2006-01")
+	planLabel := thisMonth.Format("Jan 2006")
+	monthBefore := thisMonth.AddDate(0, -1, 0).Format("2006-01")
+	body := collapseWhitespace(whatIfPageBody(t))
+
+	// (a) The ended row: what happened, plus Remove — and nothing else.
+	for _, want := range []string{
+		"ClampOldLease",
+		"Ended before the plan start (" + planLabel + ")",
+		`hx-delete="/whatif/expense/exp-ended"`,
+		`aria-label="Delete expense ClampOldLease"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("ended row missing %q", want)
+		}
+	}
+	for _, bad := range []string{
+		`hx-put="/whatif/expense/exp-ended"`,
+		`id="expense-start-exp-ended"`,
+		`id="expense-end-exp-ended"`,
+		`id="expense-schedule-exp-ended"`,
+		// throughMonth(&0) names the month BEFORE the plan start; no input
+		// may carry a value its own min forbids.
+		`value="` + monthBefore + `"`,
+	} {
+		if strings.Contains(body, bad) {
+			t.Errorf("ended row must not render %q", bad)
+		}
+	}
+
+	// (b) The clamped-start rows keep their form, say "Since plan start", and
+	// carry the plan-start month in the start input.
+	for _, want := range []string{
+		"Since plan start (" + planLabel + ")",
+		`id="income-start-inc-clamped" name="start_month" value="` + planStart + `" min="` + planStart + `"`,
+		`id="income-end-inc-clamped" name="end_month" value="` + thisMonth.AddDate(0, 21, 0).Format("2006-01") + `" min="` + planStart + `"`,
+		`id="expense-start-exp-clamped" name="start_month" value="` + planStart + `" min="` + planStart + `"`,
+		`id="expense-end-exp-clamped" name="end_month" value="` + thisMonth.AddDate(0, 9, 0).Format("2006-01") + `" min="` + planStart + `"`,
+		`hx-put="/whatif/income/inc-clamped"`,
+		`hx-put="/whatif/expense/exp-clamped"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("clamped-start row missing %q", want)
+		}
+	}
+	if strings.Contains(body, "Starts "+planLabel) {
+		t.Errorf("a clamped start must not claim the entry was scheduled for %s", planLabel)
+	}
+}
+
+// Ruling 2026-09-16e, criterion 4. htmx re-posts the whole row whenever any
+// control in it changes, so every row that still HAS a form must accept its
+// own rendered values back unchanged — a 400 on a date the user never touched
+// makes the row unusable (a cola/inflation toggle could not be saved at all).
+func TestScheduleForms_ClampedRowRoundTripsOnAnUnrelatedToggle(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+	thisMonth := clampedFixture(t, rm)
+
+	planStart := thisMonth.Format("2006-01")
+	incomeThrough := thisMonth.AddDate(0, 21, 0).Format("2006-01") // EndMonth 22
+	expenseThrough := thisMonth.AddDate(0, 9, 0).Format("2006-01") // EndMonth 10
+
+	if w := postScheduleForm(t, handleWhatIfUpdateIncome, "/whatif/income/inc-clamped", "inc-clamped",
+		url.Values{"start_month": {planStart}, "end_month": {incomeThrough}, "cola": {"on"}}); w.Code != http.StatusOK {
+		t.Fatalf("untouched re-save of the clamped income row = %d; body: %s", w.Code, truncate(w.Body.String(), 500))
+	}
+	if w := postScheduleForm(t, handleWhatIfUpdateExpense, "/whatif/expense/exp-clamped", "exp-clamped",
+		url.Values{"start_month": {planStart}, "end_month": {expenseThrough}, "inflation": {"on"}, "discretionary": {"on"}}); w.Code != http.StatusOK {
+		t.Fatalf("untouched re-save of the clamped expense row = %d; body: %s", w.Code, truncate(w.Body.String(), 500))
+	}
+
+	rm.InvalidateCache()
+	s, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if s.IncomeSources[0].StartMonth != 0 || s.IncomeSources[0].EndMonth == nil || *s.IncomeSources[0].EndMonth != 22 {
+		t.Errorf("re-save moved the clamped income row: %d/%v, want 0/22",
+			s.IncomeSources[0].StartMonth, s.IncomeSources[0].EndMonth)
+	}
+	if s.IncomeSources[0].COLARate == 0 {
+		t.Error("the unrelated toggle (cola) did not take effect")
+	}
+	var gym *models.ExpenseSource
+	for i := range s.ExpenseSources {
+		if s.ExpenseSources[i].ID == "exp-clamped" {
+			gym = &s.ExpenseSources[i]
+		}
+	}
+	if gym == nil || gym.StartMonth != 0 || gym.EndMonth == nil || *gym.EndMonth != 10 {
+		t.Errorf("re-save moved the clamped expense row: %+v, want 0/10", gym)
+	}
+	if gym != nil && !gym.Discretionary {
+		t.Error("the unrelated toggle (discretionary) did not take effect")
+	}
+
+	// The ended row is still there, untouched and still display-only: the
+	// rollover keeps user data, it just never charges it.
+	if len(s.ExpenseSources) != 2 || s.ExpenseSources[0].ID != "exp-ended" {
+		t.Fatalf("the ended row disappeared: %+v", s.ExpenseSources)
+	}
+	if s.ExpenseSources[0].EndMonth == nil || *s.ExpenseSources[0].EndMonth != 0 {
+		t.Errorf("the ended row changed: %+v", s.ExpenseSources[0])
+	}
+}
+
+// Ruling 2026-09-16f, criterion 7 (WCAG 4.1.3). A rejected month is swapped
+// into the add form's error container by HX-Retarget + HX-Reswap:innerHTML, so
+// that container must be a live region for the message to be announced — on
+// the page AND in the OOB partial that clears it after every mutation, which
+// replaces the element outright and would otherwise strip the role.
+func TestScheduleForms_AddErrorsAreAnnouncedAndAssociated(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+	scheduleFormFixture(t, rm)
+
+	body := collapseWhitespace(whatIfPageBody(t))
+	kinds := []struct{ kind, input, help string }{
+		{"income", "add-income-start-month", "add-income-schedule-help"},
+		{"income", "add-income-end-month", "add-income-schedule-help"},
+		{"expense", "add-expense-start-month", "add-expense-schedule-help"},
+		{"expense", "add-expense-end-month", "add-expense-schedule-help"},
+		{"onetime", "onetime-month", "onetime-month-help"},
+		{"bigticket", "add-bigticket-month", "add-bigticket-month-help"},
+	}
+	for _, k := range kinds {
+		container := "whatif-add-" + k.kind + "-error"
+		if !strings.Contains(body, `<div id="`+container+`" role="alert"`) {
+			t.Errorf("%s error container is not a live region", container)
+		}
+		if !strings.Contains(body, `id="`+k.input+`" name=`) {
+			t.Fatalf("month input %s not rendered", k.input)
+		}
+		want := `aria-describedby="` + k.help + ` ` + container + `"`
+		if !strings.Contains(body, want) {
+			t.Errorf("month input %s should carry %s", k.input, want)
+		}
+	}
+
+	// The message really does land inside that container.
+	w := postScheduleForm(t, handleWhatIfAddOneTime, "/whatif/onetime", "",
+		url.Values{"description": {"X"}, "amount": {"1"}, "month": {"nope"}})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if got := w.Header().Get("HX-Retarget"); got != "#whatif-add-onetime-error" {
+		t.Errorf("HX-Retarget = %q, want #whatif-add-onetime-error", got)
+	}
+	if got := w.Header().Get("HX-Reswap"); got != "innerHTML" {
+		t.Errorf("HX-Reswap = %q, want innerHTML (an outerHTML swap would drop role=\"alert\")", got)
+	}
+
+	// ...and a SUCCESSFUL mutation's OOB partial, which clears the containers
+	// by replacing them, keeps the role.
+	ok := postScheduleForm(t, handleWhatIfAddOneTime, "/whatif/onetime", "",
+		url.Values{"description": {"Fine"}, "amount": {"1"}, "month": {schedStartValue}})
+	if ok.Code != http.StatusOK {
+		t.Fatalf("add one-time = %d; body: %s", ok.Code, truncate(ok.Body.String(), 400))
+	}
+	oob := collapseWhitespace(ok.Body.String())
+	for _, kind := range []string{"income", "expense", "onetime", "bigticket"} {
+		want := `<div id="whatif-add-` + kind + `-error" role="alert" hx-swap-oob="true">`
+		if !strings.Contains(oob, want) {
+			t.Errorf("the OOB partial drops role=\"alert\" from the %s error container", kind)
+		}
 	}
 }

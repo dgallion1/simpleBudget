@@ -3,15 +3,46 @@
 {{define "whatif-expense-sources-list"}}
 <div id="expense-sources-list" class="space-y-2 mb-4">
     {{range .Settings.ExpenseSources}}
-    {{template "whatif-expense-source-item" .}}
+    {{template "whatif-expense-source-item" (dict "Settings" $.Settings "Source" .)}}
     {{else}}
     <p class="text-sm text-gray-600 dark:text-gray-300 italic">No additional expenses added</p>
     {{end}}
 </div>
 {{end}}
 
-{{/* Single Expense Source Item */}}
+{{/* Single Expense Source Item. Expects: .Settings (for StartDate, which the
+month inputs are anchored to) and .Source; the source is re-scoped as dot
+below so the markup reads its own fields, and $s keeps the settings in reach.
+Callers: whatif-expense-sources-list and the every-mutation OOB partial in
+pages/whatif.html. */}}
 {{define "whatif-expense-source-item"}}
+{{$s := .Settings}}
+{{with .Source}}
+{{if .ScheduleEnded}}
+{{/* The monthly rollover clamped this source's end to 0 and threw the real
+end month away, so there is no honest month to offer in a Through input and
+no date here the user chose. The row is display-only: name, amount, what
+happened, and the Remove control -- no schedule inputs and no hx-put, so
+nothing can re-save (and be rejected for) a date nobody touched
+(ruling 2026-09-16e). */}}
+<div class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
+    <div class="flex items-center justify-between mb-1">
+        <div>
+            <span class="font-medium dark:text-gray-200">{{.Name}}</span>
+            <span class="text-gray-700 dark:text-gray-200">- ${{printf "%.0f" .Amount}}/mo</span>
+        </div>
+        <button type="button" hx-delete="/whatif/expense/{{.ID}}" hx-target="#whatif-results"
+            class="text-negative hover:text-negative" aria-label="Delete expense {{.Name}}">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+        </button>
+    </div>
+    <p class="text-xs text-gray-700 dark:text-gray-200">
+        Ended before the plan start ({{calendarMonthLabel $s.StartDate 0}}) — not counted; remove it if you no longer need it
+    </p>
+</div>
+{{else}}
 <form hx-put="/whatif/expense/{{.ID}}" hx-target="#whatif-results" hx-trigger="change delay:500ms, input delay:500ms from:find input[type=number]"
     class="p-2 bg-gray-50 dark:bg-gray-700 rounded text-sm">
     <div class="flex items-center justify-between mb-2">
@@ -27,19 +58,21 @@
         </button>
     </div>
     <div class="flex items-center gap-4 text-xs flex-wrap">
-        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
-            Starts yr:
-            <input type="number" name="start_year" min="0" max="50" value="{{.StartYear}}"
-                class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
-                title="Year expense starts (0 = now)">
-        </label>
-        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
-            Ends yr:
-            <input type="number" name="end_year" min="0" max="50" value="{{if ne .EndYear 0}}{{.EndYear}}{{end}}"
-                class="w-12 px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs"
-                title="Year expense ends (blank = never, 0 = ends immediately)">
-        </label>
-        <label class="flex items-center gap-1 text-gray-600 dark:text-gray-300">
+        <div class="flex items-center gap-1">
+            <label for="expense-start-{{.ID}}" class="text-gray-700 dark:text-gray-200">Starts</label>
+            <input type="month" id="expense-start-{{.ID}}" name="start_month"
+                value="{{calendarMonth $s.StartDate .StartMonth}}" min="{{calendarMonth $s.StartDate 0}}"
+                aria-describedby="expense-schedule-{{.ID}}"
+                class="px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs">
+        </div>
+        <div class="flex items-center gap-1">
+            <label for="expense-end-{{.ID}}" class="text-gray-700 dark:text-gray-200">Through</label>
+            <input type="month" id="expense-end-{{.ID}}" name="end_month"
+                value="{{if .EndMonth}}{{calendarMonth $s.StartDate (throughMonth .EndMonth)}}{{end}}" min="{{calendarMonth $s.StartDate 0}}"
+                aria-describedby="expense-schedule-{{.ID}}"
+                class="px-1 py-0.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded text-xs">
+        </div>
+        <label class="flex items-center gap-1 text-gray-700 dark:text-gray-200">
             <input type="checkbox" name="inflation" {{if .Inflation}}checked{{end}}
                 class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-accent">
             Inflation
@@ -51,7 +84,12 @@
             Discretionary
         </label>
     </div>
+    <p id="expense-schedule-{{.ID}}" class="mt-1 text-xs text-gray-700 dark:text-gray-200">
+        {{if .SinceStart}}Since plan start ({{calendarMonthLabel $s.StartDate 0}}){{else}}Starts {{calendarMonthLabel $s.StartDate .StartMonth}}{{end}}{{if .EndMonth}} · Through {{calendarMonthLabel $s.StartDate (throughMonth .EndMonth)}} (the last month charged){{else}} · ongoing — leave Through blank{{end}}
+    </p>
 </form>
+{{end}}
+{{end}}
 {{end}}
 
 {{/* Removed Expense Sources List */}}
@@ -89,7 +127,11 @@
 
 {{/* Add Expense Form */}}
 {{define "whatif-add-expense-form"}}
-<div id="whatif-add-expense-error" class="mb-2"></div>
+{{/* The add handler answers a rejected month with HX-Retarget to this id and
+HX-Reswap:innerHTML, so the element itself survives and its role="alert"
+announces each new message (WCAG 4.1.3). Every month input below names it in
+aria-describedby, so the error is reachable from the field too. */}}
+<div id="whatif-add-expense-error" role="alert" class="mb-2"></div>
 <form hx-post="/whatif/expense" hx-target="#whatif-results" hx-on::after-request="if(event.detail.successful) this.reset()"
     class="space-y-2 border-t dark:border-gray-700 pt-3">
     <div class="grid grid-cols-2 gap-2">
@@ -102,18 +144,23 @@
     </div>
     <div class="grid grid-cols-2 gap-2">
         <div>
-            <label for="add-expense-start-year" class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Starts yr (0=now)</label>
-            <input type="number" id="add-expense-start-year" name="start_year"
+            <label for="add-expense-start-month" class="block text-xs text-gray-700 dark:text-gray-200 mb-1">Starts</label>
+            <input type="month" id="add-expense-start-month" name="start_month"
                 class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2"
-                value="0" min="0">
+                value="{{calendarMonth .Settings.StartDate 0}}" min="{{calendarMonth .Settings.StartDate 0}}"
+                aria-describedby="add-expense-schedule-help whatif-add-expense-error">
         </div>
         <div>
-            <label for="add-expense-end-year" class="block text-xs text-gray-600 dark:text-gray-300 mb-1">Ends yr (blank=never)</label>
-            <input type="number" id="add-expense-end-year" name="end_year"
+            <label for="add-expense-end-month" class="block text-xs text-gray-700 dark:text-gray-200 mb-1">Through</label>
+            <input type="month" id="add-expense-end-month" name="end_month"
                 class="w-full text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md py-1 px-2"
-                value="" min="0">
+                value="" min="{{calendarMonth .Settings.StartDate 0}}"
+                aria-describedby="add-expense-schedule-help whatif-add-expense-error">
         </div>
     </div>
+    <p id="add-expense-schedule-help" class="text-xs text-gray-700 dark:text-gray-200">
+        The plan starts {{calendarMonthLabel .Settings.StartDate 0}}. Through is the last month charged; leave it blank for an ongoing expense.
+    </p>
     <div class="flex items-center justify-between flex-wrap gap-2">
         <div class="flex items-center gap-4">
             <label class="flex items-center text-sm dark:text-gray-300">

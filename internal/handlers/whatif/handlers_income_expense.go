@@ -30,32 +30,6 @@ func parseNamedAmount(r *http.Request, requiredMsg string) (name string, amount 
 	return name, amount, ""
 }
 
-// parseYearRange parses start_year and the optional end_year with the
-// non-negative and ordering rules shared by the income/expense forms.
-func parseYearRange(r *http.Request) (startYear int, endYear *int, errMsg string) {
-	startYear, err := parseFormInt(r, "start_year")
-	if err != nil {
-		return 0, nil, "Invalid start year: " + err.Error()
-	}
-	if startYear < 0 {
-		return 0, nil, "Start year cannot be negative"
-	}
-	if r.FormValue("end_year") != "" {
-		ey, err := parseFormInt(r, "end_year")
-		if err != nil {
-			return 0, nil, "Invalid end year: " + err.Error()
-		}
-		if ey < 0 {
-			return 0, nil, "End year cannot be negative"
-		}
-		if ey < startYear {
-			return 0, nil, "End year cannot be before start year"
-		}
-		endYear = &ey
-	}
-	return startYear, endYear, ""
-}
-
 // checkboxOn reports whether a checkbox-style form field is set ("on" from a
 // plain checkbox, "true" from a hidden-input pattern).
 func checkboxOn(r *http.Request, key string) bool {
@@ -74,7 +48,12 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 		renderRetargetedError(w, msg, http.StatusBadRequest, target)
 		return
 	}
-	startYear, endYear, msg := parseYearRange(r)
+	startDate, err := planStartDate()
+	if err != nil {
+		renderRetargetedError(w, "Failed to add income source: "+err.Error(), http.StatusInternalServerError, target)
+		return
+	}
+	startMonth, endMonth, msg := parseMonthRange(r, startDate)
 	if msg != "" {
 		renderRetargetedError(w, msg, http.StatusBadRequest, target)
 		return
@@ -85,15 +64,12 @@ func handleWhatIfAddIncome(w http.ResponseWriter, r *http.Request) {
 		Name:       name,
 		Amount:     amount,
 		Type:       models.IncomeFixed,
-		StartMonth: startYear * 12,
+		StartMonth: startMonth,
+		EndMonth:   endMonth,
 		COLARate:   0,
 	}
 	if checkboxOn(r, "cola") {
 		source.COLARate = 0.02 // 2% COLA
-	}
-	if endYear != nil {
-		endMonth := *endYear * 12
-		source.EndMonth = &endMonth
 	}
 
 	recalcAndRender(w, r, "Failed to add income source", func() (*models.WhatIfSettings, int, error) {
@@ -109,7 +85,12 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	startYear, endYear, msg := parseYearRange(r)
+	startDate, err := planStartDate()
+	if err != nil {
+		renderError(w, "Failed to update income source: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	startMonth, endMonth, msg := parseMonthRange(r, startDate)
 	if msg != "" {
 		renderError(w, msg, http.StatusBadRequest)
 		return
@@ -121,7 +102,7 @@ func handleWhatIfUpdateIncome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	recalcAndRender(w, r, "Failed to update income source", func() (*models.WhatIfSettings, int, error) {
-		settings, err := retirementMgr.UpdateIncomeSource(id, startYear, endYear, colaRate)
+		settings, err := retirementMgr.UpdateIncomeSource(id, startMonth, endMonth, colaRate)
 		return settings, revisionUnreported, err
 	})
 }
@@ -190,7 +171,12 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 		renderRetargetedError(w, msg, http.StatusBadRequest, target)
 		return
 	}
-	startYear, endYear, msg := parseYearRange(r)
+	startDate, err := planStartDate()
+	if err != nil {
+		renderRetargetedError(w, "Failed to add expense: "+err.Error(), http.StatusInternalServerError, target)
+		return
+	}
+	startMonth, endMonth, msg := parseMonthRange(r, startDate)
 	if msg != "" {
 		renderRetargetedError(w, msg, http.StatusBadRequest, target)
 		return
@@ -200,13 +186,10 @@ func handleWhatIfAddExpense(w http.ResponseWriter, r *http.Request) {
 		ID:            uuid.New().String(),
 		Name:          name,
 		Amount:        amount,
-		StartYear:     startYear,
-		EndYear:       0, // Default to perpetual
+		StartMonth:    startMonth,
+		EndMonth:      endMonth, // nil is perpetual (a blank "Through" month)
 		Inflation:     checkboxOn(r, "inflation"),
 		Discretionary: checkboxOn(r, "discretionary"),
-	}
-	if endYear != nil {
-		source.EndYear = *endYear
 	}
 
 	recalcAndRender(w, r, "Failed to add expense", func() (*models.WhatIfSettings, int, error) {
@@ -222,7 +205,12 @@ func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 		renderError(w, "Invalid form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	startYear, endYear, msg := parseYearRange(r)
+	startDate, err := planStartDate()
+	if err != nil {
+		renderError(w, "Failed to update expense: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	startMonth, endMonth, msg := parseMonthRange(r, startDate)
 	if msg != "" {
 		renderError(w, msg, http.StatusBadRequest)
 		return
@@ -232,7 +220,7 @@ func handleWhatIfUpdateExpense(w http.ResponseWriter, r *http.Request) {
 	discretionary := checkboxOn(r, "discretionary")
 
 	recalcAndRender(w, r, "Failed to update expense", func() (*models.WhatIfSettings, int, error) {
-		settings, err := retirementMgr.UpdateExpenseSource(id, startYear, endYear, inflation, discretionary)
+		settings, err := retirementMgr.UpdateExpenseSource(id, startMonth, endMonth, inflation, discretionary)
 		return settings, revisionUnreported, err
 	})
 }
@@ -265,13 +253,14 @@ func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	year, err := parseFormInt(r, "year")
+	startDate, err := planStartDate()
 	if err != nil {
-		renderRetargetedError(w, "Invalid year: "+err.Error(), http.StatusBadRequest, target)
+		renderRetargetedError(w, "Failed to add big ticket item: "+err.Error(), http.StatusInternalServerError, target)
 		return
 	}
-	if year < 0 {
-		renderRetargetedError(w, "Year cannot be negative", http.StatusBadRequest, target)
+	month, err := parseMonthOffset(r, "month", startDate)
+	if err != nil {
+		renderRetargetedError(w, err.Error(), http.StatusBadRequest, target)
 		return
 	}
 
@@ -289,7 +278,7 @@ func handleWhatIfAddBigTicket(w http.ResponseWriter, r *http.Request) {
 		ID:           uuid.New().String(),
 		Name:         name,
 		Amount:       amount,
-		Year:         year,
+		Month:        month,
 		Type:         itemType,
 		TaxTreatment: taxTreatment,
 		Notes:        r.FormValue("notes"),
@@ -340,31 +329,31 @@ func handleWhatIfAddOneTime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	year, err := parseFormInt(r, "year")
+	// Load first: the submitted calendar month is only meaningful against the
+	// plan's StartDate, the same anchor the form's month input was rendered
+	// with.
+	current, err := retirementMgr.Load()
 	if err != nil {
-		renderRetargetedError(w, "Invalid year: "+err.Error(), http.StatusBadRequest, target)
+		renderRetargetedError(w, "Failed to add one-time expense: "+err.Error(), http.StatusInternalServerError, target)
 		return
 	}
-	if year < 0 {
-		renderRetargetedError(w, "Year cannot be negative", http.StatusBadRequest, target)
+
+	month, err := parseMonthOffset(r, "month", current.StartDate)
+	if err != nil {
+		renderRetargetedError(w, err.Error(), http.StatusBadRequest, target)
 		return
 	}
 
 	expense := models.OneTimeExpense{
 		ID:          uuid.New().String(),
 		Description: description,
-		Year:        year,
+		Month:       month,
 		Amount:      amount,
 	}
 
 	// Validate the would-be new list against the invariants prepare.From
-	// enforces on every recalc (malformed Amount/Year) BEFORE persisting, so a
+	// enforces on every recalc (malformed Amount) BEFORE persisting, so a
 	// bad row can never reach storage.
-	current, err := retirementMgr.Load()
-	if err != nil {
-		renderRetargetedError(w, "Failed to add one-time expense: "+err.Error(), http.StatusInternalServerError, target)
-		return
-	}
 	current.OneTimeExpenses = append(current.OneTimeExpenses, expense)
 	if err := prepare.ValidateOneTimeExpenses(current); err != nil {
 		renderRetargetedError(w, "Failed to add one-time expense: "+err.Error(), http.StatusBadRequest, target)
@@ -378,8 +367,8 @@ func handleWhatIfAddOneTime(w http.ResponseWriter, r *http.Request) {
 	// shrinking ProjectionYears, MCP apply_changes) runs that validator too,
 	// and an existing entry going out of horizon there is a legitimate,
 	// non-fatal user action (the engine treats it as dormant), not an error.
-	if year >= current.ProjectionYears {
-		renderRetargetedError(w, fmt.Sprintf("Year %d is beyond the %d-year projection horizon", year, current.ProjectionYears), http.StatusBadRequest, target)
+	if month >= current.ProjectionYears*12 {
+		renderRetargetedError(w, fmt.Sprintf("%s is beyond the %d-year projection horizon", models.CalendarMonthLabel(current.StartDate, month), current.ProjectionYears), http.StatusBadRequest, target)
 		return
 	}
 

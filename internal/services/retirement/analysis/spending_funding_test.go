@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"budget2/internal/models"
@@ -73,9 +74,17 @@ func TestSpendingFundingBenefitTimingInflationAndCalendarScope(t *testing.T) {
 	s.StartDate = "2026-11"
 	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, 65)
 	s.ProjectionYears = 2
+	// The first two sources carry the income arithmetic asserted below and
+	// both start at month 0, so neither yields a marker any more: a source
+	// already running at the plan start has no start to mark (ruling
+	// 2026-09-16h). The two LATE sources carry the marker assertions — the
+	// late SS one is what proves the optimizer hook suppresses a configured
+	// Social Security marker, which a month-0 source can no longer prove.
 	s.IncomeSources = []models.IncomeSource{
 		{ID: "manual-ss", Name: "Social Security", Amount: 9999, StartMonth: 0},
 		{ID: "pension", Name: "Pension", Amount: 1200, StartMonth: 0},
+		{ID: "late-ss", Name: "Spouse Social Security", Amount: 500, StartMonth: 8},
+		{ID: "late-pension", Name: "Second Pension", Amount: 100, StartMonth: 9},
 	}
 	in := engineInput(t, s)
 	in.Hooks = engine.Hooks{
@@ -128,7 +137,11 @@ func TestSpendingFundingBenefitTimingInflationAndCalendarScope(t *testing.T) {
 	if y := got.AnnualAverages[2]; y.CalendarYear != 2028 || y.ObservedMonths != 1 || !y.Partial {
 		t.Fatalf("2028 average = %+v", y)
 	}
-	if len(got.Markers) != 1 || got.Markers[0].Kind != "configured_income_start" || got.Markers[0].Label != "Pension starts" {
+	// Exactly one marker: the late pension. The late Social Security source is
+	// suppressed by the active optimizer hook, and the two month-0 sources are
+	// suppressed by SinceStart().
+	if len(got.Markers) != 1 || got.Markers[0].Kind != "configured_income_start" ||
+		got.Markers[0].Label != "Second Pension starts" || got.Markers[0].Month != 9 {
 		t.Fatalf("manual SS hook suppression markers = %+v", got.Markers)
 	}
 }
@@ -191,4 +204,42 @@ func spendingFundingSettings() *models.WhatIfSettings {
 	s.StartDate = "2026-01"
 	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, 65)
 	return s
+}
+
+// Ruling 2026-09-16h: the spending-funding chart marks where a configured
+// income STARTS. A source already running at the plan's first month has no
+// such point — the monthly rollover clamps a past start to 0 and discards the
+// real month, and an entry genuinely scheduled for month 0 has nothing to
+// announce — so it must produce no marker. A later source still does, and an
+// ended source (clamped to 0/0) never did.
+func TestSpendingFundingMarkers_SkipSourcesRunningSincePlanStart(t *testing.T) {
+	s := spendingFundingSettings()
+	s.ProjectionYears = 3
+	ended := 0
+	s.IncomeSources = []models.IncomeSource{
+		{ID: "clamped-start", Name: "Clamped Pension", Amount: 800, StartMonth: 0},
+		{ID: "ended", Name: "Old Annuity", Amount: 500, StartMonth: 0, EndMonth: &ended},
+		{ID: "later", Name: "Deferred Pension", Amount: 300, StartMonth: 7},
+	}
+
+	months := make([]models.ProjectionMonth, 24)
+	for month := range months {
+		months[month] = models.ProjectionMonth{Month: month, CumulativeInflation: 1}
+	}
+	got, err := BuildSpendingFundingTimeline(engineInput(t, s), &models.ProjectionResult{Months: months})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got.Markers) != 1 {
+		t.Fatalf("want exactly the deferred source's marker, got %+v", got.Markers)
+	}
+	if got.Markers[0].Label != "Deferred Pension starts" || got.Markers[0].Month != 7 {
+		t.Errorf("marker = %+v, want \"Deferred Pension starts\" at month 7", got.Markers[0])
+	}
+	for _, m := range got.Markers {
+		if strings.Contains(m.Label, "Clamped Pension") || strings.Contains(m.Label, "Old Annuity") {
+			t.Errorf("a source running since the plan start (or already ended) must not be marked: %+v", m)
+		}
+	}
 }

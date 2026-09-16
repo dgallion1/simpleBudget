@@ -1711,8 +1711,8 @@ func TestRunSingleMonteCarloSimulation_RothConversion(t *testing.T) {
 func TestRunSingleMonteCarloSimulation_BigTicketItems(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.BigTicketItems = []models.BigTicketItem{
-		{ID: "1", Name: "New Car", Amount: 40000, Year: 2, Type: models.BigTicketExpense},
-		{ID: "2", Name: "Inheritance", Amount: 100000, Year: 3, Type: models.BigTicketIncome},
+		{ID: "1", Name: "New Car", Amount: 40000, Month: 2 * 12, Type: models.BigTicketExpense},
+		{ID: "2", Name: "Inheritance", Amount: 100000, Month: 3 * 12, Type: models.BigTicketIncome},
 	}
 
 	c := newTestCalc(t, s)

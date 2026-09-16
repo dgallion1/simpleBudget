@@ -66,25 +66,27 @@ func TestIncomeSource_AddRemoveRestoreUpdate(t *testing.T) {
 		t.Fatalf("expected 0 removed after restore, got %d", len(s.RemovedIncomeSources))
 	}
 
-	// Update
-	endYear := 5
-	s, err = sm.UpdateIncomeSource("inc1", 2, &endYear, 0.03)
+	// Update. The arguments are MONTH offsets (RC3): the calendar-month form
+	// converts the user's months to offsets, and the manager stores them
+	// verbatim — no ×12 anywhere, so a non-year-aligned schedule survives.
+	endMonth := 61
+	s, err = sm.UpdateIncomeSource("inc1", 25, &endMonth, 0.03)
 	if err != nil {
 		t.Fatalf("UpdateIncomeSource: %v", err)
 	}
 	updated := s.IncomeSources[0]
-	if updated.StartMonth != 24 { // 2 * 12
-		t.Errorf("expected StartMonth 24, got %d", updated.StartMonth)
+	if updated.StartMonth != 25 {
+		t.Errorf("expected StartMonth 25, got %d", updated.StartMonth)
 	}
-	if updated.EndMonth == nil || *updated.EndMonth != 60 { // 5 * 12
-		t.Errorf("expected EndMonth 60, got %v", updated.EndMonth)
+	if updated.EndMonth == nil || *updated.EndMonth != 61 {
+		t.Errorf("expected EndMonth 61, got %v", updated.EndMonth)
 	}
 	if updated.COLARate != 0.03 {
 		t.Errorf("expected COLARate 0.03, got %f", updated.COLARate)
 	}
 
-	// Update with nil endYear
-	s, err = sm.UpdateIncomeSource("inc1", 1, nil, 0.01)
+	// Update with nil endMonth
+	s, err = sm.UpdateIncomeSource("inc1", 12, nil, 0.01)
 	if err != nil {
 		t.Fatalf("UpdateIncomeSource nil end: %v", err)
 	}
@@ -98,7 +100,7 @@ func TestIncomeSource_AddRemoveRestoreUpdate(t *testing.T) {
 func TestExpenseSource_AddRemoveRestoreUpdate(t *testing.T) {
 	sm := newTestSM(t)
 
-	src := models.ExpenseSource{ID: "exp1", Name: "Insurance", Amount: 500, StartYear: 0, Inflation: true}
+	src := models.ExpenseSource{ID: "exp1", Name: "Insurance", Amount: 500, StartMonth: 0, Inflation: true}
 
 	// Add
 	s, err := sm.AddExpenseSource(src)
@@ -109,24 +111,28 @@ func TestExpenseSource_AddRemoveRestoreUpdate(t *testing.T) {
 		t.Fatalf("expected 1 expense source, got %+v", s.ExpenseSources)
 	}
 
-	// Update
-	endYear := 10
-	s, err = sm.UpdateExpenseSource("exp1", 2, &endYear, false, true)
+	// Update. The arguments are MONTH offsets (RC3), stored verbatim, so a
+	// schedule that is not year-aligned round-trips unchanged.
+	endMonth := 121
+	s, err = sm.UpdateExpenseSource("exp1", 25, &endMonth, false, true)
 	if err != nil {
 		t.Fatalf("UpdateExpenseSource: %v", err)
 	}
 	u := s.ExpenseSources[0]
-	if u.StartYear != 2 || u.EndYear != 10 || u.Inflation != false || u.Discretionary != true {
-		t.Errorf("unexpected update result: %+v", u)
+	if u.StartMonth != 25 || u.EndMonth == nil || *u.EndMonth != 121 || u.Inflation != false || u.Discretionary != true {
+		t.Errorf("unexpected update result: %+v (EndMonth %v)", u, u.EndMonth)
 	}
 
-	// Update with nil endYear sets EndYear to 0
-	s, err = sm.UpdateExpenseSource("exp1", 1, nil, true, false)
+	// Update with nil endMonth clears EndMonth (perpetual)
+	s, err = sm.UpdateExpenseSource("exp1", 11, nil, true, false)
 	if err != nil {
 		t.Fatalf("UpdateExpenseSource nil end: %v", err)
 	}
-	if s.ExpenseSources[0].EndYear != 0 {
-		t.Errorf("expected EndYear 0 for perpetual, got %d", s.ExpenseSources[0].EndYear)
+	if s.ExpenseSources[0].EndMonth != nil {
+		t.Errorf("expected nil EndMonth for perpetual, got %d", *s.ExpenseSources[0].EndMonth)
+	}
+	if s.ExpenseSources[0].StartMonth != 11 {
+		t.Errorf("expected StartMonth 11, got %d", s.ExpenseSources[0].StartMonth)
 	}
 
 	// Remove
@@ -277,7 +283,7 @@ func TestBigTicketItem_AddRemoveRestore(t *testing.T) {
 		ID:     "bt1",
 		Name:   "New Roof",
 		Amount: 25000,
-		Year:   3,
+		Month:  3 * 12,
 		Type:   models.BigTicketExpense,
 	}
 
@@ -1929,7 +1935,7 @@ func TestRestoreIncomeSource_DuplicateActiveIDRejected(t *testing.T) {
 func TestRestoreExpenseSource_DuplicateActiveIDRejected(t *testing.T) {
 	sm := newTestSM(t)
 	seedSettingsWithIDInBothLists(t, sm, func(s *models.WhatIfSettings) {
-		src := models.ExpenseSource{ID: "dup", Name: "Rent", Amount: 2000, StartYear: 0}
+		src := models.ExpenseSource{ID: "dup", Name: "Rent", Amount: 2000, StartMonth: 0}
 		s.ExpenseSources = []models.ExpenseSource{src}
 		s.RemovedExpenseSources = []models.ExpenseSource{src}
 	})
@@ -1958,7 +1964,7 @@ func TestRestoreExpenseSource_DuplicateActiveIDRejected(t *testing.T) {
 func TestRestoreBigTicketItem_DuplicateActiveIDRejected(t *testing.T) {
 	sm := newTestSM(t)
 	seedSettingsWithIDInBothLists(t, sm, func(s *models.WhatIfSettings) {
-		item := models.BigTicketItem{ID: "dup", Name: "Boat", Amount: 50000, Year: 2030, Type: "expense"}
+		item := models.BigTicketItem{ID: "dup", Name: "Boat", Amount: 50000, Month: 2030 * 12, Type: "expense"}
 		s.BigTicketItems = []models.BigTicketItem{item}
 		s.RemovedBigTicketItems = []models.BigTicketItem{item}
 	})
@@ -2115,7 +2121,7 @@ func TestPurgeRemovedIncomeSource_PreservesOtherEntries(t *testing.T) {
 
 func TestPurgeRemovedExpenseSource_HappyPath(t *testing.T) {
 	sm := newTestSM(t)
-	src := models.ExpenseSource{ID: "px-1", Name: "Old Rent", Amount: 2000, StartYear: 0}
+	src := models.ExpenseSource{ID: "px-1", Name: "Old Rent", Amount: 2000, StartMonth: 0}
 	if _, err := sm.AddExpenseSource(src); err != nil {
 		t.Fatalf("AddExpenseSource: %v", err)
 	}
@@ -2157,7 +2163,7 @@ func TestPurgeRemovedExpenseSource_NotFound(t *testing.T) {
 
 func TestPurgeRemovedExpenseSource_ActiveOnlyIDNotFound(t *testing.T) {
 	sm := newTestSM(t)
-	if _, err := sm.AddExpenseSource(models.ExpenseSource{ID: "active-only", Name: "Rent", Amount: 1000, StartYear: 0}); err != nil {
+	if _, err := sm.AddExpenseSource(models.ExpenseSource{ID: "active-only", Name: "Rent", Amount: 1000, StartMonth: 0}); err != nil {
 		t.Fatalf("AddExpenseSource: %v", err)
 	}
 
@@ -2181,7 +2187,7 @@ func TestPurgeRemovedExpenseSource_ActiveOnlyIDNotFound(t *testing.T) {
 
 func TestPurgeRemovedBigTicketItem_HappyPath(t *testing.T) {
 	sm := newTestSM(t)
-	item := models.BigTicketItem{ID: "bt-1", Name: "Old Boat", Amount: 50000, Year: 2030, Type: "expense"}
+	item := models.BigTicketItem{ID: "bt-1", Name: "Old Boat", Amount: 50000, Month: 2030 * 12, Type: "expense"}
 	if _, err := sm.AddBigTicketItem(item); err != nil {
 		t.Fatalf("AddBigTicketItem: %v", err)
 	}
@@ -2223,7 +2229,7 @@ func TestPurgeRemovedBigTicketItem_NotFound(t *testing.T) {
 
 func TestPurgeRemovedBigTicketItem_ActiveOnlyIDNotFound(t *testing.T) {
 	sm := newTestSM(t)
-	if _, err := sm.AddBigTicketItem(models.BigTicketItem{ID: "active-only", Name: "Boat", Amount: 5000, Year: 2030, Type: "expense"}); err != nil {
+	if _, err := sm.AddBigTicketItem(models.BigTicketItem{ID: "active-only", Name: "Boat", Amount: 5000, Month: 2030 * 12, Type: "expense"}); err != nil {
 		t.Fatalf("AddBigTicketItem: %v", err)
 	}
 

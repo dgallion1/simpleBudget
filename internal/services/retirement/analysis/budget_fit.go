@@ -16,6 +16,23 @@ import (
 // math.Round(v*100)/100). Templates render dollar figures via formatMoney,
 // which itself formats with "%.2f"; deriving cents any other way can
 // disagree with that rendering at floating-point ties (Ruling 2026-08-29b).
+// scheduleNote renders a breakdown note naming the calendar month a schedule
+// offset falls in ("starts Sep 2027", "through Sep 2028"). It goes through
+// models.CalendarMonthLabel so every surface naming a scheduled date uses one
+// formatter. When StartDate is unparseable there is no calendar to name, so it
+// falls back to the previous year-offset wording rather than printing nothing.
+//
+// Callers pass the month they want NAMED. For "through" that is EndMonth-1:
+// EndMonth is the first month WITHOUT the item, and the user's form says
+// "Through" = the last month the item is still included — the same convention
+// the expense row's month inputs use, so the note and the form agree.
+func scheduleNote(verb, startDate string, month int) string {
+	if label := models.CalendarMonthLabel(startDate, month); label != "" {
+		return fmt.Sprintf("%s %s", verb, label)
+	}
+	return fmt.Sprintf("%s year %d", verb, month/12)
+}
+
 func centsFromDecimalString(v float64) int64 {
 	negative := v < 0
 	s := fmt.Sprintf("%.2f", math.Abs(v))
@@ -190,6 +207,15 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 		})
 	}
 	for _, source := range s.ExpenseSources {
+		// The rollover clamped this source to "already finished" and threw the
+		// real end month away with it. It contributes 0 to the total, and any
+		// "through" note here would name a month BEFORE the plan start — a
+		// month the user never chose and the plan no longer knows. The source
+		// list already explains the entry ("Ended before the plan start"), so
+		// omit the row rather than invent a date (ruling 2026-09-16h).
+		if source.ScheduleEnded() {
+			continue
+		}
 		amt := source.GetAdjustedAmount(0, s.InflationRate)
 		// engine.TotalExpenses applies the phase multiplier to discretionary
 		// sources; match it here so the row reconciles with the total.
@@ -197,8 +223,8 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 			amt *= phaseMultiplier
 		}
 		note := ""
-		if source.EndYear > 0 {
-			note = fmt.Sprintf("ends year %d", source.EndYear)
+		if source.EndMonth != nil {
+			note = scheduleNote("through", s.StartDate, *source.EndMonth-1)
 		}
 		breakdown = append(breakdown, models.ExpenseBreakdownItem{
 			Name:   source.Name,
@@ -220,9 +246,13 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 		}
 		amt := source.GetAdjustedAmount(0)
 		if amt > 0 {
+			// An income already running at the plan start gets no "starts"
+			// note: for a clamped entry the real start month is gone, and for
+			// one scheduled at month 0 there is nothing to announce. Same
+			// predicate as every other surface (ruling 2026-09-16h).
 			note := ""
-			if source.StartMonth > 0 {
-				note = fmt.Sprintf("starts year %d", source.StartMonth/12)
+			if !source.SinceStart() {
+				note = scheduleNote("starts", s.StartDate, source.StartMonth)
 			}
 			incomeItems = append(incomeItems, models.ExpenseBreakdownItem{
 				Name:   source.Name,

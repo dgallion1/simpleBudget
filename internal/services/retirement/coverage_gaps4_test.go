@@ -186,7 +186,7 @@ func TestPurgeRemovedExpenseSource_SaveFailure(t *testing.T) {
 
 func TestPurgeRemovedBigTicketItem_SaveFailure(t *testing.T) {
 	sm := writeProtectedSM(t, func(sm *SettingsManager) {
-		item := models.BigTicketItem{ID: "bt-1", Name: "Car", Amount: 30000, Year: 5}
+		item := models.BigTicketItem{ID: "bt-1", Name: "Car", Amount: 30000, Month: 5 * 12}
 		if _, err := sm.AddBigTicketItem(item); err != nil {
 			t.Fatalf("AddBigTicketItem: %v", err)
 		}

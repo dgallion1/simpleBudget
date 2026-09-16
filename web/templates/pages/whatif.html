@@ -236,11 +236,17 @@
      Deliberately NOT part of "whatif-results": the background poll renders
      that one, and must never rewrite a control the user is currently holding. */}}
 <template>
-    <div id="whatif-add-income-error" hx-swap-oob="true"></div>
-    <div id="whatif-add-expense-error" hx-swap-oob="true"></div>
+    {{/* Clearing the add-form error slots after a successful mutation. This is
+         an hx-swap-oob="true" (outerHTML) swap, so these elements REPLACE the
+         ones the cards rendered -- every attribute that must survive a
+         mutation has to be repeated here. role="alert" is one of them: drop it
+         and the container announces the first rejected month of the session
+         and nothing after it (WCAG 4.1.3, ruling 2026-09-16f). */}}
+    <div id="whatif-add-income-error" role="alert" hx-swap-oob="true"></div>
+    <div id="whatif-add-expense-error" role="alert" hx-swap-oob="true"></div>
     <div id="whatif-add-healthcare-error" hx-swap-oob="true"></div>
-    <div id="whatif-add-bigticket-error" hx-swap-oob="true"></div>
-    <div id="whatif-add-onetime-error" hx-swap-oob="true"></div>
+    <div id="whatif-add-bigticket-error" role="alert" hx-swap-oob="true"></div>
+    <div id="whatif-add-onetime-error" role="alert" hx-swap-oob="true"></div>
     <div id="whatif-portfolio-settings-card" hx-swap-oob="true">
         {{template "whatif-portfolio-settings" .}}
     </div>
@@ -278,14 +284,14 @@
         {{$optimizerActive := socialSecurityProjectionActive .Settings}}
         {{if $optimizerActive}}
         {{range projectedSSEntries .Settings}}
-        {{template "whatif-projected-ss-item" .}}
+        {{template "whatif-projected-ss-item" (dict "Settings" $.Settings "Entry" .)}}
         {{end}}
         {{end}}
         {{range .Settings.IncomeSources}}
         {{if and $optimizerActive (isSocialSecurityIncomeSource .)}}
         {{template "whatif-income-source-item-excluded" .}}
         {{else}}
-        {{template "whatif-income-source-item" .}}
+        {{template "whatif-income-source-item" (dict "Settings" $.Settings "Source" .)}}
         {{end}}
         {{else}}
         {{if not $optimizerActive}}
@@ -298,7 +304,7 @@
 
     <div id="expense-sources-list" hx-swap-oob="true" class="space-y-2 mb-4">
         {{range .Settings.ExpenseSources}}
-        {{template "whatif-expense-source-item" .}}
+        {{template "whatif-expense-source-item" (dict "Settings" $.Settings "Source" .)}}
         {{else}}
         <p class="text-sm text-gray-600 dark:text-gray-300 italic">No additional expenses added</p>
         {{end}}
@@ -339,7 +345,7 @@
     {{/* Big ticket items list OOB update */}}
     <div id="bigticket-list" hx-swap-oob="true" class="space-y-2 mb-4">
         {{range .Settings.BigTicketItems}}
-        {{template "whatif-bigticket-item" .}}
+        {{template "whatif-bigticket-item" (dict "Settings" $.Settings "Item" .)}}
         {{else}}
         <p class="text-sm text-gray-600 dark:text-gray-300 italic">No big ticket items added</p>
         {{end}}

@@ -1145,8 +1145,13 @@ func (sm *SettingsManager) PurgeRemovedIncomeSource(id string) (*models.WhatIfSe
 	return prepare.Clone(settings)
 }
 
-// UpdateIncomeSource updates an existing income source by ID atomically
-func (sm *SettingsManager) UpdateIncomeSource(id string, startYear int, endYear *int, colaRate float64) (*models.WhatIfSettings, error) {
+// UpdateIncomeSource updates an existing income source by ID atomically.
+//
+// startMonth and endMonth are month offsets from the plan's StartDate, the
+// unit the model stores and the unit the calendar-month edit form produces
+// (RC3). A nil endMonth means perpetual; a non-nil endMonth is the FIRST
+// month without the income, so the form's "Through" month is endMonth-1.
+func (sm *SettingsManager) UpdateIncomeSource(id string, startMonth int, endMonth *int, colaRate float64) (*models.WhatIfSettings, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -1157,11 +1162,11 @@ func (sm *SettingsManager) UpdateIncomeSource(id string, startYear int, endYear 
 
 	for i := range settings.IncomeSources {
 		if settings.IncomeSources[i].ID == id {
-			settings.IncomeSources[i].StartMonth = startYear * 12
+			settings.IncomeSources[i].StartMonth = startMonth
 			settings.IncomeSources[i].COLARate = colaRate
-			if endYear != nil {
-				endMonth := *endYear * 12
-				settings.IncomeSources[i].EndMonth = &endMonth
+			if endMonth != nil {
+				end := *endMonth
+				settings.IncomeSources[i].EndMonth = &end
 			} else {
 				settings.IncomeSources[i].EndMonth = nil
 			}
@@ -1195,8 +1200,13 @@ func (sm *SettingsManager) AddExpenseSource(source models.ExpenseSource) (*model
 	return prepare.Clone(settings)
 }
 
-// UpdateExpenseSource updates an existing expense source by ID atomically
-func (sm *SettingsManager) UpdateExpenseSource(id string, startYear int, endYear *int, inflation, discretionary bool) (*models.WhatIfSettings, error) {
+// UpdateExpenseSource updates an existing expense source by ID atomically.
+//
+// startMonth and endMonth are month offsets from the plan's StartDate, the
+// unit the model stores and the unit the calendar-month edit form produces
+// (RC3). A nil endMonth means perpetual; a non-nil endMonth is the FIRST
+// month without the expense, so the form's "Through" month is endMonth-1.
+func (sm *SettingsManager) UpdateExpenseSource(id string, startMonth int, endMonth *int, inflation, discretionary bool) (*models.WhatIfSettings, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -1207,11 +1217,12 @@ func (sm *SettingsManager) UpdateExpenseSource(id string, startYear int, endYear
 
 	for i := range settings.ExpenseSources {
 		if settings.ExpenseSources[i].ID == id {
-			settings.ExpenseSources[i].StartYear = startYear
-			if endYear != nil {
-				settings.ExpenseSources[i].EndYear = *endYear
+			settings.ExpenseSources[i].StartMonth = startMonth
+			if endMonth != nil {
+				end := *endMonth
+				settings.ExpenseSources[i].EndMonth = &end
 			} else {
-				settings.ExpenseSources[i].EndYear = 0 // In ExpenseSource, 0 is perpetual
+				settings.ExpenseSources[i].EndMonth = nil // nil EndMonth is perpetual
 			}
 			settings.ExpenseSources[i].Inflation = inflation
 			settings.ExpenseSources[i].Discretionary = discretionary

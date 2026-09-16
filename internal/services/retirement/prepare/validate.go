@@ -84,27 +84,28 @@ func ValidatePersons(s *models.WhatIfSettings) error {
 // invariants the retirement engine relies on:
 //
 //   - Amount is non-negative
-//   - Year is non-negative
 //
-// Year is deliberately NOT bounded against ProjectionYears here. An entry
-// whose Year >= ProjectionYears is DORMANT, not invalid: the engine never
-// charges it (OneTimeExpensesForYear only fires within the projection loop,
-// which never reaches that year), so the projection runs and renders
-// normally. This lets ProjectionYears shrink underneath an existing entry
-// (settings page, MCP apply_changes, or any other writer) without bricking
-// prepare.From on every subsequent load. The add-handler still rejects a
-// beyond-horizon entry at submit time as a likely typo, but that is a
-// handler-level UX check, not a shared invariant — see
-// handleWhatIfAddOneTime.
+// Month is deliberately NOT constrained at all. A NEGATIVE Month is a PAST,
+// dormant entry, not an invalid one: the monthly StartDate rollover shifts
+// every schedule offset back as time passes, and an entry whose month has gone
+// by keeps its negative offset so the user's data is retained rather than
+// deleted. The projection loop starts at month 0 and so never charges it.
+//
+// Month is likewise NOT bounded against ProjectionYears. An entry whose Month
+// is beyond the horizon is DORMANT, not invalid: the engine never charges it
+// (OneTimeExpensesForMonth only fires within the projection loop, which never
+// reaches that month), so the projection runs and renders normally. This lets
+// ProjectionYears shrink underneath an existing entry (settings page, MCP
+// apply_changes, or any other writer) without bricking prepare.From on every
+// subsequent load. The add-handler still rejects a beyond-horizon entry at
+// submit time as a likely typo, but that is a handler-level UX check, not a
+// shared invariant — see handleWhatIfAddOneTime.
 //
 // An empty or absent list is always valid.
 func ValidateOneTimeExpenses(s *models.WhatIfSettings) error {
 	for i, e := range s.OneTimeExpenses {
 		if e.Amount < 0 {
 			return fmt.Errorf("one_time_expenses[%d] %q: amount must be non-negative, got %v", i, e.Description, e.Amount)
-		}
-		if e.Year < 0 {
-			return fmt.Errorf("one_time_expenses[%d] %q: year must be non-negative, got %d", i, e.Description, e.Year)
 		}
 	}
 	return nil

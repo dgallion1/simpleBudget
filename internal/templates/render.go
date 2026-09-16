@@ -85,7 +85,11 @@ func getFuncMap() template.FuncMap {
 		"sub":                                 sub,
 		"mul":                                 mul,
 		"div":                                 div,
+		"yearOf":                              yearOf,
+		"throughMonth":                        throughMonth,
 		"mod":                                 mod,
+		"calendarMonth":                       models.CalendarMonth,
+		"calendarMonthLabel":                  models.CalendarMonthLabel,
 		"toFloat":                             toFloat,
 		"seq":                                 seq,
 		"dict":                                dict,
@@ -690,6 +694,29 @@ func div(a, b interface{}) float64 {
 	}
 	return af / bf
 }
+
+// yearOf converts a schedule offset in months to the whole projection year it
+// falls in, using Go integer division. It returns an int (unlike div, which
+// returns float64) so a template can compare it with an int field such as
+// ProjectionYears — text/template's ge refuses a float64/int comparison.
+func yearOf(month int) int {
+	return month / 12
+}
+
+// throughMonth converts a stored end offset (EndMonth — the FIRST month
+// without the entry) into the LAST month the entry is still included in,
+// which is what the "Through" input and the schedule summary show the user.
+// It returns an int so calendarMonth/calendarMonthLabel accept it directly
+// (sub returns float64, which they would reject); it is arithmetic on an
+// offset, never a second date formatter. A nil EndMonth means perpetual and
+// templates guard with {{if .EndMonth}} before calling this.
+func throughMonth(endMonth *int) int {
+	if endMonth == nil {
+		return 0
+	}
+	return *endMonth - 1
+}
+
 func mod(a, b int) int {
 	if b == 0 {
 		return 0

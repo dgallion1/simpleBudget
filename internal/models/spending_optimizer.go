@@ -32,6 +32,11 @@ const DefaultSpendingMaxShortfallPct = 5.0
 // meaningful (0 is the strict rule); the other fields are 0 when the input
 // was left blank ("Automatic").
 type SpendingSearchPreferences struct {
+	// FloorMonthlyReal is the comparison minimum the user last ran the
+	// optimizer with (RC1). It is a search preference, not the guardrail
+	// policy floor: applying the current plan keeps the plan's own rules,
+	// so the policy floor cannot be relied on to restore this input.
+	FloorMonthlyReal      float64 `json:"floor_monthly_real,omitempty"`
 	MaxShortfallPct       float64 `json:"max_shortfall_pct"`
 	NearTermYears         int     `json:"near_term_years,omitempty"`
 	SearchMinMonthlyReal  float64 `json:"search_min_monthly_real,omitempty"`

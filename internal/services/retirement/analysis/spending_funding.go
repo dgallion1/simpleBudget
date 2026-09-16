@@ -125,7 +125,15 @@ func spendingFundingConfiguredMarkers(in engine.Input, start time.Time, observed
 	optimizerSS := in.Hooks.SSActive(s)
 	for i := range s.IncomeSources {
 		source := &s.IncomeSources[i]
-		if source.Amount <= 0 || source.StartMonth < 0 || source.StartMonth >= observedMonths ||
+		// SinceStart() replaces the old StartMonth < 0 guard: a source already
+		// running at the plan start has no start to mark. A negative offset
+		// cannot occur for income (the rollover floors it at 0), so the old
+		// test only ever skipped nothing while letting a clamped entry plant a
+		// "X starts" marker in the plan's first month — a start that either
+		// already happened or never happens (ruling 2026-09-16h). The end test
+		// keeps skipping ended sources (EndMonth <= StartMonth covers the
+		// clamped 0/0 case).
+		if source.Amount <= 0 || source.SinceStart() || source.StartMonth >= observedMonths ||
 			(source.EndMonth != nil && *source.EndMonth <= source.StartMonth) {
 			continue
 		}

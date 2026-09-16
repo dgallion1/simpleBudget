@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -1524,15 +1525,50 @@ const (
 	TaxCapGains TaxTreatment = "cap_gains" // Capital gains rate
 )
 
-// BigTicketItem represents a one-time financial event
+// BigTicketItem represents a one-time financial event.
+//
+// Month is a MONTH offset from the plan's StartDate (it replaced the
+// year-granular Year so the monthly StartDate rollover can shift it without
+// rounding it away). A NEGATIVE Month is a past, dormant entry: it is retained
+// rather than deleted and is never applied, because the projection loop never
+// reaches it. Legacy documents carrying "year" are converted on decode.
 type BigTicketItem struct {
 	ID           string        `json:"id"`
 	Name         string        `json:"name"`
 	Amount       float64       `json:"amount"`        // Always positive; Type determines direction
-	Year         int           `json:"year"`          // Years from now (0 = this year)
+	Month        int           `json:"month"`         // Month offset from StartDate (0 = this month)
 	Type         BigTicketType `json:"type"`          // income or expense
 	TaxTreatment TaxTreatment  `json:"tax_treatment"` // How it's taxed
 	Notes        string        `json:"notes"`         // Optional description
+}
+
+// UnmarshalJSON decodes a BigTicketItem, deriving Month from the legacy
+// "year" key ONLY when "month" is absent from the document. A present "month"
+// key always wins over a legacy "year".
+func (b *BigTicketItem) UnmarshalJSON(data []byte) error {
+	type alias BigTicketItem
+	var out alias
+	if err := json.Unmarshal(data, &out); err != nil {
+		return err
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	if _, present := raw["month"]; !present {
+		var legacy struct {
+			Year int `json:"year"`
+		}
+		if err := json.Unmarshal(data, &legacy); err != nil {
+			return err
+		}
+		out.Month = legacy.Year * 12
+	}
+
+	*b = BigTicketItem(out)
+	return nil
 }
 
 // GetNetAmount returns the signed amount (positive for income, negative for expense)

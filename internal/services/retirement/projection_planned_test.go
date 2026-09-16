@@ -93,7 +93,7 @@ func TestProjectionYear_PlannedExpenses_NoGuardrails(t *testing.T) {
 	s := defaultSettingsForTest()
 	s.Guardrails = nil
 	s.ExpenseSources = []models.ExpenseSource{
-		{ID: "subs", Name: "Subscriptions", Amount: 500, StartYear: 0, EndYear: 0, Inflation: false},
+		{ID: "subs", Name: "Subscriptions", Amount: 500, StartMonth: 0, EndMonth: nil, Inflation: false},
 	}
 
 	result := newTestCalc(t, s).RunFullAnalysis()

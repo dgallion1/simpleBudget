@@ -489,8 +489,8 @@ func richEngineScenario() *models.WhatIfSettings {
 		AnnualAmount: 12_000,
 	}
 	s.BigTicketItems = []models.BigTicketItem{
-		{Name: "Gift", Amount: 5_000, Year: 0, Type: models.BigTicketIncome},
-		{Name: "Car", Amount: 15_000, Year: 1, Type: models.BigTicketExpense},
+		{Name: "Gift", Amount: 5_000, Month: 0, Type: models.BigTicketIncome},
+		{Name: "Car", Amount: 15_000, Month: 1 * 12, Type: models.BigTicketExpense},
 	}
 	s.Guardrails = &models.GuardrailConfig{
 		Enabled:         true,

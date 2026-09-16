@@ -313,7 +313,7 @@ func TestMutatorReturnDoesNotAliasCache(t *testing.T) {
 		{
 			name: "AddBigTicketItem",
 			call: func(sm *SettingsManager) (*models.WhatIfSettings, error) {
-				return sm.AddBigTicketItem(models.BigTicketItem{ID: "bt-1", Name: "Roof", Amount: 20000, Year: 2, Type: models.BigTicketExpense})
+				return sm.AddBigTicketItem(models.BigTicketItem{ID: "bt-1", Name: "Roof", Amount: 20000, Month: 2 * 12, Type: models.BigTicketExpense})
 			},
 			mutate: func(result *models.WhatIfSettings) {
 				result.BigTicketItems[0].Amount = 999999999
@@ -326,7 +326,7 @@ func TestMutatorReturnDoesNotAliasCache(t *testing.T) {
 				}
 			},
 			second: func(sm *SettingsManager) (*models.WhatIfSettings, error) {
-				return sm.AddBigTicketItem(models.BigTicketItem{ID: "bt-2", Name: "Car", Amount: 30000, Year: 4, Type: models.BigTicketExpense})
+				return sm.AddBigTicketItem(models.BigTicketItem{ID: "bt-2", Name: "Car", Amount: 30000, Month: 4 * 12, Type: models.BigTicketExpense})
 			},
 		},
 		{

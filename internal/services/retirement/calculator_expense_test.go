@@ -2,6 +2,7 @@ package retirement
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"budget2/internal/models"
@@ -96,8 +97,8 @@ func TestCalculateTotalExpenses(t *testing.T) {
 		s.InflationRate = 5.0
 		s.SpendingDeclineRate = 5.0 // net inflation = 0 for living expenses
 		s.ExpenseSources = []models.ExpenseSource{
-			{ID: "e1", Name: "Inflating", Amount: 500, StartYear: 0, EndYear: 0, Inflation: true},
-			{ID: "e2", Name: "Fixed", Amount: 300, StartYear: 0, EndYear: 0, Inflation: false},
+			{ID: "e1", Name: "Inflating", Amount: 500, StartMonth: 0, EndMonth: nil, Inflation: true},
+			{ID: "e2", Name: "Fixed", Amount: 300, StartMonth: 0, EndMonth: nil, Inflation: false},
 		}
 
 		calc := newTestCalc(t, s)
@@ -646,7 +647,7 @@ func TestCalculateBudgetFit(t *testing.T) {
 		s.RothPercent = 0
 		s.SpendingPhaseConfig = nil
 		s.ExpenseSources = []models.ExpenseSource{
-			{ID: "e1", Name: "Property Tax", Amount: 400, EndYear: 5},
+			{ID: "e1", Name: "Property Tax", Amount: 400, EndMonth: expenseEndPtr(5 * 12)},
 		}
 		s.IncomeSources = []models.IncomeSource{
 			{ID: "i1", Name: "Pension", Amount: 1000, StartMonth: 0},
@@ -662,13 +663,21 @@ func TestCalculateBudgetFit(t *testing.T) {
 		if fit.ExpenseBreakdown[0].Name != "Living Expenses" {
 			t.Errorf("first breakdown: want 'Living Expenses', got %q", fit.ExpenseBreakdown[0].Name)
 		}
-		// Find property tax entry
+		// Find property tax entry. The note names the LAST calendar month the
+		// source is still charged in — EndMonth-1, because EndMonth is the
+		// first month without it — derived through models.CalendarMonthLabel,
+		// the one formatter every surface uses, so the note cannot drift from
+		// the "Through" month the expense row's form shows.
+		wantNote := "through " + models.CalendarMonthLabel(s.StartDate, 5*12-1)
+		if wantNote == "through " {
+			t.Fatalf("test fixture has an unparseable StartDate %q", s.StartDate)
+		}
 		found := false
 		for _, item := range fit.ExpenseBreakdown {
 			if item.Name == "Property Tax" {
 				found = true
-				if item.Note != "ends year 5" {
-					t.Errorf("property tax note: want 'ends year 5', got %q", item.Note)
+				if item.Note != wantNote {
+					t.Errorf("property tax note: want %q, got %q", wantNote, item.Note)
 				}
 			}
 		}
@@ -1460,5 +1469,111 @@ func TestSpendingPhaseTransition_F065_DeclineRateRespected(t *testing.T) {
 	gotPre := result.Months[119].GeneralExpenses
 	if math.Abs(gotPre-wantPre) > 2.00 {
 		t.Errorf("month 119 (pre-chain-transition) GeneralExpenses = %.2f; want %.2f", gotPre, wantPre)
+	}
+}
+
+// TestCalculateBudgetFit_ClampedSchedulesNameNoLostMonths pins the Budget Fit
+// side of the one clamped-state rule (ruling 2026-09-16h). The monthly
+// rollover floors a past start AND a past end at 0, discarding the real
+// months, so the breakdown must not name them:
+//
+//   - an ENDED expense (EndMonth 0) is omitted entirely — it contributes 0 and
+//     its "through" month is gone; the source list already explains it;
+//   - an ENDED income is omitted (its amount is 0);
+//   - an income running since the plan start carries no "starts" note;
+//   - and nothing in the breakdown names a month before the plan start.
+//
+// The still-running siblings stay, so the omissions are targeted rather than
+// "the breakdown collapsed".
+func TestCalculateBudgetFit_ClampedSchedulesNameNoLostMonths(t *testing.T) {
+	s := models.DefaultWhatIfSettings()
+	s.StartDate = "2027-01"
+	s.UseCurrentMonth = false
+	s.Persons[0].BirthMonth = models.BirthMonthForAge(s.StartDate, 65)
+	s.PortfolioValue = 1_000_000
+	s.MonthlyLivingExpenses = 3000
+	s.MonthlyHealthcare = 0
+	s.HealthcarePersons = nil
+	s.InflationRate = 0
+	s.SpendingDeclineRate = 0
+	s.SpendingPhaseConfig = nil
+
+	endedExpense := 0
+	runningExpense := 24
+	endedIncome := 0
+	runningIncome := 36
+	s.ExpenseSources = []models.ExpenseSource{
+		{ID: "e-ended", Name: "OldLease", Amount: 400, StartMonth: 0, EndMonth: &endedExpense},
+		{ID: "e-running", Name: "Gym", Amount: 100, StartMonth: 0, EndMonth: &runningExpense},
+	}
+	s.IncomeSources = []models.IncomeSource{
+		{ID: "i-ended", Name: "OldAnnuity", Amount: 300, StartMonth: 0, EndMonth: &endedIncome},
+		{ID: "i-running", Name: "ClampedPension", Amount: 900, StartMonth: 0, EndMonth: &runningIncome},
+		{ID: "i-later", Name: "DeferredPension", Amount: 500, StartMonth: 18},
+	}
+
+	fit := newTestCalc(t, s).CalculateBudgetFit()
+
+	// The month BEFORE the plan start is the one an unguarded "through" note
+	// would name for the ended entry (EndMonth-1 = -1).
+	lostMonth := models.CalendarMonthLabel(s.StartDate, -1)
+	if lostMonth == "" {
+		t.Fatalf("test fixture has an unparseable StartDate %q", s.StartDate)
+	}
+
+	var expenseNames []string
+	for _, item := range fit.ExpenseBreakdown {
+		expenseNames = append(expenseNames, item.Name)
+		if item.Name == "OldLease" {
+			t.Errorf("an ended expense must be omitted from the breakdown, got %+v", item)
+		}
+		if strings.Contains(item.Note, lostMonth) {
+			t.Errorf("breakdown note names a month before the plan start: %+v", item)
+		}
+	}
+	gymFound := false
+	for _, item := range fit.ExpenseBreakdown {
+		if item.Name == "Gym" {
+			gymFound = true
+			if want := "through " + models.CalendarMonthLabel(s.StartDate, runningExpense-1); item.Note != want {
+				t.Errorf("running expense note = %q, want %q", item.Note, want)
+			}
+		}
+	}
+	if !gymFound {
+		t.Errorf("the still-running expense disappeared from the breakdown: %v", expenseNames)
+	}
+
+	var incomeNames []string
+	for _, item := range fit.IncomeBreakdown {
+		incomeNames = append(incomeNames, item.Name)
+		if item.Name == "OldAnnuity" {
+			t.Errorf("an ended income must be omitted from the breakdown, got %+v", item)
+		}
+		if item.Name == "ClampedPension" && item.Note != "" {
+			t.Errorf("an income running since the plan start must carry no starts note, got %q", item.Note)
+		}
+		if strings.Contains(item.Note, lostMonth) {
+			t.Errorf("income note names a month before the plan start: %+v", item)
+		}
+	}
+	// The income breakdown lists what is being received at month 0, so a
+	// genuinely deferred source is absent (its month-0 amount is 0) — which is
+	// why "no starts note" is the ONLY honest state this breakdown can show
+	// for an income running since the plan start, rather than a note naming a
+	// month the clamp discarded.
+	for _, item := range fit.IncomeBreakdown {
+		if item.Name == "DeferredPension" {
+			t.Errorf("a source that starts at month 18 has no month-0 amount and should not be listed: %+v", item)
+		}
+	}
+	clampedFound := false
+	for _, item := range fit.IncomeBreakdown {
+		if item.Name == "ClampedPension" {
+			clampedFound = true
+		}
+	}
+	if !clampedFound {
+		t.Errorf("the still-running income disappeared from the breakdown: %v", incomeNames)
 	}
 }

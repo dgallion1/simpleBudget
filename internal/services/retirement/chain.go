@@ -30,8 +30,8 @@ func prepareChainedSettings(linked *models.WhatIfSettings, primary *models.WhatI
 	transitionMonth := transitionYear * 12
 
 	prepared.IncomeSources = rebaseIncomeSources(linked.IncomeSources, transitionMonth)
-	prepared.ExpenseSources = rebaseExpenseSources(linked.ExpenseSources, transitionYear)
-	prepared.BigTicketItems = rebaseBigTicketItems(linked.BigTicketItems, transitionYear)
+	prepared.ExpenseSources = rebaseExpenseSources(linked.ExpenseSources, transitionMonth)
+	prepared.BigTicketItems = rebaseBigTicketItems(linked.BigTicketItems, transitionMonth)
 	prepared.RothConversion = rebaseRothConversion(linked.RothConversion, transitionYear)
 
 	if len(linked.HealthcarePersons) > 0 {
@@ -121,35 +121,36 @@ func rebaseIncomeSources(sources []models.IncomeSource, transitionMonth int) []m
 	return result
 }
 
-func rebaseExpenseSources(sources []models.ExpenseSource, transitionYear int) []models.ExpenseSource {
+func rebaseExpenseSources(sources []models.ExpenseSource, transitionMonth int) []models.ExpenseSource {
 	result := make([]models.ExpenseSource, 0, len(sources))
 	for _, s := range sources {
 		s := s
-		if s.EndYear > 0 && s.EndYear <= transitionYear {
+		if s.EndMonth != nil && *s.EndMonth <= transitionMonth {
 			continue
 		}
-		s.StartYear = max(0, s.StartYear-transitionYear)
-		if s.EndYear > 0 {
-			s.EndYear = s.EndYear - transitionYear
+		s.StartMonth = max(0, s.StartMonth-transitionMonth)
+		if s.EndMonth != nil {
+			rebased := *s.EndMonth - transitionMonth
+			s.EndMonth = &rebased
 		}
 		result = append(result, s)
 	}
 	return result
 }
 
-func rebaseBigTicketItems(items []models.BigTicketItem, transitionYear int) []models.BigTicketItem {
+func rebaseBigTicketItems(items []models.BigTicketItem, transitionMonth int) []models.BigTicketItem {
 	result := make([]models.BigTicketItem, 0, len(items))
 	for _, item := range items {
 		item := item
-		rebased := item.Year - transitionYear
+		rebased := item.Month - transitionMonth
 		if rebased < 0 {
 			continue
 		}
-		item.Year = rebased
+		item.Month = rebased
 		result = append(result, item)
 	}
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Year < result[j].Year
+		return result[i].Month < result[j].Month
 	})
 	return result
 }

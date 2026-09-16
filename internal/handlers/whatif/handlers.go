@@ -709,6 +709,16 @@ func buildProjectionChartEvents(settings *models.WhatIfSettings, projection *mod
 	}
 
 	for _, source := range settings.IncomeSources {
+		// A source already running at the plan start has no "starts" event:
+		// for a rollover-clamped entry the real start month is gone, and for
+		// one scheduled at month 0 there is nothing to announce. Stated here
+		// with the same predicate every other surface uses, rather than left
+		// to appendEvent's year <= 0 floor, which exists to keep events inside
+		// the chart's range and is not a statement about schedules
+		// (ruling 2026-09-16h).
+		if source.SinceStart() {
+			continue
+		}
 		year := float64(source.StartMonth) / 12.0
 		lowerName := strings.ToLower(source.Name)
 		switch {

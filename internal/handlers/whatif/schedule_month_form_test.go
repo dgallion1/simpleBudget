@@ -479,7 +479,8 @@ func writeSettingsFile(t *testing.T, rm *retirement.SettingsManager, s *models.W
 //
 //	exp-ended     StartMonth 0→0, EndMonth 3→0   (ended 17 months ago)
 //	exp-clamped   StartMonth 4→0, EndMonth 30→10 (started before the plan)
-//	inc-clamped   StartMonth 12→0, EndMonth 42→22
+//	inc-clamped   StartMonth 12→0, EndMonth 42→22 (running since the plan start)
+//	inc-ended     StartMonth 0→0, EndMonth 2→0   (ended 18 months ago)
 //
 // The clamp is lossy on purpose (RC2: never delete user data, never charge a
 // past entry), which is exactly why the rows below must not claim to know a
@@ -498,12 +499,14 @@ func clampedFixture(t *testing.T, rm *retirement.SettingsManager) time.Time {
 	endedEnd := 3
 	clampedExpenseEnd := 30
 	clampedIncomeEnd := 42
+	endedIncomeEnd := 2
 	s.ExpenseSources = []models.ExpenseSource{
 		{ID: "exp-ended", Name: "ClampOldLease", Amount: 400, StartMonth: 0, EndMonth: &endedEnd},
 		{ID: "exp-clamped", Name: "ClampGym", Amount: 100, StartMonth: 4, EndMonth: &clampedExpenseEnd, Inflation: true},
 	}
 	s.IncomeSources = []models.IncomeSource{
 		{ID: "inc-clamped", Name: "ClampPension", Amount: 900, Type: models.IncomeFixed, StartMonth: 12, EndMonth: &clampedIncomeEnd},
+		{ID: "inc-ended", Name: "ClampOldAnnuity", Amount: 300, Type: models.IncomeFixed, StartMonth: 0, EndMonth: &endedIncomeEnd},
 	}
 	s.OneTimeExpenses = nil
 	s.BigTicketItems = nil
@@ -525,6 +528,9 @@ func clampedFixture(t *testing.T, rm *retirement.SettingsManager) time.Time {
 	}
 	if loaded.IncomeSources[0].StartMonth != 0 || loaded.IncomeSources[0].EndMonth == nil || *loaded.IncomeSources[0].EndMonth != 22 {
 		t.Fatalf("fixture: clamped income not 0/22: %+v", loaded.IncomeSources[0])
+	}
+	if loaded.IncomeSources[1].StartMonth != 0 || loaded.IncomeSources[1].EndMonth == nil || *loaded.IncomeSources[1].EndMonth != 0 {
+		t.Fatalf("fixture: ended income not clamped to 0/0: %+v", loaded.IncomeSources[1])
 	}
 	return thisMonth
 }
@@ -585,6 +591,157 @@ func TestScheduleForms_ClampedRowsAreHonestAboutLostMonths(t *testing.T) {
 	}
 	if strings.Contains(body, "Starts "+planLabel) {
 		t.Errorf("a clamped start must not claim the entry was scheduled for %s", planLabel)
+	}
+
+	// (c) The INCOME branch of the same rule (attempt 2 pinned only the
+	// expense branch — ruling 2026-09-16h named that gap).
+	for _, want := range []string{
+		"ClampOldAnnuity",
+		`hx-delete="/whatif/income/inc-ended"`,
+		`aria-label="Delete income source ClampOldAnnuity"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("ended income row missing %q", want)
+		}
+	}
+	for _, bad := range []string{
+		`hx-put="/whatif/income/inc-ended"`,
+		`id="income-start-inc-ended"`,
+		`id="income-end-inc-ended"`,
+		`id="income-schedule-inc-ended"`,
+	} {
+		if strings.Contains(body, bad) {
+			t.Errorf("ended income row must not render %q", bad)
+		}
+	}
+	if n := strings.Count(body, "Ended before the plan start ("+planLabel+")"); n != 2 {
+		t.Errorf("want the ended wording on BOTH the ended income and the ended expense row, got %d", n)
+	}
+
+	// (d) No OTHER surface on this page may invent a month for an ended entry
+	// or announce a start for one that is already running.
+	invented := thisMonth.AddDate(0, -1, 0).Format("Jan 2006")
+	for _, bad := range []string{
+		"(through " + invented + ")",
+		"(starts " + invented + ")",
+		"ClampOldLease (through",
+		"ClampPension starts",
+		"ClampPension (starts",
+	} {
+		if strings.Contains(body, bad) {
+			t.Errorf("a surface still renders %q for a rollover-clamped entry", bad)
+		}
+	}
+	// The Budget Fit breakdown OMITS the ended expense. Counting is what makes
+	// this specific: the ended entry appears only in its source-list row (name
+	// + the delete control's accessible name), while a still-running sibling
+	// also appears in each rendering of the breakdown, so a higher count for
+	// the running one proves the card rendered and the omission is targeted.
+	endedHits := strings.Count(body, "ClampOldLease")
+	runningHits := strings.Count(body, "ClampGym")
+	if endedHits != 2 {
+		t.Errorf("the ended expense should appear only in its own row (name + delete label), got %d hits", endedHits)
+	}
+	if runningHits <= endedHits {
+		t.Errorf("the still-running expense should also appear in the Budget Fit breakdown: running %d vs ended %d", runningHits, endedHits)
+	}
+	if !strings.Contains(body, `<span class="text-gray-600 dark:text-gray-400"> ClampGym`) {
+		t.Errorf("the still-running expense is missing from the Budget Fit breakdown, so the omission test above proves nothing")
+	}
+	if strings.Contains(body, `<span class="text-gray-600 dark:text-gray-400"> ClampOldLease`) {
+		t.Error("the ended expense is still a Budget Fit breakdown row")
+	}
+}
+
+// Ruling 2026-09-16h, contract 2 (timeline events). A source already running
+// at the plan start produces no "starts" event: for a clamped entry the real
+// start month is gone, and for one scheduled at month 0 there is nothing to
+// announce. A source that genuinely starts later still gets its event, so the
+// rule is selective rather than a blanket suppression.
+func TestClampedSchedules_TimelineSkipsAlreadyRunningSources(t *testing.T) {
+	settings := models.DefaultWhatIfSettings()
+	settings.CurrentAge = 60
+	settings.ProjectionYears = 15
+	settings.Persons[0].BirthMonth = models.BirthMonthForAge(settings.StartDate, settings.CurrentAge)
+	settings.IncomeSources = []models.IncomeSource{
+		{ID: "clamped", Name: "Clamped Pension", Amount: 900, StartMonth: 0},
+		{ID: "later", Name: "Deferred Pension", Amount: 500, StartMonth: 36},
+		{ID: "ss-clamped", Name: "Social Security", Amount: 2000, StartMonth: 0},
+	}
+
+	events := buildProjectionChartEvents(settings, sampleProjectionForChart())
+
+	var labels []string
+	for _, e := range events {
+		labels = append(labels, e.Label)
+	}
+	pensionStarts := 0
+	for _, e := range events {
+		if e.Label == "Social Security starts" {
+			t.Errorf("a Social Security source running since the plan start must not announce a start: %v", labels)
+		}
+		if e.Label == "Pension starts" {
+			pensionStarts++
+			if e.Year != 3 {
+				t.Errorf("the only pension event should be the deferred one at year 3, got year %v", e.Year)
+			}
+		}
+	}
+	if pensionStarts != 1 {
+		t.Errorf("want exactly one pension start event (the deferred source), got %d in %v", pensionStarts, labels)
+	}
+}
+
+// Ruling 2026-09-16h, contract 2 (removed/restore lists). Restoring an entry
+// the rollover had already ended puts it back in the ended state, so the
+// restored row is display-only too — the restore path cannot resurrect a
+// month the clamp discarded.
+func TestScheduleForms_RestoredEndedExpenseRendersAsEnded(t *testing.T) {
+	rm, cleanup := setupTestEnvWithRenderer(t)
+	defer cleanup()
+	thisMonth := clampedFixture(t, rm)
+	planLabel := thisMonth.Format("Jan 2006")
+
+	if _, err := rm.RemoveExpenseSource("exp-ended"); err != nil {
+		t.Fatalf("RemoveExpenseSource: %v", err)
+	}
+	rm.InvalidateCache()
+	if body := whatIfPageBody(t); !strings.Contains(body, "Recently Removed") {
+		t.Fatalf("the removed expense is not in the restore list")
+	}
+
+	w := postScheduleForm(t, handleWhatIfRestoreExpense, "/whatif/expense/exp-ended/restore", "exp-ended", url.Values{})
+	if w.Code != http.StatusOK {
+		t.Fatalf("restore = %d; body: %s", w.Code, truncate(w.Body.String(), 400))
+	}
+
+	rm.InvalidateCache()
+	s, err := rm.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	var restored *models.ExpenseSource
+	for i := range s.ExpenseSources {
+		if s.ExpenseSources[i].ID == "exp-ended" {
+			restored = &s.ExpenseSources[i]
+		}
+	}
+	if restored == nil || restored.EndMonth == nil || *restored.EndMonth != 0 {
+		t.Fatalf("restored entry is not in the ended state: %+v", restored)
+	}
+
+	body := collapseWhitespace(whatIfPageBody(t))
+	if !strings.Contains(body, "Ended before the plan start ("+planLabel+")") {
+		t.Error("the restored row does not render as ended")
+	}
+	for _, bad := range []string{
+		`hx-put="/whatif/expense/exp-ended"`,
+		`id="expense-start-exp-ended"`,
+		"ClampOldLease (through",
+	} {
+		if strings.Contains(body, bad) {
+			t.Errorf("the restored row renders %q", bad)
+		}
 	}
 }
 

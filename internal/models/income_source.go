@@ -55,6 +55,37 @@ func (is *IncomeSource) IsActive(month int) bool {
 	return true
 }
 
+// The rollover-clamped states of a schedule entry.
+//
+// shiftScheduleOffsets re-anchors every offset when the plan's StartDate moves
+// to the current month, flooring income/expense starts and ends at 0 so an
+// entry whose window has passed is kept but never charged. The floor is LOSSY:
+// the month the entry really started or ended is gone. These two predicates
+// are the ONE place that names those states, so every surface — the source
+// rows, the Budget Fit breakdown, the timeline events, the spending-funding
+// markers — reads the same rule and none of them invents a month the clamp
+// discarded (ruling 2026-09-16h). Value receivers: templates range over
+// []IncomeSource / []ExpenseSource, whose elements are not addressable, so a
+// pointer-receiver method would be invisible to text/template.
+
+// ScheduleEnded reports whether the source has already finished: an end offset
+// of 0 means "ends at month 0", i.e. it contributes nothing for the whole
+// projection. Only the rollover clamp produces it — the calendar-month form
+// stores a "Through" month as offset+1, so a user-set end is always >= 1 —
+// which is why a row in this state has no honest end month to display.
+func (is IncomeSource) ScheduleEnded() bool {
+	return is.EndMonth != nil && *is.EndMonth <= 0
+}
+
+// SinceStart reports whether the source is already running at the start of the
+// projection. It is true both for an entry the user scheduled for the plan's
+// first month and for one the clamp pulled back to it; surfaces must therefore
+// say "since plan start" rather than announcing a start that either never
+// happens in the projection or happened before it.
+func (is IncomeSource) SinceStart() bool {
+	return is.StartMonth == 0
+}
+
 // ExpenseSource represents a planned expense for retirement planning.
 //
 // StartMonth/EndMonth are MONTH offsets from the plan's StartDate, the same
@@ -117,6 +148,19 @@ func (es *ExpenseSource) UnmarshalJSON(data []byte) error {
 
 	*es = ExpenseSource(out)
 	return nil
+}
+
+// ScheduleEnded reports whether the expense has already finished — see
+// IncomeSource.ScheduleEnded for why an end offset of 0 is a rollover artifact
+// with no displayable month behind it.
+func (es ExpenseSource) ScheduleEnded() bool {
+	return es.EndMonth != nil && *es.EndMonth <= 0
+}
+
+// SinceStart reports whether the expense is already running at the start of
+// the projection — see IncomeSource.SinceStart.
+func (es ExpenseSource) SinceStart() bool {
+	return es.StartMonth == 0
 }
 
 // GetAdjustedAmount returns expense for a specific month with optional inflation

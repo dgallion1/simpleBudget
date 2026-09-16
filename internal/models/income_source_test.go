@@ -175,3 +175,65 @@ func TestExpenseSourceIsActive(t *testing.T) {
 // expenseEndMonth is the *int an ExpenseSource's EndMonth wants (nil means
 // perpetual, so a non-nil end always needs an addressable value).
 func expenseEndMonth(month int) *int { return &month }
+
+// ScheduleEnded / SinceStart are the ONE place the rollover-clamped states of
+// a schedule entry are named (ruling 2026-09-16h). Every surface reads them,
+// so the truth table is pinned here rather than re-derived per surface.
+func TestScheduleStatePredicates(t *testing.T) {
+	end := func(v int) *int { return &v }
+
+	incomeCases := []struct {
+		name      string
+		source    IncomeSource
+		wantEnded bool
+		wantSince bool
+	}{
+		{"perpetual from the plan start", IncomeSource{StartMonth: 0}, false, true},
+		{"scheduled later, perpetual", IncomeSource{StartMonth: 11}, false, false},
+		{"scheduled later with an end", IncomeSource{StartMonth: 11, EndMonth: end(24)}, false, false},
+		{"clamped start, still running", IncomeSource{StartMonth: 0, EndMonth: end(22)}, false, true},
+		{"clamped to ended", IncomeSource{StartMonth: 0, EndMonth: end(0)}, true, true},
+		{"ends in the first month", IncomeSource{StartMonth: 0, EndMonth: end(1)}, false, true},
+	}
+	for _, tc := range incomeCases {
+		t.Run("income/"+tc.name, func(t *testing.T) {
+			if got := tc.source.ScheduleEnded(); got != tc.wantEnded {
+				t.Errorf("ScheduleEnded() = %v, want %v", got, tc.wantEnded)
+			}
+			if got := tc.source.SinceStart(); got != tc.wantSince {
+				t.Errorf("SinceStart() = %v, want %v", got, tc.wantSince)
+			}
+		})
+	}
+
+	expenseCases := []struct {
+		name      string
+		source    ExpenseSource
+		wantEnded bool
+		wantSince bool
+	}{
+		{"perpetual from the plan start", ExpenseSource{StartMonth: 0}, false, true},
+		{"scheduled later with an end", ExpenseSource{StartMonth: 11, EndMonth: end(24)}, false, false},
+		{"clamped start, still running", ExpenseSource{StartMonth: 0, EndMonth: end(10)}, false, true},
+		{"clamped to ended", ExpenseSource{StartMonth: 0, EndMonth: end(0)}, true, true},
+	}
+	for _, tc := range expenseCases {
+		t.Run("expense/"+tc.name, func(t *testing.T) {
+			if got := tc.source.ScheduleEnded(); got != tc.wantEnded {
+				t.Errorf("ScheduleEnded() = %v, want %v", got, tc.wantEnded)
+			}
+			if got := tc.source.SinceStart(); got != tc.wantSince {
+				t.Errorf("SinceStart() = %v, want %v", got, tc.wantSince)
+			}
+		})
+	}
+
+	// Value receivers: text/template ranges over []IncomeSource and the
+	// elements are NOT addressable, so a pointer-receiver method would be
+	// invisible to the templates that call .ScheduleEnded / .SinceStart.
+	for _, src := range []IncomeSource{{StartMonth: 0, EndMonth: end(0)}} {
+		if !src.ScheduleEnded() || !src.SinceStart() {
+			t.Error("predicates must be callable on a non-addressable slice element")
+		}
+	}
+}

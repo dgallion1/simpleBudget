@@ -18,7 +18,7 @@ pages/whatif.html. */}}
 {{define "whatif-expense-source-item"}}
 {{$s := .Settings}}
 {{with .Source}}
-{{if scheduleEnded .EndMonth}}
+{{if .ScheduleEnded}}
 {{/* The monthly rollover clamped this source's end to 0 and threw the real
 end month away, so there is no honest month to offer in a Through input and
 no date here the user chose. The row is display-only: name, amount, what
@@ -85,7 +85,7 @@ nothing can re-save (and be rejected for) a date nobody touched
         </label>
     </div>
     <p id="expense-schedule-{{.ID}}" class="mt-1 text-xs text-gray-700 dark:text-gray-200">
-        {{if eq .StartMonth 0}}Since plan start ({{calendarMonthLabel $s.StartDate 0}}){{else}}Starts {{calendarMonthLabel $s.StartDate .StartMonth}}{{end}}{{if .EndMonth}} · Through {{calendarMonthLabel $s.StartDate (throughMonth .EndMonth)}} (the last month charged){{else}} · ongoing — leave Through blank{{end}}
+        {{if .SinceStart}}Since plan start ({{calendarMonthLabel $s.StartDate 0}}){{else}}Starts {{calendarMonthLabel $s.StartDate .StartMonth}}{{end}}{{if .EndMonth}} · Through {{calendarMonthLabel $s.StartDate (throughMonth .EndMonth)}} (the last month charged){{else}} · ongoing — leave Through blank{{end}}
     </p>
 </form>
 {{end}}

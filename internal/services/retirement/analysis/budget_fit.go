@@ -207,6 +207,15 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 		})
 	}
 	for _, source := range s.ExpenseSources {
+		// The rollover clamped this source to "already finished" and threw the
+		// real end month away with it. It contributes 0 to the total, and any
+		// "through" note here would name a month BEFORE the plan start — a
+		// month the user never chose and the plan no longer knows. The source
+		// list already explains the entry ("Ended before the plan start"), so
+		// omit the row rather than invent a date (ruling 2026-09-16h).
+		if source.ScheduleEnded() {
+			continue
+		}
 		amt := source.GetAdjustedAmount(0, s.InflationRate)
 		// engine.TotalExpenses applies the phase multiplier to discretionary
 		// sources; match it here so the row reconciles with the total.
@@ -237,8 +246,12 @@ func BudgetFit(in engine.Input, proj *models.ProjectionResult) *models.BudgetFit
 		}
 		amt := source.GetAdjustedAmount(0)
 		if amt > 0 {
+			// An income already running at the plan start gets no "starts"
+			// note: for a clamped entry the real start month is gone, and for
+			// one scheduled at month 0 there is nothing to announce. Same
+			// predicate as every other surface (ruling 2026-09-16h).
 			note := ""
-			if source.StartMonth > 0 {
+			if !source.SinceStart() {
 				note = scheduleNote("starts", s.StartDate, source.StartMonth)
 			}
 			incomeItems = append(incomeItems, models.ExpenseBreakdownItem{

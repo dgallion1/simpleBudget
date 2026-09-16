@@ -339,7 +339,7 @@
     {{/* Big ticket items list OOB update */}}
     <div id="bigticket-list" hx-swap-oob="true" class="space-y-2 mb-4">
         {{range .Settings.BigTicketItems}}
-        {{template "whatif-bigticket-item" .}}
+        {{template "whatif-bigticket-item" (dict "Settings" $.Settings "Item" .)}}
         {{else}}
         <p class="text-sm text-gray-600 dark:text-gray-300 italic">No big ticket items added</p>
         {{end}}

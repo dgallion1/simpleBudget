@@ -526,8 +526,19 @@ func populateSpendingRowPlanEvidence(row *spendingOptimizerRow) {
 		return
 	}
 	candidate := row.Candidate
-	if math.Round(candidate.StartingMonthlyLivingReal*100) != math.Round(candidate.BaseMonthlyLivingExpenses*100) {
-		row.StartingBudgetEvidence = fmt.Sprintf("The starting monthly living budget is %s; the base living-expense setting is %s because scheduled phases or an active early-spending boost apply.", budgettemplates.FormatMoney(candidate.StartingMonthlyLivingReal), budgettemplates.FormatMoney(candidate.BaseMonthlyLivingExpenses))
+	// CF1 (2026-09-18): shown on the card face under the option name, for
+	// every card, so the headline (a simulated median) can be related to the
+	// Monthly Living Expenses slider. Both figures go through FormatMoney,
+	// and the differ/same branch is decided on those SAME rendered strings
+	// (ruling 2026-09-18a: a separate math.Round comparison disagreed with
+	// %.2f at half-cent boundaries and said "the same" over two different
+	// figures). One rounding path; the template makes no comparison.
+	base := budgettemplates.FormatMoney(candidate.BaseMonthlyLivingExpenses)
+	start := budgettemplates.FormatMoney(candidate.StartingMonthlyLivingReal)
+	if base != start {
+		row.StartingBudgetEvidence = fmt.Sprintf("Monthly Living Expenses setting %s/mo · starting living budget %s/mo (scheduled phases or an early-spending boost apply at the start).", base, start)
+	} else {
+		row.StartingBudgetEvidence = fmt.Sprintf("Monthly Living Expenses setting %s/mo · starting living budget %s/mo (the same at the start).", base, start)
 	}
 	if candidate.LivingSpendingBoost != nil {
 		row.PlannedChangesEvidence = fmt.Sprintf("The early-spending boost ends in %s; this planned change is separate from below-plan cuts. Existing spending phases remain in force and are also shown separately from below-plan cuts.", candidate.LivingSpendingBoost.StopMonth)

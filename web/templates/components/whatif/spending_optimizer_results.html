@@ -27,6 +27,7 @@
 {{$row := .Row}}
 <article {{if .Headline}}data-spending-headline{{end}} class="rounded-md border border-gray-300 p-3 dark:border-gray-600">
     <h5 class="font-semibold">{{template "whatif-spending-option-name" $row}}</h5>
+    <p data-spending-budget class="mt-1 text-gray-600 dark:text-gray-300">{{$row.StartingBudgetEvidence}}</p>
     {{if $row.MetricsAvailable}}
     <p class="mt-2"><strong class="block text-2xl tabular-nums">{{formatMoney $row.NearTermMonthlyReal}}<span class="text-sm font-normal">/month</span></strong><span class="text-gray-600 dark:text-gray-300">median funded living in the first {{$.NearTermYears}} plan years</span></p>
     {{if and (not $row.Candidate.Baseline) $row.ComparisonAvailable}}<p class="mt-1 font-medium">{{$row.NearTermComparison}}</p>{{end}}
@@ -47,7 +48,6 @@
             {{if $row.MetricsAvailable}}
             <p>{{$row.CutDepthEvidence}}</p><p>{{$row.UnpaidEvidence}}</p><p>{{$row.DepletionEvidence}}</p><p>{{$row.LifetimeEvidence}}</p>
             {{else}}<p>Cut timing, minimum-failure, depletion, and lifetime evidence are unavailable.</p>{{end}}
-            {{if $row.StartingBudgetEvidence}}<p>{{$row.StartingBudgetEvidence}}</p>{{end}}
             <p>{{$row.PlannedChangesEvidence}}</p>
             {{with $row.Candidate.Guardrails}}<p>Portfolio-trigger spending rules: portfolio drop trigger {{printf "%.0f" .FloorDropPct}}%, adjustment {{printf "%.0f" .FloorCutPct}}%; portfolio rise trigger {{printf "%.0f" .CeilingRisePct}}%, adjustment {{printf "%.0f" .CeilingRaisePct}}%; policy multiplier {{printf "%.0f" .MinSpendingPct}}–{{printf "%.0f" .MaxSpendingPct}}%; absolute monthly floor {{formatMoney .MinMonthlySpendingReal}}.</p>{{end}}
         </div>

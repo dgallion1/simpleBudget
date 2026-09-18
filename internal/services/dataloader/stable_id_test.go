@@ -526,7 +526,7 @@ func TestApplyDuplicateDetection_SuppressEarlierInFile_KeptIsLeft(t *testing.T) 
 		FilePatterns: []string{"usaa-checking*.csv"},
 	}})
 
-	// LoadData runs assignStableIDs, publishing the stableIDIndex that
+	// LoadData stamps StableIDs and publishes the stableIDIndex that
 	// SaveDuplicateDecision's canonicalKey needs to rekey the posted
 	// hashes. The /duplicates page does this same load before rendering.
 	ts, err := loader.LoadData()

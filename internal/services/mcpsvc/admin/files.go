@@ -31,7 +31,8 @@ func registerFiles(s *mcp.Server, deps Deps) {
 			"and row count. Use it to answer what periods the ledger actually covers and which bank exports are " +
 			"loaded. IMPORTANT: transactions here is a RAW row count from a fast scan of the file, so the sum " +
 			"across files will NOT match search_transactions -- loading drops internal transfers, merges exact " +
-			"duplicates, and suppresses rows the user resolved as near-duplicates, and rows shared between two " +
+			"duplicates, drops pending rows that a newer export for the same account supersedes, and suppresses " +
+			"rows the user resolved as near-duplicates, and rows shared between two " +
 			"overlapping exports are counted once per file here but once overall there. Treat it as the size of " +
 			"the input, not the size of the ledger. enabled is false only when the user has explicitly narrowed " +
 			"the selection on the Explorer page; with no selection every file is enabled. min_date/max_date are " +

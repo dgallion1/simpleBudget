@@ -22,7 +22,7 @@ func stableAccountSlot(t models.Transaction) string {
 // identityKey is the key a transaction's decisions should be stored under:
 // its StableID, or its legacy content Hash for a row that has none (a
 // hand-built transaction in a unit test, or one that never went through
-// assignStableIDs).
+// stampStableIDs).
 func identityKey(t models.Transaction) string {
 	if t.StableID != "" {
 		return t.StableID
@@ -48,22 +48,19 @@ func identityMatchesSuppressed(t models.Transaction, key string) bool {
 	return key == t.Hash
 }
 
-// assignStableIDs stamps StableID on every row in slice order -- which is file
-// order, because LoadDataContext appends whole files at a time -- and returns
-// the legacy Hash -> StableID index for those same rows.
+// stampStableIDs stamps StableID on every row in slice order -- which is
+// file order, because LoadDataContext appends whole files at a time -- in
+// place. It does not build the legacy Hash -> StableID index; callers that
+// need the index for exactly these rows call buildStableIDIndex separately.
 //
 // It runs after the sign flip and account attribution (both per file, in
-// loadCSVFileForAccount) and before dedup, so the amount it encodes is the
-// post-flip one and a row's occurrence index does not move when a later stage
-// drops rows.
-//
-// The index maps FIRST occurrence wins: two rows with the same content Hash
-// are exact duplicates, and dedup keeps the first, so pointing the legacy hash
-// at the second row's StableID would rekey a pin onto a row that is about to
-// disappear.
-func assignStableIDs(txns []models.Transaction) map[string]string {
+// loadCSVFileForAccount) and before dedup and dropSupersededPending, so the
+// amount it encodes is the post-flip one and a row's occurrence index does
+// not move when a later stage drops rows -- dropSupersededPending's whole
+// point is a dropped row's surviving twin keeping the occurrence index it
+// would have had if nothing were ever dropped (see that file's doc comment).
+func stampStableIDs(txns []models.Transaction) {
 	occurrences := make(map[string]int, len(txns))
-	index := make(map[string]string, len(txns))
 	for i := range txns {
 		t := &txns[i]
 		slot := stableAccountSlot(*t)
@@ -74,10 +71,29 @@ func assignStableIDs(txns []models.Transaction) map[string]string {
 		n := occurrences[bucket]
 		occurrences[bucket] = n + 1
 		t.StableID = models.StableIDFor(slot, t.Date, cents, n)
-		if t.Hash != "" {
-			if _, seen := index[t.Hash]; !seen {
-				index[t.Hash] = t.StableID
-			}
+	}
+}
+
+// buildStableIDIndex returns the legacy Hash -> StableID index for txns,
+// assuming StableID is already stamped on every row (stampStableIDs).
+// Called on the SURVIVING rows only, after dropSupersededPending, so a
+// dropped row's Hash can never claim an index slot -- see loader.go's
+// LoadDataContext.
+//
+// FIRST occurrence (in txns' order) wins: two surviving rows with the same
+// content Hash are exact duplicates, and deduplicateTransactions -- which
+// runs right after this is published -- keeps the first, so pointing the
+// legacy hash at a later row's StableID would rekey a pin onto a row that is
+// about to disappear.
+func buildStableIDIndex(txns []models.Transaction) map[string]string {
+	index := make(map[string]string, len(txns))
+	for i := range txns {
+		t := &txns[i]
+		if t.Hash == "" {
+			continue
+		}
+		if _, seen := index[t.Hash]; !seen {
+			index[t.Hash] = t.StableID
 		}
 	}
 	return index

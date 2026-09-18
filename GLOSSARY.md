@@ -172,20 +172,29 @@ Order matters — several definitions above only hold at a particular stage.
    files leave `AccountID` empty and are counted as unassigned.
 4. **Assign `StableID`** to every row (`accountID|date|cents|n`, post-flip
    amount; `file:<basename>` fallback for unassigned rows).
-5. **Deduplicate** exact matches, then detect near-duplicate pairs and apply
+5. **Drop superseded pending rows**: loading drops pending rows that a newer
+   export for the same account supersedes -- a `Pending`-status row is
+   removed when some other file for the SAME account has a strictly later
+   `maxDate` and its `[minDate, maxDate]` covers the row's date. Runs before
+   dedup (next step) so a pending row and its later-posted twin, which often
+   share one content Hash, don't collide there first (dedup would otherwise
+   keep the pending copy). Unassigned files never supersede and are never
+   superseded. See `dropSupersededPending`,
+   `internal/services/dataloader/superseded_pending.go`.
+6. **Deduplicate** exact matches, then detect near-duplicate pairs and apply
    the user's resolutions (this is what sets `Suppressed`). Exact dedup runs
    before transfer classification so duplicate rows cannot create phantom pair
    candidates.
-6. **Classify transfers** — pair opposite-sign rows with equal amount in
+7. **Classify transfers** — pair opposite-sign rows with equal amount in
    cents, different `AccountID`s, within ±4 days, at least one leg matching
    `InternalTransferPatterns` or an `IsInternalTransfer` Major Expense; unique
    candidates become `Transfer`/`paired`, pattern-less matches go to the
    suspected review queue, and unpaired pattern hits become
    `Transfer`/`external`. Replaces the old `filterInternalTransfers` drop.
-7. **Classify** Income/Outflow on the remaining (non-`Transfer`) rows and
+8. **Classify** Income/Outflow on the remaining (non-`Transfer`) rows and
    normalize amounts; `Transfer` rows are skipped.
-8. **Stamp** aliases, `MajorExpenseName`, and Amazon `EnrichedDescription`.
-9. **Compute derived fields** (month, week, quarter, …).
+9. **Stamp** aliases, `MajorExpenseName`, and Amazon `EnrichedDescription`.
+10. **Compute derived fields** (month, week, quarter, …).
 
 Two consequences worth stating: the sign flip and credit-kind override happen
 **before** account stamping, StableID assignment, and transfer classification,

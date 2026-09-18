@@ -3040,7 +3040,14 @@ func TestHandleImport_MissingSourceRejected(t *testing.T) {
 func TestHandleImport_MixedBatchDeletesOnlyImported(t *testing.T) {
 	dataDir, importDir := setupImportScanEnv(t)
 
-	good := seedImportFile(t, importDir, "good.csv", importCSV)
+	// good.csv's content must differ from importCSV (dupe.csv's content,
+	// below): IM2 skips a byte-for-byte re-upload of anything already in the
+	// data directory regardless of name, so a second file that happened to
+	// share importCSV's exact bytes would also skip as a duplicate of
+	// dupe.csv, defeating this test's "an unrelated valid file still
+	// imports" case.
+	const goodCSV = "Date,Description,Amount\n2024-04-03,Museum,-12.00\n2024-04-04,Bookstore,-8.25\n"
+	good := seedImportFile(t, importDir, "good.csv", goodCSV)
 	collide := seedImportFile(t, importDir, "dupe.csv", importCSV)
 	txt := seedImportFile(t, importDir, "notes.txt", "not a csv\n")
 	if err := os.WriteFile(filepath.Join(dataDir, "dupe.csv"), []byte(importCSV), 0644); err != nil {

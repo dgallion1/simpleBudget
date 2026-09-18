@@ -74,7 +74,19 @@ func TestImportOneFile_ProductionWriteBindingIsExclusive(t *testing.T) {
 				imported++
 			case "skipped":
 				skipped++
-				if o.Reason != "already exists in the data folder" {
+				// IM2: a straggler can observe the race two ways, both
+				// correct. It loses the OS-level create race (step 4's
+				// store.CreateExclusive, or step 3b's Stat fast path) and
+				// gets "already exists in the data folder" -- the case this
+				// test originally pinned. Or, since every goroutine here
+				// shares byte-identical content by construction, it can
+				// instead observe the winner's just-written race.csv during
+				// its OWN content scan (step 3, importer.ContentIdentical)
+				// before ever reaching the Stat/write step, and correctly
+				// report "identical to race.csv". Either way the OS-level
+				// exclusivity this test exists to pin still held: exactly
+				// one goroutine reported "imported", asserted below.
+				if o.Reason != "already exists in the data folder" && o.Reason != "identical to race.csv" {
 					t.Errorf("round %d: skipped outcome had unexpected reason %q", round, o.Reason)
 				}
 			default:

@@ -4,8 +4,10 @@
 package explorer
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
@@ -23,7 +25,9 @@ import (
 	"budget2/internal/config"
 	"budget2/internal/handlers/backup"
 	"budget2/internal/models"
+	"budget2/internal/services/accounts"
 	"budget2/internal/services/dataloader"
+	"budget2/internal/services/importer"
 	"budget2/internal/services/majorexpenses"
 	"budget2/internal/services/metrics"
 	"budget2/internal/services/storage"
@@ -446,12 +450,35 @@ func handleFileManager(w http.ResponseWriter, r *http.Request) {
 // data-directory file listing — no second CSV parser) and an `exists` flag
 // set when a file of that name is already present in DataDirectory, so the UI
 // can pre-disable it.
+//
+// Detected/DetectedName/DetectReason/IdenticalTo are IM2's account-from-
+// content additions: the file is parsed unassigned (dataloader.ParseCSV with
+// a nil account) and compared against the currently loaded ledger via
+// importer.Detect, and its bytes are compared against every *.csv already in
+// the data directory via importer.ContentIdentical.
 type importScanEntry struct {
 	Name    string `json:"name"`
 	Size    int64  `json:"size"`
 	MinDate string `json:"min_date"`
 	MaxDate string `json:"max_date"`
 	Exists  bool   `json:"exists"`
+
+	// Detected is the account ID importer.Detect matched, or "" when it
+	// could not decide (no match or ambiguous — see DetectReason).
+	Detected string `json:"detected"`
+	// DetectedName is the filename the file would be saved under if
+	// imported against Detected: importer.Name(Detected, rows). Empty when
+	// Detected is empty — there is nothing to preview yet.
+	DetectedName string `json:"detected_name"`
+	// DetectReason explains a non-match: "no match" or "ambiguous: A, B".
+	// Empty when Detected is set.
+	DetectReason string `json:"detect_reason"`
+	// IdenticalTo is the basename of the existing data-dir file whose bytes
+	// sha256-match this one, or "" when none does. When set, this takes
+	// precedence over Exists in the UI: the entry is disabled and the
+	// reason names the specific file it duplicates rather than the generic
+	// "already present" text.
+	IdenticalTo string `json:"identical_to"`
 }
 
 // handleImportScan lists *.csv files found directly inside ImportDirectory.
@@ -478,6 +505,7 @@ func handleImportScan(w http.ResponseWriter, r *http.Request) {
 		"ImportEntries": entries,
 		"ImportMessage": message,
 		"ImportPath":    cfg.ImportDirectory,
+		"Accounts":      loadAccountsOrEmpty(),
 	}
 
 	if renderer != nil {
@@ -500,6 +528,15 @@ func handleImportScan(w http.ResponseWriter, r *http.Request) {
 //
 // The exists flag is derived from the package-global loader, which is bound
 // to cfg.DataDirectory — the same source the file-manager page uses.
+//
+// Each surviving entry is additionally parsed unassigned (dataloader.ParseCSV
+// with a nil account — no second CSV parser, the same function every other
+// load path uses) and run through importer.Detect against the currently
+// loaded ledger (loader.LoadData, the same accessor handleExplorer already
+// calls) and importer.ContentIdentical against every *.csv currently in the
+// data directory. A file that fails to parse simply detects as "no match" —
+// Detect on a nil/empty row slice never finds a candidate — rather than
+// aborting the scan.
 func scanImportDirectory(importDir string) ([]importScanEntry, string) {
 	if importDir == "" {
 		return nil, "No import folder is configured."
@@ -526,6 +563,10 @@ func scanImportDirectory(importDir string) ([]importScanEntry, string) {
 		}
 	}
 
+	accts := loadAccountsOrEmpty()
+	ledger := loadLedgerOrEmpty()
+	existingCSVs := existingDataCSVs()
+
 	entries := make([]importScanEntry, 0, len(infos))
 	for _, fi := range infos {
 		// GetFileInfo follows symlinks via os.Stat. Re-stat without following
@@ -533,19 +574,84 @@ func scanImportDirectory(importDir string) ([]importScanEntry, string) {
 		if li, err := os.Lstat(fi.Path); err == nil && li.Mode()&os.ModeSymlink != 0 {
 			continue
 		}
-		entries = append(entries, importScanEntry{
+
+		entry := importScanEntry{
 			Name:    fi.Name,
 			Size:    fi.Size,
 			MinDate: fi.MinDate,
 			MaxDate: fi.MaxDate,
 			Exists:  dataNames[fi.Name],
-		})
+		}
+
+		// os.ReadFile, not store.ReadFile: this file lives in ImportDirectory,
+		// outside the data directory's storage/encryption scope — the same
+		// choice defaultImportDeps.readSource makes for the actual import.
+		if data, rerr := os.ReadFile(fi.Path); rerr == nil {
+			entry.IdenticalTo = importer.ContentIdentical(data, existingCSVs)
+			rows, _ := dataloader.ParseCSV(bytes.NewReader(data), fi.Name, nil)
+			det := importer.Detect(rows, ledger, accts)
+			entry.Detected = det.AccountID
+			entry.DetectReason = det.Reason
+			if det.AccountID != "" {
+				entry.DetectedName = importer.Name(det.AccountID, rows)
+			}
+		} else {
+			entry.DetectReason = "no match"
+		}
+
+		entries = append(entries, entry)
 	}
 
 	if len(entries) == 0 {
 		return entries, "No CSV files found in import folder."
 	}
 	return entries, ""
+}
+
+// loadAccountsOrEmpty loads the account sidecar for detection purposes. A
+// load error (corrupt/missing accounts.json) is not fatal to the scan — it
+// just means nothing can be detected, same as "no accounts configured yet".
+func loadAccountsOrEmpty() []models.Account {
+	accts, err := accounts.Load(store)
+	if err != nil {
+		return nil
+	}
+	return accts
+}
+
+// loadLedgerOrEmpty is the "currently loaded ledger" Detect compares
+// against — the same loader.LoadData accessor handleExplorer already calls,
+// not a second load path. A load error yields an empty ledger rather than
+// failing the scan.
+func loadLedgerOrEmpty() []models.Transaction {
+	set, err := loader.LoadData()
+	if err != nil || set == nil {
+		return nil
+	}
+	return set.Transactions
+}
+
+// existingDataCSVs reads every *.csv currently in the data directory, keyed
+// by basename, for importer.ContentIdentical. A Glob or per-file read
+// failure is skipped rather than aborting the caller — the same posture the
+// rest of this file takes toward a single bad file in a batch.
+func existingDataCSVs() map[string][]byte {
+	out := make(map[string][]byte)
+	if cfg == nil || cfg.DataDirectory == "" {
+		return out
+	}
+	paths, err := store.Glob(filepath.Join(cfg.DataDirectory, "*.csv"))
+	if err != nil {
+		return out
+	}
+	for _, p := range paths {
+		data, rerr := store.ReadFile(p)
+		if rerr != nil {
+			continue
+		}
+		out[filepath.Base(p)] = data
+	}
+	return out
 }
 
 // importOutcome is the per-file result of a folder import. It mirrors
@@ -625,10 +731,28 @@ func handleImport(w http.ResponseWriter, r *http.Request) {
 
 	deleteSource := r.PostFormValue("delete_source") == "true"
 
+	// account:<name> selects the account a file imports under -- posted by
+	// the import-scan template's per-entry <select name="account:<file
+	// name>">, pre-selected to whatever importer.Detect found. "unassigned"
+	// (the select's own fallback option) or the field being absent both mean
+	// "keep today's behaviour": save under the original name. Accounts are
+	// loaded at most once per batch, and only if at least one file actually
+	// names one.
+	var accts []models.Account
+	var acctsLoaded bool
 	deps := defaultImportDeps()
 	outcomes := make([]importOutcome, 0, len(names))
 	for _, name := range names {
-		outcomes = append(outcomes, importOneFile(name, deleteSource, deps))
+		chosen := strings.TrimSpace(r.PostFormValue("account:" + name))
+		if chosen == "" || chosen == "unassigned" {
+			outcomes = append(outcomes, importOneFile(name, deleteSource, deps))
+			continue
+		}
+		if !acctsLoaded {
+			accts = loadAccountsOrEmpty()
+			acctsLoaded = true
+		}
+		outcomes = append(outcomes, importOneFileWithAccount(name, chosen, accts, deleteSource, deps))
 	}
 
 	partialData := map[string]interface{}{
@@ -692,13 +816,27 @@ func importOneFile(name string, deleteSource bool, deps importDeps) importOutcom
 		return importOutcome{Name: name, Status: "rejected", Reason: "not directly inside the import folder"}
 	}
 
-	// Step 3 — a fast-path check: a name already in the data directory skips.
-	// This is only an optimization to skip reading the source when the
-	// destination is obviously already taken; it does not decide anything by
-	// itself. A Stat that failed for a reason other than "absent" is not read
-	// as absent: overwriting on a permission or I/O error would lose the
-	// existing file, and a source delete on top of that would make it
-	// unrecoverable.
+	// Step 3 — read the source now, ahead of the name-collision fast path
+	// below: a byte-for-byte re-upload of something already in the data
+	// directory is skipped regardless of what the source happens to be
+	// named (a browser's auto-renamed "(1)" duplicate is the common case),
+	// which requires the bytes before any naming decision can be made. See
+	// importer.ContentIdentical.
+	data, err := deps.readSource(srcPath)
+	if err != nil {
+		return importOutcome{Name: name, Status: "rejected", Reason: "could not read the source file"}
+	}
+	if dup := importer.ContentIdentical(data, existingDataCSVs()); dup != "" {
+		return importOutcome{Name: name, Status: "skipped", Reason: "identical to " + dup}
+	}
+
+	// Step 3b — a fast-path check: a name already in the data directory
+	// skips. ContentIdentical above already ruled out this being the same
+	// bytes as the file that name belongs to, so a collision found here is
+	// always a genuinely different file. A Stat that failed for a reason
+	// other than "absent" is not read as absent: overwriting on a
+	// permission or I/O error would lose the existing file, and a source
+	// delete on top of that would make it unrecoverable.
 	destPath := filepath.Join(cfg.DataDirectory, name)
 	if _, err := store.Stat(destPath); err == nil {
 		return importOutcome{Name: name, Status: "skipped", Reason: "already exists in the data folder"}
@@ -706,18 +844,14 @@ func importOneFile(name string, deleteSource bool, deps importDeps) importOutcom
 		return importOutcome{Name: name, Status: "rejected", Reason: "could not check the destination"}
 	}
 
-	// Step 4 — read the source, then write through store so encryption
-	// applies. The write itself is the real existence check: deps.write is
-	// bound to store.CreateExclusive, whose test and create are one
-	// indivisible step, so a destination created by a concurrent upload or
-	// import between the fast path above and this write still cannot be
+	// Step 4 — write through store so encryption applies. The write itself
+	// is the real existence check: deps.write is bound to
+	// store.CreateExclusive, whose test and create are one indivisible
+	// step, so a destination created by a concurrent upload or import
+	// between the fast path above and this write still cannot be
 	// overwritten — the write fails with an error satisfying
 	// errors.Is(err, os.ErrExist) and this file is reported skipped, same as
 	// the fast path above, instead of clobbering the winner.
-	data, err := deps.readSource(srcPath)
-	if err != nil {
-		return importOutcome{Name: name, Status: "rejected", Reason: "could not read the source file"}
-	}
 	if err := deps.write(destPath, data, 0644); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return importOutcome{Name: name, Status: "skipped", Reason: "already exists in the data folder"}
@@ -753,6 +887,162 @@ func importOneFile(name string, deleteSource bool, deps importDeps) importOutcom
 	outcome.SourceDeleted = true
 	outcome.Reason = "source file deleted"
 	log.Printf("Imported file: %s (source deleted)", name)
+	return outcome
+}
+
+// maxImportSuffixAttempts bounds the `_2`, `_3`, … search saveUnderDetectedName
+// runs when a generated name collides with something already in the data
+// directory. A real account never accumulates anywhere close to this many
+// same-day-range imports; the bound exists only so a pathological data
+// directory fails loudly (a rejected outcome) instead of looping forever.
+const maxImportSuffixAttempts = 1000
+
+// detectedSave is saveUnderDetectedName's result. Exactly one of the three
+// fields is meaningful: FinalName set means success; Skipped or Rejected set
+// means the caller should report that status with that reason instead.
+type detectedSave struct {
+	FinalName string
+	Skipped   string
+	Rejected  string
+}
+
+// saveUnderDetectedName is the naming/verification/suffix path shared by
+// import's account-chosen branch (importOneFileWithAccount) and upload's
+// auto-detected branch (uploadOneFile): derive the on-disk name from the
+// account and the rows' own date range (importer.Name), refuse when the
+// account's own file pattern would not claim that name on a future load
+// (accounts.MatchFile), and suffix _2, _3, … on a same-name collision. The
+// caller has already run importer.ContentIdentical against the whole data
+// directory before calling this, so any collision found here by name is
+// always a genuinely different file, never the same bytes under the
+// generated name.
+func saveUnderDetectedName(acct *models.Account, accts []models.Account, rows []models.Transaction, data []byte, write func(path string, data []byte, perm os.FileMode) error, readBack func(path string) ([]byte, error)) detectedSave {
+	newName := importer.Name(acct.ID, rows)
+	if accounts.MatchFile(accts, newName) != acct.ID {
+		return detectedSave{Rejected: fmt.Sprintf("account %s has no file pattern matching %s; add the pattern on the Accounts page", acct.Name, newName)}
+	}
+
+	finalName := newName
+	if _, statErr := store.Stat(filepath.Join(cfg.DataDirectory, finalName)); statErr == nil {
+		base := strings.TrimSuffix(newName, ".csv")
+		found := false
+		for n := 2; n <= maxImportSuffixAttempts; n++ {
+			candidate := fmt.Sprintf("%s_%d.csv", base, n)
+			if _, err := store.Stat(filepath.Join(cfg.DataDirectory, candidate)); errors.Is(err, os.ErrNotExist) {
+				finalName = candidate
+				found = true
+				break
+			} else if err != nil {
+				return detectedSave{Rejected: "could not check the destination"}
+			}
+		}
+		if !found {
+			return detectedSave{Rejected: "too many files already named " + newName}
+		}
+		if accounts.MatchFile(accts, finalName) != acct.ID {
+			return detectedSave{Rejected: fmt.Sprintf("account %s has no file pattern matching %s; add the pattern on the Accounts page", acct.Name, finalName)}
+		}
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return detectedSave{Rejected: "could not check the destination"}
+	}
+
+	destPath := filepath.Join(cfg.DataDirectory, finalName)
+	if err := write(destPath, data, 0644); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return detectedSave{Skipped: "already exists in the data folder"}
+		}
+		return detectedSave{Rejected: "could not save the file"}
+	}
+
+	back, err := readBack(destPath)
+	if err != nil {
+		return detectedSave{Rejected: "saved file could not be read back"}
+	}
+	if len(back) != len(data) {
+		return detectedSave{Rejected: "saved file failed verification"}
+	}
+	return detectedSave{FinalName: finalName}
+}
+
+// importOneFileWithAccount is bullet 1 of handleImport's per-file dispatch:
+// the user explicitly picked accountID for name (the import-scan template's
+// per-entry <select>), so — unlike importOneFile's unassigned path — the
+// destination name is DERIVED from the account and the file's own rows, not
+// kept as posted, and the file is parsed WITH that account (so the sign
+// convention is the account's own, not the unassigned heuristic's).
+func importOneFileWithAccount(name, accountID string, accts []models.Account, deleteSource bool, deps importDeps) importOutcome {
+	// Steps 1-2 are identical to importOneFile's: validate the name, then
+	// re-stat inside ImportDirectory and confirm a direct, non-symlink
+	// child.
+	if name == "" || name == "." || name == ".." ||
+		name != filepath.Base(name) || strings.ContainsAny(name, `/\`) {
+		return importOutcome{Name: name, Status: "rejected", Reason: "invalid filename"}
+	}
+	if !strings.HasSuffix(strings.ToLower(name), ".csv") {
+		return importOutcome{Name: name, Status: "rejected", Reason: "only CSV files can be imported"}
+	}
+	if cfg.ImportDirectory == "" {
+		return importOutcome{Name: name, Status: "rejected", Reason: "no import folder is configured"}
+	}
+
+	srcPath := filepath.Join(cfg.ImportDirectory, name)
+	info, err := os.Lstat(srcPath)
+	if err != nil {
+		return importOutcome{Name: name, Status: "rejected", Reason: "not found in the import folder"}
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return importOutcome{Name: name, Status: "rejected", Reason: "symlinks are not imported"}
+	}
+	if !info.Mode().IsRegular() {
+		return importOutcome{Name: name, Status: "rejected", Reason: "not a regular file"}
+	}
+	if !isDirectChild(cfg.ImportDirectory, srcPath) {
+		return importOutcome{Name: name, Status: "rejected", Reason: "not directly inside the import folder"}
+	}
+
+	acct := accounts.Find(accts, accountID)
+	if acct == nil {
+		return importOutcome{Name: name, Status: "rejected", Reason: "unknown account"}
+	}
+
+	data, err := deps.readSource(srcPath)
+	if err != nil {
+		return importOutcome{Name: name, Status: "rejected", Reason: "could not read the source file"}
+	}
+	if dup := importer.ContentIdentical(data, existingDataCSVs()); dup != "" {
+		return importOutcome{Name: name, Status: "skipped", Reason: "identical to " + dup}
+	}
+
+	rows, perr := dataloader.ParseCSV(bytes.NewReader(data), name, acct)
+	if perr != nil {
+		return importOutcome{Name: name, Status: "rejected", Reason: perr.Error()}
+	}
+
+	save := saveUnderDetectedName(acct, accts, rows, data, deps.write, deps.readBack)
+	if save.Rejected != "" {
+		return importOutcome{Name: name, Status: "rejected", Reason: save.Rejected}
+	}
+	if save.Skipped != "" {
+		return importOutcome{Name: name, Status: "skipped", Reason: save.Skipped}
+	}
+
+	outcome := importOutcome{Name: name, Status: "imported", Reason: fmt.Sprintf("imported as %s (%s)", save.FinalName, acct.Name)}
+	if !deleteSource {
+		log.Printf("Imported file: %s as %s", name, save.FinalName)
+		return outcome
+	}
+
+	// Same three-guard gate as importOneFile's step 6: the write succeeded,
+	// the readback matched, and srcPath was confirmed a direct, non-symlink
+	// child of ImportDirectory. Only now is the original removed.
+	if err := deps.removeSrc(srcPath); err != nil {
+		outcome.Reason += ", but the source file could not be deleted"
+		log.Printf("Imported file: %s as %s (source delete failed: %v)", name, save.FinalName, err)
+		return outcome
+	}
+	outcome.SourceDeleted = true
+	outcome.Reason += ", source file deleted"
+	log.Printf("Imported file: %s as %s (source deleted)", name, save.FinalName)
 	return outcome
 }
 
@@ -934,6 +1224,16 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 // uploadOneFile validates and saves a single file from a batch. It never
 // aborts the caller's loop: any failure is reported as part of the returned
 // outcome rather than an HTTP error.
+//
+// IM2 additions, both ahead of the original name-collision write: a
+// byte-identical file already in the data directory skips regardless of
+// name (importer.ContentIdentical), and otherwise the file is parsed
+// unassigned and run through importer.Detect against the currently loaded
+// ledger. A unique detection saves under the account-derived name via the
+// same naming/verification/suffix path handleImport's account-chosen
+// branch uses (saveUnderDetectedName); anything else — no match, an
+// ambiguous match, or a detected account that no longer exists — falls
+// through to today's path, saving under the original name.
 func uploadOneFile(header *multipart.FileHeader) uploadOutcome {
 	rawName := header.Filename
 
@@ -946,8 +1246,6 @@ func uploadOneFile(header *multipart.FileHeader) uploadOutcome {
 		return uploadOutcome{Name: filename, Status: "rejected", Reason: "only CSV files are allowed"}
 	}
 
-	destPath := filepath.Join(cfg.DataDirectory, filename)
-
 	file, err := header.Open()
 	if err != nil {
 		return uploadOutcome{Name: filename, Status: "rejected", Reason: "error reading file"}
@@ -959,11 +1257,36 @@ func uploadOneFile(header *multipart.FileHeader) uploadOutcome {
 		return uploadOutcome{Name: filename, Status: "rejected", Reason: "error reading file"}
 	}
 
+	if dup := importer.ContentIdentical(data, existingDataCSVs()); dup != "" {
+		return uploadOutcome{Name: filename, Status: "skipped", Reason: "identical to " + dup}
+	}
+
+	// A parse failure here (e.g. a .csv-named file with no real CSV header)
+	// simply yields no rows; importer.Detect on an empty row slice never
+	// finds a candidate, so it falls straight through to today's path below
+	// exactly as a genuine "no match" would.
+	accts := loadAccountsOrEmpty()
+	rows, _ := dataloader.ParseCSV(bytes.NewReader(data), filename, nil)
+	det := importer.Detect(rows, loadLedgerOrEmpty(), accts)
+	if acct := accounts.Find(accts, det.AccountID); acct != nil {
+		save := saveUnderDetectedName(acct, accts, rows, data, store.CreateExclusive, store.ReadFile)
+		switch {
+		case save.FinalName != "":
+			log.Printf("Uploaded file: %s as %s (account %s)", filename, save.FinalName, acct.Name)
+			return uploadOutcome{Name: filename, Status: "saved", Reason: fmt.Sprintf("saved as %s (%s)", save.FinalName, acct.Name)}
+		case save.Skipped != "":
+			return uploadOutcome{Name: filename, Status: "skipped", Reason: save.Skipped}
+		case save.Rejected != "":
+			return uploadOutcome{Name: filename, Status: "rejected", Reason: save.Rejected}
+		}
+	}
+
 	// Collisions skip: never overwrite, never auto-rename. The existence test
 	// is the create itself. A separate Stat first would let two uploads of the
 	// same name both pass it and then overwrite each other, and would read a
 	// permission or I/O error from Stat as "absent" and overwrite anyway.
 	// Writes via storage, so encryption still applies when enabled.
+	destPath := filepath.Join(cfg.DataDirectory, filename)
 	if err := store.CreateExclusive(destPath, data, 0644); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return uploadOutcome{Name: filename, Status: "skipped", Reason: "already exists"}
@@ -972,7 +1295,7 @@ func uploadOneFile(header *multipart.FileHeader) uploadOutcome {
 	}
 
 	log.Printf("Uploaded file: %s", filename)
-	return uploadOutcome{Name: filename, Status: "saved"}
+	return uploadOutcome{Name: filename, Status: "saved", Reason: "saved unassigned: could not detect the account (use the import folder to choose one, or rename to an account pattern)"}
 }
 
 func sanitizeUploadFilename(filename string) (string, error) {

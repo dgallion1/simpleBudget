@@ -562,3 +562,85 @@ func TestParseCSV_AC11_MatchesLoadCSVFileForAccount(t *testing.T) {
 		t.Errorf("acct == nil: loadCSVFileForAccount and ParseCSV disagree:\nfile:  %+v\nparse: %+v", viaFileNil, viaParseNil)
 	}
 }
+
+// TestDropSupersededPending_AC5b_OtherAccountsAndUnassignedFilesNeverSupersede
+// pins the "SAME account" half of rule (c) and both directions of rule (b):
+// a pending row survives a strictly newer, date-covering file when that
+// file belongs to a DIFFERENT account, when it matches no account at all,
+// and when the pending row's own file is the unassigned one. The
+// cross-account case is the one an "any file supersedes" mutation breaks;
+// the two unassigned cases document that an unmatched CSV sits outside the
+// rule entirely. (Promoted from the attempt-1 checker probe, ruling
+// 2026-09-18b.)
+func TestDropSupersededPending_AC5b_OtherAccountsAndUnassignedFilesNeverSupersede(t *testing.T) {
+	pendingFile := csvHeader + "\n" +
+		"2026-04-01,Cross Pending,Misc,-9.00,Pending"
+	coveringFile := csvHeader + "\n" +
+		"2026-03-25,Cover Row,Misc,-4.00,Posted\n" +
+		"2026-04-10,Cover Row Two,Misc,-6.00,Posted"
+	accounts := []models.Account{
+		{
+			ID:           "usaa-checking",
+			Name:         "USAA Checking",
+			Kind:         models.AccountKindChecking,
+			FilePatterns: []string{"usaa-checking*.csv"},
+		},
+		{
+			ID:           "usaa-savings",
+			Name:         "USAA Savings",
+			Kind:         models.AccountKindSavings,
+			FilePatterns: []string{"usaa-savings*.csv"},
+		},
+	}
+
+	cases := []struct {
+		name  string
+		files map[string]string
+	}{
+		{
+			// Rule (c), "SAME account": a newer covering file for a
+			// different account must not supersede.
+			name: "assigned pending row, newer cover in another account",
+			files: map[string]string{
+				"usaa-checking-2026-04a.csv": pendingFile,
+				"usaa-savings-2026-04b.csv":  coveringFile,
+			},
+		},
+		{
+			// Rule (b), direction one: the newer covering file matches
+			// no account.
+			name: "assigned pending row, unassigned newer cover",
+			files: map[string]string{
+				"usaa-checking-2026-04a.csv": pendingFile,
+				"random-newer.csv":           coveringFile,
+			},
+		},
+		{
+			// Rule (b), direction two: the pending row's own file is
+			// the unassigned one.
+			name: "unassigned pending row, assigned newer cover",
+			files: map[string]string{
+				"random-older.csv":           pendingFile,
+				"usaa-checking-2026-04b.csv": coveringFile,
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, loader, cleanup := setupTestDir(t, tc.files)
+			defer cleanup()
+			writeAccounts(t, dir, accounts)
+
+			ts, err := loader.LoadData()
+			if err != nil {
+				t.Fatalf("LoadData: %v", err)
+			}
+			if len(ts.Transactions) != 3 {
+				t.Fatalf("loaded %d rows, want 3 (nothing may be dropped): %+v", len(ts.Transactions), descriptions(ts.Transactions))
+			}
+			if !containsDescription(descriptions(ts.Transactions), "Cross Pending") {
+				t.Error("Cross Pending was dropped: only a newer export for the SAME account may supersede")
+			}
+		})
+	}
+}

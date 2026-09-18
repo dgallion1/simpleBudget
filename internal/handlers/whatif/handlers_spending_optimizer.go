@@ -784,9 +784,12 @@ func spendingAppliedAnnouncement(r *http.Request, s *models.WhatIfSettings) stri
 	if rev, err := strconv.Atoi(r.URL.Query().Get("spending_applied")); err != nil || rev <= 0 {
 		return ""
 	}
-	message := fmt.Sprintf("Saved spending plan: base living expenses $%.2f per month and the complete portfolio-trigger spending rules.", s.MonthlyLivingExpenses)
+	// BF1 (2026-09-18): FormatMoney, the one money formatter, so the banner
+	// shows the same string as the card that was just applied ($7,639.34,
+	// not $7639.34).
+	message := fmt.Sprintf("Saved spending plan: base living expenses %s per month and the complete portfolio-trigger spending rules.", budgettemplates.FormatMoney(s.MonthlyLivingExpenses))
 	if b := s.LivingSpendingBoost; b != nil {
-		message += fmt.Sprintf(" Extra living spending of $%.2f per month stops in %s.", b.MonthlyReal, b.StopMonth)
+		message += fmt.Sprintf(" Extra living spending of %s per month stops in %s.", budgettemplates.FormatMoney(b.MonthlyReal), b.StopMonth)
 	}
 	return message
 }

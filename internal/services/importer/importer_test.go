@@ -257,3 +257,31 @@ func TestDetect_ReasonNeverMentionsUnknownAccount(t *testing.T) {
 		t.Fatalf("got %+v, want AccountID=ghost and a displayable fallback name", got)
 	}
 }
+
+// A single coincidental key that happens to appear three times in the file
+// (one recurring identical charge on one day, a $0 placeholder row) must not
+// reach the threshold by repetition alone: the threshold counts DISTINCT
+// shared keys. (Promoted from the IM2 attempt-1 primary-checker finding F1,
+// ruling 2026-09-18c.)
+func TestDetect_RepeatedCoincidentalKey_DoesNotReachThreshold(t *testing.T) {
+	ledger := []models.Transaction{
+		row(t, "2026-01-01", "Wegmans", -50.00, "checking"),
+		row(t, "2026-01-02", "Netflix", -15.99, "checking"),
+	}
+	candidate := []models.Transaction{
+		row(t, "2026-01-01", "Wegmans", -50.00, ""),
+		row(t, "2026-01-01", "Wegmans", -50.00, ""),
+		row(t, "2026-01-01", "Wegmans", -50.00, ""),
+	}
+
+	got := Detect(candidate, ledger, testAccounts)
+	if got.AccountID != "" || got.Reason != "no match" {
+		t.Fatalf("got %+v, want no match: one distinct shared key repeated three times is still one key", got)
+	}
+
+	// Three DISTINCT shared keys still detect (the threshold itself is unchanged).
+	got = Detect(threeSharedRows(t, ""), threeSharedRows(t, "checking"), testAccounts)
+	if got.AccountID != "checking" {
+		t.Fatalf("control: got %+v, want checking", got)
+	}
+}

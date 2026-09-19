@@ -498,3 +498,90 @@ func TestHandleImport_DetectedImportResultsInZeroUnassigned(t *testing.T) {
 		t.Errorf("UnassignedCount() = %d, want 0", got)
 	}
 }
+
+// ---- IM2F: promoted probes (rulings 2026-09-18c/d) ----
+
+// The suffixed name is re-verified against the account's patterns: an
+// account whose only pattern is the exact base name claims the base but not
+// the _2 variant, so a collision must be REFUSED, not saved under a name the
+// account can never load again. (Promoted from primary-checker F2.)
+func TestHandleImport_AccountChosen_SuffixedNameIsReverifiedAgainstPatterns(t *testing.T) {
+	dataDir, importDir := setupImportScanEnv(t)
+	baseName := "acct3_2026-01-01_to_2026-01-05.csv"
+	seedAccounts(t, []models.Account{
+		{ID: "acct3", Name: "Acct Three", FilePatterns: []string{baseName}},
+	})
+
+	collisionContent := "Date,Description,Amount\n2026-06-01,Unrelated,-1.00\n"
+	if err := os.WriteFile(filepath.Join(dataDir, baseName), []byte(collisionContent), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	src := "Date,Description,Amount\n2026-01-01,Coffee,-4.00\n2026-01-05,Groceries,-40.00\n"
+	seedImportFile(t, importDir, "browser-export3.csv", src)
+
+	rec := postImport(t, url.Values{
+		"name":                        {"browser-export3.csv"},
+		"account:browser-export3.csv": {"acct3"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	out := importOutcomeFor(t, decodeImportResult(t, rec), "browser-export3.csv")
+	if out.Status != "rejected" {
+		t.Fatalf("Status=%q want rejected (reason %q)", out.Status, out.Reason)
+	}
+	suffixed := "acct3_2026-01-01_to_2026-01-05_2.csv"
+	wantReason := fmt.Sprintf("account Acct Three has no file pattern matching %s; add the pattern on the Accounts page", suffixed)
+	if out.Reason != wantReason {
+		t.Errorf("Reason=%q want %q", out.Reason, wantReason)
+	}
+	mustNotExist(t, filepath.Join(dataDir, suffixed), "a refused import must write nothing")
+	untouched, err := os.ReadFile(filepath.Join(dataDir, baseName))
+	if err != nil {
+		t.Fatalf("ReadFile collision file: %v", err)
+	}
+	if string(untouched) != collisionContent {
+		t.Errorf("collision file was modified: %q", untouched)
+	}
+	mustExist(t, filepath.Join(importDir, "browser-export3.csv"), "a refused import keeps the source")
+}
+
+// With two accounts configured and a loaded ledger, an upload that shares
+// fewer than three keys with each stays unassigned under its original name:
+// detection must never fall back to "the first account". (Promoted from
+// primary-checker F4.)
+func TestHandleFileUpload_NoMatchWithAccountsConfigured_NeverPicksFirstAccount(t *testing.T) {
+	dataDir := setupTestEnv(t)
+	seedAccounts(t, []models.Account{
+		{ID: "acctA", Name: "Account A", FilePatterns: []string{"acctA*.csv"}},
+		{ID: "acctB", Name: "Account B", FilePatterns: []string{"acctB*.csv"}},
+	})
+	ledgerA := "Date,Description,Amount\n2026-04-01,Groceries,-100.00\n2026-04-15,Internet,-60.00\n2026-04-20,Rent,-1200.00\n"
+	ledgerB := "Date,Description,Amount\n2026-04-02,Coffee,-4.00\n2026-04-16,Books,-30.00\n2026-04-21,Fuel,-55.00\n"
+	for name, content := range map[string]string{"acctA_2026-04-01_to_2026-04-20.csv": ledgerA, "acctB_2026-04-02_to_2026-04-21.csv": ledgerB} {
+		if err := os.WriteFile(filepath.Join(dataDir, name), []byte(content), 0644); err != nil {
+			t.Fatalf("WriteFile %s: %v", name, err)
+		}
+	}
+
+	// One row in common with each account: below the threshold for both.
+	uploaded := []byte("Date,Description,Amount\n2026-04-01,Groceries,-100.00\n2026-04-02,Coffee,-4.00\n2026-04-30,Something New,-5.00\n")
+	req := newUploadRequest(t, "mystery2.csv", uploaded)
+	rec := httptest.NewRecorder()
+	handleFileUpload(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	out := outcomeFor(t, decodeUploadResponse(t, rec), "mystery2.csv")
+	if out.Status != "saved" {
+		t.Fatalf("Status=%q want saved (reason %q)", out.Status, out.Reason)
+	}
+	want := "saved unassigned: could not detect the account (use the import folder to choose one, or rename to an account pattern)"
+	if out.Reason != want {
+		t.Errorf("Reason=%q want %q", out.Reason, want)
+	}
+	mustExist(t, filepath.Join(dataDir, "mystery2.csv"), "the original name must be used")
+	mustNotExist(t, filepath.Join(dataDir, "acctA_2026-04-01_to_2026-04-30.csv"), "must not be attributed to the first account")
+	mustNotExist(t, filepath.Join(dataDir, "acctB_2026-04-01_to_2026-04-30.csv"), "must not be attributed to the second account")
+}

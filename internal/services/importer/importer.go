@@ -107,9 +107,16 @@ func Detect(rows []models.Transaction, ledger []models.Transaction, accts []mode
 		keys[keyFor(t)] = true
 	}
 
-	shared := make(map[string]int)
+	// Count DISTINCT keys the file shares with each account: a single
+	// coincidental row repeated three times in an export (an identical
+	// recurring charge on one day, a $0 placeholder) must not reach the
+	// threshold on its own. Dedupe the file's keys before counting.
+	fileKeys := make(map[txnKey]bool, len(rows))
 	for _, r := range rows {
-		k := keyFor(r)
+		fileKeys[keyFor(r)] = true
+	}
+	shared := make(map[string]int)
+	for k := range fileKeys {
 		for id, keys := range ledgerKeys {
 			if keys[k] {
 				shared[id]++

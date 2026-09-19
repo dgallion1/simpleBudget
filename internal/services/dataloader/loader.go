@@ -309,6 +309,12 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 
 	var allTransactions []models.Transaction
 
+	// coverage records each account-matched file's date range, gathered
+	// here from the rows it just contributed (no second scan of the
+	// file). dropSupersededPending below reads it to decide which pending
+	// rows a newer export for the same account already supersedes.
+	coverage := make(map[string]fileCoverage)
+
 	enabled := dl.enabledFilesSnapshot()
 
 	unassignedFiles := 0
@@ -338,6 +344,9 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 			log.Printf("Loaded %d transactions from %s (unassigned: no account matches this file)", len(transactions), filename)
 		} else {
 			log.Printf("Loaded %d transactions from %s (account %s)", len(transactions), filename, acct.ID)
+			if acct.ID != "" {
+				coverage[filename] = coverageOf(acct.ID, transactions)
+			}
 		}
 		allTransactions = append(allTransactions, transactions...)
 	}
@@ -350,12 +359,25 @@ func (dl *DataLoader) LoadDataContext(ctx context.Context) (*models.TransactionS
 		return models.NewTransactionSet(nil), nil
 	}
 
-	// Assign StableID before anything drops or reorders rows: the
+	// Stamp StableID before anything drops or reorders rows: the
 	// occurrence index is counted in file order over everything parsed, so
 	// a row's identity does not shift when a later stage (transfer filter,
-	// dedup) removes some other row. Amounts are already post-flip and
-	// AccountID is already stamped, both done per file above.
-	dl.setStableIndex(assignStableIDs(allTransactions))
+	// dedup, dropSupersededPending) removes some other row. Amounts are
+	// already post-flip and AccountID is already stamped, both done per
+	// file above.
+	stampStableIDs(allTransactions)
+
+	// Drop pending rows a newer export for the same account supersedes.
+	// Must run before deduplicateTransactions (see superseded_pending.go's
+	// doc comment for why) and before the Hash -> StableID index is built,
+	// so a dropped row's Hash never claims an index slot a surviving row
+	// needs and a legacy-hash pin is never rekeyed onto a StableID nothing
+	// in the loaded set carries.
+	var droppedPending map[string]int
+	allTransactions, droppedPending = dropSupersededPending(allTransactions, coverage)
+	logDroppedSupersededPending(droppedPending)
+
+	dl.setStableIndex(buildStableIDIndex(allTransactions))
 
 	// Preprocess: deduplicate, classify transfers, classify income/outflow.
 	//
@@ -413,7 +435,21 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 }
 
 // loadCSVFileForAccount loads transactions from a single CSV file, given the
-// account that owns it (nil when the file matched none).
+// account that owns it (nil when the file matched none). Opens the file and
+// delegates the parse to ParseCSV.
+func (dl *DataLoader) loadCSVFileForAccount(filePath string, acct *models.Account) ([]models.Transaction, error) {
+	file, err := dl.store.OpenFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+
+	return ParseCSV(file, filepath.Base(filePath), acct)
+}
+
+// ParseCSV parses one already-open bank-export CSV, given the source
+// filename to stamp on every row (Transaction.SourceFile, and log messages)
+// and the account that owns it (nil when the file matched none).
 //
 // The account affects two things, in this order:
 //
@@ -425,14 +461,11 @@ func (dl *DataLoader) loadCSVFile(filePath string) ([]models.Transaction, error)
 //
 // The order matters: the flip re-hashes each row on the post-flip amount, so
 // stamping after it keeps identity keyed to the amount the app actually uses.
-func (dl *DataLoader) loadCSVFileForAccount(filePath string, acct *models.Account) ([]models.Transaction, error) {
-	file, err := dl.store.OpenFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = file.Close() }()
-
-	reader := csv.NewReader(file)
+//
+// Exported so a caller with bytes not yet on disk -- an in-progress import,
+// a test fixture -- can parse them without a filesystem path.
+func ParseCSV(r io.Reader, sourceFile string, acct *models.Account) ([]models.Transaction, error) {
+	reader := csv.NewReader(r)
 	reader.FieldsPerRecord = -1 // Allow variable number of fields
 	reader.TrimLeadingSpace = true
 
@@ -463,11 +496,10 @@ func (dl *DataLoader) loadCSVFileForAccount(filePath string, acct *models.Accoun
 	}
 
 	if useDebitCredit {
-		log.Printf("Using Debit/Credit columns instead of Amount for %s", filepath.Base(filePath))
+		log.Printf("Using Debit/Credit columns instead of Amount for %s", sourceFile)
 	}
 
 	var transactions []models.Transaction
-	sourceFile := filepath.Base(filePath)
 	lineNum := 1
 
 	for {
@@ -535,9 +567,9 @@ func (dl *DataLoader) loadCSVFileForAccount(filePath string, acct *models.Accoun
 	forcedByKind := acct != nil && acct.Kind == models.AccountKindCredit
 	if forcedByKind || usesCreditCardSignConvention(transactions) {
 		if forcedByKind {
-			log.Printf("Account %s is kind %q; forcing credit-card sign convention in %s", acct.ID, acct.Kind, filepath.Base(filePath))
+			log.Printf("Account %s is kind %q; forcing credit-card sign convention in %s", acct.ID, acct.Kind, sourceFile)
 		} else {
-			log.Printf("Detected credit-card sign convention in %s; flipping signs to bank convention", filepath.Base(filePath))
+			log.Printf("Detected credit-card sign convention in %s; flipping signs to bank convention", sourceFile)
 		}
 		for i := range transactions {
 			transactions[i].Amount = -transactions[i].Amount

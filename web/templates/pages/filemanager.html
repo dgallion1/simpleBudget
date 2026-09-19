@@ -576,16 +576,32 @@
 {{if .ImportEntries}}
 <ul class="divide-y divide-gray-100 dark:divide-gray-700" role="list">
     {{range $i, $e := .ImportEntries}}
-    <li class="py-1.5 flex items-center gap-3">
-        <input type="checkbox" name="name" value="{{$e.Name}}" id="import-entry-{{$i}}"
-            {{if $e.Exists}}disabled{{else}}checked{{end}}
-            class="w-4 h-4 text-accent rounded focus:ring-2 focus:ring-accent dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60">
-        <label for="import-entry-{{$i}}" class="text-sm flex-1 cursor-pointer select-none">
-            <span class="font-medium text-gray-900 dark:text-gray-100">{{$e.Name}}</span>
-            <span class="text-gray-600 dark:text-gray-400 ml-1">({{printf "%.0f" (div (toFloat $e.Size) 1024.0)}}K)</span>
-            {{if $e.MinDate}}<span class="text-body-sm text-gray-600 dark:text-gray-400 ml-2">{{$e.MinDate}} - {{$e.MaxDate}}</span>{{end}}
-            {{if $e.Exists}}<span class="text-body-sm text-gray-600 dark:text-gray-400 ml-2">(already present, will be skipped)</span>{{end}}
-        </label>
+    <li class="py-1.5">
+        <div class="flex items-center gap-3">
+            <input type="checkbox" name="name" value="{{$e.Name}}" id="import-entry-{{$i}}"
+                {{if or $e.Exists $e.IdenticalTo}}disabled{{else}}checked{{end}}
+                class="w-4 h-4 text-accent rounded focus:ring-2 focus:ring-accent dark:bg-gray-700 dark:border-gray-600 disabled:opacity-60">
+            <label for="import-entry-{{$i}}" class="text-sm flex-1 cursor-pointer select-none">
+                <span class="font-medium text-gray-900 dark:text-gray-100">{{$e.Name}}</span>
+                <span class="text-gray-600 dark:text-gray-400 ml-1">({{printf "%.0f" (div (toFloat $e.Size) 1024.0)}}K)</span>
+                {{if $e.MinDate}}<span class="text-body-sm text-gray-600 dark:text-gray-400 ml-2">{{$e.MinDate}} - {{$e.MaxDate}}</span>{{end}}
+                {{if $e.IdenticalTo}}<span class="text-body-sm text-gray-600 dark:text-gray-400 ml-2">(identical to {{$e.IdenticalTo}}, will be skipped)</span>
+                {{else if $e.Exists}}<span class="text-body-sm text-gray-600 dark:text-gray-400 ml-2">(already present, will be skipped)</span>{{end}}
+            </label>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 pl-7 mt-1">
+            <label for="import-account-{{$i}}" class="text-sm text-gray-700 dark:text-gray-300">Account for {{$e.Name}}</label>
+            <select id="import-account-{{$i}}" name="account:{{$e.Name}}"
+                class="border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-3 py-2 text-sm focus:ring-accent focus:border-accent">
+                {{range $.Accounts}}
+                <option value="{{.ID}}" {{if eq $e.Detected .ID}}selected{{end}}>{{.Name}}</option>
+                {{end}}
+                <option value="unassigned" {{if eq $e.Detected ""}}selected{{end}}>Unassigned (keep original name)</option>
+            </select>
+            {{if eq $e.Detected ""}}
+            <span class="text-body-sm text-gray-600 dark:text-gray-400">(could not detect the account — choose one)</span>
+            {{end}}
+        </div>
     </li>
     {{end}}
 </ul>

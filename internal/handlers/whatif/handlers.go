@@ -1103,11 +1103,16 @@ func buildProjectionChartData(settings *models.WhatIfSettings, projection *model
 	}
 }
 
-// renderError renders an HTML error fragment for HTMX requests
+// renderError renders an HTML error fragment for HTMX requests. Carries
+// role="alert" itself (rather than relying on whatever it gets swapped
+// into) so every caller's rejection is announced -- including the many
+// call sites that return this fragment as a bare 4xx/5xx with no
+// HX-Retarget slot of its own, which web/static/js/base.js now displays
+// next to the triggering form/card (WS4 AC2/AC4).
 func renderError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(statusCode)
-	body := fmt.Sprintf(`<div class="p-4 bg-negative-soft border border-negative rounded-lg">
+	body := fmt.Sprintf(`<div class="p-4 bg-negative-soft border border-negative rounded-lg" role="alert">
 		<div class="flex items-center">
 			<svg class="w-5 h-5 text-negative mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>

@@ -318,3 +318,119 @@ func TestManagerLoadSaveLoadDoesNotDoubleShift(t *testing.T) {
 		t.Errorf("on-disk offsets not shifted: %+v", onDisk)
 	}
 }
+
+// UpdateSettingsWithPersons is the manual-edit path (D2): the Rate
+// Assumptions form posts a new StartDate whenever it saves, whether the user
+// dragged the date picker or just changed some other field on the form. It
+// must re-anchor every schedule offset with the exact rule the monthly
+// rollover uses (shiftScheduleOffsets via monthsBetween) — not leave every
+// scheduled item to silently drift by the delta.
+
+func newTestSMForShift(t *testing.T) *SettingsManager {
+	t.Helper()
+	root := t.TempDir()
+	store, err := storage.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return NewSettingsManager(root, store)
+}
+
+// Forward: pushing the fixed start date one month later must move every
+// offset one month earlier so the calendar month is unchanged. Mutation (b)
+// — shifting by +delta instead of -delta — turns 11 into 13 here.
+func TestUpdateSettingsWithPersonsShiftsSchedulesForward(t *testing.T) {
+	sm := newTestSMForShift(t)
+	s := shiftFixture()
+	s.UseCurrentMonth = false
+	if err := sm.Save(s); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _, err := sm.UpdateSettingsWithPersons(map[string]interface{}{}, "2026-10", s.Persons)
+	if err != nil {
+		t.Fatalf("UpdateSettingsWithPersons: %v", err)
+	}
+	if got.StartDate != "2026-10" {
+		t.Fatalf("StartDate = %s, want 2026-10", got.StartDate)
+	}
+	checkOffsets(t, got, "manual start date advanced one month", 11, 23, 11, 23, 11, 11)
+}
+
+// Backward is symmetric: an earlier manual start date pushes every offset
+// later. Mutation (a) — removing the shift call entirely — leaves these
+// offsets at the fixture's original 12/24/12 values instead.
+func TestUpdateSettingsWithPersonsShiftsSchedulesBackward(t *testing.T) {
+	sm := newTestSMForShift(t)
+	s := shiftFixture()
+	s.UseCurrentMonth = false
+	if err := sm.Save(s); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _, err := sm.UpdateSettingsWithPersons(map[string]interface{}{}, "2026-08", s.Persons)
+	if err != nil {
+		t.Fatalf("UpdateSettingsWithPersons: %v", err)
+	}
+	if got.StartDate != "2026-08" {
+		t.Fatalf("StartDate = %s, want 2026-08", got.StartDate)
+	}
+	checkOffsets(t, got, "manual start date moved one month earlier", 13, 25, 13, 25, 13, 13)
+}
+
+// Saving the form with the start date field unchanged — but some other field
+// edited — must be a no-op for every schedule offset. Mutation (c) —
+// shifting even when the start date did not change — would move these
+// offsets even though StartDate posted back exactly what was already saved.
+func TestUpdateSettingsWithPersonsUnchangedStartDateIsNoOp(t *testing.T) {
+	sm := newTestSMForShift(t)
+	s := shiftFixture()
+	s.UseCurrentMonth = false
+	if err := sm.Save(s); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _, err := sm.UpdateSettingsWithPersons(map[string]interface{}{"portfolio_value": 999.0}, s.StartDate, s.Persons)
+	if err != nil {
+		t.Fatalf("UpdateSettingsWithPersons: %v", err)
+	}
+	if got.PortfolioValue != 999 {
+		t.Fatalf("portfolio_value not applied: %f", got.PortfolioValue)
+	}
+	if got.StartDate != "2026-09" {
+		t.Fatalf("StartDate = %s, want unchanged 2026-09", got.StartDate)
+	}
+	checkOffsets(t, got, "unchanged start date, unrelated field changed", 12, 24, 12, 24, 12, 12)
+}
+
+// Ticking "Use current month" on a plan whose fixed start is in the past
+// posts this same start_date field set to the current month (the page's own
+// onchange handler does this — see rate-assumptions.html). It must drift
+// through the identical shift as any other manual date edit, not silently
+// skip it because resolveCurrentMonth, running again inside Save, sees the
+// StartDate this function already adopted and has nothing left to do.
+func TestUpdateSettingsWithPersonsShiftsSchedulesWhenTogglingUseCurrentMonth(t *testing.T) {
+	sm := newTestSMForShift(t)
+	s := shiftFixture()
+	s.UseCurrentMonth = false
+	s.StartDate = "2020-01"
+	if err := sm.Save(s); err != nil {
+		t.Fatal(err)
+	}
+
+	thisMonth := time.Now().Format("2006-01")
+	elapsed, ok := monthsBetween("2020-01", thisMonth)
+	if !ok {
+		t.Fatal("monthsBetween(2020-01, thisMonth) failed")
+	}
+
+	got, _, err := sm.UpdateSettingsWithPersons(map[string]interface{}{"use_current_month": true}, thisMonth, s.Persons)
+	if err != nil {
+		t.Fatalf("UpdateSettingsWithPersons: %v", err)
+	}
+	if got.StartDate != thisMonth || !got.UseCurrentMonth {
+		t.Fatalf("StartDate = %s UseCurrentMonth = %v, want %s / true", got.StartDate, got.UseCurrentMonth, thisMonth)
+	}
+	checkOffsets(t, got, "use-current-month toggled on a past fixed start",
+		max(0, 12-elapsed), max(0, 24-elapsed), max(0, 12-elapsed), max(0, 24-elapsed), 12-elapsed, 12-elapsed)
+}

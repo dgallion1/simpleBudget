@@ -1442,6 +1442,22 @@ func (sm *SettingsManager) UpdateSettingsWithPersons(updates map[string]interfac
 	}
 
 	sm.applySettingsUpdates(settings, updates)
+
+	// A manual StartDate change (the Rate Assumptions form posts this field
+	// on every save) re-anchors every schedule offset by the same rule the
+	// monthly rollover uses (shiftScheduleOffsets), so a schedule entered
+	// against the OLD StartDate still means the same calendar month against
+	// the new one (D2). This also covers ticking "Use current month" on a
+	// plan whose fixed start is in the past: the page sets this same field
+	// to the current month before posting, so it is just another StartDate
+	// change here. elapsed==0 (unchanged date) or an unparseable old
+	// StartDate is a no-op, exactly like resolveCurrentMonth's own guard —
+	// and resolveCurrentMonth, which saveInternal runs right after this,
+	// cannot double this shift: it measures elapsed from the StartDate this
+	// function is about to set, not the one it started from.
+	if elapsed, ok := monthsBetween(settings.StartDate, startDate); ok {
+		shiftScheduleOffsets(settings, elapsed)
+	}
 	settings.StartDate = startDate
 	settings.Persons = persons
 

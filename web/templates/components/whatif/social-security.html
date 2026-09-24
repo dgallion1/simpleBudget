@@ -13,8 +13,8 @@
             <label for="ss-fra-benefit" class="block text-sm font-medium text-gray-700 dark:text-gray-200">{{if $alreadyClaimed}}Your Monthly Benefit{{else}}Monthly Benefit at FRA{{end}}</label>
             <div class="flex items-center gap-2">
                 <span class="text-gray-600 dark:text-gray-400">$</span>
-                <input type="number" id="ss-fra-benefit" name="fra_benefit" step="1" min="0" max="10000"
-                    value="{{if .Settings.SocialSecurity}}{{printf "%.0f" .Settings.SocialSecurity.FRABenefit}}{{end}}"
+                <input type="number" id="ss-fra-benefit" name="fra_benefit" step="any" min="0" max="10000"
+                    value="{{if .Settings.SocialSecurity}}{{formatExact .Settings.SocialSecurity.FRABenefit}}{{end}}"
                     placeholder="e.g. 2500"
                     class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
             </div>
@@ -37,8 +37,8 @@
             </div>
             <div>
                 <label for="ss-cola-rate" class="block text-xs text-gray-600 dark:text-gray-400 mb-1">COLA %/yr</label>
-                <input type="number" id="ss-cola-rate" name="cola_rate" step="0.1" min="0" max="10"
-                    value="{{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.COLARate 0.0)}}{{printf "%.1f" (mul .Settings.SocialSecurity.COLARate 100)}}{{else}}2.0{{end}}"
+                <input type="number" id="ss-cola-rate" name="cola_rate" step="any" min="0" max="10"
+                    value="{{if and .Settings.SocialSecurity (gt .Settings.SocialSecurity.COLARate 0.0)}}{{formatExactScaled (mul .Settings.SocialSecurity.COLARate 100)}}{{else}}2.0{{end}}"
                     class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
             </div>
         </div>
@@ -68,8 +68,8 @@
             <label for="ss-spouse-fra-benefit" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Spouse Monthly Benefit at FRA</label>
             <div class="flex items-center gap-2">
                 <span class="text-gray-600 dark:text-gray-400">$</span>
-                <input type="number" id="ss-spouse-fra-benefit" name="spouse_fra_benefit" step="1" min="0" max="10000"
-                    value="{{if .Settings.SocialSecurity}}{{printf "%.0f" .Settings.SocialSecurity.SpouseFRABenefit}}{{end}}"
+                <input type="number" id="ss-spouse-fra-benefit" name="spouse_fra_benefit" step="any" min="0" max="10000"
+                    value="{{if .Settings.SocialSecurity}}{{formatExact .Settings.SocialSecurity.SpouseFRABenefit}}{{end}}"
                     placeholder="optional"
                     class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
             </div>

@@ -221,28 +221,51 @@ function updateBondPercent() {
     // No longer used - per-account allocation now
 }
 
+// updateInvestmentReturnDisplay is the single authority for the
+// investment-return display text (WS1 C4: its content is a whole sentence
+// with a conditional shape, not a single formatted number, so it is the
+// one 'investment-return' format formatQuickAdjustDisplay/
+// computeQuickAdjustDisplayText deliberately skip). It updates BOTH the
+// in-card and Quick Adjust display nodes, and — since WS1 converted
+// #investment-return-slider/#qa-investment-return off their own oninput —
+// also sets aria-valuetext on whichever of those two ranges shares that
+// display's location (in-card display <-> in-card range, Quick Adjust
+// display <-> Quick Adjust range), to the SAME text the display node just
+// received (WCAG 4.1.2: one sentence, read from one place).
 function updateInvestmentReturnDisplay(value) {
     const val = parseFloat(value);
     const displays = document.querySelectorAll('[data-quick-adjust-display="investment_return"]');
+    const ranges = document.querySelectorAll('input[type="range"][data-quick-adjust-key="investment_return"]');
     displays.forEach((display) => {
         const inPanel = display.closest('#quick-adjust-panel') !== null;
         // Clear existing content
         display.textContent = '';
         if (val === 0) {
-            const expectedReturn = calculateExpectedReturnFromAllocation();
+            // WS1 C1: the server's own %.1f figure (data-expected-return,
+            // rendered server-side from the SAME .Settings.
+            // GetExpectedReturnFromAllocation the served text uses) —
+            // NEVER calculateExpectedReturnFromAllocation()'s client
+            // recompute. That helper's `|| 10` / `|| 60` fallbacks treat a
+            // 0 allocation field as "not set", so on the live plan's real
+            // allocations it silently disagrees with the server (WS1.4
+            // finding O1 / this attempt's C1). Reading the server's own
+            // text is also correct straight through an htmx OOB swap,
+            // since the swapped-in markup carries its own fresh
+            // data-expected-return.
+            const expectedReturnText = display.dataset.expectedReturn;
             const label = document.createElement('span');
             label.className = inPanel ? 'text-positive' : 'text-positive';
             label.textContent = 'Using asset allocation';
             const detail = document.createElement('span');
             detail.className = inPanel ? 'text-gray-500' : 'text-gray-600 dark:text-gray-400';
-            detail.textContent = '(~' + expectedReturn.toFixed(1) + '% expected)';
+            detail.textContent = '(~' + expectedReturnText + '% expected)';
             display.appendChild(label);
             display.appendChild(document.createTextNode(' '));
             display.appendChild(detail);
         } else {
             const label = document.createElement('span');
             label.className = inPanel ? 'text-gray-200' : 'text-gray-600 dark:text-gray-300';
-            label.textContent = 'Fixed ' + val.toFixed(1) + '%';
+            label.textContent = 'Fixed ' + roundHalfEvenDecimalString(val, 1) + '%';
             const detail = document.createElement('span');
             detail.className = inPanel ? 'text-warning text-body-sm' : 'text-warning text-body-sm';
             detail.textContent = '(overrides allocation)';
@@ -250,6 +273,12 @@ function updateInvestmentReturnDisplay(value) {
             display.appendChild(document.createTextNode(' '));
             display.appendChild(detail);
         }
+        const ariaText = display.textContent.replace(/\s+/g, ' ').trim();
+        ranges.forEach((range) => {
+            if ((range.closest('#quick-adjust-panel') !== null) === inPanel) {
+                range.setAttribute('aria-valuetext', ariaText);
+            }
+        });
     });
 }
 

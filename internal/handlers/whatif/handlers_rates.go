@@ -400,7 +400,17 @@ func handleWhatIfSocialSecurity(w http.ResponseWriter, r *http.Request) {
 	settings.SocialSecurity.ClaimAge = parseSSClaimAge(r, "claim_age")
 
 	if colaRate, err := parseFormFloat(r, "cola_rate"); err == nil {
-		settings.SocialSecurity.COLARate = colaRate / 100.0
+		// R-EXACT': the form carries COLA x100 (formatExactScaled, 15
+		// significant digits, e.g. "1.45"); dividing a parsed float by 100
+		// is NOT guaranteed bit-identical to parsing the equivalent shifted
+		// decimal directly (IEEE division rounds relative to the ALREADY-
+		// rounded dividend, not the true decimal) — a sweep of 0.0001-step
+		// percentages found ~26% disagree at the last bit. Rounding the
+		// quotient to 15 significant digits (comfortably more than any
+		// stored COLA needs) removes that drift in every case tested, so a
+		// stored COLA with <=15 significant digits round-trips exactly
+		// through render -> submit -> save.
+		settings.SocialSecurity.COLARate = roundToSignificantDigits(colaRate/100.0, 15)
 		settings.SocialSecurity.COLARateSet = true // F-026: user explicitly submitted a value
 	} else if settings.SocialSecurity.COLARate == 0 && !settings.SocialSecurity.COLARateSet {
 		settings.SocialSecurity.COLARate = 0.02

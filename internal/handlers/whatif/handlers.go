@@ -1148,6 +1148,27 @@ func parseFormInt(r *http.Request, key string) (int, error) {
 	return strconv.Atoi(v)
 }
 
+// roundToSignificantDigits rounds v to `sig` significant decimal digits.
+// WS1 R-EXACT': used on the one server-side arithmetic step (SS COLA
+// rate / 100 on save) whose result must round-trip a stored value exactly
+// — IEEE division of an already-rounded dividend is not guaranteed
+// bit-identical to parsing the equivalent shifted decimal directly, so
+// rounding away anything past 15 significant digits (far more precision
+// than any WS1 field needs) removes that drift. Round-trips through
+// strconv's own correctly-rounded decimal<->float64 conversion, so it is
+// exact for any finite v.
+func roundToSignificantDigits(v float64, sig int) float64 {
+	if v == 0 {
+		return 0
+	}
+	s := strconv.FormatFloat(v, 'g', sig, 64)
+	rounded, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return v
+	}
+	return rounded
+}
+
 func parseSSClaimAge(r *http.Request, key string) int {
 	age, err := parseFormInt(r, key)
 	if err != nil || age < 62 || age > 70 {

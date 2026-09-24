@@ -7,14 +7,17 @@ import (
 	"budget2/internal/models"
 )
 
-// TestMonthlyLivingExpensesWholeDollarRounding_HalfAwayFromZeroTie guards the
-// twice-failed W2 defect: three formatters (Go %.0f half-even, JS Math.round
-// half-away, JS bare toLocaleString with no rounding) rendered three
-// different strings for one value. The canonical rule is HALF-AWAY-FROM-ZERO
-// to whole dollars with thousands separators — this must hold at the .50 tie
-// where %.0f (banker's rounding) disagrees: 7386.50 rounds DOWN to "$7,386"
-// under %.0f but must render "$7,387" under the canonical rule.
-func TestMonthlyLivingExpensesWholeDollarRounding_HalfAwayFromZeroTie(t *testing.T) {
+// TestMonthlyLivingExpensesWholeDollarRounding_HalfEvenTie guards the WS1
+// R-FMT fix to a pre-existing (master, 643fa54) split: living expenses'
+// slider/aria/Quick-Adjust surfaces used a half-away-from-zero rule while
+// every OTHER whole-dollar surface (Coverage Timeline, healthcare sliders,
+// etc.) used Go formatNumber's %.0f half-EVEN rule, so a .50 tie could show
+// two different figures on the same screen depending which surface you
+// looked at. R-FMT converges every such surface onto formatNumber: this
+// must hold at the .50 tie where the two rules disagree — 7386.50 must
+// render "$7,386" (half-even; 7386 is even) everywhere, never "$7,387"
+// (the old half-away-from-zero figure).
+func TestMonthlyLivingExpensesWholeDollarRounding_HalfEvenTie(t *testing.T) {
 	_, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
 
@@ -34,18 +37,18 @@ func TestMonthlyLivingExpensesWholeDollarRounding_HalfAwayFromZeroTie(t *testing
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		if !strings.Contains(out, `aria-valuetext="$7,387"`) {
-			t.Errorf("expected aria-valuetext=%q on the visible range input; got: %s", "$7,387", truncate(out, 1200))
+		if !strings.Contains(out, `aria-valuetext="$7,386"`) {
+			t.Errorf("expected aria-valuetext=%q on the visible range input; got: %s", "$7,386", truncate(out, 1200))
 		}
-		if strings.Contains(out, `aria-valuetext="$7,386"`) {
-			t.Errorf(".50 tie must round away from zero, not half-even; got: %s", truncate(out, 1200))
+		if strings.Contains(out, `aria-valuetext="$7,387"`) {
+			t.Errorf(".50 tie must round half-even (formatNumber), not half-away-from-zero; got: %s", truncate(out, 1200))
 		}
 		if !strings.Contains(out, `id="monthly_living_expenses_display"`) {
 			t.Fatalf("display span not found: %s", truncate(out, 1200))
 		}
 		idx := strings.Index(out, `id="monthly_living_expenses_display"`)
-		if !strings.Contains(out[idx:idx+200], "$7,387") {
-			t.Errorf("expected display span to read $7,387; got: %s", truncate(out[idx:idx+200], 200))
+		if !strings.Contains(out[idx:idx+200], "$7,386") {
+			t.Errorf("expected display span to read $7,386; got: %s", truncate(out[idx:idx+200], 200))
 		}
 	})
 
@@ -56,21 +59,21 @@ func TestMonthlyLivingExpensesWholeDollarRounding_HalfAwayFromZeroTie(t *testing
 		if err != nil {
 			t.Fatalf("RenderToString: %v", err)
 		}
-		if !strings.Contains(out, `aria-valuetext="$7,387"`) {
-			t.Errorf("expected mirror aria-valuetext=%q; got: %s", "$7,387", truncate(out, 1200))
+		if !strings.Contains(out, `aria-valuetext="$7,386"`) {
+			t.Errorf("expected mirror aria-valuetext=%q; got: %s", "$7,386", truncate(out, 1200))
 		}
 		idx := strings.Index(out, `data-quick-adjust-display="monthly_living_expenses"`)
 		if idx < 0 {
 			t.Fatalf("mirror display span not found: %s", truncate(out, 1200))
 		}
-		if !strings.Contains(out[idx:idx+200], "$7,387") {
-			t.Errorf("expected mirror display span to read $7,387; got: %s", truncate(out[idx:idx+200], 200))
+		if !strings.Contains(out[idx:idx+200], "$7,386") {
+			t.Errorf("expected mirror display span to read $7,386; got: %s", truncate(out[idx:idx+200], 200))
 		}
 	})
 
 	t.Run("phase-dollar preview label rounds the tie the same way", func(t *testing.T) {
 		// 7386.50 x 1.1 = 8125.15 -- not itself a tie, but exercises the same
-		// formatDollars path the .50 base above renders through, at both the
+		// formatNumber path the .50 base above renders through, at both the
 		// quick-adjust mirror tab and the primary spending-phases card.
 		out, err := renderer.RenderToString("whatif-quick-adjust-phases-content", map[string]any{
 			"Settings": s,

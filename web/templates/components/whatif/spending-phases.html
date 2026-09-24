@@ -69,14 +69,24 @@
                     {{end}}
                     <div class="flex-1 min-w-0 flex flex-wrap items-center gap-2">
                         <label for="phase-{{$i}}-multiplier" class="text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">Spending</label>
-                        <input type="range" id="phase-{{$i}}-multiplier" name="phase_{{$i}}_multiplier"
+                        {{/* Hidden input carries the exact saved multiplier
+                             (WS1, W2 Part B mechanism); the visible range
+                             keeps step=0.05 for drag feel but has no name,
+                             so an untouched off-grid multiplier (e.g. 0.93)
+                             is never snapped and resubmitted. */}}
+                        <input type="hidden" id="phase-{{$i}}-multiplier-exact" name="phase_{{$i}}_multiplier"
+                            value="{{formatExact $phase.Multiplier}}"
+                            data-quick-adjust-key="phase:{{$i}}:multiplier">
+                        <input type="range" id="phase-{{$i}}-multiplier"
                             value="{{printf "%.2f" $phase.Multiplier}}"
+                            aria-valuetext="{{printf "%.0f" (mul $phase.Multiplier 100)}}%"
                             min="0.30" max="1.20" step="0.05"
                             data-quick-adjust-key="phase:{{$i}}:multiplier"
-                            class="flex-1 min-w-[8rem] h-2 bg-gray-200 dark:bg-gray-500 rounded-lg appearance-none cursor-pointer"
-                            oninput="updatePhaseSliderLabel(this)">
+                            data-quick-adjust-mirror="true"
+                            data-quick-adjust-display-format="phase-percent"
+                            class="flex-1 min-w-[8rem] h-2 bg-gray-200 dark:bg-gray-500 rounded-lg appearance-none cursor-pointer">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-200 w-10 text-right" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-percent">{{printf "%.0f" (mul $phase.Multiplier 100)}}%</span>
-                        <span class="text-body-sm text-gray-600 dark:text-gray-300 w-20 text-right phase-dollar-label" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">{{formatDollars (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo</span>
+                        <span class="text-body-sm text-gray-600 dark:text-gray-300 w-20 text-right phase-dollar-label" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">${{formatNumber (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo</span>
                     </div>
                 </div>
             </div>

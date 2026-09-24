@@ -76,6 +76,8 @@ func getFuncMap() template.FuncMap {
 		"formatDollars":                       formatWholeDollars,
 		"conversionSummary":                   conversionSummary,
 		"formatNumber":                        formatNumber,
+		"formatExact":                         formatExact,
+		"formatExactScaled":                   formatExactScaled,
 		"formatPercent":                       formatPercent,
 		"formatMultiplier":                    formatMultiplier,
 		"formatDate":                          formatDate,
@@ -591,6 +593,106 @@ func formatNumber(v float64) string {
 		return "-" + result.String()
 	}
 	return result.String()
+}
+
+// formatExact renders v as the exact decimal an <input> value="" attribute
+// carries so an untouched control resubmits it unchanged (WS1 value-
+// fidelity fix, R-EXACT'). Used ONLY for a RAW stored field (money to the
+// cent, a percentage to any number of decimals, incl. one a user typed
+// with 16-17 significant digits, e.g. a summed cost basis) — never for a
+// derived/scaled value (see formatExactScaled below) and never for
+// user-facing display text, where formatMoney/formatDollars/formatNumber/
+// formatPercent stay the single formatters.
+//
+// 'f' with precision -1 is strconv's shortest decimal that round-trips
+// back to v EXACTLY, with NO rounding of any kind — this is the whole
+// point: attempt 3's `FormatFloat(v, 'g', 15, 64)` re-rounded any stored
+// value needing more than 15 significant digits (a $232,777.48988888797
+// cost basis from summing four lots renders as "232777.489888888", and an
+// untouched save then REWRITES the stored value — exactly the D1 bug this
+// task exists to eliminate, via a formatter instead of a step grid). 'f'
+// also NEVER emits exponent notation (unlike 'g', which does outside
+// roughly 1e-4..1e21) — the second half of "never re-rounded, never
+// exponent" falls out of using 'f' at all, for every magnitude a WS1 field
+// can hold.
+func formatExact(v float64) string {
+	if v == 0 {
+		v = 0 // IEEE -0 belt, same as formatMoney/formatNumber/formatPercent (CB9)
+	}
+	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
+// formatExactScaled renders a DERIVED/SCALED value (the one WS1 site: SS
+// COLA rate x100, social-security.html) at 15 significant digits, via 'f'
+// so it never emits exponent notation. Never use this for a raw stored
+// field — formatExact above is "never re-rounded"; this function's whole
+// job IS to round, because the multiplication itself (not the render)
+// introduces IEEE noise a plain shortest-round-trip would print verbatim:
+// 0.0145*100 is 1.4500000000000002 in float64. 15 significant digits is a
+// RELATIVE (magnitude-independent) round — float64 carries about 15-17
+// significant decimal digits everywhere, so this is enough to represent
+// any realistic WS1 percentage exactly while absorbing the multiplication's
+// mantissa noise at the 16th/17th digit: "1.45", not
+// "1.4500000000000002". Go's strconv 'g' verb does this rounding+trim
+// correctly but can choose exponent form for extreme magnitudes (not
+// reachable by a 0-10% COLA, but forbidden by R-EXACT' unconditionally) —
+// sigFigsPlain below reformats 'e' notation into plain decimal so the
+// output is NEVER in exponent form regardless of magnitude.
+func formatExactScaled(v float64) string {
+	if v == 0 {
+		v = 0
+	}
+	return sigFigsPlain(v, 15)
+}
+
+// sigFigsPlain renders v rounded to `sig` significant digits, in plain
+// (never exponential) decimal notation, trailing zeros trimmed. Built on
+// strconv's 'e' verb (which gives an exact, correctly-rounded mantissa of
+// a known digit count) rather than 'g' (which is otherwise equivalent but
+// may itself choose 'e' output) specifically so the reformatting into
+// plain decimal below is unconditional.
+func sigFigsPlain(v float64, sig int) string {
+	negative := v < 0
+	if negative {
+		v = -v
+	}
+	e := strconv.FormatFloat(v, 'e', sig-1, 64) // e.g. "1.450000000000000e+00"
+	mantissa, expPart, ok := strings.Cut(e, "e")
+	if !ok {
+		return strconv.FormatFloat(v, 'f', -1, 64) // unreachable for any finite v; belt only
+	}
+	exp, err := strconv.Atoi(expPart)
+	if err != nil {
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	}
+	digits := strings.Replace(mantissa, ".", "", 1) // exactly `sig` digits
+	pointPos := exp + 1                             // digits before the decimal point
+	var sb strings.Builder
+	switch {
+	case pointPos <= 0:
+		sb.WriteString("0.")
+		sb.WriteString(strings.Repeat("0", -pointPos))
+		sb.WriteString(digits)
+	case pointPos >= len(digits):
+		sb.WriteString(digits)
+		sb.WriteString(strings.Repeat("0", pointPos-len(digits)))
+	default:
+		sb.WriteString(digits[:pointPos])
+		sb.WriteByte('.')
+		sb.WriteString(digits[pointPos:])
+	}
+	s := sb.String()
+	if strings.Contains(s, ".") {
+		s = strings.TrimRight(s, "0")
+		s = strings.TrimSuffix(s, ".")
+	}
+	if s == "" {
+		s = "0"
+	}
+	if negative && s != "0" {
+		s = "-" + s
+	}
+	return s
 }
 
 func formatPercent(v float64) string {

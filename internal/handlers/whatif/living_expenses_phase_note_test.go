@@ -189,7 +189,12 @@ func TestPortfolioSettingsRender_LivingExpensesPhaseNote(t *testing.T) {
 
 	t.Run("hidden input carries the exact off-grid saved value; range has no name", func(t *testing.T) {
 		s := twoPhaseSettings(1.1, 0.9)
-		s.MonthlyLivingExpenses = 7386 // off the range's step=100 grid
+		// R-EXACT': formatExact (shortest round-trip, never re-rounded) —
+		// not a fixed-2-decimal %.2f, which would lose a sub-cent amount
+		// (WS1.3 checker-tests C1: a Sync-from-Dashboard MLE of
+		// 12923.603942198184 lost $0.004 under %.2f). 7386.345 is off both
+		// the range's step=100 grid AND a plain 2-decimal grid.
+		s.MonthlyLivingExpenses = 7386.345
 		out, err := renderer.RenderToString("whatif-portfolio-settings", map[string]any{
 			"Settings":                s,
 			"LivingExpensesPhaseNote": buildLivingExpensesPhaseNote(s),
@@ -200,8 +205,8 @@ func TestPortfolioSettingsRender_LivingExpensesPhaseNote(t *testing.T) {
 		if !strings.Contains(out, `id="monthly_living_expenses_value" name="monthly_living_expenses"`) {
 			t.Errorf("expected hidden input to carry the submission name; got: %s", truncate(out, 1200))
 		}
-		if !strings.Contains(out, `value="7386.00"`) {
-			t.Errorf("expected hidden input value to be the exact saved amount 7386.00; got: %s", truncate(out, 1200))
+		if !strings.Contains(out, `value="7386.345"`) {
+			t.Errorf("expected hidden input value to be the exact saved amount 7386.345 (formatExact, not %%.2f); got: %s", truncate(out, 1200))
 		}
 		if strings.Contains(out, `id="monthly_living_expenses_input" name=`) {
 			t.Errorf("expected the visible range input to have no name attribute (excluded from submission); got: %s", truncate(out, 1200))

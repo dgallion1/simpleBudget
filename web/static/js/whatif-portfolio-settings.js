@@ -4,27 +4,51 @@
 
 function updatePortfolioRange(rangeStr, options) {
     const shouldTriggerChange = !options || options.triggerChange !== false;
+    // WS1 R-FMT': initialization (load/after-swap) must not rewrite any
+    // display/aria text the server just rendered — only the structural
+    // min/max/step/select-bucket mirror sync. A genuine user bucket-select
+    // change (the template's onchange=) leaves this true (default) so its
+    // display/aria stay resynced, same as before.
+    const shouldSyncDisplay = !options || options.syncDisplay !== false;
     if (options && options.sourceEvent && typeof options.sourceEvent.stopPropagation === 'function') {
         options.sourceEvent.stopPropagation();
     }
     const [min, max, step] = rangeStr.split(',').map(Number);
     const slider = document.getElementById('portfolio-slider');
     if (!slider) return;
-    const currentVal = Number(slider.value);
     slider.min = min;
     slider.max = max;
     slider.step = step;
-    // Clamp current value to new range
-    if (currentVal < min) slider.value = min;
-    else if (currentVal > max) slider.value = max;
-    // Update display
-    slider.nextElementSibling.textContent = formatWholeDollars(Number(slider.value));
+    // WS1 C5 R1: propagate the chosen range to every OTHER portfolio_value
+    // mirror too (Quick Adjust's #qa-portfolio-value included). The
+    // canonical control is now a hidden field with no min/max/step of its
+    // own, so syncQuickAdjustMirrorControls (called below via
+    // syncQuickAdjustKey) has nothing to copy from — without this loop the
+    // Quick Adjust slider silently keeps stale $0-20M bounds while the
+    // in-card slider and its <select> show the chosen preset.
+    if (typeof getQuickAdjustMirrorControls === 'function') {
+        getQuickAdjustMirrorControls('portfolio_value').forEach(function(mirror) {
+            if (mirror === slider) return;
+            mirror.min = min;
+            mirror.max = max;
+            mirror.step = step;
+        });
+    }
     const select = document.getElementById('portfolio-range');
     if (select && select.value !== rangeStr) select.value = rangeStr;
     const mirrorSelect = document.getElementById('quick-adjust-portfolio-range');
     if (mirrorSelect && mirrorSelect.value !== rangeStr) mirrorSelect.value = rangeStr;
-    if (typeof quickAdjustSyncFromCanonical === 'function') {
-        quickAdjustSyncFromCanonical(slider);
+    // Re-sync the slider (now a display-only mirror, WS1), its Quick Adjust
+    // mirror, and both display spans from the canonical hidden field's
+    // exact value — never by clamping/assigning the slider's OWN value,
+    // which would silently rewrite the saved figure onto the new min/max/
+    // step grid even though nothing here is a genuine user drag.
+    if (shouldSyncDisplay) {
+        if (typeof syncQuickAdjustKey === 'function') {
+            syncQuickAdjustKey('portfolio_value');
+        }
+    } else if (typeof syncQuickAdjustMirrorOnly === 'function') {
+        syncQuickAdjustMirrorOnly('portfolio_value');
     }
     // Trigger change event for HTMX
     if (shouldTriggerChange) {
@@ -37,7 +61,7 @@ function initializePortfolioRange() {
     if (!slider) return;
     const select = document.getElementById('portfolio-range');
     if (!select) return;
-    updatePortfolioRange(select.value, { triggerChange: false });
+    updatePortfolioRange(select.value, { triggerChange: false, syncDisplay: false });
 }
 
 // updateLivingExpensesPhaseNote recomputes the phase note's dollar figure

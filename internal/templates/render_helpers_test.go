@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -196,6 +197,121 @@ func TestFormatDollarsTemplateFunc(t *testing.T) {
 		if got := fn(c.in); got != c.want {
 			t.Errorf("formatDollars(%v) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// TestFormatExact pins formatExact's exact-decimal contract (WS1 R-EXACT'):
+// a RAW stored value renders at its shortest round-trip decimal with NO
+// re-rounding, ever — not even at 16-17 significant digits, and never in
+// exponent notation. Kills a revert to attempt 3's `FormatFloat(v,'g',15)`,
+// which re-rounds any value needing more than 15 significant digits
+// (232777.48988888797, a summed cost basis, is the WS1.3 checker-second
+// repro: 'g',15 gives "232777.489888888", 15 sig figs, silently dropping
+// two real digits) and to the attempt-2 implementation
+// (math.Round(v*1e10)/1e10), which manufactures "388354.5900000001" for
+// real cent values above ~$1e8 (WS1.2 checker-tests C7/D1).
+func TestFormatExact(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want string
+	}{
+		// Raw stored values (money to the cent, percentages to 2-3
+		// decimals) — shortest round-trip, unrounded.
+		{388354.59, "388354.59"},       // WS1.2 checker-tests' repro value
+		{262144.03, "262144.03"},       // checker's exhaustive-sweep "smallest affected value"
+		{255122409.87, "255122409.87"}, // large magnitude, still no artifact
+		{276146.86, "276146.86"},       // the generic round-trip test's own cost-basis fixture
+		{1655.30, "1655.3"},            // trailing zero trimmed
+		{83.037, "83.037"},
+		{10.25, "10.25"},
+		{0.5, "0.5"},
+		{50000.5, "50000.5"},
+		{0, "0"},
+		{math.Copysign(0, -1), "0"}, // CB9: IEEE negative zero must not leak its sign bit
+		{-6435.53, "-6435.53"},
+		// 16-17 significant digits — WS1.3 checker-second's exact repro. A
+		// 'g',15 revert truncates these to 15 sig figs; 'f',-1 must not.
+		{232777.48988888797, "232777.48988888797"},
+		{83.03712345678912, "83.03712345678912"},
+		{12923.603942198184, "12923.603942198184"},
+		{12345.678901234567, "12345.678901234567"},
+		// Tiny/huge magnitudes — 'g' would choose exponent notation here;
+		// 'f',-1 never does.
+		{0.00005, "0.00005"},
+		{0.00001, "0.00001"},
+		{1e15, "1000000000000000"},
+	}
+	for _, c := range cases {
+		if got := formatExact(c.in); got != c.want {
+			t.Errorf("formatExact(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestFormatExactScaled pins the ONE scaled call site's contract (SS COLA
+// x100): 15 significant digits, via 'f' so it is NEVER exponent notation
+// even at extreme magnitudes, trailing zeros trimmed. Kills a revert to a
+// bare 'g',15 (which would reintroduce exponent notation for a tiny/huge
+// input) and a revert to formatExact itself (no rounding at all, which
+// would print the multiplication's own noise verbatim, e.g.
+// "1.4500000000000002").
+func TestFormatExactScaled(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want string
+	}{
+		{0.0145 * 100, "1.45"},
+		{0.028 * 100, "2.8"},
+		{0.029 * 100, "2.9"},
+		{0.059 * 100, "5.9"},
+		{0.07 * 100, "7"},
+		{0, "0"},
+		{math.Copysign(0, -1), "0"},
+		{0.00005, "0.00005"}, // no exponent even at a tiny magnitude
+		{1e15, "1000000000000000"},
+		{-1.005, "-1.005"},
+	}
+	for _, c := range cases {
+		if got := formatExactScaled(c.in); got != c.want {
+			t.Errorf("formatExactScaled(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestFormatExactNoArtifactsAcrossRange is the exhaustive-sweep guard the
+// WS1.2 checker-tests verdict asked for: formatExact must never introduce a
+// float-noise tail OR exponent notation for any realistic cent value up to
+// $1e9 (the widest stored WS1 field, taxable_cost_basis's max), nor for any
+// realistic percentage value to three decimals. A float-artifact tail
+// looks like "...0000001" / "...9999999" — six-or-more repeated 0s/9s
+// followed by one off digit, the same pattern the D1 finding matched by
+// hand. (formatExact itself never re-rounds, so this is now primarily an
+// exponent-notation guard; formatExactScaled gets its own artifact-free
+// coverage via TestFormatExactScaled's exact-value cases above, since its
+// whole job is rounding and a exhaustive "no artifact" sweep would be
+// testing 15-sig-fig rounding correctness, not this function's contract.)
+func TestFormatExactNoArtifactsAcrossRange(t *testing.T) {
+	artifact := regexp.MustCompile(`\d\.\d*(?:0{6,}[1-9]|9{6,}\d)`)
+	check := func(v float64) {
+		got := formatExact(v)
+		if artifact.MatchString(got) {
+			t.Errorf("formatExact(%v) = %q: looks like a float artifact", v, got)
+		}
+		if strings.ContainsAny(got, "eE") {
+			t.Errorf("formatExact(%v) = %q: exponent notation, want plain decimal", v, got)
+		}
+	}
+	for cents := int64(0); cents <= 100_000_00; cents += 97 {
+		check(float64(cents) / 100)
+	}
+	for cents := int64(100_000_00); cents <= 900_000_00; cents += 977 {
+		check(float64(cents) / 100)
+	}
+	for cents := int64(900_000_00); cents <= 1_000_000_000_00; cents += 100_003 {
+		check(float64(cents) / 100)
+	}
+	for thousandths := int64(0); thousandths <= 100_000; thousandths += 7 {
+		check(float64(thousandths) / 1000)
 	}
 }
 

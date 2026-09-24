@@ -103,8 +103,8 @@
                 <div>
                     <label for="tax-deferred-percent-input" class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Tax-Deferred</label>
                     <div class="flex items-center">
-                        <input type="number" id="tax-deferred-percent-input" name="tax_deferred_percent" value="{{printf "%.0f" .Settings.TaxDeferredPercent}}"
-                            min="0" max="100" step="1"
+                        <input type="number" id="tax-deferred-percent-input" name="tax_deferred_percent" value="{{formatExact .Settings.TaxDeferredPercent}}"
+                            min="0" max="100" step="any"
                             class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm"
                             oninput="updateTaxablePercent()">
                         <span class="ml-1 text-sm text-gray-600 dark:text-gray-400">%</span>
@@ -114,8 +114,8 @@
                 <div>
                     <label for="roth-percent-input" class="block text-xs text-gray-600 dark:text-gray-400 mb-1">Roth</label>
                     <div class="flex items-center">
-                        <input type="number" id="roth-percent-input" name="roth_percent" value="{{printf "%.0f" .Settings.RothPercent}}"
-                            min="0" max="100" step="1"
+                        <input type="number" id="roth-percent-input" name="roth_percent" value="{{formatExact .Settings.RothPercent}}"
+                            min="0" max="100" step="any"
                             class="block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm"
                             oninput="updateTaxablePercent()">
                         <span class="ml-1 text-sm text-gray-600 dark:text-gray-400">%</span>
@@ -185,9 +185,9 @@
         <div>
             <label for="state-income-tax-rate-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200">State Income Tax Rate %</label>
             <input type="number" id="state-income-tax-rate-input" name="state_income_tax_rate"
-                value="{{if and .Settings.TaxConfig .Settings.TaxConfig.StateIncomeTaxRate}}{{printf "%.2f" (deref .Settings.TaxConfig.StateIncomeTaxRate)}}{{end}}"
+                value="{{if and .Settings.TaxConfig .Settings.TaxConfig.StateIncomeTaxRate}}{{formatExact (deref .Settings.TaxConfig.StateIncomeTaxRate)}}{{end}}"
                 placeholder="e.g. 0 for FL/TX, 9.3 for CA"
-                min="0" max="20" step="0.05"
+                min="0" max="20" step="any"
                 class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
             <p class="text-body-sm text-gray-500 dark:text-gray-400 mt-1">Flat rate applied to ordinary income. Enter <code>0</code> for no-income-tax states (FL, TX, WA, etc.). Leaving the field blank flags this scenario as unconfigured.</p>
         </div>
@@ -200,27 +200,27 @@
             <div class="grid grid-cols-3 gap-3">
                 <div>
                     <label for="taxable-dividend-yield-input" class="block text-xs text-gray-600 dark:text-gray-400">Dividend Yield %</label>
-                    <input type="number" id="taxable-dividend-yield-input" name="taxable_dividend_yield" value="{{printf "%.1f" .Settings.TaxableDividendYield}}"
-                        min="0" max="20" step="0.1"
+                    <input type="number" id="taxable-dividend-yield-input" name="taxable_dividend_yield" value="{{formatExact .Settings.TaxableDividendYield}}"
+                        min="0" max="20" step="any"
                         class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 </div>
                 <div>
                     <label for="taxable-qualified-dividend-percent-input" class="block text-xs text-gray-600 dark:text-gray-400">Qualified Share %</label>
-                    <input type="number" id="taxable-qualified-dividend-percent-input" name="taxable_qualified_dividend_percent" value="{{printf "%.0f" .Settings.GetTaxableQualifiedDividendPercent}}"
-                        min="0" max="100" step="1"
+                    <input type="number" id="taxable-qualified-dividend-percent-input" name="taxable_qualified_dividend_percent" value="{{formatExact .Settings.GetTaxableQualifiedDividendPercent}}"
+                        min="0" max="100" step="any"
                         class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 </div>
                 <div>
                     <label for="taxable-cap-gains-distribution-rate-input" class="block text-xs text-gray-600 dark:text-gray-400">Cap Gains Dist. %</label>
-                    <input type="number" id="taxable-cap-gains-distribution-rate-input" name="taxable_cap_gains_distribution_rate" value="{{printf "%.1f" .Settings.TaxableCapitalGainsDistributionRate}}"
-                        min="0" max="20" step="0.1"
+                    <input type="number" id="taxable-cap-gains-distribution-rate-input" name="taxable_cap_gains_distribution_rate" value="{{formatExact .Settings.TaxableCapitalGainsDistributionRate}}"
+                        min="0" max="20" step="any"
                         class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 </div>
             </div>
             <div>
                 <label for="taxable-cost-basis-input" class="block text-xs text-gray-600 dark:text-gray-400">Cost Basis $</label>
-                <input type="number" id="taxable-cost-basis-input" name="taxable_cost_basis" value="{{if .Settings.TaxableCostBasis}}{{printf "%.0f" (deref .Settings.TaxableCostBasis)}}{{end}}"
-                    min="0" max="1000000000" step="1000" placeholder="What you paid for these holdings"
+                <input type="number" id="taxable-cost-basis-input" name="taxable_cost_basis" value="{{if .Settings.TaxableCostBasis}}{{formatExact (deref .Settings.TaxableCostBasis)}}{{end}}"
+                    min="0" max="1000000000" step="any" placeholder="What you paid for these holdings"
                     class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 <p class="mt-1 text-body-sm text-gray-500 dark:text-gray-400">Leave blank and the projection assumes no unrealized gain, understating the tax on every taxable withdrawal. Enter 0 if the position is fully appreciated.</p>
             </div>
@@ -241,8 +241,8 @@
                 </div>
                 <div>
                     <label for="aca-premium-credit-input" class="block text-xs text-gray-600 dark:text-gray-400">Premium Tax Credit $/yr</label>
-                    <input type="number" id="aca-premium-credit-input" name="aca_premium_credit" value="{{if and .Settings.ACA .Settings.ACA.AnnualPremiumTaxCredit}}{{printf "%.0f" (deref .Settings.ACA.AnnualPremiumTaxCredit)}}{{end}}"
-                        min="0" max="100000" step="100" placeholder="From Form 1095-A"
+                    <input type="number" id="aca-premium-credit-input" name="aca_premium_credit" value="{{if and .Settings.ACA .Settings.ACA.AnnualPremiumTaxCredit}}{{formatExact (deref .Settings.ACA.AnnualPremiumTaxCredit)}}{{end}}"
+                        min="0" max="100000" step="any" placeholder="From Form 1095-A"
                         class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent sm:text-sm">
                 </div>
             </div>
@@ -286,8 +286,8 @@
                     <div class="flex items-center">
                         <label for="tax-deferred-stock-percent-input" class="text-xs text-gray-600 dark:text-gray-400 w-12">Stocks</label>
                         <input type="number" id="tax-deferred-stock-percent-input" name="tax_deferred_stock_percent"
-                            value="{{printf "%.0f" .Settings.TaxDeferredStockPct}}"
-                            min="0" max="100" step="1"
+                            value="{{formatExact .Settings.TaxDeferredStockPct}}"
+                            min="0" max="100" step="any"
                             class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs"
                             oninput="updateAccountBonds('td')">
                         <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">%</span>
@@ -295,8 +295,8 @@
                     <div class="flex items-center">
                         <label for="tax-deferred-cash-percent-input" class="text-xs text-gray-600 dark:text-gray-400 w-12">Cash</label>
                         <input type="number" id="tax-deferred-cash-percent-input" name="tax_deferred_cash_percent"
-                            value="{{printf "%.0f" .Settings.TaxDeferredCashPct}}"
-                            min="0" max="100" step="1"
+                            value="{{formatExact .Settings.TaxDeferredCashPct}}"
+                            min="0" max="100" step="any"
                             class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs"
                             oninput="updateAccountBonds('td')">
                         <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">%</span>
@@ -317,8 +317,8 @@
                     <div class="flex items-center">
                         <label for="roth-stock-percent-input" class="text-xs text-gray-600 dark:text-gray-400 w-12">Stocks</label>
                         <input type="number" id="roth-stock-percent-input" name="roth_stock_percent"
-                            value="{{printf "%.0f" .Settings.RothStockPct}}"
-                            min="0" max="100" step="1"
+                            value="{{formatExact .Settings.RothStockPct}}"
+                            min="0" max="100" step="any"
                             class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs"
                             oninput="updateAccountBonds('roth')">
                         <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">%</span>
@@ -326,8 +326,8 @@
                     <div class="flex items-center">
                         <label for="roth-cash-percent-input" class="text-xs text-gray-600 dark:text-gray-400 w-12">Cash</label>
                         <input type="number" id="roth-cash-percent-input" name="roth_cash_percent"
-                            value="{{printf "%.0f" .Settings.RothCashPct}}"
-                            min="0" max="100" step="1"
+                            value="{{formatExact .Settings.RothCashPct}}"
+                            min="0" max="100" step="any"
                             class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs"
                             oninput="updateAccountBonds('roth')">
                         <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">%</span>
@@ -371,8 +371,8 @@
                     <div class="flex items-center">
                         <label for="taxable-stock-percent-input" class="text-xs text-gray-600 dark:text-gray-400 w-12">Stocks</label>
                         <input type="number" id="taxable-stock-percent-input" name="taxable_stock_percent"
-                            value="{{printf "%.0f" .Settings.TaxableStockPct}}"
-                            min="0" max="100" step="1"
+                            value="{{formatExact .Settings.TaxableStockPct}}"
+                            min="0" max="100" step="any"
                             class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs"
                             oninput="updateAccountBonds('taxable')">
                         <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">%</span>
@@ -380,8 +380,8 @@
                     <div class="flex items-center">
                         <label for="taxable-cash-percent-input" class="text-xs text-gray-600 dark:text-gray-400 w-12">Cash</label>
                         <input type="number" id="taxable-cash-percent-input" name="taxable_cash_percent"
-                            value="{{printf "%.0f" .Settings.TaxableCashPct}}"
-                            min="0" max="100" step="1"
+                            value="{{formatExact .Settings.TaxableCashPct}}"
+                            min="0" max="100" step="any"
                             class="block w-16 rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs"
                             oninput="updateAccountBonds('taxable')">
                         <span class="ml-1 text-xs text-gray-600 dark:text-gray-400">%</span>
@@ -408,14 +408,14 @@
                 <div class="grid grid-cols-3 gap-2">
                     <div>
                         <label for="glide-start-stock-pct" class="block text-xs text-gray-600 dark:text-gray-400">Start %</label>
-                        <input type="number" id="glide-start-stock-pct" name="start_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.StartStockPct}}"
-                            min="0" max="100" step="1"
+                        <input type="number" id="glide-start-stock-pct" name="start_stock_pct" value="{{formatExact .Settings.GlidePath.StartStockPct}}"
+                            min="0" max="100" step="any"
                             class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                     </div>
                     <div>
                         <label for="glide-end-stock-pct" class="block text-xs text-gray-600 dark:text-gray-400">End %</label>
-                        <input type="number" id="glide-end-stock-pct" name="end_stock_pct" value="{{printf "%.0f" .Settings.GlidePath.EndStockPct}}"
-                            min="0" max="100" step="1"
+                        <input type="number" id="glide-end-stock-pct" name="end_stock_pct" value="{{formatExact .Settings.GlidePath.EndStockPct}}"
+                            min="0" max="100" step="any"
                             class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
                     </div>
                     <div>
@@ -439,11 +439,22 @@
 
         <div>
             <label for="inflation-rate-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Inflation Rate (%)</label>
-            <input type="range" id="inflation-rate-slider" name="inflation_rate" value="{{printf "%.1f" .Settings.InflationRate}}"
+            {{/* Hidden input carries the exact saved value (WS1, W2 Part B
+                 mechanism); the visible range keeps step=0.1 for drag feel
+                 but has no name, so an untouched off-grid rate (e.g. 3.85)
+                 is never snapped and resubmitted. */}}
+            <input type="hidden" id="inflation-rate-exact" name="inflation_rate"
+                value="{{formatExact .Settings.InflationRate}}"
+                data-quick-adjust-key="inflation_rate">
+            <input type="range" id="inflation-rate-slider"
+                value="{{printf "%.1f" .Settings.InflationRate}}"
+                aria-valuetext="{{printf "%.1f" .Settings.InflationRate}}%"
                 min="0" max="10" step="0.1"
                 data-quick-adjust-key="inflation_rate"
+                data-quick-adjust-mirror="true"
+                data-quick-adjust-display-format="percent1"
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                oninput="this.nextElementSibling.textContent = this.value + '%'; updateSpendingPreview();">
+                oninput="updateSpendingPreview();">
             <span class="text-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="inflation_rate" data-quick-adjust-display-format="percent1">{{printf "%.1f" .Settings.InflationRate}}%</span>
         </div>
 
@@ -468,11 +479,22 @@
                     <span id="spending-preview-toggle-text">Show Impact</span>
                 </button>
             </div>
-            <input type="range" id="spending-decline-slider" name="spending_decline_rate" value="{{printf "%.1f" .Settings.SpendingDeclineRate}}"
+            {{/* Hidden input carries the exact saved value (WS1, W2 Part B
+                 mechanism); the visible range keeps step=0.25 for drag feel
+                 but has no name, so an untouched off-grid rate (e.g. 0.3)
+                 is never snapped and resubmitted. */}}
+            <input type="hidden" id="spending-decline-rate-exact" name="spending_decline_rate"
+                value="{{formatExact .Settings.SpendingDeclineRate}}"
+                data-quick-adjust-key="spending_decline_rate">
+            <input type="range" id="spending-decline-slider"
+                value="{{printf "%.1f" .Settings.SpendingDeclineRate}}"
+                aria-valuetext="{{printf "%.1f" .Settings.SpendingDeclineRate}}%"
                 min="0" max="5" step="0.25"
                 data-quick-adjust-key="spending_decline_rate"
+                data-quick-adjust-mirror="true"
+                data-quick-adjust-display-format="percent1"
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
-                oninput="this.nextElementSibling.textContent = this.value + '%'; updateSpendingPreview();">
+                oninput="updateSpendingPreview();">
             <span class="text-sm text-gray-600 dark:text-gray-300" data-quick-adjust-display="spending_decline_rate" data-quick-adjust-display-format="percent1">{{printf "%.1f" .Settings.SpendingDeclineRate}}%</span>
 
             <!-- Spending Decline Preview Panel -->
@@ -504,12 +526,22 @@
                 <label for="investment-return-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-200">Investment Return Override</label>
                 <span class="text-body-sm text-gray-600 dark:text-gray-400">0% = use allocation</span>
             </div>
-            <input type="range" id="investment-return-slider" name="investment_return" value="{{printf "%.1f" .Settings.InvestmentReturn}}"
+            {{/* Hidden input carries the exact saved value (WS1, W2 Part B
+                 mechanism); the visible range keeps step=0.5 for drag feel
+                 but has no name, so an untouched off-grid override (e.g.
+                 6.25) is never snapped and resubmitted. */}}
+            <input type="hidden" id="investment-return-exact" name="investment_return"
+                value="{{formatExact .Settings.InvestmentReturn}}"
+                data-quick-adjust-key="investment_return">
+            <input type="range" id="investment-return-slider"
+                value="{{printf "%.1f" .Settings.InvestmentReturn}}"
+                aria-valuetext="{{if eq .Settings.InvestmentReturn 0.0}}Using asset allocation (~{{printf "%.1f" .Settings.GetExpectedReturnFromAllocation}}% expected){{else}}Fixed {{printf "%.1f" .Settings.InvestmentReturn}}% (overrides allocation){{end}}"
                 min="0" max="15" step="0.5"
                 data-quick-adjust-key="investment_return"
+                data-quick-adjust-mirror="true"
                 class="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer"
                 oninput="updateInvestmentReturnDisplay(this.value)">
-            <div id="investment-return-display" class="text-sm mt-1" data-quick-adjust-display="investment_return" data-quick-adjust-display-format="investment-return">
+            <div id="investment-return-display" class="text-sm mt-1" data-quick-adjust-display="investment_return" data-quick-adjust-display-format="investment-return" data-expected-return="{{printf "%.1f" .Settings.GetExpectedReturnFromAllocation}}">
                 {{if eq .Settings.InvestmentReturn 0.0}}
                 <span class="text-positive">Using asset allocation</span>
                 <span class="text-gray-600 dark:text-gray-400">(~{{printf "%.1f" .Settings.GetExpectedReturnFromAllocation}}% expected)</span>

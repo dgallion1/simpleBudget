@@ -100,20 +100,22 @@ is needed. */}}
         </select>
         <input type="range" id="qa-portfolio-value"
             value="{{printf "%.0f" .Settings.PortfolioValue}}"
+            aria-valuetext="${{formatNumber .Settings.PortfolioValue}}"
             min="0" max="20000000" step="100000"
             data-quick-adjust-key="portfolio_value"
             data-quick-adjust-mirror="true"
+            data-quick-adjust-display-format="currency"
             class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
     </div>
 
     <div class="space-y-2 rounded-xl bg-gray-900/5 p-3 dark:bg-white/5">
         <div class="flex items-center justify-between gap-3">
             <label for="qa-monthly-living-expenses" class="text-xs font-medium text-gray-700 dark:text-gray-300">Monthly Living Expenses</label>
-            <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="monthly_living_expenses" data-quick-adjust-display-format="currency">{{formatDollars .Settings.MonthlyLivingExpenses}}</span>
+            <span class="text-body-sm font-semibold text-gray-900 dark:text-white" data-quick-adjust-display="monthly_living_expenses" data-quick-adjust-display-format="currency">${{formatNumber .Settings.MonthlyLivingExpenses}}</span>
         </div>
         <input type="range" id="qa-monthly-living-expenses"
             value="{{printf "%.0f" .Settings.MonthlyLivingExpenses}}"
-            aria-valuetext="{{formatDollars .Settings.MonthlyLivingExpenses}}"
+            aria-valuetext="${{formatNumber .Settings.MonthlyLivingExpenses}}"
             min="0" max="20000" step="100"
             data-quick-adjust-key="monthly_living_expenses"
             data-quick-adjust-mirror="true"
@@ -144,9 +146,11 @@ is needed. */}}
         </div>
         <input type="range" id="qa-inflation-rate"
             value="{{printf "%.1f" .Settings.InflationRate}}"
+            aria-valuetext="{{printf "%.1f" .Settings.InflationRate}}%"
             min="0" max="10" step="0.1"
             data-quick-adjust-key="inflation_rate"
             data-quick-adjust-mirror="true"
+            data-quick-adjust-display-format="percent1"
             class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
     </div>
 
@@ -158,9 +162,11 @@ is needed. */}}
         </div>
         <input type="range" id="qa-spending-decline"
             value="{{printf "%.1f" .Settings.SpendingDeclineRate}}"
+            aria-valuetext="{{printf "%.1f" .Settings.SpendingDeclineRate}}%"
             min="0" max="5" step="0.25"
             data-quick-adjust-key="spending_decline_rate"
             data-quick-adjust-mirror="true"
+            data-quick-adjust-display-format="percent1"
             class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
     </div>
     {{else}}
@@ -176,11 +182,12 @@ is needed. */}}
         </div>
         <input type="range" id="qa-investment-return"
             value="{{printf "%.1f" .Settings.InvestmentReturn}}"
+            aria-valuetext="{{if eq .Settings.InvestmentReturn 0.0}}Using asset allocation (~{{printf "%.1f" .Settings.GetExpectedReturnFromAllocation}}% expected){{else}}Fixed {{printf "%.1f" .Settings.InvestmentReturn}}% (overrides allocation){{end}}"
             min="0" max="15" step="0.5"
             data-quick-adjust-key="investment_return"
             data-quick-adjust-mirror="true"
             class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
-        <div class="text-body-sm" data-quick-adjust-display="investment_return" data-quick-adjust-display-format="investment-return">
+        <div class="text-body-sm" data-quick-adjust-display="investment_return" data-quick-adjust-display-format="investment-return" data-expected-return="{{printf "%.1f" .Settings.GetExpectedReturnFromAllocation}}">
             {{if eq .Settings.InvestmentReturn 0.0}}
             <span class="text-positive">Using asset allocation</span>
             <span class="text-gray-600 dark:text-gray-400">(~{{printf "%.1f" .Settings.GetExpectedReturnFromAllocation}}% expected)</span>
@@ -223,12 +230,14 @@ is needed. */}}
         <input type="range"
             aria-label="{{$phase.Name}} spending multiplier"
             value="{{printf "%.2f" $phase.Multiplier}}"
+            aria-valuetext="{{printf "%.0f" (mul $phase.Multiplier 100)}}%"
             min="0.30" max="1.20" step="0.05"
             data-quick-adjust-key="phase:{{$i}}:multiplier"
             data-quick-adjust-mirror="true"
+            data-quick-adjust-display-format="phase-percent"
             class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
         <div class="text-right text-body-sm text-gray-600 dark:text-gray-400" data-quick-adjust-display="phase:{{$i}}:multiplier" data-quick-adjust-display-format="phase-dollar">
-            {{formatDollars (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo
+            ${{formatNumber (mul $phase.Multiplier $.Settings.MonthlyLivingExpenses)}}/mo
         </div>
     </div>
     {{end}}
@@ -269,9 +278,11 @@ is needed. */}}
                 </div>
                 <input type="range" id="qa-healthcare-monthly-cost-{{.ID}}"
                     value="{{printf "%.0f" .CurrentMonthlyCost}}"
+                    aria-valuetext="${{formatNumber .CurrentMonthlyCost}}"
                     min="0" max="3000" step="50"
                     data-quick-adjust-key="healthcare:{{.ID}}:current_monthly_cost"
                     data-quick-adjust-mirror="true"
+                    data-quick-adjust-display-format="currency"
                     class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
 
@@ -297,9 +308,11 @@ is needed. */}}
                 </div>
                 <input type="range" id="qa-healthcare-aca-cost-{{.ID}}"
                     value="{{printf "%.0f" .ACACostAfterEmployer}}"
+                    aria-valuetext="${{formatNumber .ACACostAfterEmployer}}"
                     min="0" max="3000" step="50"
                     data-quick-adjust-key="healthcare:{{.ID}}:aca_cost_after_employer"
                     data-quick-adjust-mirror="true"
+                    data-quick-adjust-display-format="currency"
                     class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
 
@@ -310,9 +323,11 @@ is needed. */}}
                 </div>
                 <input type="range" id="qa-healthcare-pre-medicare-inflation-{{.ID}}"
                     value="{{printf "%.1f" .PreMedicareInflation}}"
+                    aria-valuetext="{{printf "%.1f" .PreMedicareInflation}}%"
                     min="0" max="15" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
                     data-quick-adjust-mirror="true"
+                    data-quick-adjust-display-format="percent1"
                     class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
             {{end}}
@@ -324,9 +339,11 @@ is needed. */}}
                 </div>
                 <input type="range" id="qa-healthcare-pre-medicare-inflation-{{.ID}}"
                     value="{{printf "%.1f" .PreMedicareInflation}}"
+                    aria-valuetext="{{printf "%.1f" .PreMedicareInflation}}%"
                     min="0" max="15" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:pre_medicare_inflation"
                     data-quick-adjust-mirror="true"
+                    data-quick-adjust-display-format="percent1"
                     class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
             {{end}}
@@ -339,9 +356,11 @@ is needed. */}}
                 </div>
                 <input type="range" id="qa-healthcare-medicare-cost-{{.ID}}"
                     value="{{printf "%.0f" .MedicareMonthlyCost}}"
+                    aria-valuetext="${{formatNumber .MedicareMonthlyCost}}"
                     min="0" max="2000" step="50"
                     data-quick-adjust-key="healthcare:{{.ID}}:medicare_monthly_cost"
                     data-quick-adjust-mirror="true"
+                    data-quick-adjust-display-format="currency"
                     class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
             {{end}}
@@ -353,9 +372,11 @@ is needed. */}}
                 </div>
                 <input type="range" id="qa-healthcare-post-medicare-inflation-{{.ID}}"
                     value="{{printf "%.1f" .PostMedicareInflation}}"
+                    aria-valuetext="{{printf "%.1f" .PostMedicareInflation}}%"
                     min="0" max="10" step="0.5"
                     data-quick-adjust-key="healthcare:{{.ID}}:post_medicare_inflation"
                     data-quick-adjust-mirror="true"
+                    data-quick-adjust-display-format="percent1"
                     class="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-300 dark:bg-gray-700">
             </div>
         </div>

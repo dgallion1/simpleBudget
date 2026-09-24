@@ -8,9 +8,11 @@ import (
 )
 
 // TestSpendingPhasesRender_PhaseDollarLabel guards the phase-dollar preview
-// in the "whatif-spending-phases" card: base 7386 x 1.25 = 9232.50, which
-// must round half-away-from-zero to whole dollars with thousands separators
-// — "$9,233/mo" — matching the JS-side formatWholeDollars rule.
+// in the "whatif-spending-phases" card: base 7386 x 1.25 = 9232.50, an exact
+// .50 tie, which must round HALF-EVEN to whole dollars with thousands
+// separators — "$9,232" (9232 is even) — matching Go formatNumber and the
+// JS-side formatWholeDollars rule (WS1 R-FMT: one whole-dollar rounding
+// rule for every surface).
 func TestSpendingPhasesRender_PhaseDollarLabel(t *testing.T) {
 	_, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
@@ -29,8 +31,11 @@ func TestSpendingPhasesRender_PhaseDollarLabel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderToString: %v", err)
 	}
-	if !strings.Contains(out, "$9,233/mo") {
-		t.Errorf("expected phase-dollar label %q in output; got: %s", "$9,233/mo", truncate(out, 900))
+	if !strings.Contains(out, "$9,232/mo") {
+		t.Errorf("expected phase-dollar label %q in output; got: %s", "$9,232/mo", truncate(out, 900))
+	}
+	if strings.Contains(out, "$9,233/mo") {
+		t.Errorf(".50 tie must round half-even, not half-away-from-zero; got: %s", truncate(out, 900))
 	}
 }
 

@@ -378,6 +378,343 @@ test('self-check: C1k is real -- a Quick-Adjust-only client recompute is caught 
     assert.ok(!qa.textContent.includes('9.9'), `expected the Quick-Adjust-only recompute mutant to disagree with the QA server sentinel (9.9); got: ${qa.textContent}`);
 });
 
+// ── WS5: D6 (glide path reveal-only tick) / D7 (person removal saves,
+//    refusal restores + refocuses) -- a richer fake DOM than the
+//    investment-return fixtures above need: real parent/child structure,
+//    classList, closest()/querySelector(All) over descendants, and
+//    addEventListener/dispatchEvent so removePersonRow's own
+//    htmx:afterRequest listener can be exercised. Reuses parseSelector/
+//    elementMatches from above (same attribute-selector syntax) rather
+//    than duplicating a matcher. ──────────────────────────────────────────
+
+function rpEl(tag, attrs) {
+    attrs = Object.assign({}, attrs || {});
+    const listeners = {};
+    const el = {
+        tagName: tag.toUpperCase(),
+        nodeType: 1,
+        parentNode: null,
+        children: [],
+        checked: !!attrs.checked,
+        value: attrs.value !== undefined ? attrs.value : '',
+        innerHTML: '',
+        form: null,
+        hasAttribute(n) { return n in attrs; },
+        getAttribute(n) { return n in attrs ? attrs[n] : null; },
+        setAttribute(n, v) { attrs[n] = String(v); },
+        removeAttribute(n) { delete attrs[n]; },
+        classList: {
+            add() { for (const n of arguments) el._classes().add(n); },
+            remove() { for (const n of arguments) el._classes().delete(n); },
+            contains(n) { return el._classes().has(n); },
+        },
+        _classes() {
+            if (!el.__classSet) {
+                el.__classSet = new Set(String(attrs.class || '').split(/\s+/).filter(Boolean));
+            }
+            return el.__classSet;
+        },
+        addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+        removeEventListener(type, fn) {
+            if (!listeners[type]) return;
+            listeners[type] = listeners[type].filter((f) => f !== fn);
+        },
+        dispatchEvent(evt) {
+            evt.target = el;
+            (listeners[evt.type] || []).slice().forEach((fn) => fn(evt));
+            return true;
+        },
+        appendChild(child) {
+            child.parentNode = el;
+            el.children.push(child);
+            return child;
+        },
+        insertBefore(child, ref) {
+            child.parentNode = el;
+            const i = ref ? el.children.indexOf(ref) : -1;
+            el.children.splice(i < 0 ? el.children.length : i, 0, child);
+            return child;
+        },
+        remove() {
+            if (el.parentNode) {
+                const i = el.parentNode.children.indexOf(el);
+                if (i >= 0) el.parentNode.children.splice(i, 1);
+                el.parentNode = null;
+            }
+        },
+        get nextSibling() {
+            if (!el.parentNode) return null;
+            const i = el.parentNode.children.indexOf(el);
+            return i >= 0 ? (el.parentNode.children[i + 1] || null) : null;
+        },
+        closest(sel) {
+            let n = el;
+            while (n) {
+                if (elementMatches(n, sel)) return n;
+                n = n.parentNode;
+            }
+            return null;
+        },
+        querySelector(sel) { return rpQueryAll(el, sel)[0] || null; },
+        querySelectorAll(sel) { return rpQueryAll(el, sel); },
+        focus() { el.__focused = true; },
+    };
+    return el;
+}
+
+function rpQueryAll(root, sel) {
+    const out = [];
+    (function walk(node) {
+        for (const c of node.children) {
+            if (elementMatches(c, sel)) out.push(c);
+            walk(c);
+        }
+    })(root);
+    return out;
+}
+
+function rpDocument(rootChildren) {
+    const root = rpEl('div');
+    rootChildren.forEach((c) => root.appendChild(c));
+    return {
+        _root: root,
+        getElementById(id) { return findById(root, id); },
+        querySelector(sel) { return rpQueryAll(root, sel)[0] || null; },
+        querySelectorAll(sel) { return rpQueryAll(root, sel); },
+        createElement(tag) { return rpEl(tag); },
+        addEventListener() {},
+        body: {addEventListener() {}},
+    };
+}
+
+function findById(node, id) {
+    for (const c of node.children) {
+        if (c.getAttribute('id') === id) return c;
+        const found = findById(c, id);
+        if (found) return found;
+    }
+    return null;
+}
+
+// A no-op Event constructor -- production code does `new Event('change',
+// {bubbles: true})`; only `.type` is read by anything these tests exercise.
+function FakeEvent(type, opts) {
+    this.type = type;
+    this.bubbles = !!(opts && opts.bubbles);
+}
+
+function loadRateAssumptions(doc, patch) {
+    const context = {document: doc, window: {}, console, Event: FakeEvent};
+    vm.createContext(context);
+    let src = fs.readFileSync(RATE_ASSUMPTIONS_PATH, 'utf8');
+    if (patch) src = patch(src);
+    vm.runInContext(src, context);
+    return context;
+}
+
+// Builds the #glide-path-fields fixture: a checkbox plus a fields <div>
+// containing the three number inputs, matching the server-rendered HIDDEN
+// state (disabled, not required) toggleGlidePathFields starts from.
+function glideFixture() {
+    const fields = rpEl('div', {id: 'glide-path-fields', class: 'space-y-2 hidden'});
+    const startInput = rpEl('input', {type: 'number', name: 'start_stock_pct', disabled: true});
+    const endInput = rpEl('input', {type: 'number', name: 'end_stock_pct', disabled: true});
+    const yearsInput = rpEl('input', {type: 'number', name: 'transition_years', disabled: true});
+    [startInput, endInput, yearsInput].forEach((el) => { el.disabled = true; el.required = false; });
+    fields.appendChild(startInput);
+    fields.appendChild(endInput);
+    fields.appendChild(yearsInput);
+
+    const form = rpEl('form');
+    let submitCount = 0;
+    form.requestSubmit = () => { submitCount++; };
+    const checkbox = rpEl('input', {type: 'checkbox', name: 'enabled'});
+    checkbox.form = form;
+    form.appendChild(checkbox);
+    form.appendChild(fields);
+
+    return {fields, form, checkbox, startInput, endInput, yearsInput, getSubmitCount: () => submitCount};
+}
+
+// D6 mutation (a): re-adding onchange="this.form.requestSubmit()" on the
+// glide checkbox tick. Also covers the a11y fix: required/disabled must
+// track the reveal state, so an untick with blank, disabled fields still
+// sends the save (a disabled control is excluded from constraint
+// validation AND submitted form data).
+test('toggleGlidePathFields: ticking reveals the fields (now required, enabled) without submitting; unticking hides them (disabled, not required) and saves immediately', () => {
+    const {fields, form, checkbox, startInput, endInput, yearsInput, getSubmitCount} = glideFixture();
+    const doc = rpDocument([form]);
+    const ctx = loadRateAssumptions(doc);
+
+    checkbox.checked = true;
+    ctx.toggleGlidePathFields(checkbox);
+    assert.equal(fields.classList.contains('hidden'), false, 'a tick reveals the fields');
+    assert.equal(getSubmitCount(), 0, 'a tick must NEVER submit the form');
+    for (const input of [startInput, endInput, yearsInput]) {
+        assert.equal(input.disabled, false, 'revealed fields must not be disabled (or Apply could never submit them)');
+        assert.equal(input.required, true, 'revealed fields must be required');
+    }
+
+    checkbox.checked = false;
+    ctx.toggleGlidePathFields(checkbox);
+    assert.equal(fields.classList.contains('hidden'), true, 'unticking hides the fields again');
+    assert.equal(getSubmitCount(), 1, 'unticking still saves immediately (disabling is safe) even with the fields blank');
+    for (const input of [startInput, endInput, yearsInput]) {
+        assert.equal(input.disabled, true, 'hidden fields must be disabled (excluded from validation AND submission)');
+        assert.equal(input.required, false, 'hidden fields must not be required (a required-but-disabled field is moot, but keep the two attributes consistent)');
+    }
+});
+
+test('self-check: D6/(a) is real -- restoring the old auto-submit-on-tick behavior is caught by the test above', () => {
+    const {form, checkbox, getSubmitCount} = glideFixture();
+    const doc = rpDocument([form]);
+    const target = 'function toggleGlidePathFields(checkbox) {';
+    const patch = (src) => {
+        const patched = src.replace(target, () => target + '\n    checkbox.form.requestSubmit(); return;');
+        assert.notEqual(patched, src, 'sanity: the patch target must exist');
+        return patched;
+    };
+    const ctx = loadRateAssumptions(doc, patch);
+    checkbox.checked = true;
+    ctx.toggleGlidePathFields(checkbox);
+    assert.ok(getSubmitCount() > 0, 'expected the reintroduced auto-submit-on-tick mutant to submit on a bare tick');
+});
+
+test('self-check: the required/disabled toggle is real -- dropping it from toggleGlidePathFields\'s reveal branch is caught by the reveal test above', () => {
+    const {fields, form, checkbox, startInput} = glideFixture();
+    const doc = rpDocument([form]);
+    // Strips ONLY the reveal branch's disabled/required toggle (leaving the
+    // `const inputs = ...` declaration and the hide branch's own forEach
+    // intact, so the mutant is a clean, narrow regression rather than a
+    // ReferenceError from a dangling reference).
+    const target = "        inputs.forEach((input) => {\n            input.disabled = false;\n            input.required = true;\n        });\n        return;";
+    const patch = (src) => {
+        const patched = src.replace(target, () => '        return;');
+        assert.notEqual(patched, src, 'sanity: the patch target must exist');
+        return patched;
+    };
+    const ctx = loadRateAssumptions(doc, patch);
+    checkbox.checked = true;
+    ctx.toggleGlidePathFields(checkbox);
+    assert.equal(fields.classList.contains('hidden'), false);
+    assert.notEqual(startInput.required, true, 'expected the mutant (reveal without marking required) to leave required false, disagreeing with the fixed behavior');
+});
+
+// D7 mutation (e): the new-row birth-month `required` dropped. Pins the
+// JS-generated row (addPersonRow); the server-rendered row for an existing
+// person is pinned separately by a Go template test.
+test('addPersonRow: the new row\'s birth-month input is required (a name-only row must never reach the server)', () => {
+    const container = rpEl('div', {id: 'person-rows'});
+    const doc = rpDocument([container]);
+    const ctx = loadRateAssumptions(doc);
+    ctx.addPersonRow();
+    assert.equal(container.children.length, 1, 'a new row was appended');
+    const row = container.children[0];
+    const birthMonthTag = /<input type="month" name="person_birth_month\[\]"[^>]*>/.exec(row.innerHTML);
+    assert.ok(birthMonthTag, 'birth month input markup not found in the new row');
+    assert.match(birthMonthTag[0], /\brequired\b/, 'the new row\'s birth month input must be required');
+});
+
+// Build a minimal person-rows fixture: a primary row and a removable
+// spouse row inside <form><div id="person-rows">.
+function personRowsFixture() {
+    const primaryRow = rpEl('div', {'data-person-row': ''});
+    primaryRow.appendChild(rpEl('input', {type: 'hidden', name: 'person_role[]', value: 'primary', 'data-person-role-input': ''}));
+
+    const removeBtn = rpEl('button', {'data-remove-person-row': ''});
+    const spouseRow = rpEl('div', {'data-person-row': ''});
+    spouseRow.appendChild(rpEl('input', {type: 'hidden', name: 'person_role[]', value: 'spouse', 'data-person-role-input': ''}));
+    spouseRow.appendChild(removeBtn);
+
+    const container = rpEl('div', {id: 'person-rows'});
+    container.appendChild(primaryRow);
+    container.appendChild(spouseRow);
+
+    const form = rpEl('form');
+    form.appendChild(container);
+
+    return {form, container, primaryRow, spouseRow, removeBtn};
+}
+
+// D7 mutation (c): removePersonRow without a save.
+test('removePersonRow detaches the row and saves immediately (dispatches a change event on its form)', () => {
+    const {form, container, spouseRow, removeBtn} = personRowsFixture();
+    const doc = rpDocument([form]);
+    const ctx = loadRateAssumptions(doc);
+
+    const dispatched = [];
+    const origDispatch = form.dispatchEvent;
+    form.dispatchEvent = function (evt) { dispatched.push(evt); return origDispatch.call(form, evt); };
+
+    ctx.removePersonRow(removeBtn);
+
+    assert.equal(container.children.length, 1, 'the row is removed from the DOM immediately');
+    assert.ok(!container.children.includes(spouseRow), 'the removed row is gone');
+    assert.equal(dispatched.length, 1, 'exactly one event was dispatched on the form (the save)');
+    assert.equal(dispatched[0].type, 'change', 'removal saves via the form\'s own change trigger');
+});
+
+test('self-check: D7/(c) is real -- reverting removePersonRow to the old DOM-only version is caught by the test above', () => {
+    const {form, container, removeBtn} = personRowsFixture();
+    const doc = rpDocument([form]);
+    const target = /function removePersonRow\(button\) \{[\s\S]*?\n\}\n/;
+    const patch = (src) => {
+        const oldVersion = "function removePersonRow(button) {\n"
+            + "    const row = button.closest('[data-person-row]');\n"
+            + "    if (row) {\n"
+            + "        row.remove();\n"
+            + "    }\n"
+            + "    togglePhaseReferenceDropdown();\n"
+            + "    updatePersonAgePreviews();\n"
+            + "}\n";
+        const patched = src.replace(target, () => oldVersion);
+        assert.notEqual(patched, src, 'sanity: the patch target must exist');
+        return patched;
+    };
+    const ctx = loadRateAssumptions(doc, patch);
+    const dispatched = [];
+    form.dispatchEvent = (evt) => { dispatched.push(evt); };
+    ctx.removePersonRow(removeBtn);
+    assert.equal(container.children.length, 1, 'old version still removes the row from the DOM');
+    assert.equal(dispatched.length, 0, 'expected the DOM-only mutant to dispatch no save event');
+});
+
+// D7 acceptance: a refused removal (e.g. a linked healthcare entry) restores
+// the row to its original position and returns focus to the Remove button
+// -- checker-a11y's "focus sane after a refusal".
+test('removePersonRow: a refused removal restores the row in place and refocuses its Remove button', () => {
+    const {form, container, spouseRow, removeBtn} = personRowsFixture();
+    const doc = rpDocument([form]);
+    const ctx = loadRateAssumptions(doc);
+
+    ctx.removePersonRow(removeBtn);
+    assert.equal(container.children.length, 1, 'optimistically removed');
+
+    // Simulate htmx completing the (debounced) save with a refusal --
+    // removePersonRow's own addEventListener('htmx:afterRequest', ...)
+    // (registered before the dispatch above) picks this up exactly the way
+    // a real htmx response would fire it on `form`.
+    form.dispatchEvent({type: 'htmx:afterRequest', detail: {elt: form, successful: false}});
+
+    assert.equal(container.children.length, 2, 'the row is restored after a refusal');
+    assert.equal(container.children[1], spouseRow, 'restored to its original position');
+    assert.ok(removeBtn.__focused, 'focus returns to the Remove button that was clicked');
+});
+
+// A SUCCESSFUL removal must NOT be restored (it stays gone -- AC2 "gone
+// after reload").
+test('removePersonRow: a successful removal is not restored', () => {
+    const {form, container, spouseRow, removeBtn} = personRowsFixture();
+    const doc = rpDocument([form]);
+    const ctx = loadRateAssumptions(doc);
+
+    ctx.removePersonRow(removeBtn);
+    form.dispatchEvent({type: 'htmx:afterRequest', detail: {elt: form, successful: true}});
+
+    assert.equal(container.children.length, 1, 'the row stays removed on success');
+    assert.ok(!container.children.includes(spouseRow));
+});
+
 test('self-check: an in-card-only client recompute is ALSO caught by the C1k test above', () => {
     const dom = makeFakeDom(sentinelServedSpecsInPanel());
     const target = "detail.textContent = '(~' + expectedReturnText + '% expected)';";

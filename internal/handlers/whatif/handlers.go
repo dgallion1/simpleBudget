@@ -1250,6 +1250,29 @@ func findHealthcarePerson(settings *models.WhatIfSettings, id string) *models.He
 	return nil
 }
 
+// personRemovalBlockedByHealthcare reports the refusal message, if any, for
+// saving newPersons over current.Persons -- non-empty exactly when some
+// HealthcarePerson in current still references a person_id that newPersons
+// no longer contains (D7). current.HealthcarePersons' Name is kept in sync
+// with its linked Person's Name by prepare.ComputeAges on every load/save,
+// so it names the removed person, matching the linked entry's own display
+// name (e.g. "Remove Christine's healthcare entry first").
+func personRemovalBlockedByHealthcare(current *models.WhatIfSettings, newPersons []models.Person) string {
+	kept := make(map[string]struct{}, len(newPersons))
+	for _, p := range newPersons {
+		kept[p.ID] = struct{}{}
+	}
+	for _, hp := range current.HealthcarePersons {
+		if hp.PersonID == "" {
+			continue
+		}
+		if _, ok := kept[hp.PersonID]; !ok {
+			return fmt.Sprintf("Remove %s's healthcare entry first", hp.Name)
+		}
+	}
+	return ""
+}
+
 // parseRequiredFormFloat parses a required float64 from form data
 func parseRequiredFormFloat(r *http.Request, key string) (float64, error) {
 	v := r.FormValue(key)

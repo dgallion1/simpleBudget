@@ -19,13 +19,56 @@ function updatePersonRole(select) {
     togglePhaseReferenceDropdown();
 }
 
+// D7: removing a person must save immediately (the old version only
+// removed the DOM row -- no change event fired, so the person reappeared
+// on reload). A removal the server refuses (a healthcare entry still links
+// this person -- D7) must not just vanish the row anyway: it is detached
+// from the form BEFORE the (debounced) save request goes out, and restored
+// to its original position -- with focus returned to its own Remove
+// button -- if that request comes back unsuccessful.
 function removePersonRow(button) {
     const row = button.closest('[data-person-row]');
-    if (row) {
-        row.remove();
+    if (!row) {
+        return;
     }
+    const form = row.closest('form');
+    const parent = row.parentNode;
+    const nextSibling = row.nextSibling;
+    row.remove();
     togglePhaseReferenceDropdown();
     updatePersonAgePreviews();
+    if (!form) {
+        return;
+    }
+    function onAfterRequest(evt) {
+        if (!evt.detail || evt.detail.elt !== form) {
+            return;
+        }
+        form.removeEventListener('htmx:afterRequest', onAfterRequest);
+        if (!evt.detail.successful) {
+            // Refused -- restore the row where it was. The server's own
+            // error message is shown next to `form` by base.js's generic
+            // htmx:responseError handler; this only undoes the optimistic
+            // removal and puts keyboard focus back on the control the user
+            // just activated.
+            if (parent) {
+                parent.insertBefore(row, nextSibling);
+            }
+            togglePhaseReferenceDropdown();
+            updatePersonAgePreviews();
+            button.focus();
+        }
+    }
+    form.addEventListener('htmx:afterRequest', onAfterRequest);
+    // This form's hx-trigger is "change delay:500ms, input delay:500ms
+    // from:find input[type=number]" -- htmx binds its "change" listener
+    // directly to the form itself (no "from:" qualifier for that clause),
+    // so dispatching a real "change" event on `form` reaches it the same
+    // way a bubbled change from any remaining field would. requestSubmit()
+    // is NOT used here: it fires a native "submit" event, which this form
+    // has no hx-trigger binding for, so htmx would never intercept it and
+    // the browser would fall back to a real (non-AJAX) navigation.
+    form.dispatchEvent(new Event('change', {bubbles: true}));
 }
 
 function computeDerivedAge(startDate, birthMonth) {
@@ -75,7 +118,7 @@ function addPersonRow() {
         </div>
         <div class="col-span-3">
             <span class="block text-xs text-gray-600 dark:text-gray-400">Birth Month</span>
-            <input type="month" name="person_birth_month[]" value="" aria-label="Person birth month"
+            <input type="month" name="person_birth_month[]" value="" aria-label="Person birth month" required
                 onchange="updatePersonAgePreviews()"
                 class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
         </div>
@@ -99,6 +142,48 @@ function addPersonRow() {
     container.appendChild(row);
     togglePhaseReferenceDropdown();
     updatePersonAgePreviews();
+}
+
+// D6: ticking "Shift stock allocation over time" only REVEALS the Start %/
+// End %/Years fields -- it must never itself submit the form. The old
+// onchange="this.form.requestSubmit()" fired on ANY change to the
+// checkbox, including a bare tick, which posted "enabled=on" alone; the
+// server then had nothing but leftover/blank field values to save
+// (reviewer: End Balance $3.05M -> $0.71M on a plan whose stale
+// glide_path was {enabled:false, start 0, end 0, transition_years 1}).
+// Unticking is safe to save immediately -- disabling can never
+// re-activate a stale config -- so that branch still submits.
+function toggleGlidePathFields(checkbox) {
+    const fields = document.getElementById('glide-path-fields');
+    const inputs = fields ? fields.querySelectorAll('input[type="number"]') : [];
+    if (checkbox.checked) {
+        if (fields) {
+            fields.classList.remove('hidden');
+        }
+        // Revealed: required (ACCESSIBILITY.md point 6 -- stated in text via
+        // the fields' own instruction line, AND on the controls themselves)
+        // and no longer disabled, so a real submit (Apply) both validates
+        // and includes them.
+        inputs.forEach((input) => {
+            input.disabled = false;
+            input.required = true;
+        });
+        return;
+    }
+    if (fields) {
+        fields.classList.add('hidden');
+    }
+    // Hidden: disabled, not required. A disabled control is excluded from
+    // BOTH constraint validation and the submitted form data (unlike merely
+    // hiding it, which would leave a required-but-blank field failing
+    // checkValidity() and silently blocking the untick's own save) -- this
+    // is what lets requestSubmit() below succeed and save enabled=false
+    // even though these three fields are blank.
+    inputs.forEach((input) => {
+        input.required = false;
+        input.disabled = true;
+    });
+    checkbox.form.requestSubmit();
 }
 
 // Toggle phase reference dropdown visibility based on spouse person rows

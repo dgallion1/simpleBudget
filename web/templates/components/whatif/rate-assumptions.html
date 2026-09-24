@@ -42,7 +42,13 @@
                         </div>
                         <div class="col-span-3">
                             <label for="person-birth-month-{{.ID}}" class="block text-xs text-gray-600 dark:text-gray-400">Birth Month</label>
-                            <input type="month" id="person-birth-month-{{.ID}}" name="person_birth_month[]" value="{{.BirthMonth}}"
+                            {{/* required: a name typed with no birth month must never
+                                 reach the server (D7) -- htmx's own validation pass
+                                 (htmx.config.reportValidityOfForms, base.js) halts the
+                                 request and shows the browser's own message instead of
+                                 a 500 from prepare.ValidatePersons deep inside the
+                                 save. */}}
+                            <input type="month" id="person-birth-month-{{.ID}}" name="person_birth_month[]" value="{{.BirthMonth}}" required
                                 onchange="updatePersonAgePreviews()"
                                 class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-sm">
                         </div>
@@ -397,40 +403,66 @@
             <div class="flex items-center justify-between mb-2">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-200">Glide Path</span>
             </div>
+            {{/* D6: ticking "Shift stock allocation over time" only REVEALS
+                 the fields below (toggleGlidePathFields, client-side, no
+                 request) -- nothing saves until "Apply Glide Path" is
+                 clicked with Start %, End % and Years all filled. The
+                 fields <div> is always rendered (never omitted) so the
+                 reveal never needs a round trip; it is CSS-hidden unless a
+                 glide path is already enabled. Unticking is safe to save
+                 immediately (disabling can never re-activate a stale
+                 config), so that branch still calls requestSubmit()
+                 directly -- this form has no custom hx-trigger, so htmx's
+                 default "submit" binding intercepts it. */}}
+            {{$glideOn := and .Settings.GlidePath .Settings.GlidePath.Enabled}}
             <form hx-post="/whatif/glide-path" hx-target="#whatif-results" class="space-y-2">
                 <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                    <input type="checkbox" name="enabled" {{if and .Settings.GlidePath .Settings.GlidePath.Enabled}}checked{{end}}
+                    <input type="checkbox" name="enabled" {{if $glideOn}}checked{{end}}
                         class="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 text-accent focus:ring-accent"
-                        onchange="this.form.requestSubmit()">
+                        onchange="toggleGlidePathFields(this)">
                     Shift stock allocation over time
                 </label>
-                {{if and .Settings.GlidePath .Settings.GlidePath.Enabled}}
-                <div class="grid grid-cols-3 gap-2">
-                    <div>
-                        <label for="glide-start-stock-pct" class="block text-xs text-gray-600 dark:text-gray-400">Start %</label>
-                        <input type="number" id="glide-start-stock-pct" name="start_stock_pct" value="{{formatExact .Settings.GlidePath.StartStockPct}}"
-                            min="0" max="100" step="any"
-                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
+                <div id="glide-path-fields" class="space-y-2{{if not $glideOn}} hidden{{end}}">
+                    {{/* ACCESSIBILITY.md point 6 / WCAG 3.3.2: "required" is
+                         stated in text as soon as the fields are revealed,
+                         not only reactively inside the error after a failed
+                         Apply. The three inputs themselves carry `required`
+                         ONLY while revealed -- while hidden they are
+                         `disabled` instead (toggleGlidePathFields keeps this
+                         in sync client-side), so an unticked-and-hidden
+                         glide form still submits (and saves enabled=false)
+                         with no validation error: a disabled control is
+                         excluded from both constraint validation and the
+                         submitted form data. */}}
+                    <p class="text-xs text-gray-600 dark:text-gray-400">All three fields are required to apply a glide path.</p>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label for="glide-start-stock-pct" class="block text-xs text-gray-600 dark:text-gray-400">Start %</label>
+                            <input type="number" id="glide-start-stock-pct" name="start_stock_pct" value="{{if $glideOn}}{{formatExact .Settings.GlidePath.StartStockPct}}{{end}}"
+                                min="0" max="100" step="any" {{if $glideOn}}required{{else}}disabled{{end}}
+                                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
+                        </div>
+                        <div>
+                            <label for="glide-end-stock-pct" class="block text-xs text-gray-600 dark:text-gray-400">End %</label>
+                            <input type="number" id="glide-end-stock-pct" name="end_stock_pct" value="{{if $glideOn}}{{formatExact .Settings.GlidePath.EndStockPct}}{{end}}"
+                                min="0" max="100" step="any" {{if $glideOn}}required{{else}}disabled{{end}}
+                                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
+                        </div>
+                        <div>
+                            <label for="glide-transition-years" class="block text-xs text-gray-600 dark:text-gray-400">Years</label>
+                            <input type="number" id="glide-transition-years" name="transition_years" value="{{if $glideOn}}{{.Settings.GlidePath.TransitionYears}}{{end}}"
+                                min="1" max="50" step="1" {{if $glideOn}}required{{else}}disabled{{end}}
+                                class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
+                        </div>
                     </div>
-                    <div>
-                        <label for="glide-end-stock-pct" class="block text-xs text-gray-600 dark:text-gray-400">End %</label>
-                        <input type="number" id="glide-end-stock-pct" name="end_stock_pct" value="{{formatExact .Settings.GlidePath.EndStockPct}}"
-                            min="0" max="100" step="any"
-                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
-                    </div>
-                    <div>
-                        <label for="glide-transition-years" class="block text-xs text-gray-600 dark:text-gray-400">Years</label>
-                        <input type="number" id="glide-transition-years" name="transition_years" value="{{.Settings.GlidePath.TransitionYears}}"
-                            min="1" max="50" step="1"
-                            class="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-accent focus:ring-accent text-xs">
-                    </div>
+                    <button type="submit"
+                        class="w-full text-xs px-3 py-1.5 rounded-md bg-accent-strong hover:bg-accent-strong text-white transition-colors">
+                        Apply Glide Path
+                    </button>
+                    {{if $glideOn}}
+                    <p class="text-body-sm text-gray-500 dark:text-gray-400">Stocks shift linearly from {{printf "%.0f" .Settings.GlidePath.StartStockPct}}% to {{printf "%.0f" .Settings.GlidePath.EndStockPct}}% over {{.Settings.GlidePath.TransitionYears}} years. Bonds adjust inversely.</p>
+                    {{end}}
                 </div>
-                <button type="submit"
-                    class="w-full text-xs px-3 py-1.5 rounded-md bg-accent-strong hover:bg-accent-strong text-white transition-colors">
-                    Apply Glide Path
-                </button>
-                <p class="text-body-sm text-gray-500 dark:text-gray-400">Stocks shift linearly from {{printf "%.0f" .Settings.GlidePath.StartStockPct}}% to {{printf "%.0f" .Settings.GlidePath.EndStockPct}}% over {{.Settings.GlidePath.TransitionYears}} years. Bonds adjust inversely.</p>
-                {{end}}
             </form>
         </div>
 

@@ -302,6 +302,13 @@ func TestFloorStochasticCPIFinalBalance(t *testing.T) {
 		t.Fatal("fixture lacks material inflation")
 	}
 }
+
+// TestFloorActiveChainReplacement pinned pre-WS3 per-step floor semantics:
+// a chained step's OWN MinMonthlySpendingReal used to replace the primary's
+// at the transition. WS3 D3' (2026-09-23) replaced that: the VIEWED
+// (primary) scenario's guardrail config — including MinMonthlySpendingReal —
+// governs the WHOLE chain, so the chained step's floor (9000) is never
+// consulted and the primary's floor (7500) applies for all 24 months.
 func TestFloorActiveChainReplacement(t *testing.T) {
 	s := floorRegressionSettings()
 	s.Guardrails.MinMonthlySpendingReal = 7500
@@ -323,11 +330,8 @@ func TestFloorActiveChainReplacement(t *testing.T) {
 			return engine.MonthReturns{HealthcareMultiplier: 1, DiscretionaryMultiplier: 1}
 		})
 		want := 7500.0
-		if m >= 12 {
-			want = 9000
-		}
 		if out.AdjustedLivingExpenses != want {
-			t.Fatalf("chain month %d got %g want %g", m, out.AdjustedLivingExpenses, want)
+			t.Fatalf("chain month %d got %g want %g (primary's floor, D3')", m, out.AdjustedLivingExpenses, want)
 		}
 	}
 }

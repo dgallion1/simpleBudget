@@ -185,8 +185,11 @@ func NewProjectionState(in Input) *ProjectionState {
 	}
 	st.CurrentLivingExpenses = baseLivingExpensesAtMonth(s, 0)
 	st.CurrentPhaseName = phaseNameOrNoPhaseSentinel(s.GetSpendingPhaseNameAt(s.GetPhaseReferenceAge(0)))
-	if s.Guardrails != nil && s.Guardrails.Enabled {
-		st.Guardrails = NewGuardrailState(s.PortfolioValue)
+	// D3': guardrail governance is decided from the PRIMARY settings only
+	// (st.primary == s here, before any chain transition can occur) — see
+	// GuardrailsGovernStep.
+	if GuardrailsGovernStep(st.primary) {
+		st.Guardrails = NewGuardrailState(st.primary.PortfolioValue)
 	}
 	return st
 }
@@ -195,6 +198,16 @@ func NewProjectionState(in Input) *ProjectionState {
 // current chain link after a transition).
 func (st *ProjectionState) Settings() *models.WhatIfSettings {
 	return st.active
+}
+
+// Primary returns the VIEWED (primary) scenario's settings — the ones a
+// scenario-chain transition never changes. Per D3', every guardrail-
+// governance decision (the stepper's own, and any other consumer's, e.g.
+// Monte Carlo's adaptive-spending suppression in analysis/monte_carlo.go)
+// must be evaluated on THESE settings, never on Settings() (the active
+// step).
+func (st *ProjectionState) Primary() *models.WhatIfSettings {
+	return st.primary
 }
 
 // ZeroBalances empties every account — the canonical loop's depletion
@@ -298,15 +311,32 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 	// projection calendar. Keep the temporary boost out of evolving base state.
 	plannedLivingExpenses := st.CurrentLivingExpenses + LivingSpendingBoostAtMonth(s.LivingSpendingBoost, projectionCalendarMonth(st.primary.StartDate, m), st.CumulativeInflation)
 
-	// Evaluate spending guardrails at year boundaries.
+	// Evaluate spending guardrails at year boundaries. D3': whether
+	// guardrails are evaluated, and the config that drives them, are decided
+	// ENTIRELY by the PRIMARY (viewed) settings — st.primary — never by the
+	// active step s, even when s itself carries a guardrail config (on or
+	// off). guardrailsGovern is therefore invariant for the whole
+	// projection (st.primary never changes across a chain), so once
+	// st.Guardrails exists it is never abandoned or reset at a transition —
+	// only the REAL portfolio value it tracks (from whichever step is
+	// active) moves. The nil check below is defensive rather than reachable
+	// in practice: NewProjectionState already creates st.Guardrails from
+	// this SAME predicate on this SAME st.primary, so no step can ever see
+	// guardrailsGovern true with st.Guardrails still nil — but keeping the
+	// check means no future caller can reintroduce the nil-cfg panic this
+	// task fixed by relying on that invariant instead of guarding it here.
 	var guardrailEvent *models.GuardrailEvent
-	if st.Guardrails != nil && monthInYear == 0 {
+	guardrailsGovern := GuardrailsGovernStep(st.primary)
+	if guardrailsGovern && monthInYear == 0 {
 		totalPortfolio := st.TaxDeferredBalance + st.TaxableAccount.MarketValue + st.RothBalance
+		if st.Guardrails == nil {
+			st.Guardrails = NewGuardrailState(totalPortfolio)
+		}
 		prevMult := st.Guardrails.Multiplier()
-		st.Guardrails.Evaluate(s.Guardrails, totalPortfolio)
+		st.Guardrails.Evaluate(st.primary.Guardrails, totalPortfolio)
 		newMult := st.Guardrails.Multiplier()
-		before, beforeMult := floorAdjustedLiving(s, plannedLivingExpenses, prevMult, st.CumulativeInflation)
-		after, afterMult := floorAdjustedLiving(s, plannedLivingExpenses, newMult, st.CumulativeInflation)
+		before, beforeMult := floorAdjustedLiving(st.primary, plannedLivingExpenses, prevMult, st.CumulativeInflation)
+		after, afterMult := floorAdjustedLiving(st.primary, plannedLivingExpenses, newMult, st.CumulativeInflation)
 		if newMult != prevMult && RoundLivingCents(before) != RoundLivingCents(after) {
 			eventType := "cut"
 			if newMult > prevMult {
@@ -325,16 +355,22 @@ func (st *ProjectionState) StepMonth(m int, returnsFor func(s *models.WhatIfSett
 		}
 	}
 
+	// activeMultiplier defaults to 1.0 (plan, unadjusted) whenever the
+	// PRIMARY (viewed) scenario has guardrails off/missing, per D3' — a
+	// chained step's own guardrail setting never overrides this, in either
+	// direction, and never leaves a "$0.00" trigger figure behind (the
+	// guardrailsGovern gate keeps Cut/RaiseTrigger at their zero value
+	// together with the multiplier whenever nothing governs).
 	activeMultiplier := 1.0
 	var guardrailPeak, guardrailBaseline, guardrailCutTrigger, guardrailRaiseTrigger float64
-	if st.Guardrails != nil {
+	if guardrailsGovern && st.Guardrails != nil {
 		activeMultiplier = st.Guardrails.Multiplier()
 		guardrailPeak = st.Guardrails.PeakPortfolio
 		guardrailBaseline = st.Guardrails.InitialPortfolio
-		guardrailCutTrigger = guardrailPeak * (1 - s.Guardrails.FloorDropPct/100)
-		guardrailRaiseTrigger = guardrailBaseline * (1 + s.Guardrails.CeilingRisePct/100)
+		guardrailCutTrigger = guardrailPeak * (1 - st.primary.Guardrails.FloorDropPct/100)
+		guardrailRaiseTrigger = guardrailBaseline * (1 + st.primary.Guardrails.CeilingRisePct/100)
 	}
-	adjustedLivingExpenses, activeMultiplier := floorAdjustedLiving(s, plannedLivingExpenses, activeMultiplier, st.CumulativeInflation)
+	adjustedLivingExpenses, activeMultiplier := floorAdjustedLiving(st.primary, plannedLivingExpenses, activeMultiplier, st.CumulativeInflation)
 
 	// Expense assembly. ExpenseSources are not subject to guardrail cuts —
 	// planned and adjusted stay in sync for them.

@@ -1331,10 +1331,24 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 	// Run the fast analysis immediately on a cache miss (or serve the cached
 	// full analysis); a cold page load then paints in ms with skeletons that
 	// self-fill from /whatif/results-full.
-	analysis, pendingHash, err := analysisFastOrCached(settings)
-	if err != nil {
-		renderError(w, "Analysis failed: "+err.Error(), http.StatusInternalServerError)
-		return
+	//
+	// D4: a failed analysis (a scenario-chain link to a deleted scenario
+	// file, or an engine error on a malformed chained step) must NOT bail
+	// out to a bare error fragment here. The page below still renders in
+	// full — inputs column, including the Scenario Chain card the user
+	// needs to remove the offending step — with analysis left nil and the
+	// failure surfaced inline in the results area (see "whatif-results" /
+	// .AnalysisError). Every builder called below is nil-projection-safe;
+	// see buildGuardrailChartSummary, buildGuardrailAnchors,
+	// spendingOptimizerFormData, retanalysis.LowestPlannedLivingReal, and
+	// BuildVerdict.
+	analysis, pendingHash, analysisErr := analysisFastOrCached(settings)
+	var analysisError string
+	if analysisErr != nil {
+		log.Printf("whatif: analysis failed: %v", analysisErr)
+		analysisError = "Analysis failed: " + analysisErr.Error()
+		analysis = nil
+		pendingHash = ""
 	}
 
 	scenarios, _ := retirementMgr.ListScenarios()
@@ -1343,13 +1357,18 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 
 	findings := completeness.Check(settings)
 
+	var projection *models.ProjectionResult
+	if analysis != nil {
+		projection = analysis.Projection
+	}
+
 	// GuardrailPlanFloor is unconditional (unlike the optimizer results
 	// notice, which only fires when a specific requested floor exceeds this
 	// figure): it always reports the plan's own lowest planned living
 	// spending when a base projection is available, for the floor-field
 	// hint in whatif-guardrail-optimizer. See analysis.LowestPlannedLivingReal.
 	var guardrailPlanFloor *guardrailPlanFloorNotice
-	if amount, year, phase, ok := retanalysis.LowestPlannedLivingReal(analysis.Projection); ok {
+	if amount, year, phase, ok := retanalysis.LowestPlannedLivingReal(projection); ok {
 		guardrailPlanFloor = &guardrailPlanFloorNotice{Amount: amount, Year: year, Phase: phase}
 	}
 
@@ -1358,6 +1377,7 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		"ActiveTab":                   "whatif",
 		"Settings":                    settings,
 		"Analysis":                    analysis,
+		"AnalysisError":               analysisError,
 		"Verdict":                     BuildVerdict(analysis, settings),
 		"Scenarios":                   scenarios,
 		"ActiveScenario":              activeScenario,
@@ -1366,14 +1386,22 @@ func handleWhatIf(w http.ResponseWriter, r *http.Request) {
 		"AnalysisPending":             pendingHash != "",
 		"AsyncHash":                   pendingHash,
 		"LivingExpensesPhaseNote":     buildLivingExpensesPhaseNote(settings),
-		"GuardrailChartSummary":       buildGuardrailChartSummary(settings, analysis.Projection),
-		"GuardrailAnchors":            buildGuardrailAnchors(settings, analysis.Projection),
+		"GuardrailChartSummary":       buildGuardrailChartSummary(settings, projection),
+		"GuardrailAnchors":            buildGuardrailAnchors(settings, projection),
 		"GuardrailPlanFloor":          guardrailPlanFloor,
-		"SpendingOptimizerForm":       spendingOptimizerFormData(settings, analysis.Projection),
+		"SpendingOptimizerForm":       spendingOptimizerFormData(settings, projection),
 		"SpendingAppliedAnnouncement": spendingAppliedAnnouncement(r, settings),
 	}
 
 	templates.AttachDuplicateCount(pageData, loader)
+	// The page itself still renders on an analysis failure (see above), but
+	// the response keeps signaling the failure at the transport level —
+	// same status a client/monitor already expects from this endpoint —
+	// while a browser still paints the full body regardless of status code.
+	if analysisError != "" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 	if renderer != nil {
 		_ = renderer.Render(w, "base", pageData)
 	} else {

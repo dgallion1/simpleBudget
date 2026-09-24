@@ -435,8 +435,17 @@ func runSingleMonteCarloSimulation(in engine.Input, rng *rand.Rand, config *Mont
 
 		// Check if we should enter adaptation mode (crash detected this year
 		// via stock returns). Skip adaptive spending when guardrails are
-		// active (guardrails subsume this).
-		guardrailsActive := st.Guardrails != nil
+		// active (guardrails subsume this). Decided from the PRIMARY
+		// (viewed) settings, per D3' — reached via st.Primary(), NOT this
+		// closure's own s parameter (the post-chain-transition, ACTIVE
+		// settings StepMonth's returnsFor sees) — the same predicate and the
+		// same settings object the stepper uses for its own guardrail
+		// evaluation, so a chain transition can never leave Monte Carlo and
+		// the deterministic stepper disagreeing about who governs. st (the
+		// outer runSingleMonteCarloSimulation's *engine.ProjectionState) is
+		// captured by this closure the same way st.StepMonth already is
+		// below.
+		guardrailsActive := engine.GuardrailsGovernStep(st.Primary())
 		if !guardrailsActive && config.AdaptiveSpending && assetReturns.Stock[currentYear] < -15 {
 			adaptationEndYear = currentYear + config.AdaptationRecoveryYears
 		}

@@ -802,11 +802,14 @@ func TestScheduleForms_ClampedRowRoundTripsOnAnUnrelatedToggle(t *testing.T) {
 	}
 }
 
-// Ruling 2026-09-16f, criterion 7 (WCAG 4.1.3). A rejected month is swapped
-// into the add form's error container by HX-Retarget + HX-Reswap:innerHTML, so
-// that container must be a live region for the message to be announced — on
-// the page AND in the OOB partial that clears it after every mutation, which
-// replaces the element outright and would otherwise strip the role.
+// WS4.2, superseding ruling 2026-09-16f criterion 7 (WCAG 4.1.3). A rejected
+// month is swapped into the add form's error container by HX-Retarget +
+// HX-Reswap:innerHTML; the container itself must NOT carry role="alert" —
+// renderError's own fragment (the thing actually swapped in) carries
+// role="alert" itself, fresh on every swap, and a wrapper role="alert" too
+// would nest a live region inside a live region and double-announce the same
+// message (checker-a11y WS4.1 FAIL). That holds on the page AND in the OOB
+// partial that clears the container after every mutation.
 func TestScheduleForms_AddErrorsAreAnnouncedAndAssociated(t *testing.T) {
 	rm, cleanup := setupTestEnvWithRenderer(t)
 	defer cleanup()
@@ -823,8 +826,11 @@ func TestScheduleForms_AddErrorsAreAnnouncedAndAssociated(t *testing.T) {
 	}
 	for _, k := range kinds {
 		container := "whatif-add-" + k.kind + "-error"
-		if !strings.Contains(body, `<div id="`+container+`" role="alert"`) {
-			t.Errorf("%s error container is not a live region", container)
+		if !strings.Contains(body, `<div id="`+container+`"`) {
+			t.Errorf("%s error container missing", container)
+		}
+		if strings.Contains(body, `<div id="`+container+`" role="alert"`) {
+			t.Errorf("%s error container carries role=\"alert\" -- nests with the swapped-in fragment's own role", container)
 		}
 		if !strings.Contains(body, `id="`+k.input+`" name=`) {
 			t.Fatalf("month input %s not rendered", k.input)
@@ -835,7 +841,8 @@ func TestScheduleForms_AddErrorsAreAnnouncedAndAssociated(t *testing.T) {
 		}
 	}
 
-	// The message really does land inside that container.
+	// The message really does land inside that container, and the message
+	// itself (not the container) is the one live region.
 	w := postScheduleForm(t, handleWhatIfAddOneTime, "/whatif/onetime", "",
 		url.Values{"description": {"X"}, "amount": {"1"}, "month": {"nope"}})
 	if w.Code != http.StatusBadRequest {
@@ -845,11 +852,14 @@ func TestScheduleForms_AddErrorsAreAnnouncedAndAssociated(t *testing.T) {
 		t.Errorf("HX-Retarget = %q, want #whatif-add-onetime-error", got)
 	}
 	if got := w.Header().Get("HX-Reswap"); got != "innerHTML" {
-		t.Errorf("HX-Reswap = %q, want innerHTML (an outerHTML swap would drop role=\"alert\")", got)
+		t.Errorf("HX-Reswap = %q, want innerHTML (keeps the container element stable across repeated rejections)", got)
+	}
+	if !strings.Contains(w.Body.String(), `role="alert"`) {
+		t.Errorf("the swapped-in message fragment should carry role=\"alert\" itself")
 	}
 
 	// ...and a SUCCESSFUL mutation's OOB partial, which clears the containers
-	// by replacing them, keeps the role.
+	// by replacing them, still does not reintroduce role="alert" on any of them.
 	ok := postScheduleForm(t, handleWhatIfAddOneTime, "/whatif/onetime", "",
 		url.Values{"description": {"Fine"}, "amount": {"1"}, "month": {schedStartValue}})
 	if ok.Code != http.StatusOK {
@@ -857,9 +867,13 @@ func TestScheduleForms_AddErrorsAreAnnouncedAndAssociated(t *testing.T) {
 	}
 	oob := collapseWhitespace(ok.Body.String())
 	for _, kind := range []string{"income", "expense", "onetime", "bigticket"} {
-		want := `<div id="whatif-add-` + kind + `-error" role="alert" hx-swap-oob="true">`
+		want := `<div id="whatif-add-` + kind + `-error" hx-swap-oob="true">`
 		if !strings.Contains(oob, want) {
-			t.Errorf("the OOB partial drops role=\"alert\" from the %s error container", kind)
+			t.Errorf("the OOB partial for the %s error container is not a bare wrapper", kind)
+		}
+		nested := `<div id="whatif-add-` + kind + `-error" role="alert" hx-swap-oob="true">`
+		if strings.Contains(oob, nested) {
+			t.Errorf("the OOB partial reintroduces role=\"alert\" on the %s error container", kind)
 		}
 	}
 }

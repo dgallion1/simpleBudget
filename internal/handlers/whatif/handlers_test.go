@@ -796,6 +796,13 @@ func TestRenderError(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/html") {
 		t.Fatalf("expected html content type, got %s", ct)
 	}
+	// WS4 AC4: the fragment must announce itself -- most of renderError's
+	// callers return it as a bare 4xx/5xx with no HX-Retarget slot of its
+	// own, and base.js displays it next to the triggering form/card only
+	// because this element carries the role itself.
+	if !strings.Contains(body, `role="alert"`) {
+		t.Fatalf("body should carry role=\"alert\", got %s", body)
+	}
 }
 
 // ── parseFormFloat / parseFormInt / parseRequiredFormFloat ───────────────────

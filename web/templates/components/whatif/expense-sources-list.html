@@ -128,10 +128,14 @@ nothing can re-save (and be rejected for) a date nobody touched
 {{/* Add Expense Form */}}
 {{define "whatif-add-expense-form"}}
 {{/* The add handler answers a rejected month with HX-Retarget to this id and
-HX-Reswap:innerHTML, so the element itself survives and its role="alert"
-announces each new message (WCAG 4.1.3). Every month input below names it in
+HX-Reswap:innerHTML, so the element itself survives and its content is
+replaced by the server's renderError fragment, which carries role="alert"
+itself and announces on every swap (WCAG 4.1.3) -- deliberately NOT
+repeated here: this wrapper carrying role="alert" too would nest a live
+region inside a live region and double-announce the same message (WS4.2,
+superseding ruling 2026-09-16f). Every month input below names this slot in
 aria-describedby, so the error is reachable from the field too. */}}
-<div id="whatif-add-expense-error" role="alert" class="mb-2"></div>
+<div id="whatif-add-expense-error" class="mb-2"></div>
 <form hx-post="/whatif/expense" hx-target="#whatif-results" hx-on::after-request="if(event.detail.successful) this.reset()"
     class="space-y-2 border-t dark:border-gray-700 pt-3">
     <div class="grid grid-cols-2 gap-2">

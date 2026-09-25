@@ -1,6 +1,7 @@
 package prepare
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -153,6 +154,196 @@ func TestValidatePersons(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+}
+
+// I1/I5(c): the two per-person BirthMonth failures and the StartDate
+// failure are retrievable via errors.As and carry the failing row's ID
+// (ruling 2026-09-24i) -- the ONLY thing a caller may use to identify the
+// row; see personsSaveErrorMessage in internal/handlers/whatif.
+func TestValidatePersons_TypedErrors_ErrorsAsAndPersonID(t *testing.T) {
+	t.Run("invalid start_date is InvalidStartDateError", func(t *testing.T) {
+		s := validSettings(t, false)
+		s.StartDate = "bad"
+		err := ValidatePersons(s)
+		var startErr *InvalidStartDateError
+		if !errors.As(err, &startErr) {
+			t.Fatalf("expected *InvalidStartDateError, got %T: %v", err, err)
+		}
+		if startErr.Err == nil {
+			t.Error("expected a wrapped parse error")
+		}
+	})
+
+	t.Run("unparseable birth_month is PersonBirthMonthError with PersonID", func(t *testing.T) {
+		s := validSettings(t, false)
+		s.Persons[0].ID = "row-7"
+		s.Persons[0].BirthMonth = "not-a-date"
+		err := ValidatePersons(s)
+		var birthErr *PersonBirthMonthError
+		if !errors.As(err, &birthErr) {
+			t.Fatalf("expected *PersonBirthMonthError, got %T: %v", err, err)
+		}
+		if birthErr.PersonID != "row-7" {
+			t.Errorf("PersonID = %q, want %q", birthErr.PersonID, "row-7")
+		}
+	})
+
+	t.Run("empty birth_month is PersonBirthMonthError with PersonID", func(t *testing.T) {
+		s := validSettings(t, false)
+		s.Persons[0].ID = "row-empty"
+		s.Persons[0].BirthMonth = ""
+		err := ValidatePersons(s)
+		var birthErr *PersonBirthMonthError
+		if !errors.As(err, &birthErr) {
+			t.Fatalf("expected *PersonBirthMonthError, got %T: %v", err, err)
+		}
+		if birthErr.PersonID != "row-empty" {
+			t.Errorf("PersonID = %q, want %q", birthErr.PersonID, "row-empty")
+		}
+	})
+
+	t.Run("birth_month after start_date is PersonBirthMonthAfterStartError with PersonID and StartDate", func(t *testing.T) {
+		s := validSettings(t, false)
+		s.StartDate = "2026-04"
+		s.Persons[0].ID = "row-9"
+		s.Persons[0].BirthMonth = "2026-05"
+		err := ValidatePersons(s)
+		var afterErr *PersonBirthMonthAfterStartError
+		if !errors.As(err, &afterErr) {
+			t.Fatalf("expected *PersonBirthMonthAfterStartError, got %T: %v", err, err)
+		}
+		if afterErr.PersonID != "row-9" {
+			t.Errorf("PersonID = %q, want %q", afterErr.PersonID, "row-9")
+		}
+		if afterErr.StartDate != s.StartDate {
+			t.Errorf("StartDate = %q, want %q", afterErr.StartDate, s.StartDate)
+		}
+	})
+
+	t.Run("a birth-month failure is found by the failing row's OWN ID even when Names collide", func(t *testing.T) {
+		// ID uniqueness is checked before birth months (ValidatePersons'
+		// own ordering, and parsePersonsForm's UUID assignment upstream),
+		// so at the point a birth-month error fires every ID present is
+		// unique -- this pins that a row is found by ITS OWN ID, never by
+		// Name, even when two rows share the same Name (ruling
+		// 2026-09-24h: "Pat Twin" x2 must never name the wrong row).
+		s := validSettings(t, false)
+		s.Persons[0].ID = "twin-1"
+		s.Persons[0].Name = "Pat Twin"
+		s.Persons[0].BirthMonth = "1990-01"
+		s.Persons = append(s.Persons, models.Person{
+			ID: "twin-2", Name: "Pat Twin", BirthMonth: "19711-08", Role: models.PersonRoleOther,
+		})
+		err := ValidatePersons(s)
+		var birthErr *PersonBirthMonthError
+		if !errors.As(err, &birthErr) {
+			t.Fatalf("expected *PersonBirthMonthError, got %T: %v", err, err)
+		}
+		if birthErr.PersonID != "twin-2" {
+			t.Errorf("PersonID = %q, want %q (the SECOND Pat Twin, whose birth month actually fails)", birthErr.PersonID, "twin-2")
+		}
+	})
+}
+
+// I4: Error() text for every ValidatePersons shape stays byte-identical to
+// the historical, untyped text -- settings.go's saveInternal, the load-time
+// pass, and prepare.From all surface it to callers (including the MCP
+// apply_changes tool) as plain text.
+func TestValidatePersons_ErrorTextPinned(t *testing.T) {
+	cases := []struct {
+		name    string
+		mutate  func(s *models.WhatIfSettings)
+		wantErr string
+	}{
+		{
+			name:    "invalid start_date",
+			mutate:  func(s *models.WhatIfSettings) { s.StartDate = "bad" },
+			wantErr: `start_date: invalid month "bad"`,
+		},
+		{
+			name:    "empty persons",
+			mutate:  func(s *models.WhatIfSettings) { s.Persons = nil },
+			wantErr: "persons: at least one person is required",
+		},
+		{
+			name:    "empty ID",
+			mutate:  func(s *models.WhatIfSettings) { s.Persons[0].ID = "" },
+			wantErr: "persons: id is required",
+		},
+		{
+			name: "duplicate ID",
+			mutate: func(s *models.WhatIfSettings) {
+				s.Persons = append(s.Persons, models.Person{ID: "p1", Name: "Dup", BirthMonth: "1970-01", Role: models.PersonRoleSpouse})
+			},
+			wantErr: `persons: duplicate id "p1"`,
+		},
+		{
+			name:    "empty name",
+			mutate:  func(s *models.WhatIfSettings) { s.Persons[0].Name = "" },
+			wantErr: "persons: name is required",
+		},
+		{
+			name:    "empty birth_month",
+			mutate:  func(s *models.WhatIfSettings) { s.Persons[0].BirthMonth = "" },
+			wantErr: `persons: invalid birth_month for "Alex": month is required`,
+		},
+		{
+			name:    "unparseable birth_month",
+			mutate:  func(s *models.WhatIfSettings) { s.Persons[0].BirthMonth = "not-a-date" },
+			wantErr: `persons: invalid birth_month for "Alex": invalid month "not-a-date"`,
+		},
+		{
+			name:    "birth_month after start_date",
+			mutate:  func(s *models.WhatIfSettings) { s.Persons[0].BirthMonth = "2026-05" },
+			wantErr: `persons: birth_month "2026-05" is after start_date "2026-04"`,
+		},
+		{
+			name:    "invalid role",
+			mutate:  func(s *models.WhatIfSettings) { s.Persons[0].Role = "bogus" },
+			wantErr: `persons: invalid role "bogus"`,
+		},
+		{
+			name:    "missing primary",
+			mutate:  func(s *models.WhatIfSettings) { s.Persons[0].Role = models.PersonRoleSpouse },
+			wantErr: "persons: expected exactly one primary person, got 0",
+		},
+		{
+			name: "multiple spouses",
+			mutate: func(s *models.WhatIfSettings) {
+				s.Persons = append(s.Persons,
+					models.Person{ID: "s1", Name: "S1", BirthMonth: "1962-01", Role: models.PersonRoleSpouse},
+					models.Person{ID: "s2", Name: "S2", BirthMonth: "1963-01", Role: models.PersonRoleSpouse},
+				)
+			},
+			wantErr: "persons: expected at most one spouse person, got 2",
+		},
+		{
+			name: "healthcare link to missing person",
+			mutate: func(s *models.WhatIfSettings) {
+				s.HealthcarePersons = []models.HealthcarePerson{{ID: "hp1", PersonID: "nonexistent"}}
+			},
+			wantErr: `healthcare_persons: person_id "nonexistent" not found`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &models.WhatIfSettings{
+				StartDate: "2026-04",
+				Persons: []models.Person{
+					{ID: "p1", Name: "Alex", BirthMonth: "1960-04", Role: models.PersonRolePrimary},
+				},
+			}
+			tc.mutate(s)
+			err := ValidatePersons(s)
+			if err == nil {
+				t.Fatalf("expected an error, got nil")
+			}
+			if err.Error() != tc.wantErr {
+				t.Errorf("Error() = %q, want %q", err.Error(), tc.wantErr)
+			}
+		})
+	}
 }
 
 func TestOneTimeExpense_ValidationRejectsBadEntries(t *testing.T) {

@@ -2,6 +2,7 @@ package prepare
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -54,6 +55,32 @@ func TestFrom_HappyPath(t *testing.T) {
 	}
 	if got.PortfolioValue != s.PortfolioValue {
 		t.Errorf("PortfolioValue: got %v want %v", got.PortfolioValue, s.PortfolioValue)
+	}
+}
+
+// I4/I5(c): prepare.From wraps ValidatePersons' error as "prepare.From:
+// validate: %w" -- errors.As must see through that wrap to the typed
+// PersonBirthMonthError underneath, PersonID intact, so a caller anywhere
+// in the From path (not only the direct saveInternal path) can still
+// identify the failing row without parsing text.
+func TestFrom_PersonBirthMonthError_ErrorsAsThroughWrap(t *testing.T) {
+	s := validSettings(t, false)
+	s.Persons[0].ID = "wrapped-row"
+	s.Persons[0].BirthMonth = "not-a-date"
+
+	_, err := From(s)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	var birthErr *PersonBirthMonthError
+	if !errors.As(err, &birthErr) {
+		t.Fatalf("expected errors.As to find *PersonBirthMonthError through prepare.From's wrap, got %T: %v", err, err)
+	}
+	if birthErr.PersonID != "wrapped-row" {
+		t.Errorf("PersonID = %q, want %q", birthErr.PersonID, "wrapped-row")
+	}
+	if !strings.HasPrefix(err.Error(), "prepare.From: validate: persons: invalid birth_month for ") {
+		t.Errorf("Error() = %q, want the prepare.From wrap prefix preserved", err.Error())
 	}
 }
 

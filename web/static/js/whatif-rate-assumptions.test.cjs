@@ -773,6 +773,188 @@ test('self-check: PS1 is real -- the 888999a refusal branch (no phase restore) i
     assert.equal(phaseSelect.value, 'older', 'expected the no-restore mutant to leave "older" after a refusal');
 });
 
+// RB1: a Rate Assumptions card as the server renders it -- a form with a
+// primary row and a second person's row (person_id[], hidden
+// person_role[], Role select) plus the "Spending Phase Based On" select.
+// A save response replaces this whole card (whatif.html hx-swap-oob), so
+// tests build a fresh one to stand for the re-render.
+function roleCard({spouseRole = 'spouse', phase = 'spouse', spouseID = 'p-spouse'} = {}) {
+    const primaryRow = rpEl('div', {'data-person-row': ''});
+    primaryRow.appendChild(rpEl('input', {type: 'hidden', name: 'person_id[]', value: 'p-primary'}));
+    primaryRow.appendChild(rpEl('input', {type: 'hidden', name: 'person_role[]', value: 'primary', 'data-person-role-input': ''}));
+
+    const personRow = rpEl('div', {'data-person-row': ''});
+    personRow.appendChild(rpEl('input', {type: 'hidden', name: 'person_id[]', value: spouseID}));
+    personRow.appendChild(rpEl('input', {type: 'hidden', name: 'person_role[]', value: spouseRole, 'data-person-role-input': ''}));
+    const roleSelect = rpEl('select', {'data-person-role-selector': ''});
+    roleSelect.value = spouseRole;
+    personRow.appendChild(roleSelect);
+
+    const container = rpEl('div', {id: 'person-rows'});
+    container.appendChild(primaryRow);
+    container.appendChild(personRow);
+
+    const phaseSelect = rpEl('select', {id: 'phase-age-reference-select', name: 'phase_age_reference'});
+    phaseSelect.value = phase;
+    const phaseContainer = rpEl('div', {id: 'phase-age-reference-container', class: spouseRole === 'spouse' ? '' : 'hidden'});
+    phaseContainer.appendChild(phaseSelect);
+
+    const form = rpEl('form');
+    form.appendChild(container);
+    form.appendChild(phaseContainer);
+    return {form, container, personRow, roleSelect, phaseSelect, phaseContainer};
+}
+
+// Stands in for the save response's out-of-band swap of the card.
+function swapCard(doc, oldCard, newCard) {
+    oldCard.form.remove();
+    doc._root.appendChild(newCard.form);
+    return newCard;
+}
+
+function flipRole(ctx, roleSelect, value) {
+    roleSelect.value = value;
+    ctx.updatePersonRole(roleSelect);
+}
+
+function phaseRecords(ctx) {
+    return ctx.window.whatifPhaseBasisBeforeRoleChange || {};
+}
+
+// RB1 (a)+(d): same elements, flipped back before any save lands.
+test('updatePersonRole: flipping a person Spouse -> Other -> Spouse restores the spending-phase basis', () => {
+    const card = roleCard();
+    const ctx = loadRateAssumptions(rpDocument([card.form]));
+
+    flipRole(ctx, card.roleSelect, 'other');
+    assert.equal(card.phaseSelect.value, 'older', 'no spouse left -> "older", as before');
+    assert.equal(card.phaseContainer.classList.contains('hidden'), true, 'no spouse left -> dropdown hidden');
+
+    flipRole(ctx, card.roleSelect, 'spouse');
+    assert.equal(card.phaseSelect.value, 'spouse', 'flipping back restores the basis the user had');
+    assert.equal(card.phaseContainer.classList.contains('hidden'), false, 'spouse back -> dropdown shown');
+    assert.ok(!('p-spouse' in phaseRecords(ctx)), 'the record is consumed by the restore');
+});
+
+// RB1 (a2): the normal path -- the Spouse -> Other save lands and its
+// response replaces the whole card before the user flips back.
+test('updatePersonRole: flipping back after the save response replaced the card still restores the basis', () => {
+    const first = roleCard();
+    const doc = rpDocument([first.form]);
+    const ctx = loadRateAssumptions(doc);
+
+    flipRole(ctx, first.roleSelect, 'other');
+    const card = swapCard(doc, first, roleCard({spouseRole: 'other', phase: 'older'}));
+
+    flipRole(ctx, card.roleSelect, 'spouse');
+    assert.equal(card.phaseSelect.value, 'spouse', 'the re-rendered select gets the basis back');
+    assert.equal(card.phaseContainer.classList.contains('hidden'), false, 'spouse back -> dropdown shown');
+    assert.ok(!('p-spouse' in phaseRecords(ctx)), 'the record is consumed by the restore');
+});
+
+// RB1 (b): a basis picked while the person was "Other" (only possible once
+// another spouse row exists) is never overwritten by the restore.
+test('updatePersonRole: flipping back does not overwrite a basis picked in the meantime', () => {
+    const card = roleCard();
+    const ctx = loadRateAssumptions(rpDocument([card.form]));
+
+    flipRole(ctx, card.roleSelect, 'other');
+    const newSpouse = rpEl('div', {'data-person-row': ''});
+    newSpouse.appendChild(rpEl('input', {type: 'hidden', name: 'person_role[]', value: 'spouse', 'data-person-role-input': ''}));
+    card.container.appendChild(newSpouse);
+    ctx.togglePhaseReferenceDropdown();
+    card.phaseSelect.value = 'younger';
+
+    flipRole(ctx, card.roleSelect, 'spouse');
+    assert.equal(card.phaseSelect.value, 'younger', 'the user\'s newer pick stands');
+    assert.ok(!('p-spouse' in phaseRecords(ctx)), 'the stale record is dropped');
+});
+
+// RB1 (c): nothing coerced -> nothing recorded; an unsaved row (no person
+// ID yet) is never recorded.
+test('updatePersonRole: a basis the role change does not coerce is left alone and not recorded', () => {
+    const card = roleCard({phase: 'primary'});
+    const ctx = loadRateAssumptions(rpDocument([card.form]));
+
+    flipRole(ctx, card.roleSelect, 'other');
+    assert.equal(card.phaseSelect.value, 'primary');
+    assert.ok(!('p-spouse' in phaseRecords(ctx)), 'no coercion -> no record');
+
+    flipRole(ctx, card.roleSelect, 'spouse');
+    assert.equal(card.phaseSelect.value, 'primary');
+});
+
+test('updatePersonRole: a row without a saved person ID is not recorded', () => {
+    const card = roleCard({spouseID: ''});
+    const ctx = loadRateAssumptions(rpDocument([card.form]));
+
+    flipRole(ctx, card.roleSelect, 'other');
+    assert.equal(card.phaseSelect.value, 'older', 'coercion itself is unchanged');
+    assert.deepEqual(Object.keys(phaseRecords(ctx)), [], 'no ID -> nothing to key a record on');
+});
+
+// RB1 (e): the swap-path test is real against both earlier versions.
+function runSwapPath(patch) {
+    const first = roleCard();
+    const doc = rpDocument([first.form]);
+    const ctx = loadRateAssumptions(doc, patch);
+    flipRole(ctx, first.roleSelect, 'other');
+    const card = swapCard(doc, first, roleCard({spouseRole: 'other', phase: 'older'}));
+    flipRole(ctx, card.roleSelect, 'spouse');
+    return card.phaseSelect.value;
+}
+
+function replaceUpdatePersonRole(version) {
+    return (src) => {
+        const patched = src.replace(/function updatePersonRole\(select\) \{[\s\S]*?\n\}\n/, () => version);
+        assert.notEqual(patched, src, 'sanity: the patch target must exist (and differ from the replacement)');
+        return patched;
+    };
+}
+
+test('self-check: RB1 is real -- the 6bf3839 updatePersonRole (no restore) is caught by the swap-path test', () => {
+    const base = "function updatePersonRole(select) {\n"
+        + "    const row = select.closest('[data-person-row]');\n"
+        + "    const hidden = row?.querySelector('[data-person-role-input]');\n"
+        + "    if (hidden) {\n"
+        + "        hidden.value = select.value;\n"
+        + "    }\n"
+        + "    togglePhaseReferenceDropdown();\n"
+        + "}\n";
+    assert.equal(runSwapPath(replaceUpdatePersonRole(base)), 'older', 'expected the no-restore version to leave "older"');
+});
+
+test('self-check: RB1 is real -- a record kept on the row (attempt 1) is lost to the swap and caught by the swap-path test', () => {
+    const rowRecord = "function updatePersonRole(select) {\n"
+        + "    const row = select.closest('[data-person-row]');\n"
+        + "    const hidden = row?.querySelector('[data-person-role-input]');\n"
+        + "    if (hidden) {\n"
+        + "        hidden.value = select.value;\n"
+        + "    }\n"
+        + "    const phaseSelect = document.getElementById('phase-age-reference-select');\n"
+        + "    const phaseBefore = phaseSelect ? phaseSelect.value : null;\n"
+        + "    togglePhaseReferenceDropdown();\n"
+        + "    if (!row || !phaseSelect) {\n"
+        + "        return;\n"
+        + "    }\n"
+        + "    if (select.value !== 'spouse') {\n"
+        + "        if (phaseSelect.value !== phaseBefore) {\n"
+        + "            row.setAttribute('data-phase-basis-before', phaseBefore);\n"
+        + "            row.setAttribute('data-phase-basis-coerced', phaseSelect.value);\n"
+        + "        }\n"
+        + "        return;\n"
+        + "    }\n"
+        + "    if (row.hasAttribute('data-phase-basis-before')) {\n"
+        + "        if (phaseSelect.value === row.getAttribute('data-phase-basis-coerced')) {\n"
+        + "            phaseSelect.value = row.getAttribute('data-phase-basis-before');\n"
+        + "        }\n"
+        + "        row.removeAttribute('data-phase-basis-before');\n"
+        + "        row.removeAttribute('data-phase-basis-coerced');\n"
+        + "    }\n"
+        + "}\n";
+    assert.equal(runSwapPath(replaceUpdatePersonRole(rowRecord)), 'older', 'expected the row-attribute version to lose its record in the swap');
+});
+
 test('self-check: an in-card-only client recompute is ALSO caught by the C1k test above', () => {
     const dom = makeFakeDom(sentinelServedSpecsInPanel());
     const target = "detail.textContent = '(~' + expectedReturnText + '% expected)';";

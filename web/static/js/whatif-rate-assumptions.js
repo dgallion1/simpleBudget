@@ -10,13 +10,49 @@ function hasSpousePerson() {
     return personRows().some((row) => row.querySelector('[data-person-role-input]')?.value === 'spouse');
 }
 
+// Phase-basis values updatePersonRole coerced away, keyed by person ID.
+// Page-level on purpose: every save's response swaps in a freshly rendered
+// Rate Assumptions card (whatif.html, hx-swap-oob), so anything kept on
+// the rows or the select is gone before the user flips a role back. Made
+// lazily -- this file can be re-executed when its component is swapped.
+function phaseBasisRecords() {
+    if (!window.whatifPhaseBasisBeforeRoleChange) {
+        window.whatifPhaseBasisBeforeRoleChange = {};
+    }
+    return window.whatifPhaseBasisBeforeRoleChange;
+}
+
+// Changing the only spouse to "Other" makes togglePhaseReferenceDropdown()
+// coerce a "spouse" phase basis to "older" (and the form saves that).
+// Flipping the same person back to "Spouse" restores it -- unless the
+// basis was changed in the meantime.
 function updatePersonRole(select) {
     const row = select.closest('[data-person-row]');
     const hidden = row?.querySelector('[data-person-role-input]');
     if (hidden) {
         hidden.value = select.value;
     }
+    const phaseSelect = document.getElementById('phase-age-reference-select');
+    const phaseBefore = phaseSelect ? phaseSelect.value : null;
     togglePhaseReferenceDropdown();
+    const personID = row?.querySelector('input[name="person_id[]"]')?.value;
+    if (!personID || !phaseSelect) {
+        return;
+    }
+    const records = phaseBasisRecords();
+    if (select.value !== 'spouse') {
+        if (phaseSelect.value !== phaseBefore) {
+            records[personID] = {before: phaseBefore, coerced: phaseSelect.value};
+        }
+        return;
+    }
+    const record = records[personID];
+    if (record) {
+        if (phaseSelect.value === record.coerced) {
+            phaseSelect.value = record.before;
+        }
+        delete records[personID];
+    }
 }
 
 // D7: removing a person must save immediately (the old version only

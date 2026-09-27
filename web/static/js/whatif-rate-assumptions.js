@@ -13,8 +13,8 @@ function hasSpousePerson() {
 // Phase-basis values updatePersonRole coerced away, keyed by person ID.
 // Page-level on purpose: every save's response swaps in a freshly rendered
 // Rate Assumptions card (whatif.html, hx-swap-oob), so anything kept on
-// the rows or the select is gone before the user flips a role back. Made
-// lazily -- this file can be re-executed when its component is swapped.
+// the rows or the select is gone before the user flips a role back. The
+// script itself loads once per page (pages/whatif.html), outside that card.
 function phaseBasisRecords() {
     if (!window.whatifPhaseBasisBeforeRoleChange) {
         window.whatifPhaseBasisBeforeRoleChange = {};

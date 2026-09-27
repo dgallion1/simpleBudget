@@ -34,6 +34,11 @@ function removePersonRow(button) {
     const form = row.closest('form');
     const parent = row.parentNode;
     const nextSibling = row.nextSibling;
+    // Removing the last spouse row makes togglePhaseReferenceDropdown()
+    // coerce a "spouse" phase basis to "older"; a refusal must undo that
+    // too, or the next unrelated save persists "older".
+    const phaseSelect = document.getElementById('phase-age-reference-select');
+    const phaseBefore = phaseSelect ? phaseSelect.value : null;
     row.remove();
     togglePhaseReferenceDropdown();
     updatePersonAgePreviews();
@@ -49,10 +54,13 @@ function removePersonRow(button) {
             // Refused -- restore the row where it was. The server's own
             // error message is shown next to `form` by base.js's generic
             // htmx:responseError handler; this only undoes the optimistic
-            // removal and puts keyboard focus back on the control the user
-            // just activated.
+            // removal (row AND phase basis) and puts keyboard focus back on
+            // the control the user just activated.
             if (parent) {
                 parent.insertBefore(row, nextSibling);
+            }
+            if (phaseSelect) {
+                phaseSelect.value = phaseBefore;
             }
             togglePhaseReferenceDropdown();
             updatePersonAgePreviews();

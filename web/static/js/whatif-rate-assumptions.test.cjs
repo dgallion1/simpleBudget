@@ -715,6 +715,64 @@ test('removePersonRow: a successful removal is not restored', () => {
     assert.ok(!container.children.includes(spouseRow));
 });
 
+// PS1: the person-rows fixture plus the "Spending Phase Based On" select
+// (value "spouse") inside the same form, as rate-assumptions.html renders it.
+function phaseReferenceFixture() {
+    const f = personRowsFixture();
+    const phaseSelect = rpEl('select', {id: 'phase-age-reference-select', name: 'phase_age_reference'});
+    phaseSelect.value = 'spouse';
+    const phaseContainer = rpEl('div', {id: 'phase-age-reference-container'});
+    phaseContainer.appendChild(phaseSelect);
+    f.form.appendChild(phaseContainer);
+    return Object.assign(f, {phaseSelect, phaseContainer});
+}
+
+// PS1: a refused removal must also undo the "spouse" -> "older" coercion
+// togglePhaseReferenceDropdown() made when the spouse row left the form,
+// or the next unrelated save persists "older".
+test('removePersonRow: a refused removal restores the spending-phase basis it coerced', () => {
+    const {form, container, spouseRow, removeBtn, phaseSelect, phaseContainer} = phaseReferenceFixture();
+    const doc = rpDocument([form]);
+    const ctx = loadRateAssumptions(doc);
+
+    ctx.removePersonRow(removeBtn);
+    assert.equal(phaseSelect.value, 'older', 'while removed (no spouse), the request carries "older" -- unchanged');
+    assert.equal(phaseContainer.classList.contains('hidden'), true, 'no spouse row -> dropdown hidden');
+
+    form.dispatchEvent({type: 'htmx:afterRequest', detail: {elt: form, successful: false}});
+
+    assert.equal(phaseSelect.value, 'spouse', 'a refusal restores the phase basis the user had');
+    assert.equal(phaseContainer.classList.contains('hidden'), false, 'spouse row back -> dropdown shown');
+    assert.equal(container.children[1], spouseRow, 'row restored in place');
+    assert.ok(removeBtn.__focused, 'focus returns to the Remove button');
+});
+
+test('removePersonRow: a successful removal leaves the spending-phase basis at "older"', () => {
+    const {form, removeBtn, phaseSelect} = phaseReferenceFixture();
+    const doc = rpDocument([form]);
+    const ctx = loadRateAssumptions(doc);
+
+    ctx.removePersonRow(removeBtn);
+    form.dispatchEvent({type: 'htmx:afterRequest', detail: {elt: form, successful: true}});
+
+    assert.equal(phaseSelect.value, 'older', 'no spouse remains, so "spouse" is not restored');
+});
+
+test('self-check: PS1 is real -- the 888999a refusal branch (no phase restore) is caught by the refusal test above', () => {
+    const {form, removeBtn, phaseSelect} = phaseReferenceFixture();
+    const doc = rpDocument([form]);
+    const target = "            if (phaseSelect) {\n                phaseSelect.value = phaseBefore;\n            }\n";
+    const patch = (src) => {
+        const patched = src.replace(target, () => '');
+        assert.notEqual(patched, src, 'sanity: the patch target must exist');
+        return patched;
+    };
+    const ctx = loadRateAssumptions(doc, patch);
+    ctx.removePersonRow(removeBtn);
+    form.dispatchEvent({type: 'htmx:afterRequest', detail: {elt: form, successful: false}});
+    assert.equal(phaseSelect.value, 'older', 'expected the no-restore mutant to leave "older" after a refusal');
+});
+
 test('self-check: an in-card-only client recompute is ALSO caught by the C1k test above', () => {
     const dom = makeFakeDom(sentinelServedSpecsInPanel());
     const target = "detail.textContent = '(~' + expectedReturnText + '% expected)';";

@@ -335,7 +335,35 @@ repo root — you can ask questions about a plan, have the engine re-run to chec
 an answer, look at spending patterns, and curate the Major Expenses page.
 **Start `budget2` first:** the tools come from the running server, so if
 nothing is listening when a Claude Code session starts, they will not be
-available. There is no separate MCP process.
+available. There is no separate MCP process, and a session does not
+reconnect mid-way — the tools are discovered once, at session start.
+
+The reliable fix is to run the server as a systemd user service so it is
+always up before any session begins. Save this as
+`~/.config/systemd/user/budget2.service` (adjust the paths to where the
+repo lives; `WorkingDirectory` matters because `data/` is resolved
+relative to it):
+
+```ini
+[Unit]
+Description=budget2 (simpleBudget) server on :8080
+After=network.target
+
+[Service]
+WorkingDirectory=%h/bin/ai/budget2
+ExecStart=%h/bin/ai/budget2/budget2
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+```
+
+Then `make build`, `systemctl --user enable --now budget2`, and
+`loginctl enable-linger $USER` so it starts at boot without a login. After
+pulling changes, `make build` again and `systemctl --user restart budget2`.
+A new instance asks any previous one on the port to shut down, so the
+service and a hand-started copy never fight.
 
 Thirty-two tools in five groups: six planner tools, six spending tools, six
 ledger tools, five curation tools, and nine housekeeping tools. A checked-in

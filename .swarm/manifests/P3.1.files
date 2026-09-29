@@ -1,4 +1,0 @@
-internal/handlers/insights/handlers.go
-internal/services/pricecreep/pricecreep.go
-internal/services/pricecreep/pricecreep_test.go
-internal/services/merchants/merchants_test.go

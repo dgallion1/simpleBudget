@@ -37,8 +37,9 @@ reflection-notes.md
 /expenses-*.png
 /major-expense-*.png
 /filter-test-*.png
-.swarm/tier3/*/wt-*/
-.swarm/work/
+# Swarm run evidence lives in agents2 (docs/runs/); never commit it here
+.swarm/
+.swarm-go/
 
 # Dev-server output at repo root
 /server.log

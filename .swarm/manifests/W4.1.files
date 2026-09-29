@@ -1,4 +1,0 @@
-internal/handlers/dashboard/verdict.go
-internal/handlers/dashboard/verdict_test.go
-internal/handlers/dashboard/verdict_render_test.go
-web/templates/components/dashboard-verdict-bar.html

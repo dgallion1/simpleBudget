@@ -1,3 +1,0 @@
-internal/services/accounts/projection.go
-internal/services/accounts/projection_test.go
-internal/services/mcpsvc/ledger/r12_default_asof_recurring_test.go
